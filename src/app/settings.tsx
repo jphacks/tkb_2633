@@ -155,7 +155,23 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           ))}
         </View>
         <Text style={styles.label}>休日</Text>
-        <View style={styles.modeRow}>{weekdays.map((day) => <ChoiceChip key={day.id} label={day.label} selected={restDays.includes(day.id)} onPress={() => toggleRestDay(day.id)} />)}</View>
+        <View style={styles.weekdayRow}>
+          {weekdays.map((day) => {
+            const selected = restDays.includes(day.id);
+            return (
+              <Pressable
+                key={day.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${day.label}曜日`}
+                accessibilityState={{ selected }}
+                onPress={() => toggleRestDay(day.id)}
+                style={({ pressed }) => [styles.weekdayChip, selected && styles.weekdayChipSelected, pressed && styles.weekdayChipPressed]}
+              >
+                <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]}>{day.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <Text style={styles.hint}>休日を含む期間になるよう、家事ごとの許容範囲内で予定を調整します。</Text>
         <View style={styles.limitRow}>
           <View style={styles.limitCopy}><Text style={styles.label}>重い家事の1日上限</Text><Text style={styles.hint}>初期値：1件</Text></View>
@@ -326,6 +342,12 @@ const styles = StyleSheet.create({
   back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
   label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  weekdayRow: { width: '100%', flexDirection: 'row', flexWrap: 'nowrap', gap: 5 },
+  weekdayChip: { flex: 1, minWidth: 0, minHeight: 40, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 0 },
+  weekdayChipSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
+  weekdayChipPressed: { opacity: 0.75 },
+  weekdayChipText: { color: palette.muted, fontSize: 13, fontWeight: '600' },
+  weekdayChipTextSelected: { color: palette.accent, fontWeight: '700' },
   hint: { color: palette.muted, fontSize: 12, lineHeight: 18 },
   limitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   limitCopy: { flex: 1, gap: 3 },

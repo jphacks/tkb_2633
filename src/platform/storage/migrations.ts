@@ -215,11 +215,13 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     version = 10;
   }
   if (version < 11) {
-    await database.execAsync(`
-      ALTER TABLE household_settings ADD COLUMN calendar_count_colors_json TEXT NOT NULL
-        DEFAULT '{"low":"#4AADE0","medium":"#F2A541","high":"#E45B61"}';
-      PRAGMA user_version = 11;
-    `);
+    if (!settingsColumns.has('calendar_count_colors_json')) {
+      await database.execAsync(`
+        ALTER TABLE household_settings ADD COLUMN calendar_count_colors_json TEXT NOT NULL
+          DEFAULT '{"low":"#4AADE0","medium":"#F2A541","high":"#E45B61"}';
+      `);
+    }
+    await database.execAsync('PRAGMA user_version = 11');
     version = 11;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {

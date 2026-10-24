@@ -1,5 +1,5 @@
 import { addDays, daysBetween, parseLocalDate } from '../../domain/scheduling/local-date.ts';
-import type { GeoCoordinates } from '@/domain/shared/types';
+import type { WeatherLocation } from '@/domain/shared/types';
 import type { DailyWeather, WeatherForecastProvider, WeatherForecastQuery } from './contracts';
 
 const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -44,7 +44,7 @@ export function parseOpenMeteoDailyResponse(value: unknown): DailyWeather[] {
 }
 
 /** Open-Meteo forecast client with a short in-memory cache for repeated screen refreshes. */
-export class OpenMeteoForecastProvider implements WeatherForecastProvider<GeoCoordinates, readonly DailyWeather[]> {
+export class OpenMeteoForecastProvider implements WeatherForecastProvider<WeatherLocation, readonly DailyWeather[]> {
   private readonly cache = new Map<string, { expiresAt: number; forecast: DailyWeather[] }>();
   private readonly fetcher: FetchLike;
   private readonly now: () => number;
@@ -60,7 +60,7 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<GeoCoo
     this.timeoutMs = timeoutMs;
   }
 
-  async fetchForecast(query: WeatherForecastQuery<GeoCoordinates>): Promise<readonly DailyWeather[]> {
+  async fetchForecast(query: WeatherForecastQuery<WeatherLocation>): Promise<readonly DailyWeather[]> {
     validateQuery(query);
     const cacheKey = [query.location.latitude.toFixed(3), query.location.longitude.toFixed(3), query.from, query.through].join(':');
     const cached = this.cache.get(cacheKey);
@@ -91,7 +91,7 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<GeoCoo
   }
 }
 
-function validateQuery(query: WeatherForecastQuery<GeoCoordinates>): void {
+function validateQuery(query: WeatherForecastQuery<WeatherLocation>): void {
   const { latitude, longitude } = query.location;
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
     || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {

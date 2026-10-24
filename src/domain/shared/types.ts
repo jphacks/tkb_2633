@@ -7,6 +7,12 @@ export interface GeoCoordinates {
   longitude: number;
 }
 
+/** Coordinates selected from a user-entered region through place search. */
+export interface WeatherLocation extends GeoCoordinates {
+  region: string;
+  displayName: string;
+}
+
 /** Monday = 1 through Sunday = 7, independent of the device locale. */
 export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 

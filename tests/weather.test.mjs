@@ -12,6 +12,10 @@ import {
   OpenMeteoForecastProvider,
   parseOpenMeteoDailyResponse,
 } from '../src/features/weather/open-meteo-provider.ts';
+import {
+  OpenMeteoGeocodingProvider,
+  parseOpenMeteoGeocodingResponse,
+} from '../src/features/weather/open-meteo-geocoder.ts';
 
 const today = '2026-10-24';
 const through = '2026-10-30';
@@ -76,6 +80,16 @@ function forecast(overrides = {}) {
   });
 }
 
+function weatherLocation(overrides = {}) {
+  return {
+    region: '東京',
+    displayName: '新宿区, 東京都, 日本',
+    latitude: 35.69,
+    longitude: 139.70,
+    ...overrides,
+  };
+}
+
 function policyInput(overrides = {}) {
   return {
     today,
@@ -132,7 +146,7 @@ test('Open-Meteo parser preserves null values and rejects missing or invalid dat
 test('Open-Meteo provider handles HTTP and invalid JSON failures', async () => {
   const httpFailure = new OpenMeteoForecastProvider(async () => ({ ok: false, status: 503 }));
   await assert.rejects(() => httpFailure.fetchForecast({
-    householdId, location: { latitude: 35.68, longitude: 139.76 }, from: today, through,
+    householdId, location: weatherLocation(), from: today, through,
   }), /HTTP 503/);
 
   const jsonFailure = new OpenMeteoForecastProvider(async () => ({
@@ -141,15 +155,72 @@ test('Open-Meteo provider handles HTTP and invalid JSON failures', async () => {
     json: async () => { throw new SyntaxError('invalid json'); },
   }));
   await assert.rejects(() => jsonFailure.fetchForecast({
-    householdId, location: { latitude: 35.68, longitude: 139.76 }, from: today, through,
+    householdId, location: weatherLocation(), from: today, through,
   }), /invalid json/);
 
   const timeout = new OpenMeteoForecastProvider((_url, options) => new Promise((_resolve, reject) => {
     options.signal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true });
   }), Date.now, 5);
   await assert.rejects(() => timeout.fetchForecast({
-    householdId, location: { latitude: 35.68, longitude: 139.76 }, from: today, through,
+    householdId, location: weatherLocation(), from: today, through,
   }), /request aborted/);
+});
+
+test('Open-Meteo geocoder parses candidate labels and handles no matches', () => {
+  assert.deepEqual(parseOpenMeteoGeocodingResponse({ results: [{
+    id: 1,
+    name: '横浜市',
+    admin2: '横浜市',
+    admin1: '神奈川県',
+    country: '日本',
+    country_code: 'JP',
+    latitude: 35.44,
+    longitude: 139.64,
+  }] }), [{
+    id: 1,
+    label: '横浜市, 神奈川県, 日本',
+    countryCode: 'JP',
+    latitude: 35.44,
+    longitude: 139.64,
+  }]);
+  assert.deepEqual(parseOpenMeteoGeocodingResponse({}), []);
+  assert.throws(() => parseOpenMeteoGeocodingResponse({ results: 'none' }), /候補形式/);
+  assert.throws(() => parseOpenMeteoGeocodingResponse({ results: [{ name: '不正' }] }), /候補 1/);
+  assert.throws(() => parseOpenMeteoGeocodingResponse({ error: true, reason: 'bad query' }), /bad query/);
+});
+
+test('Open-Meteo geocoder sends the entered region and validates failures', async () => {
+  let requestedUrl;
+  const geocoder = new OpenMeteoGeocodingProvider(async (input) => {
+    requestedUrl = new URL(input);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [{
+        id: 2,
+        name: '札幌市',
+        admin1: '北海道',
+        country: '日本',
+        latitude: 43.06,
+        longitude: 141.35,
+      }] }),
+    };
+  });
+  const results = await geocoder.search(' 札幌市 ');
+  assert.equal(requestedUrl.origin, 'https://geocoding-api.open-meteo.com');
+  assert.equal(requestedUrl.pathname, '/v1/search');
+  assert.equal(requestedUrl.searchParams.get('name'), '札幌市');
+  assert.equal(requestedUrl.searchParams.get('language'), 'ja');
+  assert.equal(requestedUrl.searchParams.get('count'), '10');
+  assert.equal(results[0].label, '札幌市, 北海道, 日本');
+
+  await assert.rejects(() => geocoder.search('東'), /2〜120文字/);
+  const httpFailure = new OpenMeteoGeocodingProvider(async () => ({ ok: false, status: 503 }));
+  await assert.rejects(() => httpFailure.search('東京'), /HTTP 503/);
+  const timeout = new OpenMeteoGeocodingProvider((_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true });
+  }), 5);
+  await assert.rejects(() => timeout.search('東京'), /request aborted/);
 });
 
 test('laundry policy selects a nearby suitable day only for laundry chores', () => {
@@ -267,7 +338,7 @@ test('weather optimization failure leaves the original schedule and entries inta
   const result = await optimizeLaundryScheduleForWeather({
     householdId,
     today,
-    location: { latitude: 35.68, longitude: 139.76 },
+    location: weatherLocation(),
     chores: [chore('laundry', { category: '洗濯', laundryDryingPreference: 'either' })],
     completions: [],
     dependencies: [],

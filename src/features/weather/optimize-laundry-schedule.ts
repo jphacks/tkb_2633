@@ -4,7 +4,7 @@ import type {
   ChoreDependency,
   ChoreScheduleEntry,
 } from '@/domain/chores/types';
-import type { EntityId, GeoCoordinates, LocalDate } from '@/domain/shared/types';
+import type { EntityId, LocalDate, WeatherLocation } from '@/domain/shared/types';
 import type { ScheduleSettings } from '@/domain/scheduling/contracts';
 import { addDays } from '../../domain/scheduling/local-date.ts';
 import {
@@ -27,7 +27,7 @@ export interface WeatherOptimizedSchedule {
 export interface LaundryWeatherOptimizationInput {
   householdId: EntityId;
   today: LocalDate;
-  location?: GeoCoordinates;
+  location?: WeatherLocation;
   chores: readonly ChoreDefinition[];
   completions: readonly ChoreCompletion[];
   dependencies: readonly ChoreDependency[];
@@ -40,7 +40,7 @@ const openMeteoForecastProvider = new OpenMeteoForecastProvider();
 /** Adds weather as an optional optimization; any failure returns the rule-based schedule unchanged. */
 export async function optimizeLaundryScheduleForWeather(
   input: LaundryWeatherOptimizationInput,
-  provider: WeatherForecastProvider<GeoCoordinates, readonly DailyWeather[]> = openMeteoForecastProvider,
+  provider: WeatherForecastProvider<WeatherLocation, readonly DailyWeather[]> = openMeteoForecastProvider,
 ): Promise<WeatherOptimizedSchedule> {
   if (!WEATHER_ADJUSTMENTS_ENABLED || !input.location) {
     return { schedule: [...input.schedule], outcome: 'disabled', adjustmentCount: 0 };

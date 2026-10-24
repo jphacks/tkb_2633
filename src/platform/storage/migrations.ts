@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 5;
+const CURRENT_SCHEMA_VERSION = 6;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -138,11 +138,28 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     version = 4;
   }
 
+  const settingsColumns = new Set(
+    (await database.getAllAsync<{ name: string }>('PRAGMA table_info(household_settings)'))
+      .map((column) => column.name),
+  );
+  const legacyWeatherSettings = version < CURRENT_SCHEMA_VERSION || !settingsColumns.has('weather_region');
+  const weatherColumns = [
+    ['weather_latitude', 'REAL'],
+    ['weather_longitude', 'REAL'],
+    ['weather_region', 'TEXT'],
+    ['weather_region_name', 'TEXT'],
+  ] as const;
+
+  for (const [name, type] of weatherColumns) {
+    if (!settingsColumns.has(name)) {
+      await database.execAsync(`ALTER TABLE household_settings ADD COLUMN ${name} ${type}`);
+    }
+  }
+
+  if (legacyWeatherSettings) {
+    await database.execAsync('UPDATE household_settings SET weather_latitude = NULL, weather_longitude = NULL');
+  }
   if (version < CURRENT_SCHEMA_VERSION) {
-    await database.execAsync(`
-      ALTER TABLE household_settings ADD COLUMN weather_latitude REAL;
-      ALTER TABLE household_settings ADD COLUMN weather_longitude REAL;
-      PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
-    `);
+    await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
   }
 }

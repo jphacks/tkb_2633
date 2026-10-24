@@ -13,7 +13,7 @@ import type {
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import { generateHouseworkSchedule, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
-import type { EntityId, Household, HouseholdMember, LocalDate, Weekday } from '@/domain/shared/types';
+import type { EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
@@ -53,6 +53,8 @@ interface SettingsRow {
   notification_hour: number;
   notification_minute: number;
   setup_completed: number;
+  weather_region: string | null;
+  weather_region_name: string | null;
   weather_latitude: number | null;
   weather_longitude: number | null;
 }
@@ -160,7 +162,8 @@ export async function loadPlannerSnapshot(
   );
   const settingsRow = await database.getFirstAsync<SettingsRow>(
     `SELECT frequency_mode, rest_days_json, heavy_daily_limit, normal_daily_limit,
-            notification_hour, notification_minute, setup_completed, weather_latitude, weather_longitude
+            notification_hour, notification_minute, setup_completed, weather_region, weather_region_name,
+            weather_latitude, weather_longitude
      FROM household_settings WHERE household_id = ?`, LOCAL_HOUSEHOLD_ID,
   );
   if (!householdRow || !settingsRow) throw new Error('Local household could not be initialized');
@@ -207,8 +210,16 @@ export async function loadPlannerSnapshot(
     notificationHour: settingsRow.notification_hour,
     notificationMinute: settingsRow.notification_minute,
     setupCompleted: Boolean(settingsRow.setup_completed),
-    weatherLocation: settingsRow.weather_latitude !== null && settingsRow.weather_longitude !== null
-      ? { latitude: settingsRow.weather_latitude, longitude: settingsRow.weather_longitude }
+    weatherLocation: settingsRow.weather_region !== null
+      && settingsRow.weather_region_name !== null
+      && settingsRow.weather_latitude !== null
+      && settingsRow.weather_longitude !== null
+      ? {
+        region: settingsRow.weather_region,
+        displayName: settingsRow.weather_region_name,
+        latitude: settingsRow.weather_latitude,
+        longitude: settingsRow.weather_longitude,
+      }
       : undefined,
   };
   const chores = definitionRows.map((row) => ({
@@ -425,24 +436,30 @@ export async function updatePlannerSettings(
 
 export async function saveWeatherLocation(
   database: SQLiteDatabase,
-  location: { latitude: number; longitude: number },
+  location: WeatherLocation,
 ): Promise<void> {
+  const region = location.region.trim();
+  const displayName = location.displayName.trim();
+  if (region.length < 2 || region.length > 120 || displayName.length < 2 || displayName.length > 200) {
+    throw new RangeError('地域名は2〜120文字で入力してください');
+  }
   if (!Number.isFinite(location.latitude) || location.latitude < -90 || location.latitude > 90
     || !Number.isFinite(location.longitude) || location.longitude < -180 || location.longitude > 180) {
-    throw new RangeError('位置情報が正しくありません');
+    throw new RangeError('地域の座標が正しくありません');
   }
   const latitude = Math.round(location.latitude * 100) / 100;
   const longitude = Math.round(location.longitude * 100) / 100;
   await database.runAsync(
-    `UPDATE household_settings SET weather_latitude = ?, weather_longitude = ?, updated_at = ?
+    `UPDATE household_settings SET weather_region = ?, weather_region_name = ?, weather_latitude = ?, weather_longitude = ?, updated_at = ?
      WHERE household_id = ?`,
-    latitude, longitude, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
+    region, displayName, latitude, longitude, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );
 }
 
 export async function clearWeatherLocation(database: SQLiteDatabase): Promise<void> {
   await database.runAsync(
-    `UPDATE household_settings SET weather_latitude = NULL, weather_longitude = NULL, updated_at = ?
+    `UPDATE household_settings SET weather_region = NULL, weather_region_name = NULL,
+     weather_latitude = NULL, weather_longitude = NULL, updated_at = ?
      WHERE household_id = ?`,
     new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );

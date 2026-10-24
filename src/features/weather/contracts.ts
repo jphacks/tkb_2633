@@ -1,5 +1,5 @@
 import type { ChoreScheduleEntry } from '@/domain/chores/types';
-import type { EntityId, GeoCoordinates, LocalDate } from '@/domain/shared/types';
+import type { EntityId, LocalDate, WeatherLocation } from '@/domain/shared/types';
 
 export interface DailyWeather {
   date: LocalDate;
@@ -9,14 +9,14 @@ export interface DailyWeather {
   precipitationMm: number | null;
 }
 
-export interface WeatherForecastQuery<TLocation = GeoCoordinates> {
+export interface WeatherForecastQuery<TLocation = WeatherLocation> {
   householdId: EntityId;
   location: TLocation;
   from: LocalDate;
   through: LocalDate;
 }
 
-export interface WeatherForecastProvider<TLocation = GeoCoordinates, TForecast = readonly DailyWeather[]> {
+export interface WeatherForecastProvider<TLocation = WeatherLocation, TForecast = readonly DailyWeather[]> {
   fetchForecast(query: WeatherForecastQuery<TLocation>): Promise<TForecast>;
 }
 
@@ -32,5 +32,5 @@ export interface WeatherAdjustmentPolicy<TForecast = readonly DailyWeather[], TD
   }): readonly WeatherScheduleAdjustment<TData>[];
 }
 
-/** Weather changes are opt-in through the user's saved location in Settings. */
+/** Weather changes are opt-in through the user's selected region in Settings. */
 export const WEATHER_ADJUSTMENTS_ENABLED = true;

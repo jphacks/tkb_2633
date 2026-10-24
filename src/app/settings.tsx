@@ -1,13 +1,14 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import * as Location from 'expo-location';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { FrequencyMode } from '@/domain/chores/types';
 import type { Weekday } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
+import { OpenMeteoGeocodingProvider } from '@/features/weather/open-meteo-geocoder';
+import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
 import {
   addHouseholdMember,
   clearWeatherLocation,
@@ -25,6 +26,7 @@ const weekdays: { id: Weekday; label: string }[] = [
   { id: 1, label: '月' }, { id: 2, label: '火' }, { id: 3, label: '水' }, { id: 4, label: '木' },
   { id: 5, label: '金' }, { id: 6, label: '土' }, { id: 7, label: '日' },
 ];
+const weatherGeocoder = new OpenMeteoGeocodingProvider();
 
 export default function SettingsScreen() {
   const { snapshot, loading, error: loadError, refresh, database } = usePlannerData();
@@ -46,6 +48,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [saving, setSaving] = useState(false);
   const [weatherUpdating, setWeatherUpdating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
+  const [weatherCandidates, setWeatherCandidates] = useState<WeatherRegionCandidate[]>([]);
+  const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
 
   const toggleRestDay = (day: Weekday) => {
     setRestDays((current) => current.includes(day)
@@ -83,27 +88,47 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
-  const enableWeather = async () => {
+  const searchWeatherRegion = async () => {
+    const region = weatherRegion.trim();
+    if (region.length < 2) {
+      setWeatherMessage({ text: '地域名を2文字以上で入力してください。', kind: 'error' });
+      return;
+    }
     setWeatherUpdating(true);
-    setMessage(null);
+    setWeatherMessage(null);
+    setWeatherCandidates([]);
     try {
-      let permission = await Location.getForegroundPermissionsAsync();
-      if (permission.status !== 'granted') permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') {
-        throw new Error('位置情報が許可されませんでした。端末設定で許可すると天気連動を使えます。');
-      }
-      if (!(await Location.hasServicesEnabledAsync())) {
-        throw new Error('端末の位置情報サービスがオフです。端末設定で位置情報を有効にしてから再試行してください。');
-      }
-      const position = await getApproximateCurrentPosition();
+      const candidates = await weatherGeocoder.search(region);
+      setWeatherCandidates(candidates);
+      setWeatherMessage(candidates.length > 0
+        ? { text: '候補から天気を調べたい地域を選んでください。', kind: 'success' }
+        : { text: '地域が見つかりませんでした。市区町村名などで再検索してください。', kind: 'error' });
+    } catch (cause) {
+      setWeatherMessage({
+        text: cause instanceof Error ? cause.message : '地域を検索できませんでした。通信状態を確認して再試行してください。',
+        kind: 'error',
+      });
+    } finally {
+      setWeatherUpdating(false);
+    }
+  };
+
+  const selectWeatherRegion = async (candidate: WeatherRegionCandidate) => {
+    setWeatherUpdating(true);
+    setWeatherMessage(null);
+    try {
       await saveWeatherLocation(database, {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
+        region: weatherRegion.trim(),
+        displayName: candidate.label,
+        latitude: candidate.latitude,
+        longitude: candidate.longitude,
       });
       await refresh({ waitForWeather: true });
-      setMessage('現在地を保存し、天気連動を有効にしました。');
+      setWeatherRegion(weatherRegion.trim());
+      setWeatherCandidates([]);
+      setWeatherMessage({ text: `天気を調べる地域を「${candidate.label}」に設定しました。`, kind: 'success' });
     } catch (cause) {
-      setMessage(weatherLocationErrorMessage(cause));
+      setWeatherMessage({ text: cause instanceof Error ? cause.message : '地域を保存できませんでした。', kind: 'error' });
     } finally {
       setWeatherUpdating(false);
     }
@@ -111,12 +136,14 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
   const disableWeather = async () => {
     setWeatherUpdating(true);
+    setWeatherMessage(null);
     try {
       await clearWeatherLocation(database);
       await refresh({ waitForWeather: true });
-      setMessage('天気連動を停止し、保存した位置情報を削除しました。');
+      setWeatherCandidates([]);
+      setWeatherMessage({ text: '天気連動を停止し、保存した地域を削除しました。', kind: 'success' });
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : '天気連動を停止できませんでした');
+      setWeatherMessage({ text: cause instanceof Error ? cause.message : '天気連動を停止できませんでした。', kind: 'error' });
     } finally {
       setWeatherUpdating(false);
     }
@@ -186,16 +213,32 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <SectionHeading title="外部機能の接続口" />
         <FeatureStatus
           title="天気予報・洗濯予定"
-          status={snapshot.settings.weatherLocation ? '連動中' : '未設定'}
+          status={snapshot.settings.weatherLocation ? '地域指定中' : '未設定'}
           detail={snapshot.settings.weatherLocation
-            ? '端末内に保存したおおよその座標を使います。予報取得時にOpen-Meteoへ座標を送信し、対象は今後7日以内の洗濯予定です。'
-            : '位置情報を許可すると、Open-Meteoの予報で今後7日以内の洗濯予定を調整します。座標は丸めて端末内に保存します。'}
+            ? `対象地域：${snapshot.settings.weatherLocation.displayName}。地域名と検索地点の座標は端末内に保存し、予報取得時にOpen-Meteoへ座標を送信します。`
+            : '地域名を入力して候補を選ぶと、Open-Meteoの予報で今後7日以内の洗濯予定を調整します。端末の位置情報は使いません。'}
         />
+        <TextInput
+          value={weatherRegion}
+          editable={!weatherUpdating}
+          onChangeText={(value) => {
+            setWeatherRegion(value);
+            setWeatherCandidates([]);
+            setWeatherMessage(null);
+          }}
+          placeholder="例：横浜市、札幌市"
+          placeholderTextColor={palette.muted}
+          style={styles.regionInput}
+          accessibilityLabel="天気を調べる地域"
+          returnKeyType="search"
+          onSubmitEditing={() => void searchWeatherRegion()}
+        />
+        <Text style={styles.hint}>入力した地域名はOpen-Meteoの地域検索に送信されます。端末の位置情報は利用しません。</Text>
         <View style={styles.weatherActions}>
           <AppButton
-            title={weatherUpdating ? '確認中…' : snapshot.settings.weatherLocation ? '現在地を更新' : '天気連動を設定'}
-            onPress={() => void enableWeather()}
-            disabled={weatherUpdating}
+            title={weatherUpdating ? '検索・設定中…' : '地域を検索'}
+            onPress={() => void searchWeatherRegion()}
+            disabled={weatherUpdating || weatherRegion.trim().length < 2}
             variant="secondary"
             compact
           />
@@ -203,7 +246,26 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
             <AppButton title="連動を解除" onPress={() => void disableWeather()} disabled={weatherUpdating} variant="quiet" compact />
           ) : null}
         </View>
-        {message ? <Text style={message.includes('保存し') || message.includes('停止し') ? styles.success : styles.error}>{message}</Text> : null}
+        {weatherCandidates.length > 0 ? (
+          <View style={styles.regionResults}>
+            <Text style={styles.label}>候補を選択</Text>
+            {weatherCandidates.map((candidate) => (
+              <Pressable
+                key={candidate.id}
+                accessibilityRole="button"
+                accessibilityLabel={`地域 ${candidate.label} を選択`}
+                disabled={weatherUpdating}
+                onPress={() => void selectWeatherRegion(candidate)}
+                style={({ pressed }) => [styles.regionCandidate, pressed && styles.regionCandidatePressed]}
+              >
+                <Text style={styles.regionCandidateText}>{candidate.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {weatherMessage ? (
+          <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text>
+        ) : null}
         <View style={styles.divider} />
         <FeatureStatus title="家電お手入れ AI" status="未接続" detail="公式資料の構造化結果を受け取る契約のみ用意しています。AIや資料の取得は呼び出しません。" />
         <View style={styles.divider} />
@@ -213,31 +275,6 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       <Text style={styles.footer}>家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。</Text>
     </Page>
   );
-}
-
-async function getApproximateCurrentPosition(): Promise<Location.LocationObject> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }),
-      new Promise<never>((_resolve, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('現在地の取得に時間がかかっています')), 15_000);
-      }),
-    ]);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  }
-}
-
-function weatherLocationErrorMessage(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : '';
-  if (/unsatisfied device settings|location services are (?:disabled|off)/i.test(message)) {
-    return '端末の位置情報サービスがオフです。端末設定で位置情報を有効にしてから再試行してください。';
-  }
-  if (/時間がかかっています|timeout|timed out/i.test(message)) {
-    return '現在地を取得できませんでした。端末の位置情報サービスを確認して再試行してください。';
-  }
-  return message || '現在地を取得できませんでした';
 }
 
 function Counter({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -276,6 +313,11 @@ const styles = StyleSheet.create({
   memberRole: { color: palette.muted, fontSize: 11 },
   addMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   memberInput: { flex: 1, minHeight: 42, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
+  regionInput: { minHeight: 44, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
+  regionResults: { gap: 7 },
+  regionCandidate: { minHeight: 42, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, justifyContent: 'center', backgroundColor: palette.surface },
+  regionCandidatePressed: { backgroundColor: palette.accentSoft },
+  regionCandidateText: { color: palette.ink, fontSize: 13, fontWeight: '600' },
   feature: { gap: 5, paddingVertical: 2 },
   weatherActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featureTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },

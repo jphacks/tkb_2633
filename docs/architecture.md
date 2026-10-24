@@ -19,7 +19,7 @@
 
 ## 保存と初期データ
 
-- `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更、天気用位置情報のスキーマ
+- `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更、選択地域の天気設定スキーマ
 - `src/platform/storage/repository.ts`: 初期マスター投入、SQLite読み書き、初回設定、完了・未完了の記録と予定再生成
 - `src/domain/chores/catalog.ts`: 18件の家事名、初期手順・道具・注意点・負荷、3つの頻度モードの暫定周期
 - `src/domain/chores/types.ts`: 家事、実施状態、完了・未完了記録、世帯設定の型
@@ -58,11 +58,12 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 
 ### 天気
 
-- `src/features/weather/open-meteo-provider.ts`: Open-Meteo の7日分の日別予報を取得し、配列長・日付・数値を検証して内部型へ変換
+- `src/features/weather/open-meteo-geocoder.ts`: 設定画面に入力された地域名をOpen-Meteo Geocoding APIで検索し、選択候補を検証
+- `src/features/weather/open-meteo-provider.ts`: 選択地域の座標からOpen-Meteo の7日分の日別予報を取得し、配列長・日付・数値を検証して内部型へ変換
 - `src/features/weather/laundry-policy.ts`: 降水確率30%以下、降水量0.5mm以下、晴れ〜曇りのWMOコードを満たす日のみを候補化
 - `src/features/weather/optimize-laundry-schedule.ts`: 予報取得失敗時に入力スケジュールをそのまま返す最適化境界
 
-設定画面で前景位置情報を許可した場合だけ動作します。座標は小数第2位に丸めてSQLiteへ保存し、予報取得時にOpen-Meteoへ送ります。通常の予定は天気取得を待たずに表示し、予報結果は後から反映します。既存スケジューラの出力に対して、今後7日以内の洗濯家事だけを調整し、移動範囲、日ごとの負荷上限、依存順を再確認します。初回保留と完了済み予定は固定します。天気取得や必要データが失敗した場合はルールベースの予定を維持します。干し方希望は引き続き手動設定です。
+設定画面でユーザーが地域名を入力して候補を選んだ場合だけ動作します。入力文字列をOpen-Meteo Geocoding APIへ送り、選択した地域名と地点の座標をSQLiteへ保存します。天気予報取得にはその座標を使います。端末の位置情報APIや権限は使いません。スキーマv6への移行時に以前保存した端末位置の座標を消去します。通常の予定は天気取得を待たずに表示し、予報結果は後から反映します。既存スケジューラの出力に対して、今後7日以内の洗濯家事だけを調整し、移動範囲、日ごとの負荷上限、依存順を再確認します。初回保留と完了済み予定は固定します。天気取得や必要データが失敗した場合はルールベースの予定を維持します。干し方希望は引き続き手動設定です。
 
 ### 家電AI
 
@@ -75,7 +76,7 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 ## テストとCI
 
 - `tests/scheduling.test.mjs`: 周期、初回負荷分散、休日、超過、依存順、循環検知
-- `tests/weather.test.mjs`: API応答検証、WMO・降水条件、負荷・依存・完了制約、失敗時フォールバック、冪等性
+- `tests/weather.test.mjs`: 地域検索応答と予報応答の検証、WMO・降水条件、負荷・依存・完了制約、失敗時フォールバック、冪等性
 - `npm run check`: lint、TypeScript型チェック、単体テスト
 - `.github/workflows/ci.yml`: Pull Requestと `main` pushで `npm ci` と `npm run check`
 

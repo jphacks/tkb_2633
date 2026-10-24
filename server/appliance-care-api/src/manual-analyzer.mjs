@@ -68,7 +68,6 @@ export async function analyzeOfficialManual(product, manual, { ai, fetchImpl = f
   if (manual.kind === 'pdf') {
     manualInput = {
       type: 'input_file',
-      filename: 'official-manual.pdf',
       file_url: manual.url,
       detail: 'high',
     };

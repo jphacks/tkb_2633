@@ -196,6 +196,8 @@ test('Manual Analyzer converts explicit monthly intervals to 30 days and preserv
   assert.equal(analysis.tasks[0].evidence[0].url, manualUrl);
   assert.equal(requestBody.input[1].content[1].type, 'input_file');
   assert.equal(requestBody.input[1].content[1].file_url, manualUrl);
+  assert.equal(requestBody.input[1].content[1].detail, 'high');
+  assert.equal('filename' in requestBody.input[1].content[1], false);
 });
 
 test('condition-only maintenance keeps no interval and duplicate tasks are merged', () => {

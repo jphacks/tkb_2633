@@ -30,17 +30,26 @@ export default function CalendarScreen() {
   );
   const entriesOnDate = (date: LocalDate) => visibleEntries.filter((entry) => date >= entry.windowStart && date <= entry.windowEnd);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const completedChoreIds = new Set(snapshot.completions
-    .filter((completion) => completion.outcome === 'completed' && localDateFromISODateTime(completion.completedAt) === selectedDate)
-    .map((completion) => completion.choreId));
+  const completedOnSelectedDate = snapshot.completions.filter((completion) =>
+    completion.outcome === 'completed'
+      && (completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt)) === selectedDate,
+  );
+  const isEntryCompleted = (entry: (typeof visibleEntries)[number]) => completedOnSelectedDate.some((completion) =>
+    completion.scheduleEntryId ? completion.scheduleEntryId === entry.id : completion.choreId === entry.choreId,
+  );
   const selectedEntries = entriesOnDate(selectedDate).sort((left, right) =>
-    Number(completedChoreIds.has(left.choreId)) - Number(completedChoreIds.has(right.choreId))
+    Number(isEntryCompleted(left)) - Number(isEntryCompleted(right))
     || left.suggestedDate.localeCompare(right.suggestedDate),
   );
-  const completedOnlyChores = [...completedChoreIds]
-    .filter((choreId) => !selectedEntries.some((entry) => entry.choreId === choreId))
-    .map((choreId) => choresById.get(choreId))
-    .filter((chore) => chore !== undefined);
+  const completedOnlyCompletions = completedOnSelectedDate
+    .filter((completion) => !selectedEntries.some((entry) => completion.scheduleEntryId
+      ? entry.id === completion.scheduleEntryId
+      : entry.choreId === completion.choreId))
+    .flatMap((completion) => {
+      const chore = choresById.get(completion.choreId);
+      return chore ? [{ completion, chore }] : [];
+    });
+  const completedCount = selectedEntries.filter(isEntryCompleted).length + completedOnlyCompletions.length;
 
   const moveMonth = (offset: number) => {
     const next = new Date(Date.UTC(month.year, month.monthIndex + offset, 1));
@@ -113,8 +122,8 @@ export default function CalendarScreen() {
         </View>
       </Card>
 
-      <SectionHeading title={formatJapaneseDate(selectedDate, { weekday: true })} trailing={<Text style={styles.smallCount}>{selectedEntries.length + completedOnlyChores.length}件・{completedChoreIds.size}件完了</Text>} />
-      {selectedEntries.length + completedOnlyChores.length === 0 ? (
+      <SectionHeading title={formatJapaneseDate(selectedDate, { weekday: true })} trailing={<Text style={styles.smallCount}>{selectedEntries.length + completedOnlyCompletions.length}件・{completedCount}件完了</Text>} />
+      {selectedEntries.length + completedOnlyCompletions.length === 0 ? (
         <Card><Text style={styles.emptyTitle}>この日の予定はありません</Text><Text style={styles.emptyText}>別の日を選ぶか、家事一覧で予定を確認できます。</Text></Card>
       ) : selectedEntries.map((entry) => {
         const chore = choresById.get(entry.choreId);
@@ -123,15 +132,15 @@ export default function CalendarScreen() {
           <TaskCheckboxRow
             key={entry.id}
             chore={chore}
-            completed={completedChoreIds.has(chore.id)}
+            completed={isEntryCompleted(entry)}
             onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
             onToggle={() => void finish(entry.id)}
           />
         );
       })}
 
-      {completedOnlyChores.map((chore) => (
-        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+      {completedOnlyCompletions.map(({ completion, chore }) => (
+        <TaskCheckboxRow key={`completed-${completion.id}`} chore={chore} completed onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
       ))}
 
       {snapshot.scheduleEntries.some((entry) => entry.status === 'overdue') ? (

@@ -95,6 +95,7 @@ interface CompletionRow {
   outcome: ChoreCompletion['outcome'];
   source: ChoreCompletion['source'] | null;
   schedule_entry_id: string | null;
+  scheduled_date: string | null;
 }
 
 interface DependencyRow {
@@ -259,7 +260,7 @@ export async function loadPlannerSnapshot(
       'SELECT id, predecessor_chore_id, successor_chore_id, policy_json FROM chore_dependencies WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<CompletionRow>(
-      `SELECT id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, outcome
+      `SELECT id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, scheduled_date, outcome
        FROM chore_completions WHERE household_id = ? ORDER BY completed_at DESC`, LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<WasteRow>(
@@ -340,6 +341,7 @@ export async function loadPlannerSnapshot(
     outcome: row.outcome,
     source: row.source ?? undefined,
     scheduleEntryId: row.schedule_entry_id ?? undefined,
+    scheduledDate: (row.scheduled_date ?? undefined) as LocalDate | undefined,
   }));
   const wasteSchedules = wasteRows.map((row): WeeklyWasteSchedule => ({
     id: row.id,
@@ -780,15 +782,15 @@ export async function completeChore(
     if (existing) {
       await database.runAsync(
         `UPDATE chore_completions SET outcome = 'completed', completed_at = ?,
-         completed_by_member_id = ?, source = 'inApp' WHERE id = ?`,
-        completedAt.toISOString(), memberId ?? null, existing.id,
+         completed_by_member_id = ?, source = 'inApp', scheduled_date = ? WHERE id = ?`,
+        completedAt.toISOString(), memberId ?? null, entry.suggestedDate, existing.id,
       );
     } else {
       await database.runAsync(
         `INSERT INTO chore_completions
-         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, outcome)
-         VALUES (?, ?, ?, ?, ?, 'inApp', ?, 'completed')`,
-        createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null, entry.id,
+         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, scheduled_date, outcome)
+         VALUES (?, ?, ?, ?, ?, 'inApp', ?, ?, 'completed')`,
+        createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null, entry.id, entry.suggestedDate,
       );
     }
     await database.runAsync(
@@ -818,15 +820,15 @@ export async function recordIncompleteChore(
     if (existing) {
       await database.runAsync(
         `UPDATE chore_completions SET outcome = 'incomplete', completed_at = ?,
-         completed_by_member_id = ?, source = 'inApp' WHERE id = ?`,
-        recordedAt, memberId ?? null, existing.id,
+         completed_by_member_id = ?, source = 'inApp', scheduled_date = ? WHERE id = ?`,
+        recordedAt, memberId ?? null, entry.suggestedDate, existing.id,
       );
     } else {
       await database.runAsync(
         `INSERT INTO chore_completions
-         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, outcome)
-         VALUES (?, ?, ?, ?, ?, 'inApp', ?, 'incomplete')`,
-        createId('completion'), entry.householdId, entry.choreId, recordedAt, memberId ?? null, entry.id,
+         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, scheduled_date, outcome)
+         VALUES (?, ?, ?, ?, ?, 'inApp', ?, ?, 'incomplete')`,
+        createId('completion'), entry.householdId, entry.choreId, recordedAt, memberId ?? null, entry.id, entry.suggestedDate,
       );
     }
     recorded = true;

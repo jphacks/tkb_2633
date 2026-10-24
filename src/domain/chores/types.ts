@@ -95,6 +95,8 @@ export interface ChoreCompletion {
   outcome: 'completed' | 'incomplete';
   source?: 'inApp' | 'notification' | 'widget';
   scheduleEntryId?: EntityId;
+  /** The date this occurrence was scheduled for, kept even if completion regenerates the schedule. */
+  scheduledDate?: LocalDate;
   completionNote?: 'completedNow' | 'alreadyDone';
   estimatedDate?: boolean;
 }

@@ -16,9 +16,10 @@ import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
-import type { ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
+import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
+import type { Appliance, ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
 import type { ApprovedApplianceCareTask, ApplianceCareProductIdentity } from '@/features/appliance-care/to-chore-definition';
-import { toApplianceCareChore } from '@/features/appliance-care/to-chore-definition';
+import { buildReviewedApplianceChore, hasExactChoreNameDuplicate, retireApplianceTaskSnapshot } from '@/features/appliance-care/persistence-policy';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
@@ -30,6 +31,7 @@ export interface PlannerSnapshot {
   household: Household;
   settings: HouseholdPlannerSettings;
   chores: ChoreDefinition[];
+  appliances: Appliance[];
   states: ChoreState[];
   members: HouseholdMember[];
   assignments: { choreId: EntityId; memberIds: EntityId[] }[];
@@ -38,8 +40,14 @@ export interface PlannerSnapshot {
   completions: ChoreCompletion[];
   wasteSchedules: WeeklyWasteSchedule[];
   upcomingWasteDates: ReturnType<typeof generateWeeklyCollectionDates>;
+  hiddenWasteDates: ReturnType<typeof generateWeeklyCollectionDates>;
   weatherOutcome: WeatherScheduleOutcome;
   weatherAdjustmentCount: number;
+}
+
+export interface ApplianceCareReviewContext {
+  appliance: Appliance;
+  chores: ChoreDefinition[];
 }
 
 interface HouseholdRow {
@@ -55,6 +63,7 @@ interface SettingsRow {
   normal_daily_limit: number;
   notification_hour: number;
   notification_minute: number;
+  notifications_enabled: number;
   setup_completed: number;
   weather_region: string | null;
   weather_region_name: string | null;
@@ -113,6 +122,26 @@ interface WasteRow {
   weekdays_json: string;
 }
 
+interface ApplianceRow {
+  id: string;
+  household_id: string;
+  manufacturer: string;
+  product_name: string;
+  model_number: string;
+  category: string | null;
+  display_name: string;
+  official_product_url: string | null;
+  official_manual_url: string;
+  analysis_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface HiddenWasteRow {
+  schedule_id: string;
+  occurrence_date: string;
+}
+
 export async function initializeLocalDatabase(database: SQLiteDatabase): Promise<void> {
   await migrateLocalDatabase(database);
   await ensureLocalHousehold(database);
@@ -155,6 +184,45 @@ export async function ensureLocalHousehold(database: SQLiteDatabase): Promise<vo
   });
 }
 
+export async function loadApplianceCareReviewContext(
+  database: SQLiteDatabase,
+  applianceId: EntityId,
+): Promise<ApplianceCareReviewContext | null> {
+  const row = await database.getFirstAsync<ApplianceRow>(
+    `SELECT id, household_id, manufacturer, product_name, model_number, category, display_name,
+     official_product_url, official_manual_url, analysis_json, created_at, updated_at
+     FROM appliances WHERE id = ? AND household_id = ?`, applianceId, LOCAL_HOUSEHOLD_ID,
+  );
+  if (!row) return null;
+  const definitionRows = await database.getAllAsync<DefinitionRow>(
+    'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
+  );
+  return {
+    appliance: {
+      id: row.id,
+      householdId: row.household_id,
+      manufacturer: row.manufacturer,
+      productName: row.product_name,
+      modelNumber: row.model_number,
+      ...(row.category ? { category: row.category } : {}),
+      displayName: row.display_name,
+      ...(row.official_product_url ? { officialProductUrl: row.official_product_url } : {}),
+      officialManualUrl: row.official_manual_url,
+      analysis: JSON.parse(row.analysis_json) as ApplianceCareAnalysisDraft,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    },
+    chores: definitionRows.map((definitionRow) => ({
+      ...(JSON.parse(definitionRow.definition_json) as ChoreDefinition),
+      id: definitionRow.id,
+      enabled: Boolean(definitionRow.enabled),
+    })).filter((chore) => chore.applianceId === applianceId || (!chore.applianceId
+      && chore.applianceCareSource?.manufacturer === row.manufacturer
+      && chore.applianceCareSource.productName === row.product_name
+      && chore.applianceCareSource.modelNumber === row.model_number)),
+  };
+}
+
 export async function loadPlannerSnapshot(
   database: SQLiteDatabase,
   today = localDateFromDate(new Date()),
@@ -165,13 +233,13 @@ export async function loadPlannerSnapshot(
   );
   const settingsRow = await database.getFirstAsync<SettingsRow>(
     `SELECT frequency_mode, rest_days_json, heavy_daily_limit, normal_daily_limit,
-            notification_hour, notification_minute, setup_completed, weather_region, weather_region_name,
+            notification_hour, notification_minute, notifications_enabled, setup_completed, weather_region, weather_region_name,
             weather_latitude, weather_longitude
      FROM household_settings WHERE household_id = ?`, LOCAL_HOUSEHOLD_ID,
   );
   if (!householdRow || !settingsRow) throw new Error('Local household could not be initialized');
 
-  const [definitionRows, stateRows, memberRows, assignmentRows, dependencyRows, completionRows, wasteRows] = await Promise.all([
+  const [definitionRows, stateRows, memberRows, assignmentRows, dependencyRows, completionRows, wasteRows, applianceRows, hiddenWasteRows] = await Promise.all([
     database.getAllAsync<DefinitionRow>(
       'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ? ORDER BY name', LOCAL_HOUSEHOLD_ID,
     ),
@@ -197,6 +265,15 @@ export async function loadPlannerSnapshot(
     database.getAllAsync<WasteRow>(
       'SELECT id, household_id, label, weekdays_json FROM weekly_waste_schedules WHERE household_id = ? ORDER BY label', LOCAL_HOUSEHOLD_ID,
     ),
+    database.getAllAsync<ApplianceRow>(
+      `SELECT id, household_id, manufacturer, product_name, model_number, category, display_name,
+       official_product_url, official_manual_url, analysis_json, created_at, updated_at
+       FROM appliances WHERE household_id = ? ORDER BY display_name`, LOCAL_HOUSEHOLD_ID,
+    ),
+    database.getAllAsync<HiddenWasteRow>(
+      'SELECT schedule_id, occurrence_date FROM hidden_waste_occurrences WHERE occurrence_date >= ? AND occurrence_date <= ?',
+      today, addDays(today, 35),
+    ),
   ]);
 
   const household: Household = {
@@ -212,6 +289,7 @@ export async function loadPlannerSnapshot(
     normalDailyLimit: settingsRow.normal_daily_limit,
     notificationHour: settingsRow.notification_hour,
     notificationMinute: settingsRow.notification_minute,
+    notificationsEnabled: Boolean(settingsRow.notifications_enabled),
     setupCompleted: Boolean(settingsRow.setup_completed),
     weatherLocation: settingsRow.weather_region !== null
       && settingsRow.weather_region_name !== null
@@ -269,6 +347,20 @@ export async function loadPlannerSnapshot(
     label: row.label,
     collectionWeekdays: parseJson<Weekday[]>(row.weekdays_json, []),
   }));
+  const appliances = applianceRows.map((row): Appliance => ({
+    id: row.id,
+    householdId: row.household_id,
+    manufacturer: row.manufacturer,
+    productName: row.product_name,
+    modelNumber: row.model_number,
+    ...(row.category ? { category: row.category } : {}),
+    displayName: row.display_name,
+    ...(row.official_product_url ? { officialProductUrl: row.official_product_url } : {}),
+    officialManualUrl: row.official_manual_url,
+    analysis: JSON.parse(row.analysis_json) as ApplianceCareAnalysisDraft,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
 
   let scheduleEntries: ChoreScheduleEntry[] = [];
   const weatherOutcome: WeatherScheduleOutcome = settings.weatherLocation ? 'current' : 'disabled';
@@ -297,14 +389,17 @@ export async function loadPlannerSnapshot(
     await replaceGeneratedSchedule(database, household.id, scheduleEntries);
   }
 
-  const upcomingWasteDates = wasteSchedules.flatMap((schedule) =>
+  const generatedWasteDates = wasteSchedules.flatMap((schedule) =>
     generateWeeklyCollectionDates(schedule, today, addDays(today, 35)),
   );
+  const hiddenOccurrenceKeys = new Set(hiddenWasteRows.map((row) => `${row.schedule_id}:${row.occurrence_date}`));
+  const { visible: upcomingWasteDates, hidden: hiddenWasteDates } = splitWasteOccurrencesByVisibility(generatedWasteDates, hiddenOccurrenceKeys);
 
   return {
     household,
     settings,
     chores,
+    appliances,
     states,
     members,
     assignments,
@@ -313,6 +408,7 @@ export async function loadPlannerSnapshot(
     completions,
     wasteSchedules,
     upcomingWasteDates,
+    hiddenWasteDates,
     weatherOutcome,
     weatherAdjustmentCount,
   };
@@ -386,6 +482,7 @@ async function replaceGeneratedSchedule(
 export interface SetupSubmission {
   frequencyMode: FrequencyMode;
   restDays: Weekday[];
+  notificationsEnabled?: boolean;
   enabledChoreIds: EntityId[];
   previousDates: Record<EntityId, { date?: LocalDate; estimated?: boolean; unknownReason?: 'unknown' | 'skipped' }>;
 }
@@ -399,9 +496,9 @@ export async function completeFirstSetup(database: SQLiteDatabase, submission: S
 
   await database.withTransactionAsync(async () => {
     await database.runAsync(
-      `UPDATE household_settings SET frequency_mode = ?, rest_days_json = ?, setup_completed = 1, updated_at = ?
+      `UPDATE household_settings SET frequency_mode = ?, rest_days_json = ?, notifications_enabled = ?, setup_completed = 1, updated_at = ?
        WHERE household_id = ?`,
-      submission.frequencyMode, JSON.stringify(submission.restDays), now, LOCAL_HOUSEHOLD_ID,
+      submission.frequencyMode, JSON.stringify(submission.restDays), submission.notificationsEnabled ? 1 : 0, now, LOCAL_HOUSEHOLD_ID,
     );
     for (const row of definitions) {
       const isEnabled = enabled.has(row.id);
@@ -434,6 +531,13 @@ export async function updatePlannerSettings(
      normal_daily_limit = ?, updated_at = ? WHERE household_id = ?`,
     settings.frequencyMode, JSON.stringify(settings.restDays), settings.heavyDailyLimit,
     settings.normalDailyLimit, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
+  );
+}
+
+export async function setNotificationsEnabled(database: SQLiteDatabase, enabled: boolean): Promise<void> {
+  await database.runAsync(
+    'UPDATE household_settings SET notifications_enabled = ?, updated_at = ? WHERE household_id = ?',
+    enabled ? 1 : 0, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );
 }
 
@@ -478,41 +582,154 @@ export async function updateChoreDefinition(
   );
 }
 
-export async function addApprovedApplianceCareChores(
+export interface SaveReviewedApplianceResult {
+  applianceId: EntityId;
+  scheduledTaskCount: number;
+  duplicateTaskCount: number;
+  noCycleTaskCount: number;
+}
+
+export async function saveReviewedApplianceCare(
   database: SQLiteDatabase,
-  product: ApplianceCareProductIdentity,
+  product: Omit<ApplianceCareProductIdentity, 'applianceId'> & { applianceId?: EntityId },
   analysis: ApplianceCareAnalysisDraft,
   approvedTasks: readonly ApprovedApplianceCareTask[],
-): Promise<EntityId[]> {
-  if (approvedTasks.length === 0 || approvedTasks.length > 40) {
-    throw new RangeError('登録するお手入れ項目を1〜40件選んでください。');
+): Promise<SaveReviewedApplianceResult> {
+  if (approvedTasks.length > 40 || analysis.tasks.length === 0 || analysis.tasks.length > 40) {
+    throw new RangeError('お手入れ項目は1〜40件の範囲で保存してください。');
   }
   await ensureLocalHousehold(database);
-  const definitions = approvedTasks.map((approved) => toApplianceCareChore(
-    createId('appliance-care'),
-    LOCAL_HOUSEHOLD_ID,
-    product,
-    analysis,
-    approved,
-  ));
+  const now = new Date().toISOString();
+  const applianceId = product.applianceId ?? createId('appliance');
+  const existingAppliance = await database.getFirstAsync<{
+    created_at: string;
+    manufacturer: string;
+    product_name: string;
+    model_number: string;
+  }>(
+    'SELECT created_at, manufacturer, product_name, model_number FROM appliances WHERE id = ? AND household_id = ?',
+    applianceId, LOCAL_HOUSEHOLD_ID,
+  );
+  if (existingAppliance && (existingAppliance.manufacturer !== product.manufacturer
+    || existingAppliance.product_name !== product.productName
+    || existingAppliance.model_number !== product.modelNumber)) {
+    throw new Error('保存済み家電のメーカー・製品名・型番は再解析で変更できません。別の家電として登録してください。');
+  }
+  const existingRows = await database.getAllAsync<DefinitionRow>(
+    'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
+  );
+  const allChores = existingRows.map((row) => ({
+    ...(JSON.parse(row.definition_json) as ChoreDefinition),
+    id: row.id,
+    enabled: Boolean(row.enabled),
+  }));
+  const legacyApplianceChores = allChores.filter((chore) => !chore.applianceId
+    && chore.applianceCareSource?.manufacturer === product.manufacturer
+    && chore.applianceCareSource.productName === product.productName
+    && chore.applianceCareSource.modelNumber === product.modelNumber);
+  const existingApplianceChores = allChores.filter((chore) => chore.applianceId === applianceId || legacyApplianceChores.includes(chore));
+  const matchedIds = new Set<EntityId>();
+  let scheduledTaskCount = 0;
+  let duplicateTaskCount = 0;
+  let noCycleTaskCount = 0;
+  const displayName = `${product.manufacturer} ${product.productName}（${product.modelNumber}）`;
+  const approvedByTaskName = new Map(approvedTasks.map((approved) => [approved.task.name, approved]));
+  const currentTaskNames = new Set(analysis.tasks.map((task) => task.name));
 
   await database.withTransactionAsync(async () => {
-    for (const definition of definitions) {
-      await database.runAsync(
-        'INSERT INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, ?, ?)',
-        definition.id, definition.householdId, definition.name, definition.enabled ? 1 : 0, JSON.stringify(definition),
+    await database.runAsync(
+      `INSERT INTO appliances
+       (id, household_id, manufacturer, product_name, model_number, category, display_name,
+        official_product_url, official_manual_url, analysis_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET manufacturer = excluded.manufacturer, product_name = excluded.product_name,
+       model_number = excluded.model_number, category = excluded.category, display_name = excluded.display_name,
+       official_product_url = excluded.official_product_url, official_manual_url = excluded.official_manual_url,
+       analysis_json = excluded.analysis_json, updated_at = excluded.updated_at`,
+      applianceId, LOCAL_HOUSEHOLD_ID, product.manufacturer, product.productName, product.modelNumber,
+      product.category ?? null, displayName, product.officialProductUrl ?? null, product.manualUrl,
+      JSON.stringify(analysis), existingAppliance?.created_at ?? now, now,
+    );
+
+    for (const task of analysis.tasks) {
+      const approved = approvedByTaskName.get(task.name);
+      const matched = existingApplianceChores.find((chore) =>
+        !matchedIds.has(chore.id)
+        && (chore.applianceTaskName === task.name
+          || (!chore.applianceTaskName && chore.name === task.name)),
       );
+      if (!approved && !matched) continue;
+      const { definition, hasCycle } = buildReviewedApplianceChore({
+        id: matched?.id ?? createId('appliance-care'),
+        householdId: LOCAL_HOUSEHOLD_ID,
+        applianceId,
+        product,
+        analysis,
+        approved: approved ?? { task },
+        ...(matched ? { existing: matched } : {}),
+      });
+
+      if (matched) matchedIds.add(matched.id);
+      if (!approved || !hasCycle) {
+        if (approved && !hasCycle) noCycleTaskCount += 1;
+        if (matched) {
+          const updated = { ...definition, enabled: false };
+          await database.runAsync(
+            'UPDATE chore_definitions SET name = ?, enabled = 0, definition_json = ? WHERE id = ?',
+            updated.name, JSON.stringify(updated), updated.id,
+          );
+        }
+        continue;
+      }
+
+      if (hasExactChoreNameDuplicate(allChores, definition.name, matched?.id)) {
+        duplicateTaskCount += 1;
+        if (matched) {
+          const retained = { ...definition, name: matched.name, enabled: false };
+          await database.runAsync(
+            'UPDATE chore_definitions SET enabled = 0, definition_json = ? WHERE id = ?',
+            JSON.stringify(retained), retained.id,
+          );
+        }
+        continue;
+      }
+
+      const readyDefinition = definition;
+      if (matched) {
+        await database.runAsync(
+          'UPDATE chore_definitions SET name = ?, enabled = ?, definition_json = ? WHERE id = ?',
+          readyDefinition.name, readyDefinition.enabled ? 1 : 0, JSON.stringify(readyDefinition), readyDefinition.id,
+        );
+      } else {
+        await database.runAsync(
+          'INSERT INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, ?, ?)',
+          readyDefinition.id, readyDefinition.householdId, readyDefinition.name, readyDefinition.enabled ? 1 : 0, JSON.stringify(readyDefinition),
+        );
+        await database.runAsync(
+          'INSERT INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)',
+          readyDefinition.id, 'skipped',
+        );
+        await database.runAsync(
+          'INSERT INTO chore_assignments (chore_id, member_id) VALUES (?, ?)', readyDefinition.id, LOCAL_MEMBER_ID,
+        );
+      }
+      scheduledTaskCount += 1;
+    }
+
+    for (const previous of existingApplianceChores) {
+      if (matchedIds.has(previous.id)) continue;
+      const isCurrentAnalysisTask = currentTaskNames.has(previous.applianceTaskName ?? previous.name);
+      const retired = isCurrentAnalysisTask
+        ? { ...previous, enabled: false }
+        : retireApplianceTaskSnapshot(previous);
       await database.runAsync(
-        'INSERT INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)',
-        definition.id, 'skipped',
-      );
-      await database.runAsync(
-        'INSERT INTO chore_assignments (chore_id, member_id) VALUES (?, ?)',
-        definition.id, LOCAL_MEMBER_ID,
+        'UPDATE chore_definitions SET enabled = 0, definition_json = ? WHERE id = ?',
+        JSON.stringify(retired), previous.id,
       );
     }
   });
-  return definitions.map((definition) => definition.id);
+
+  return { applianceId, scheduledTaskCount, duplicateTaskCount, noCycleTaskCount };
 }
 
 export async function setChoreEnabled(database: SQLiteDatabase, choreId: EntityId, enabled: boolean): Promise<void> {
@@ -685,6 +902,26 @@ export async function saveWeeklyWasteSchedule(
      ON CONFLICT(id) DO UPDATE SET label = excluded.label, weekdays_json = excluded.weekdays_json`,
     id, LOCAL_HOUSEHOLD_ID, label, JSON.stringify(weekdays),
   );
+}
+
+export async function setWasteOccurrenceHidden(
+  database: SQLiteDatabase,
+  scheduleId: EntityId,
+  occurrenceDate: LocalDate,
+  hidden: boolean,
+): Promise<void> {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(occurrenceDate)) throw new RangeError('収集日を確認してください。');
+  if (hidden) {
+    await database.runAsync(
+      'INSERT OR IGNORE INTO hidden_waste_occurrences (schedule_id, occurrence_date) VALUES (?, ?)',
+      scheduleId, occurrenceDate,
+    );
+  } else {
+    await database.runAsync(
+      'DELETE FROM hidden_waste_occurrences WHERE schedule_id = ? AND occurrence_date = ?',
+      scheduleId, occurrenceDate,
+    );
+  }
 }
 
 export async function deleteWeeklyWasteSchedule(database: SQLiteDatabase, scheduleId: EntityId): Promise<void> {

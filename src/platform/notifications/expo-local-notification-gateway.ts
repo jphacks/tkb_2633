@@ -1,4 +1,13 @@
-import * as Notifications from 'expo-notifications';
+import {
+  AndroidImportance,
+  cancelScheduledNotificationAsync,
+  getPermissionsAsync,
+  requestPermissionsAsync,
+  scheduleNotificationAsync,
+  setNotificationChannelAsync,
+  SchedulableTriggerInputTypes,
+} from 'expo-notifications';
+import { Platform } from 'react-native';
 
 import type {
   LocalNotificationGateway,
@@ -7,7 +16,13 @@ import type {
 
 export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
   async requestPermission(): Promise<boolean> {
-    const current = await Notifications.getPermissionsAsync();
+    if (Platform.OS === 'android') {
+      await setNotificationChannelAsync('housework-reminders', {
+        name: '家事のお知らせ',
+        importance: AndroidImportance.DEFAULT,
+      });
+    }
+    const current = await getPermissionsAsync();
     if (current.granted) {
       return true;
     }
@@ -15,7 +30,7 @@ export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
       return false;
     }
 
-    const requested = await Notifications.requestPermissionsAsync();
+    const requested = await requestPermissionsAsync();
     return requested.granted;
   }
 
@@ -25,7 +40,7 @@ export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
       throw new RangeError(`Invalid notification date: ${request.fireAt}`);
     }
 
-    return Notifications.scheduleNotificationAsync({
+    return scheduleNotificationAsync({
       identifier: request.key,
       content: {
         title: request.title,
@@ -33,13 +48,13 @@ export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
         data: request.data,
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        type: SchedulableTriggerInputTypes.DATE,
         date: fireAt,
       },
     });
   }
 
   async cancel(notificationId: string): Promise<void> {
-    await Notifications.cancelScheduledNotificationAsync(notificationId);
+    await cancelScheduledNotificationAsync(notificationId);
   }
 }

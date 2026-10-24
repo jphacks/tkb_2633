@@ -2,10 +2,10 @@ import { Text, VStack } from '@expo/ui/swift-ui';
 import { createWidget } from 'expo-widgets';
 
 interface NextChoreWidgetProps {
-  choreId: string | null;
-  choreName: string;
-  dateLabel: string;
-  assignmentLabel?: string;
+  firstChore: string;
+  secondChore: string;
+  thirdChore: string;
+  remainingCount: number;
   updatedAt: string;
 }
 
@@ -14,18 +14,19 @@ function NextChoreWidget(props: NextChoreWidgetProps) {
 
   return (
     <VStack>
-      <Text>次の家事</Text>
-      <Text>{props.choreId ? props.choreName : 'アプリで予定を設定'}</Text>
-      <Text>{props.dateLabel}</Text>
-      {props.assignmentLabel ? <Text>{props.assignmentLabel}</Text> : null}
+      <Text>今日の家事</Text>
+      {props.firstChore ? <Text>□ {props.firstChore}</Text> : <Text>予定はありません</Text>}
+      {props.secondChore ? <Text>□ {props.secondChore}</Text> : null}
+      {props.thirdChore ? <Text>□ {props.thirdChore}</Text> : null}
+      {props.remainingCount > 0 ? <Text>ほか{props.remainingCount}件</Text> : null}
     </VStack>
   );
 }
 
 export default createWidget('NextChoreWidget', NextChoreWidget, {
-  choreId: null,
-  choreName: '',
-  dateLabel: '予定はまだありません',
-  assignmentLabel: '',
+  firstChore: '',
+  secondChore: '',
+  thirdChore: '',
+  remainingCount: 0,
   updatedAt: '',
 });

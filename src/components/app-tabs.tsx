@@ -1,10 +1,14 @@
 import { Tabs } from 'expo-router';
-import { Text, type ColorValue } from 'react-native';
+import { StyleSheet, Text, View, type ColorValue } from 'react-native';
 import { palette } from '@/components/planner-ui';
 
 function tabIcon(symbol: string) {
-  function TabIcon({ color, size }: { color: ColorValue; size: number }) {
-    return <Text style={{ color, fontSize: size, lineHeight: size + 4, fontWeight: '600' }}>{symbol}</Text>;
+  function TabIcon({ color, focused }: { color: ColorValue; focused: boolean; size: number }) {
+    return (
+      <View style={[styles.iconWrap, focused && styles.iconWrapFocused]}>
+        <Text style={{ color, fontSize: 20, lineHeight: 24, fontWeight: '600' }}>{symbol}</Text>
+      </View>
+    );
   }
   return TabIcon;
 }
@@ -15,15 +19,18 @@ export default function AppTabs() {
       headerShown: false,
       tabBarActiveTintColor: palette.accent,
       tabBarInactiveTintColor: palette.muted,
-      tabBarStyle: { backgroundColor: '#FBFAF7', borderTopColor: palette.border },
+      tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 },
       tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+      tabBarItemStyle: { paddingTop: 2 },
     }}>
-      <Tabs.Screen name="index" options={{ title: '今日', tabBarIcon: tabIcon('⌂') }} />
+      <Tabs.Screen name="index" options={{ title: 'ホーム', tabBarIcon: tabIcon('⌂') }} />
       <Tabs.Screen name="explore" options={{ title: 'カレンダー', tabBarIcon: tabIcon('▦') }} />
-      <Tabs.Screen name="chores" options={{ title: '家事', tabBarIcon: tabIcon('✓') }} />
-      <Tabs.Screen name="history" options={{ title: '履歴', tabBarIcon: tabIcon('↺') }} />
-      <Tabs.Screen name="settings" options={{ title: '設定', tabBarIcon: tabIcon('⚙︎') }} />
-      <Tabs.Screen name="waste" options={{ href: null }} />
+      <Tabs.Screen name="manual" options={{ title: '説明', tabBarIcon: tabIcon('▤') }} />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconWrap: { width: 48, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  iconWrapFocused: { backgroundColor: palette.accentSoft },
+});

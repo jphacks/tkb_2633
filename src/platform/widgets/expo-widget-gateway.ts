@@ -3,6 +3,12 @@ import type { NextChoreWidgetSnapshot, WidgetGateway } from '@/features/widgets/
 
 export const expoWidgetGateway: WidgetGateway = {
   updateNextChore(snapshot: NextChoreWidgetSnapshot): void {
-    NextChoreWidget.updateSnapshot(snapshot);
+    NextChoreWidget.updateSnapshot({
+      firstChore: snapshot.todayChoreNames[0] ?? '',
+      secondChore: snapshot.todayChoreNames[1] ?? '',
+      thirdChore: snapshot.todayChoreNames[2] ?? '',
+      remainingCount: Math.max(0, snapshot.remainingCount),
+      updatedAt: snapshot.updatedAt,
+    });
   },
 };

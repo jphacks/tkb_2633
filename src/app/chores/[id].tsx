@@ -9,6 +9,7 @@ import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime } from 
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, recordIncompleteChore, replaceChoreDependencies, setChoreAssignments, updateChoreDefinition } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
+import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
 
 const loadOptions: { id: ChoreLoad; label: string }[] = [
   { id: 'light', label: '軽い' }, { id: 'normal', label: '普通' }, { id: 'heavy', label: '重い' },
@@ -41,7 +42,7 @@ function ChoreDetailContent({
 }) {
   const [cycleText, setCycleText] = useState(chore.requiresCycleSelection
     ? ''
-    : String(chore.recommendedCycleDays ?? chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]));
+    : String(chore.userIntervalDays ?? chore.recommendedCycleDays ?? chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]));
   const [cycleWasEdited, setCycleWasEdited] = useState(false);
   const [radiusText, setRadiusText] = useState(String(chore.windowRadiusDays));
   const [load, setLoad] = useState<ChoreLoad>(chore.load);
@@ -94,19 +95,22 @@ function ChoreDetailContent({
       await setChoreAssignments(database, chore.id, assignedMemberIds);
       const updated: ChoreDefinition = {
         ...chore,
-        enabled,
+        enabled: chore.applianceCareSource && chore.manufacturerRecommendedIntervalDays === undefined && cycleDays === undefined
+          ? false
+          : enabled,
         load,
         holidayPriority,
         laundryDryingPreference: chore.category === '洗濯' ? dryingPreference : chore.laundryDryingPreference,
         windowRadiusDays,
-        recommendedCycleDays: !cycleWasEdited
-          ? chore.recommendedCycleDays
-          : cycleDays === chore.manufacturerRecommendedIntervalDays
-            ? undefined
-            : cycleDays,
+        recommendedCycleDays: chore.applianceId
+          ? (!cycleWasEdited ? chore.recommendedCycleDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays)
+          : (!cycleWasEdited ? chore.recommendedCycleDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays),
+        userIntervalDays: chore.applianceId
+          ? (!cycleWasEdited ? chore.userIntervalDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays)
+          : chore.userIntervalDays,
         requiresCycleSelection: Boolean(chore.applianceCareSource
           && chore.manufacturerRecommendedIntervalDays === undefined
-          && (!cycleWasEdited ? chore.recommendedCycleDays === undefined : cycleDays === undefined)),
+          && (cycleWasEdited ? cycleDays === undefined : chore.userIntervalDays === undefined && chore.recommendedCycleDays === undefined)),
       };
       await updateChoreDefinition(database, updated);
       await refresh();
@@ -202,18 +206,19 @@ function ChoreDetailContent({
             {chore.applianceCareSource.manufacturer} · {chore.applianceCareSource.productName}（{chore.applianceCareSource.modelNumber}）
           </Text>
           {chore.manufacturerRecommendedIntervalDays !== undefined
-            ? <Text style={styles.body}>メーカー指定の周期：{chore.manufacturerRecommendedIntervalDays}日</Text>
+            ? <Text style={styles.body}>メーカー推奨：{chore.manufacturerRecommendedIntervalDays}日</Text>
             : <Text style={styles.body}>メーカー指定なし{chore.manufacturerRecommendedConditions?.length
               ? ` · ${chore.manufacturerRecommendedConditions.join('、')}`
               : ''}</Text>}
+          {(chore.userIntervalDays ?? chore.recommendedCycleDays) !== undefined
+            && (chore.userIntervalDays ?? chore.recommendedCycleDays) !== chore.manufacturerRecommendedIntervalDays
+            ? <Text style={styles.body}>あなたの設定：{chore.userIntervalDays ?? chore.recommendedCycleDays}日</Text>
+            : null}
           {chore.applianceCareSource.evidence.map((item, index) => (
-            <Pressable key={`${item.url}-${index}`} accessibilityRole="link" onPress={() => void Linking.openURL(item.url).catch(() => undefined)}>
-              <Text style={styles.sourceLink}>根拠資料{item.pageOrSection ? ` · ${item.pageOrSection}` : ''}を開く ↗</Text>
-            </Pressable>
+            <OfficialSourceLink key={`${item.url}-${index}`} manufacturer={chore.applianceCareSource?.manufacturer ?? ''} url={item.url} title={`出典を見る${item.pageOrSection ? ` · ${item.pageOrSection}` : ''} ↗`} />
           ))}
-          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(chore.applianceCareSource!.manualUrl).catch(() => undefined)}>
-            <Text style={styles.sourceLink}>公式取扱説明書を開く ↗</Text>
-          </Pressable>
+          {chore.applianceCareSource.productUrl ? <OfficialSourceLink manufacturer={chore.applianceCareSource.manufacturer} url={chore.applianceCareSource.productUrl} title="公式製品情報を見る ↗" /> : null}
+          <OfficialSourceLink manufacturer={chore.applianceCareSource.manufacturer} url={chore.applianceCareSource.manualUrl} title="公式取扱説明書を見る ↗" />
         </Card>
       ) : null}
 
@@ -225,10 +230,17 @@ function ChoreDetailContent({
         </View>
         <View style={styles.fieldRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>周期</Text><Text style={styles.body}>{chore.applianceCareSource && chore.manufacturerRecommendedIntervalDays === undefined
-            ? 'メーカー指定なし。周期を決めるまでは予定に追加されません。'
-            : `頻度モードの初期値は${chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日です。`}</Text></View>
+            ? 'メーカー指定なし。あなたが周期を入力するまでは予定に追加されません。'
+            : chore.manufacturerRecommendedIntervalDays !== undefined
+              ? `メーカー推奨：${chore.manufacturerRecommendedIntervalDays}日${(chore.userIntervalDays ?? chore.recommendedCycleDays) !== undefined && (chore.userIntervalDays ?? chore.recommendedCycleDays) !== chore.manufacturerRecommendedIntervalDays ? ` · あなたの設定：${chore.userIntervalDays ?? chore.recommendedCycleDays}日` : ''}`
+              : `頻度モードの初期値は${chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日です。`}</Text></View>
           <View style={styles.numberField}><TextInput value={cycleText} onChangeText={(value) => { setCycleWasEdited(true); setCycleText(value); if (chore.requiresCycleSelection) setEnabled(Boolean(value.trim())); }} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="家事周期の日数" placeholder={chore.requiresCycleSelection ? '入力' : undefined} /><Text style={styles.unit}>日</Text></View>
         </View>
+        {chore.applianceId && chore.manufacturerRecommendedIntervalDays !== undefined
+          && (chore.userIntervalDays ?? chore.recommendedCycleDays) !== undefined
+          && (chore.userIntervalDays ?? chore.recommendedCycleDays) !== chore.manufacturerRecommendedIntervalDays ? (
+            <AppButton title="メーカー推奨に戻す" onPress={() => { setCycleWasEdited(true); setCycleText(String(chore.manufacturerRecommendedIntervalDays)); }} variant="quiet" compact />
+          ) : null}
         <View style={styles.fieldRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>実施期間の幅</Text><Text style={styles.body}>基準日から前後に何日広げるか</Text></View>
           <View style={styles.numberField}><Text style={styles.unit}>±</Text><TextInput value={radiusText} onChangeText={setRadiusText} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="実施期間の日数幅" /><Text style={styles.unit}>日</Text></View>
@@ -285,6 +297,11 @@ function ChoreDetailContent({
   );
 }
 
+function OfficialSourceLink({ manufacturer, url, title }: { manufacturer: string; url: string; title: string }) {
+  if (!isOfficialApplianceUrl(url, manufacturer)) return <Text style={styles.sourceInvalid}>公式URLを検証できないため開けません。</Text>;
+  return <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(url).catch(() => undefined)}><Text style={styles.sourceLink}>{title}</Text></Pressable>;
+}
+
 const styles = StyleSheet.create({
   back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
   nextCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
@@ -314,6 +331,7 @@ const styles = StyleSheet.create({
   lastDoneLabel: { color: palette.muted, fontSize: 11, fontWeight: '600' },
   lastDoneDate: { color: palette.ink, fontSize: 14, fontWeight: '700' },
   sourceLink: { color: palette.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  sourceInvalid: { color: palette.muted, fontSize: 11 },
   error: { color: palette.warning, fontSize: 13 },
   success: { color: palette.accent, fontSize: 13, fontWeight: '600' },
 });

@@ -47,7 +47,7 @@
             {
               "name": "NextChoreWidget",
               "displayName": "次の家事",
-              "description": "次に行う家事を表示します",
+              "description": "今日の家事を最大3件表示します",
               "ios": {
                 "supportedFamilies": ["systemSmall", "systemMedium"],
                 "initialLayout": "src/platform/widgets/NextChoreWidget.ios.tsx"

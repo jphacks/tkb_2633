@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { isAllowedOfficialUrl, officialDomainsForManufacturer } from '../server/appliance-care-api/src/official-domains.mjs';
 import { resolveProduct } from '../server/appliance-care-api/src/product-resolver.mjs';
-import { ManualFetchError, inspectOfficialManual, resolveOfficialManual } from '../server/appliance-care-api/src/manual-resolver.mjs';
+import { ManualFetchError, ManualNotFoundError, inspectOfficialManual, resolveOfficialManual } from '../server/appliance-care-api/src/manual-resolver.mjs';
 import { analyzeOfficialManual, InvalidAiOutputError, validateAndDeduplicateTasks } from '../server/appliance-care-api/src/manual-analyzer.mjs';
 import { analyzeApplianceCare, validateApplianceCareRequest } from '../server/appliance-care-api/src/service.mjs';
 import { createApplianceCareHttpServer } from '../server/appliance-care-api/src/http-server.mjs';
@@ -235,7 +235,32 @@ test('not_found stops before manual resolution and AI analysis', async () => {
     analyzeManual: async () => { downstreamCalls += 1; throw new Error('should not run'); },
   });
   assert.equal(result.status, 'not_found');
+  assert.equal(result.code, 'PRODUCT_NOT_FOUND');
   assert.equal(downstreamCalls, 0);
+});
+
+test('service distinguishes missing manuals, analysis failures, and transient connection failures', async () => {
+  const verified = async () => ({
+    status: 'verified', manufacturer: 'Dyson', productName: 'V12 Detect Slim', modelNumber: 'SV20',
+  });
+  const base = { resolveProduct: verified, resolveManual: async () => ({ url: manualUrl, kind: 'pdf' }) };
+  const missingManual = await analyzeApplianceCare(request, {
+    ...base, async resolveManual() { throw new ManualNotFoundError(); }, async analyzeManual() { throw new Error('not called'); },
+  });
+  assert.equal(missingManual.code, 'MANUAL_NOT_FOUND');
+
+  const failedAnalysis = await analyzeApplianceCare(request, {
+    ...base, async analyzeManual() { throw new Error('private upstream details'); },
+  });
+  assert.equal(failedAnalysis.code, 'ANALYSIS_FAILED');
+  assert.equal(failedAnalysis.message.includes('private upstream'), false);
+
+  const transientError = new Error('private network details');
+  transientError.code = 'TEMPORARY_NETWORK_ERROR';
+  const transient = await analyzeApplianceCare(request, {
+    ...base, async analyzeManual() { throw transientError; },
+  });
+  assert.equal(transient.code, 'TEMPORARY_NETWORK_ERROR');
 });
 
 test('service falls back to an inspected official web manual when PDF analysis fails', async () => {
@@ -329,7 +354,7 @@ test('HTTP API returns 400 for invalid request and hides internal error details'
     });
     assert.equal(failed.status, 502);
     const payload = await failed.json();
-    assert.equal(payload.code, 'AI_ANALYSIS_FAILED');
+    assert.equal(payload.code, 'ANALYSIS_FAILED');
     assert.equal(JSON.stringify(payload).includes('sensitive internal'), false);
   } finally {
     server.close();
@@ -356,7 +381,7 @@ test('HTTP API validates requests before reporting a missing OpenAI configuratio
     });
     assert.equal(valid.status, 503);
     const payload = await valid.json();
-    assert.equal(payload.code, 'AI_ANALYSIS_FAILED');
+    assert.equal(payload.code, 'ANALYSIS_FAILED');
     assert.equal(JSON.stringify(payload).includes('OPENAI_API_KEY'), false);
   } finally {
     server.close();
@@ -423,6 +448,70 @@ test('HTTP API returns not_found, ambiguous candidates, and verified analysis sh
     assert.equal(verified.analysis.requiresUserReview, true);
     assert.equal(verified.analysis.tasks.length, 1);
     assert.equal(verified.officialSources.manualUrl, manualUrl);
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+});
+
+test('analysis jobs expose product and official-manual stages, and stop at product-not-found', async () => {
+  let manualCalls = 0;
+  const dependencies = {
+    async resolveProduct(input) {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      if (input.productName === '架空製品') return { status: 'not_found' };
+      return {
+        status: 'verified', manufacturer: 'Dyson', productName: 'V12 Detect Slim', modelNumber: 'SV20',
+        officialProductUrl: productUrl, allowedDomains: dysonDomains,
+      };
+    },
+    async resolveManual() {
+      manualCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      return { url: manualUrl, kind: 'pdf' };
+    },
+    async analyzeManual() {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      return {
+        manufacturer: 'Dyson', model: 'SV20', tasks: [validTask()],
+        analyzedAt: '2026-10-24T00:00:00.000Z', requiresUserReview: true,
+      };
+    },
+  };
+  const server = createApplianceCareHttpServer({ dependencies });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const waitForJob = async (jobId) => {
+    const stages = new Set();
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const response = await fetch(`${baseUrl}/api/appliance-care/jobs/${jobId}`);
+      const status = await response.json();
+      stages.add(status.stage);
+      if (status.done) return { status, stages };
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error('analysis job did not finish');
+  };
+  const startJob = async (body) => {
+    const response = await fetch(`${baseUrl}/api/appliance-care/jobs`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 202);
+    return (await response.json()).jobId;
+  };
+
+  try {
+    const validJob = await waitForJob(await startJob(request));
+    assert.equal(validJob.status.result.status, 'verified');
+    assert.equal(validJob.stages.has('product_verification'), true);
+    assert.equal(validJob.stages.has('official_manual_analysis'), true);
+    assert.equal(manualCalls, 1);
+
+    const unknownJob = await waitForJob(await startJob({ ...request, productName: '架空製品' }));
+    assert.equal(unknownJob.status.result.status, 'not_found');
+    assert.equal(unknownJob.status.result.code, 'PRODUCT_NOT_FOUND');
+    assert.equal(manualCalls, 1);
   } finally {
     server.close();
     await once(server, 'close');

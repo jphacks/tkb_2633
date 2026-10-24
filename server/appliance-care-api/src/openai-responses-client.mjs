@@ -38,10 +38,13 @@ export class OpenAIResponsesClient {
         signal: AbortSignal.timeout(120_000),
       });
     } catch {
-      throw new Error('OpenAI request failed');
+      throw temporaryNetworkError();
     }
 
-    if (!response.ok) throw new Error('OpenAI request failed with status ' + response.status);
+    if (!response.ok) {
+      if (response.status === 408 || response.status === 429 || response.status >= 500) throw temporaryNetworkError();
+      throw new Error('OpenAI request failed');
+    }
     let payload;
     try {
       payload = await response.json();
@@ -61,6 +64,12 @@ export class OpenAIResponsesClient {
 
     return { value, sourceUrls: getWebSearchSources(payload) };
   }
+}
+
+function temporaryNetworkError() {
+  const error = new Error('Temporary AI service failure');
+  error.code = 'TEMPORARY_NETWORK_ERROR';
+  return error;
 }
 
 function getOutputText(payload) {

@@ -1,10 +1,16 @@
-import type { EntityId, ISODateTime } from '@/domain/shared/types';
+import type { ISODateTime } from '@/domain/shared/types';
 
 export interface NextChoreWidgetSnapshot {
-  choreId: EntityId | null;
-  choreName: string;
-  dateLabel: string;
-  assignmentLabel?: string;
+  todayChoreNames: readonly string[];
+  remainingCount: number;
+  updatedAt: ISODateTime;
+}
+
+export interface NextChoreWidgetDisplayProps {
+  firstChore: string;
+  secondChore: string;
+  thirdChore: string;
+  remainingCount: number;
   updatedAt: ISODateTime;
 }
 

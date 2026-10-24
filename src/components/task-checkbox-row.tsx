@@ -1,0 +1,42 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import type { ChoreDefinition } from '@/domain/chores/types';
+import { palette } from '@/components/planner-ui';
+
+export function TaskCheckboxRow({ chore, completed = false, onToggle, onOpen }: {
+  chore: ChoreDefinition;
+  completed?: boolean;
+  onToggle?: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <View style={[styles.row, completed && styles.completedRow]}>
+      <Pressable accessibilityRole="button" onPress={onOpen} style={styles.copy}>
+        <Text style={[styles.name, completed && styles.completedText]} numberOfLines={2}>{chore.name}</Text>
+        {chore.category ? <Text style={[styles.category, completed && styles.completedText]}>{chore.category}</Text> : null}
+      </Pressable>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityLabel={`${chore.name}を完了`}
+        accessibilityState={{ checked: completed, disabled: completed || !onToggle }}
+        disabled={completed || !onToggle}
+        onPress={onToggle}
+        hitSlop={8}
+        style={[styles.checkbox, completed && styles.checkboxCompleted]}>
+        {completed ? <Text style={styles.checkmark}>✓</Text> : null}
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, paddingVertical: 12 },
+  completedRow: { backgroundColor: '#F0F1F5', borderColor: '#F0F1F5' },
+  copy: { flex: 1, gap: 4, minHeight: 42, justifyContent: 'center' },
+  name: { color: palette.ink, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  category: { color: palette.muted, fontSize: 11 },
+  completedText: { color: '#858B9E', textDecorationLine: 'line-through' },
+  checkbox: { width: 23, height: 23, borderRadius: 7, borderWidth: 1.5, borderColor: '#C7D0E1', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  checkboxCompleted: { borderColor: palette.accent, backgroundColor: palette.accent },
+  checkmark: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', lineHeight: 17 },
+});

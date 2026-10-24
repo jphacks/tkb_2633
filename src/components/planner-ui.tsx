@@ -3,15 +3,15 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export const palette = {
-  background: '#F6F5F0',
+  background: '#FFFFFF',
   surface: '#FFFFFF',
-  ink: '#24342D',
-  muted: '#748078',
-  accent: '#477A62',
-  accentSoft: '#E7F0E9',
-  border: '#E4E8E2',
-  warning: '#B75C3C',
-  warningSoft: '#F8EAE4',
+  ink: '#292C3B',
+  muted: '#68718B',
+  accent: '#4AADE0',
+  accentSoft: '#E4F7FC',
+  border: '#DFE4EF',
+  warning: '#B75C55',
+  warningSoft: '#FBEDEC',
   gold: '#B8873B',
   goldSoft: '#F6F0E3',
 };
@@ -122,12 +122,12 @@ export function MutedText({ children }: PropsWithChildren) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.background },
-  page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36, gap: 18 },
+  page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 15 },
   heading: { gap: 5, marginBottom: 2 },
   eyebrow: { color: palette.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 },
   title: { color: palette.ink, fontSize: 29, fontWeight: '700' },
   description: { color: palette.muted, fontSize: 14, lineHeight: 21 },
-  card: { backgroundColor: palette.surface, borderRadius: 20, borderWidth: 1, borderColor: palette.border, padding: 17, gap: 12 },
+  card: { backgroundColor: palette.surface, borderRadius: 16, borderWidth: 1, borderColor: palette.border, padding: 16, gap: 12 },
   sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
   sectionTitle: { color: palette.ink, fontSize: 18, fontWeight: '700' },
   button: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 10 },

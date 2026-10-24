@@ -11,7 +11,7 @@
 
 - `src/app/index.tsx`: 初回設定、今日と近い家事、ゴミ収集日、完了操作
 - `src/app/explore.tsx`: 月間カレンダー。複数日にまたがる実施期間を表示
-- `src/app/chores/`: 家事一覧、検索、個別設定、手順・道具・注意点、担当と依存関係、公式資料による家電お手入れ登録
+- `src/app/chores/`: 家事一覧、検索、個別設定、手順・道具・注意点、担当と依存関係、家電登録・家電詳細・公式資料による再解析
 - `src/app/history.tsx`: 完了・未完了の日時・担当・実施元の履歴
 - `src/app/settings.tsx`: 頻度、休日、負荷上限、メンバー、機能接続状態
 - `src/app/waste.tsx`: ゴミ収集曜日の登録・編集・削除・通常収集日の表示
@@ -19,10 +19,11 @@
 
 ## 保存と初期データ
 
-- `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更、選択地域の天気設定スキーマ
+- `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更、天気、家電スナップショット、通知許可、非表示ゴミ予定のスキーマ
 - `src/platform/storage/repository.ts`: 初期マスター投入、SQLite読み書き、初回設定、完了・未完了の記録と予定再生成
 - `src/domain/chores/catalog.ts`: 18件の家事名、初期手順・道具・注意点・負荷、3つの頻度モードの暫定周期
 - `src/domain/chores/types.ts`: 家事、実施状態、完了・未完了記録、世帯設定の型
+- `src/features/appliance-care/contracts.ts`: 安定IDを持つ家電親データと、最新のユーザー確認済み公式解析スナップショット
 
 家事一覧と周期案は企画書で未確定です。現在のマスターは動作確認用の初期案で、家事単位の周期は編集できます。初期設定で「今日／1週間前／1か月前」を選んだ日付は概算の印を保持します。「不明」とスキップは初回分散に入り、履歴は削除しません。
 
@@ -44,15 +45,16 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 
 - `src/features/waste/weekly-scheduler.ts`: 曜日を日付範囲に展開する純粋関数
 - `src/features/waste/contracts.ts`: 曜日設定、収集日、例外取得・適用ポート
+- `src/features/waste/occurrence-visibility.ts`: 特定の収集区分・日付だけを隠す表示抑制。曜日ルールや次週以降には影響しません
 
 曜日設定はSQLiteに保存して、ホームとゴミ収集日画面に表示します。祝日や臨時変更の種類・優先順位・保存形式は未決定のため、例外処理は実行しません。
 
 ## 通知とウィジェット
 
 - `src/features/notifications/contracts.ts` と `src/platform/notifications/`: 日時指定の端末内通知ゲートウェイ
-- `src/features/widgets/contracts.ts` と `src/platform/widgets/`: 次の家事スナップショットと、iOS SwiftUI / Android Jetpack Compose のウィジェット
+- `src/features/widgets/contracts.ts` と `src/platform/widgets/`: 今日の家事スナップショットと、iOS SwiftUI / Android Jetpack Compose のウィジェット
 
-スナップショットをアプリから両OSのウィジェットへ更新します。表示サイズ、ユーザー操作、更新周期は調整対象です。通知の通知時刻初期値は9:00ですが、通知許可を求める時期、内容、操作、再通知規則が未決定のため、通知予約はまだ行いません。
+初回設定と設定画面に通知ON/OFFを表示します。OS許可ダイアログはユーザーがONにした時だけ要求し、未許可なら設定はOFFのままです。通知時刻初期値は9:00ですが、通知タイミングや延期・再通知の規則が未決定のため、通知予約はまだ行いません。ウィジェットはiOS systemSmall（2×2）を基本に既存のsystemMediumも維持し、Androidは2×2に対応します。Schedulerの今日の優先順から最大3件を表示し、4件以上の場合は残り件数を表示します。
 
 ## 外部機能
 
@@ -67,18 +69,22 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 
 ### 家電AI
 
-- `src/app/chores/appliance-care.tsx`: メーカー、製品名、型番の入力、解析結果の確認、項目選択、既存家事への登録
+- `src/app/chores/appliance-care.tsx`: メーカー、製品名、型番の入力、解析の2段階表示、解析結果の確認、項目選択、家電・予定への保存
+- `src/app/chores/appliances/[id].tsx`: 家電単位のお手入れ一覧、周期なし項目、出典、再解析導線
 - `src/features/appliance-care/api-client.ts`: ExpoからAPIサーバーを呼ぶクライアント。iOS/Android Emulatorの初期URLと実機用環境変数を持つ
 - `src/features/appliance-care/contracts.ts`: 解析draftと公式出典の既存契約
-- `src/features/appliance-care/to-chore-definition.ts`: 承認された解析taskを既存 `ChoreDefinition` へ変換
+- `src/features/appliance-care/to-chore-definition.ts`: 承認された解析taskを家電ID・task名・user override付きの既存 `ChoreDefinition` へ変換
+- `src/features/appliance-care/persistence-policy.ts`: 有効周期、周期なしtaskの除外、完全一致名の重複防止、再解析時の設定保持
 - `server/appliance-care-api/src/product-resolver.mjs`: 公式ドメイン限定の製品同定
 - `server/appliance-care-api/src/manual-resolver.mjs`: 公式資料の検索、PDF優先、URLとリダイレクト検証
 - `server/appliance-care-api/src/manual-analyzer.mjs`: PDFまたは公式Web資料をOpenAI Responses APIへ渡し、構造化結果を検証
 - `server/appliance-care-api/src/openai-responses-client.mjs`: サーバー専用のAPIキーでResponses APIを呼び出す
 
-`POST /api/appliance-care/analyze` は構造化されたメーカー名・製品名・型番を受け、`verified`、`ambiguous`、`not_found`、`error` を返します。Product Resolverが明確に一致した製品だけをManual Resolverへ渡します。検索候補と最終URLの両方が許可された公式ドメインに一致しない場合は採用しません。PDFが特定できたときは公式PDF URLをResponses APIの `input_file` として渡し、AIにはメーカー資料から根拠のあるお手入れだけをJSON Schemaで抽出させます。条件型の手入れに数値周期を推測させず、evidence URL、タスク重複、文字列長、周期範囲をコード側でも検証します。
+`POST /api/appliance-care/jobs` は構造化されたメーカー名・製品名・型番を受け、job IDを返します。クライアントは `GET /api/appliance-care/jobs/:id` をポーリングして、`product_verification` と `official_manual_analysis` の2段階を実際の処理状態から表示します。完了結果は `verified`、`ambiguous`、`not_found`、`error` に分類します。Product Resolverが明確に一致した製品だけをManual Resolverへ渡します。検索候補と最終URLの両方が許可された公式ドメインに一致しない場合は採用しません。PDFが特定できたときは公式PDF URLをResponses APIの `input_file` として渡し、AIにはメーカー資料から根拠のあるお手入れだけをJSON Schemaで抽出させます。条件型の手入れに数値周期を推測させず、evidence URL、タスク重複、文字列長、周期範囲をコード側でも検証します。互換用の `POST /api/appliance-care/analyze` も残しています。
 
-AI結果は `requiresUserReview: true` のdraftです。画面で選ばれた項目のみローカルSQLiteへ追加します。メーカー指定周期とユーザーの上書き周期は別フィールドです。周期がないtaskは「メーカー指定なし」と表示し、ユーザーが周期を決めるまで無効・未スケジュール状態で保存します。
+AI結果は `requiresUserReview: true` のdraftです。ユーザーが保存を選んだ後、家電親データへ解析task全件、公式製品URL・説明書URL・taskごとのページ／節、解析日時を保存します。周期ありtaskと明示的にユーザー周期を入力したtaskだけを既存Schedulerへ登録し、周期なしtaskは `ChoreDefinition` を作らず家電詳細に「定期予定なし」として残します。メーカー周期と `userIntervalDays` は別フィールドです。ユーザー周期を解除するとメーカー周期へ戻ります。完全に同じ家事名だけは重複登録しません。
+
+家電の再解析は新しいdraftをユーザー確認した後にだけ保存します。家電親のメーカー・製品名・型番は再解析画面で固定し、Repositoryでも照合します。完全一致したmaintenance task名に限って既存taskと対応付け、家事ID、user override、負荷・期間などの設定、完了履歴を維持しながらメーカー解析情報を更新します。解析結果にないtaskは自動予定から外し、過去の記録を参照できるよう家事定義は保持します。外部出典リンクはHTTPSと登録済みメーカー公式ホストを確認してから外部ブラウザへ渡します。
 
 APIは特定クラウドに依存しないNode.jsモジュールです。ローカルは `npm run api:dev` で起動し、`OPENAI_API_KEY` はAPIサーバーの `.env.server` にのみ設定します。`.env.server.example` は空のキー欄を持つ雛形です。Expoクライアントにはキーを含めません。実OpenAI APIは手動E2Eに限り、通常テストではHTTP、検索結果、説明書取得、AI出力をmockします。
 

@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, ChoiceChip, Page, ScreenHeading, StatusBadge, palette } from '@/components/planner-ui';
+import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { setChoreEnabled } from '@/platform/storage/repository';
@@ -47,14 +47,29 @@ export default function ChoresScreen() {
 
   return (
     <Page>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
       <ScreenHeading eyebrow="CHORES" title="家事一覧" description={`${snapshot.chores.filter((chore) => chore.enabled).length}件の家事を有効にしています。検索や設定変更ができます。`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       {toggleError ? <Card><Text style={styles.error}>{toggleError}</Text></Card> : null}
       <Card style={styles.applianceCard}>
         <Text style={styles.applianceTitle}>家電のお手入れを追加</Text>
         <Text style={styles.emptyText}>メーカー公式の取扱説明書を確認し、お手入れ項目を選んで家事に登録できます。</Text>
-        <AppButton title="家電を公式資料から調べる" onPress={() => router.push('/chores/appliance-care')} compact />
+        <AppButton title="家電一覧を開く" onPress={() => router.push('/manual')} compact />
       </Card>
+      {snapshot.appliances.length > 0 ? (
+        <>
+          <SectionHeading title="登録した家電" trailing={<Text style={styles.meta}>{snapshot.appliances.length}台</Text>} />
+          {snapshot.appliances.map((appliance) => (
+            <Card key={appliance.id} style={styles.savedApplianceCard}>
+              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/manual/appliances/[id]', params: { id: appliance.id, returnTo: '/chores' } }, { withAnchor: true })} style={styles.choreCopy}>
+                <Text style={styles.choreName}>{appliance.displayName}</Text>
+                <Text style={styles.meta}>{appliance.analysis.tasks.length}件のお手入れ項目 · 詳細と出典</Text>
+              </Pressable>
+              <AppButton title="再解析" onPress={() => router.push({ pathname: '/manual/appliance-care', params: { applianceId: appliance.id, returnTo: '/chores' } }, { withAnchor: true })} variant="secondary" compact />
+            </Card>
+          ))}
+        </>
+      ) : null}
       <TextInput
         accessibilityLabel="家事を検索"
         value={query}
@@ -112,10 +127,12 @@ function statusRank(status: string): number {
 }
 
 const styles = StyleSheet.create({
+  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
   search: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, color: palette.ink, fontSize: 14 },
   categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   choreCard: { gap: 12 },
   applianceCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
+  savedApplianceCard: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   applianceTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
   choreCopy: { gap: 5 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },

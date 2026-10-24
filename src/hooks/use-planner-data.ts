@@ -2,10 +2,11 @@ import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
 
-import { formatJapaneseDate } from '@/domain/scheduling/local-date';
+import { localDateFromDate } from '@/domain/scheduling/local-date';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
 import { applyWeatherToPlannerSnapshot, loadPlannerSnapshot } from '@/platform/storage/repository';
 import { expoWidgetGateway } from '@/platform/widgets/expo-widget-gateway';
+import { createTodayWidgetSnapshot } from '@/features/widgets/today-widget-snapshot';
 
 export function usePlannerData() {
   const database = useSQLiteContext();
@@ -15,26 +16,13 @@ export function usePlannerData() {
   const refreshRevision = useRef(0);
 
   const publishWidgetSnapshot = useCallback((data: PlannerSnapshot) => {
-    const nextEntry = data.scheduleEntries
-      .filter((entry) => entry.status !== 'overdue')
-      .sort((left, right) => left.suggestedDate.localeCompare(right.suggestedDate))[0]
-      ?? data.scheduleEntries.find((entry) => entry.status === 'overdue');
-    const nextChore = nextEntry ? data.chores.find((chore) => chore.id === nextEntry.choreId) : undefined;
-    const assignmentLabel = nextEntry?.assignedMemberIds
-      .map((id) => data.members.find((member) => member.id === id)?.displayName)
-      .filter(Boolean)
-      .join('・');
-    expoWidgetGateway.updateNextChore({
-      choreId: nextEntry?.choreId ?? null,
-      choreName: nextChore?.name ?? 'アプリで予定を設定',
-      dateLabel: nextEntry
-        ? nextEntry.windowStart === nextEntry.windowEnd
-          ? formatJapaneseDate(nextEntry.windowStart)
-          : `${formatJapaneseDate(nextEntry.windowStart)}〜${formatJapaneseDate(nextEntry.windowEnd)}`
-        : '予定はまだありません',
-      assignmentLabel,
-      updatedAt: new Date().toISOString(),
-    });
+    const today = localDateFromDate(new Date());
+    expoWidgetGateway.updateNextChore(createTodayWidgetSnapshot(
+      data.scheduleEntries,
+      data.chores,
+      today,
+      new Date().toISOString(),
+    ));
   }, []);
 
   const refresh = useCallback(async (options: { waitForWeather?: boolean } = {}) => {

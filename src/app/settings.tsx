@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { FrequencyMode } from '@/domain/chores/types';
@@ -13,9 +13,11 @@ import {
   addHouseholdMember,
   clearWeatherLocation,
   saveWeatherLocation,
+  setNotificationsEnabled,
   updatePlannerSettings,
 } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
+import { ExpoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
 
 const modeOptions: { id: FrequencyMode; label: string; detail: string }[] = [
   { id: 'frequent', label: 'こまめ', detail: '短めの周期' },
@@ -27,6 +29,7 @@ const weekdays: { id: Weekday; label: string }[] = [
   { id: 5, label: '金' }, { id: 6, label: '土' }, { id: 7, label: '日' },
 ];
 const weatherGeocoder = new OpenMeteoGeocodingProvider();
+const notificationGateway = new ExpoLocalNotificationGateway();
 
 export default function SettingsScreen() {
   const { snapshot, loading, error: loadError, refresh, database } = usePlannerData();
@@ -51,6 +54,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
   const [weatherCandidates, setWeatherCandidates] = useState<WeatherRegionCandidate[]>([]);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
+  const [notificationUpdating, setNotificationUpdating] = useState(false);
 
   const toggleRestDay = (day: Weekday) => {
     setRestDays((current) => current.includes(day)
@@ -149,8 +153,27 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
+  const toggleNotifications = async (enabled: boolean) => {
+    setNotificationUpdating(true);
+    setMessage(null);
+    try {
+      if (enabled && !(await notificationGateway.requestPermission())) {
+        setMessage('通知は有効になりませんでした。端末の設定から許可できます。');
+        return;
+      }
+      await setNotificationsEnabled(database, enabled);
+      await refresh();
+      setMessage(enabled ? '通知を有効にしました。' : '通知をオフにしました。');
+    } catch {
+      setMessage('通知設定を変更できませんでした。');
+    } finally {
+      setNotificationUpdating(false);
+    }
+  };
+
   return (
     <Page>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
       <ScreenHeading eyebrow="SETTINGS" title="設定" description="生活リズム、担当、アプリの連携枠を管理します。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
@@ -204,9 +227,15 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
       <Card>
         <SectionHeading title="通知・ウィジェット" />
-        <FeatureStatus title="ローカル通知" status="準備中" detail={`通知時刻の初期値は${String(snapshot.settings.notificationHour).padStart(2, '0')}:${String(snapshot.settings.notificationMinute).padStart(2, '0')}。通知許可や完了アクションは、詳細決定後に接続します。`} />
+        <View style={styles.notificationRow}>
+          <View style={styles.limitCopy}>
+            <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
+            <Text style={styles.hint}>通知をオンにした操作で端末の許可を確認します。具体的な通知時刻や再通知は未設定です。</Text>
+          </View>
+          <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
+        </View>
         <View style={styles.divider} />
-        <FeatureStatus title="次の家事ウィジェット" status="iOS・Android" detail="アプリで計算した次の家事を、両OSのウィジェットへ渡します。表示サイズや更新タイミングは今後調整できます。" />
+        <FeatureStatus title="次の家事ウィジェット" status="iOS・Android" detail="iOSは2×2と中サイズ、Androidは2×2です。Schedulerの今日の優先順から最大3件を表示します。" />
       </Card>
 
       <Card>
@@ -267,7 +296,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text>
         ) : null}
         <View style={styles.divider} />
-        <FeatureStatus title="家電お手入れ AI" status="未接続" detail="公式資料の構造化結果を受け取る契約のみ用意しています。AIや資料の取得は呼び出しません。" />
+        <FeatureStatus title="家電お手入れ AI" status="検索操作時のみ接続" detail="家事一覧からメーカー・製品名・型番を入力して解析できます。APIキーはサーバー側だけで扱い、家電情報と確認済み結果は端末内に保存します。" />
         <View style={styles.divider} />
         <FeatureStatus title="家族間同期" status="未接続" detail="家事・担当・履歴は端末内に保存されます。同期先やアカウント方式は選定していません。" />
       </Card>
@@ -297,6 +326,7 @@ function FeatureStatus({ title, status, detail }: { title: string; status: strin
 }
 
 const styles = StyleSheet.create({
+  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
   label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   hint: { color: palette.muted, fontSize: 12, lineHeight: 18 },
@@ -319,6 +349,7 @@ const styles = StyleSheet.create({
   regionCandidatePressed: { backgroundColor: palette.accentSoft },
   regionCandidateText: { color: palette.ink, fontSize: 13, fontWeight: '600' },
   feature: { gap: 5, paddingVertical: 2 },
+  notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   weatherActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featureTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   featureTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },

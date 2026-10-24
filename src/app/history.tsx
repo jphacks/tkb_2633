@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthKey } from '@/domain/scheduling/local-date';
@@ -18,6 +18,7 @@ export default function HistoryScreen() {
 
   return (
     <Page>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
       <ScreenHeading eyebrow="HISTORY" title="実施履歴" description="完了と未完了の記録を端末内に保存します。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       <Card style={styles.summary}>
@@ -58,6 +59,7 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
   summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
   summaryLabel: { color: palette.accent, fontSize: 12, fontWeight: '700' },
   summaryValue: { color: palette.ink, fontSize: 28, fontWeight: '800' },

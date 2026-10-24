@@ -6,7 +6,7 @@ import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palet
 import { formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { Weekday } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { deleteWeeklyWasteSchedule, saveWeeklyWasteSchedule } from '@/platform/storage/repository';
+import { deleteWeeklyWasteSchedule, saveWeeklyWasteSchedule, setWasteOccurrenceHidden } from '@/platform/storage/repository';
 
 const weekdays: { id: Weekday; label: string }[] = [
   { id: 1, label: '月' }, { id: 2, label: '火' }, { id: 3, label: '水' }, { id: 4, label: '木' },
@@ -63,6 +63,17 @@ export default function WasteScreen() {
     await refresh();
   };
 
+  const setOccurrenceHidden = async (scheduleId: string, date: `${number}-${number}-${number}`, hidden: boolean) => {
+    setMessage(null);
+    try {
+      await setWasteOccurrenceHidden(database, scheduleId, date, hidden);
+      await refresh();
+      setMessage(hidden ? 'この日の表示だけを非表示にしました。' : 'ゴミ予定を再表示しました。');
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'ゴミ予定を更新できませんでした。');
+    }
+  };
+
   const nextSevenDays = snapshot.upcomingWasteDates
     .filter((occurrence) => occurrence.date >= localDateFromDate(new Date()))
     .sort((left, right) => left.date.localeCompare(right.date))
@@ -91,7 +102,7 @@ export default function WasteScreen() {
         </View>
         <AppButton title={saving ? '保存中…' : editingId ? '変更を保存' : '曜日を追加'} onPress={() => void save()} disabled={saving} />
         {editingId ? <AppButton title="編集をやめる" onPress={() => { setEditingId(undefined); setLabel(''); setSelectedWeekdays([]); }} variant="quiet" compact /> : null}
-        {message ? <Text style={message.includes('保存しました') ? styles.success : styles.error}>{message}</Text> : null}
+        {message ? <Text style={message.includes('しました') ? styles.success : styles.error}>{message}</Text> : null}
       </Card>
 
       <SectionHeading title="登録済み" trailing={<Text style={styles.count}>{snapshot.wasteSchedules.length}種類</Text>} />
@@ -113,10 +124,27 @@ export default function WasteScreen() {
       <SectionHeading title="次の収集日" />
       {nextSevenDays.length === 0 ? <Card><Text style={styles.body}>表示できる収集日はありません。曜日を登録してください。</Text></Card> : nextSevenDays.map((occurrence) => (
         <Card key={`${occurrence.scheduleId}-${occurrence.date}`} style={styles.occurrence}>
-          <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
-          <Text style={styles.occurrenceLabel}>{occurrence.label}</Text>
+          <View style={styles.occurrenceCopy}>
+            <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
+            <Text style={styles.occurrenceLabel}>{occurrence.label}</Text>
+          </View>
+          <AppButton title="今回は表示しない" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, true)} variant="quiet" compact />
         </Card>
       ))}
+
+      <SectionHeading title="非表示にしたゴミ予定" trailing={<Text style={styles.count}>{snapshot.hiddenWasteDates.length}件</Text>} />
+      {snapshot.hiddenWasteDates.length === 0 ? (
+        <Card><Text style={styles.body}>非表示にした予定はありません。</Text></Card>
+      ) : snapshot.hiddenWasteDates.map((occurrence) => (
+        <Card key={`${occurrence.scheduleId}-${occurrence.date}`} style={styles.occurrence}>
+          <View style={styles.occurrenceCopy}>
+            <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
+            <Text style={styles.occurrenceLabel}>{occurrence.label}</Text>
+          </View>
+          <AppButton title="再表示" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, false)} variant="secondary" compact />
+        </Card>
+      ))}
+      {message ? <Text style={message.includes('しました') ? styles.success : styles.error}>{message}</Text> : null}
 
       <Card style={styles.noteCard}>
         <Text style={styles.noteTitle}>例外日について</Text>
@@ -138,6 +166,7 @@ const styles = StyleSheet.create({
   days: { color: palette.muted, fontSize: 12 },
   actions: { flexDirection: 'row', gap: 6 },
   occurrence: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  occurrenceCopy: { flex: 1, gap: 4 },
   occurrenceDate: { color: palette.accent, fontSize: 14, fontWeight: '700' },
   occurrenceLabel: { color: palette.ink, fontSize: 14, fontWeight: '600' },
   noteCard: { backgroundColor: palette.goldSoft, borderColor: '#EDE1C9' },

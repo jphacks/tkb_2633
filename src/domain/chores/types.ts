@@ -14,6 +14,7 @@ export interface ApplianceCareSource {
   manufacturer: string;
   productName: string;
   modelNumber: string;
+  productUrl?: string;
   manualUrl: string;
   analyzedAt: ISODateTime;
   evidence: ChoreSourceEvidence[];
@@ -28,6 +29,8 @@ export interface ChoreDefinition {
   enabled: boolean;
   /** User override. When unset, the selected frequency mode supplies the cycle. */
   recommendedCycleDays?: number;
+  /** User override for an appliance-care task. Kept separate from the maker interval. */
+  userIntervalDays?: number;
   /** Manufacturer-stated starting interval. User edits are stored separately above. */
   manufacturerRecommendedIntervalDays?: number;
   /** Conditions stated by the manufacturer when no fixed cycle is specified. */
@@ -50,6 +53,10 @@ export interface ChoreDefinition {
   estimatedMinutes?: number;
   /** Provenance for appliance-care chores created from a reviewed official manual analysis. */
   applianceCareSource?: ApplianceCareSource;
+  /** Stable parent appliance id. */
+  applianceId?: EntityId;
+  /** Exact maintenance task name from the reviewed manufacturer analysis. */
+  applianceTaskName?: string;
 }
 
 export interface ChoreAssignment {
@@ -109,6 +116,7 @@ export interface HouseholdPlannerSettings {
   normalDailyLimit: number;
   notificationHour: number;
   notificationMinute: number;
+  notificationsEnabled: boolean;
   setupCompleted: boolean;
   /** Region selected from user-entered text for weather forecasts. */
   weatherLocation?: WeatherLocation;

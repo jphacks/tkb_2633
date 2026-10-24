@@ -1,9 +1,11 @@
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { analyzeApplianceCare, validateApplianceCareRequest } from './service.mjs';
 
 const MAX_BODY_BYTES = 8 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 20;
+const JOB_RETENTION_MS = 10 * 60_000;
 const STATUS_BY_ERROR = {
   INVALID_REQUEST: 400,
   SEARCH_FAILED: 502,
@@ -11,10 +13,14 @@ const STATUS_BY_ERROR = {
   MANUAL_FETCH_FAILED: 502,
   AI_ANALYSIS_FAILED: 502,
   INVALID_AI_OUTPUT: 502,
+  PRODUCT_NOT_FOUND: 404,
+  ANALYSIS_FAILED: 502,
+  TEMPORARY_NETWORK_ERROR: 503,
 };
 
 export function createApplianceCareHttpServer({ dependencies, aiConfigured = true, allowedOrigins = [] }) {
   const requestsByAddress = new Map();
+  const jobsById = new Map();
   return createServer(async (request, response) => {
     setSecurityHeaders(response);
     const origin = request.headers.origin;
@@ -39,7 +45,26 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       sendJson(response, 200, { status: 'ok', aiConfigured });
       return;
     }
-    if (request.method !== 'POST' || url.pathname !== '/api/appliance-care/analyze') {
+    const jobStatusMatch = request.method === 'GET'
+      ? url.pathname.match(/^\/api\/appliance-care\/jobs\/([0-9a-f-]{36})$/iu)
+      : null;
+    if (jobStatusMatch) {
+      pruneJobs(jobsById);
+      const job = jobsById.get(jobStatusMatch[1]);
+      if (!job) {
+        sendJson(response, 404, { status: 'error', code: 'TEMPORARY_NETWORK_ERROR', message: '解析状況を確認できません。もう一度検索してください。' });
+        return;
+      }
+      sendJson(response, 200, {
+        stage: job.stage,
+        done: job.done,
+        ...(job.done && job.result ? { result: job.result } : {}),
+      });
+      return;
+    }
+    const isAnalyzeRequest = request.method === 'POST' && url.pathname === '/api/appliance-care/analyze';
+    const isJobRequest = request.method === 'POST' && url.pathname === '/api/appliance-care/jobs';
+    if (!isAnalyzeRequest && !isJobRequest) {
       sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'API endpointが見つかりません。' } });
       return;
     }
@@ -71,23 +96,47 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       return;
     }
     if (!aiConfigured) {
-      sendJson(response, 503, { status: 'error', code: 'AI_ANALYSIS_FAILED', message: 'APIサーバーにAI接続設定がありません。' });
+      sendJson(response, 503, { status: 'error', code: 'ANALYSIS_FAILED', message: 'AI解析サーバーが設定されていません。管理者に確認してください。' });
+      return;
+    }
+
+    const analysisRequest = {
+      manufacturer: body.manufacturer.trim(),
+      productName: body.productName.trim(),
+      modelNumber: body.modelNumber.trim(),
+      ...(typeof body.category === 'string' ? { category: body.category.trim() } : {}),
+    };
+    if (isJobRequest) {
+      pruneJobs(jobsById);
+      const jobId = randomUUID();
+      const job = { stage: 'product_verification', done: false, result: undefined, expiresAt: Date.now() + JOB_RETENTION_MS };
+      jobsById.set(jobId, job);
+      void analyzeApplianceCare(analysisRequest, dependencies, (stage) => { job.stage = stage; })
+        .then((result) => { job.result = result; job.done = true; job.expiresAt = Date.now() + JOB_RETENTION_MS; })
+        .catch(() => {
+          job.result = { status: 'error', code: 'ANALYSIS_FAILED', message: '解析を完了できませんでした。時間をおいて再試行してください。' };
+          job.done = true;
+          job.expiresAt = Date.now() + JOB_RETENTION_MS;
+        });
+      sendJson(response, 202, { jobId });
       return;
     }
 
     try {
-      const result = await analyzeApplianceCare({
-        manufacturer: body.manufacturer.trim(),
-        productName: body.productName.trim(),
-        modelNumber: body.modelNumber.trim(),
-        ...(typeof body.category === 'string' ? { category: body.category.trim() } : {}),
-      }, dependencies);
+      const result = await analyzeApplianceCare(analysisRequest, dependencies);
       const status = result.status === 'error' ? (STATUS_BY_ERROR[result.code] ?? 502) : 200;
       sendJson(response, status, result);
     } catch {
-      sendJson(response, 502, { status: 'error', code: 'AI_ANALYSIS_FAILED', message: '解析を完了できませんでした。時間をおいて再試行してください。' });
+      sendJson(response, 502, { status: 'error', code: 'ANALYSIS_FAILED', message: '解析を完了できませんでした。時間をおいて再試行してください。' });
     }
   });
+}
+
+function pruneJobs(jobsById, now = Date.now()) {
+  for (const [id, job] of jobsById) {
+    if (job.expiresAt <= now) jobsById.delete(id);
+  }
+  while (jobsById.size > 100) jobsById.delete(jobsById.keys().next().value);
 }
 
 export function startApplianceCareHttpServer({

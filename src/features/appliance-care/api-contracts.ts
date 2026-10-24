@@ -36,13 +36,15 @@ export interface ProductAmbiguousResponse {
 
 export interface ProductNotFoundResponse {
   status: 'not_found';
+  code?: 'PRODUCT_NOT_FOUND';
   message: string;
 }
 
 export interface ProductAnalysisErrorResponse {
   status: 'error';
   code: 'INVALID_REQUEST' | 'RATE_LIMITED' | 'SEARCH_FAILED' | 'MANUAL_NOT_FOUND' | 'MANUAL_FETCH_FAILED'
-    | 'AI_ANALYSIS_FAILED' | 'INVALID_AI_OUTPUT';
+    | 'AI_ANALYSIS_FAILED' | 'INVALID_AI_OUTPUT' | 'PRODUCT_NOT_FOUND' | 'ANALYSIS_FAILED'
+    | 'TEMPORARY_NETWORK_ERROR';
   message: string;
 }
 
@@ -50,3 +52,5 @@ export type ApplianceCareApiResponse = ProductVerifiedResponse
   | ProductAmbiguousResponse
   | ProductNotFoundResponse
   | ProductAnalysisErrorResponse;
+
+export type ApplianceCareAnalysisStage = 'product_verification' | 'official_manual_analysis';

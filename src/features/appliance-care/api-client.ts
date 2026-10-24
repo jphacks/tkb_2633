@@ -1,8 +1,13 @@
 import { Platform } from 'react-native';
 
-import type { ApplianceCareApiRequest, ApplianceCareApiResponse } from '@/features/appliance-care/api-contracts';
+import type {
+  ApplianceCareAnalysisStage,
+  ApplianceCareApiRequest,
+  ApplianceCareApiResponse,
+} from '@/features/appliance-care/api-contracts';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+const POLL_INTERVAL_MS = 600;
 
 export function applianceCareApiBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_APPLIANCE_CARE_API_URL?.trim();
@@ -14,6 +19,7 @@ export async function analyzeApplianceCareRequest(
   request: ApplianceCareApiRequest,
   baseUrl = applianceCareApiBaseUrl(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  onStage?: (stage: ApplianceCareAnalysisStage) => void,
 ): Promise<ApplianceCareApiResponse> {
   const normalized = {
     manufacturer: request.manufacturer.trim(),
@@ -33,31 +39,59 @@ export async function analyzeApplianceCareRequest(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(baseUrl + '/api/appliance-care/analyze', {
+    const startResponse = await fetch(`${baseUrl}/api/appliance-care/jobs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(normalized),
       signal: controller.signal,
     });
-    let value: unknown;
-    try {
-      value = await response.json();
-    } catch {
-      throw new Error('APIの応答を読み取れませんでした。サーバーの状態を確認してください。');
+    const startPayload: unknown = await readJson(startResponse);
+    if (isApiResponse(startPayload)) return startPayload;
+    if (!startResponse.ok || !isJobAccepted(startPayload)) {
+      return temporaryError('家電解析APIに接続できません。APIサーバーの状態を確認してください。');
     }
-    if (isApiResponse(value)) return value;
-    throw new Error(response.ok
-      ? 'APIの応答形式が正しくありません。'
-      : 'APIサーバーに接続できませんでした（HTTP ' + response.status + '）。');
-  } catch (cause) {
-    if (cause instanceof Error && cause.name === 'AbortError') {
-      throw new Error('解析がタイムアウトしました。公式検索と説明書解析を再試行してください。');
+
+    let lastStage: ApplianceCareAnalysisStage | undefined;
+    while (!controller.signal.aborted) {
+      const statusResponse = await fetch(`${baseUrl}/api/appliance-care/jobs/${encodeURIComponent(startPayload.jobId)}`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      const statusPayload: unknown = await readJson(statusResponse);
+      if (isApiResponse(statusPayload)) return statusPayload;
+      if (!statusResponse.ok || !isJobStatus(statusPayload)) {
+        return temporaryError('解析状況を確認できません。通信状態を確認して再試行してください。');
+      }
+      if (statusPayload.stage !== lastStage) {
+        lastStage = statusPayload.stage;
+        onStage?.(lastStage);
+      }
+      if (statusPayload.done) {
+        return isApiResponse(statusPayload.result)
+          ? statusPayload.result
+          : temporaryError('解析結果を読み取れませんでした。もう一度検索してください。');
+      }
+      await delay(POLL_INTERVAL_MS);
     }
-    if (cause instanceof Error && cause.message.startsWith('APIの応答')) throw cause;
-    if (cause instanceof Error && cause.message.startsWith('APIサーバー')) throw cause;
-    throw new Error('家電解析APIに接続できません。APIサーバーと接続先URLを確認してください。');
+    return temporaryError('解析がタイムアウトしました。時間をおいて再試行してください。');
+  } catch {
+    return temporaryError(controller.signal.aborted
+      ? '解析がタイムアウトしました。時間をおいて再試行してください。'
+      : '家電解析APIに接続できません。APIサーバーと接続先URLを確認してください。');
   } finally {
     clearTimeout(timer);
+  }
+}
+
+function temporaryError(message: string): ApplianceCareApiResponse {
+  return { status: 'error', code: 'TEMPORARY_NETWORK_ERROR', message };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
   }
 }
 
@@ -70,4 +104,22 @@ function isApiResponse(value: unknown): value is ApplianceCareApiResponse {
     && typeof value.code === 'string' && typeof value.message === 'string';
   if (status === 'verified') return 'product' in value && 'officialSources' in value && 'analysis' in value;
   return false;
+}
+
+function isJobAccepted(value: unknown): value is { jobId: string } {
+  return Boolean(value && typeof value === 'object' && 'jobId' in value && typeof value.jobId === 'string');
+}
+
+function isJobStatus(value: unknown): value is {
+  stage: ApplianceCareAnalysisStage;
+  done: boolean;
+  result?: unknown;
+} {
+  if (!value || typeof value !== 'object' || !('stage' in value) || !('done' in value)) return false;
+  return (value.stage === 'product_verification' || value.stage === 'official_manual_analysis')
+    && typeof value.done === 'boolean';
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

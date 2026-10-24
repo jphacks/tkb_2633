@@ -1,0 +1,267 @@
+import { Tabs, router } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
+import { AppMark } from '@/components/app-mark';
+import { TaskCheckboxRow } from '@/components/task-checkbox-row';
+import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
+import { addDays, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, weekdayOf } from '@/domain/scheduling/local-date';
+import type { LocalDate } from '@/domain/shared/types';
+import { usePlannerData } from '@/hooks/use-planner-data';
+import { completeChore, setWasteOccurrenceHidden } from '@/platform/storage/repository';
+
+type WeekScope = 'current' | 'next';
+
+export default function HomeScreen() {
+  const { snapshot, loading, error, refresh, database } = usePlannerData();
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [wasteMessage, setWasteMessage] = useState<string | null>(null);
+  const [weekScope, setWeekScope] = useState<WeekScope>('current');
+  const today = localDateFromDate(new Date());
+  const thisWeekEnd = addDays(today, 7 - weekdayOf(today));
+  const nextWeekStart = addDays(thisWeekEnd, 1);
+  const nextWeekEnd = addDays(nextWeekStart, 6);
+  const periodStart = weekScope === 'current' ? today : nextWeekStart;
+  const periodEnd = weekScope === 'current' ? thisWeekEnd : nextWeekEnd;
+  const upcomingByDate = useMemo(() => {
+    const groups = new Map<LocalDate, NonNullable<typeof snapshot>['scheduleEntries']>();
+    for (const entry of snapshot?.scheduleEntries ?? []) {
+      if (entry.status === 'overdue' || entry.suggestedDate <= today
+        || entry.suggestedDate < periodStart || entry.suggestedDate > periodEnd) continue;
+      const group = groups.get(entry.suggestedDate) ?? [];
+      group.push(entry);
+      groups.set(entry.suggestedDate, group);
+    }
+    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [periodEnd, periodStart, snapshot, today]);
+
+  if (loading || !snapshot) {
+    return <><Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} /><Page><BrandBar /><Text style={styles.loading}>今日の家事を読み込んでいます。</Text></Page></>;
+  }
+
+  if (!snapshot.settings.setupCompleted) {
+    return (
+      <>
+        <Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} />
+        <Page contentStyle={styles.setupPage}>
+          {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+          <FirstRunSetup snapshot={snapshot} onComplete={refresh} />
+        </Page>
+      </>
+    );
+  }
+
+  const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
+  const completedToday = new Set(snapshot.completions
+    .filter((item) => item.outcome === 'completed' && localDateFromISODateTime(item.completedAt) === today)
+    .map((item) => item.choreId));
+  const dueToday = snapshot.scheduleEntries
+    .filter((entry) => entry.status === 'overdue' || entry.suggestedDate === today)
+    .sort((left, right) => urgency(left.status) - urgency(right.status));
+  const pendingToday = dueToday.filter((entry) => !completedToday.has(entry.choreId));
+  const completedTodayChores = [...completedToday]
+    .map((choreId) => choresById.get(choreId))
+    .filter((chore) => chore !== undefined);
+  const todayTotal = pendingToday.length + completedTodayChores.length;
+  const todayDone = completedTodayChores.length;
+  const progress = todayTotal ? Math.round((todayDone / todayTotal) * 100) : 0;
+  const todayWaste = snapshot.upcomingWasteDates.filter((occurrence) => occurrence.date === today);
+
+  const finish = async (entryId: string) => {
+    const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
+    if (!entry || completingIds.has(entryId)) return;
+    setCompletingIds((current) => new Set(current).add(entryId));
+    try {
+      await completeChore(database, entry);
+      await refresh();
+    } finally {
+      setCompletingIds((current) => {
+        const next = new Set(current);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  };
+
+  const hideWasteOccurrence = async (scheduleId: string, date: LocalDate) => {
+    try {
+      await setWasteOccurrenceHidden(database, scheduleId, date, true);
+      setWasteMessage('この日のゴミ予定だけを非表示にしました。ゴミ曜日から再表示できます。');
+      await refresh();
+    } catch {
+      setWasteMessage('ゴミ予定を非表示にできませんでした。');
+    }
+  };
+
+  return (
+    <>
+      <Tabs.Screen options={{ tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
+      <Page contentStyle={styles.homePage}>
+        <BrandBar />
+        {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+
+      <View style={styles.todayHeading}>
+        <Text style={styles.date}>{formatJapaneseDate(today, { year: true, weekday: true })}</Text>
+        <Text style={styles.title}>今日のタスク</Text>
+      </View>
+
+      <Card style={styles.progressCard}>
+        <View style={styles.progressHeader}>
+          <View style={styles.progressCopy}>
+            <Text style={styles.progressTitle}>今日も一日頑張りましょう</Text>
+            <Text style={styles.progressCaption}>{todayTotal}件中{todayDone}件が完了しました</Text>
+          </View>
+          <Text style={styles.progressValue}>{progress}%</Text>
+        </View>
+        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View>
+      </Card>
+
+      {snapshot.weatherOutcome === 'adjusted' ? (
+        <Card style={styles.weatherNotice}>
+          <Text style={styles.noticeTitle}>天気に合わせて洗濯予定を調整しました</Text>
+          <Text style={styles.noticeBody}>{snapshot.weatherAdjustmentCount}件の予定を見直しています。</Text>
+        </Card>
+      ) : snapshot.weatherOutcome === 'unavailable' ? (
+        <Card style={styles.weatherNotice}>
+          <Text style={styles.noticeTitle}>天気予報を取得できませんでした</Text>
+          <Text style={styles.noticeBody}>通常の家事予定を表示しています。</Text>
+        </Card>
+      ) : null}
+
+      {todayWaste.length ? (
+        <Card style={styles.wasteCard}>
+          <View style={styles.wasteCopy}>
+            <Text style={styles.wasteEyebrow}>今日のゴミ収集</Text>
+            {todayWaste.map((item) => (
+              <View key={`${item.scheduleId}-${item.date}`} style={styles.wasteRow}>
+                <Text style={styles.wasteName}>{item.label}</Text>
+                <Pressable accessibilityRole="button" onPress={() => void hideWasteOccurrence(item.scheduleId, item.date)}>
+                  <Text style={styles.hideWaste}>今回だけ非表示</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/waste')} style={styles.wasteButton}>
+            <Text style={styles.wasteButtonText}>曜日</Text>
+          </Pressable>
+        </Card>
+      ) : null}
+      {wasteMessage ? <Text style={styles.noticeBody}>{wasteMessage}</Text> : null}
+
+      <SectionHeading title="今日の家事" trailing={<Text style={styles.smallCount}>{todayTotal}件・{todayDone}件完了</Text>} />
+      {pendingToday.map((entry) => {
+        const chore = choresById.get(entry.choreId);
+        if (!chore) return null;
+        return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} onToggle={() => void finish(entry.id)} />;
+      })}
+      {completedTodayChores.map((chore) => (
+        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} />
+      ))}
+      {todayTotal === 0 ? (
+        <Card style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>今日の予定はありません</Text>
+          <Text style={styles.emptyBody}>家事一覧から予定や頻度を調整できます。</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/chores')}><Text style={styles.textLink}>家事一覧を見る ›</Text></Pressable>
+        </Card>
+      ) : null}
+
+      <View style={styles.weekSwitcher}>
+        <Pressable accessibilityRole="button" accessibilityState={{ selected: weekScope === 'current' }} onPress={() => setWeekScope('current')} style={[styles.weekOption, weekScope === 'current' && styles.weekOptionSelected]}>
+          <Text style={[styles.weekOptionText, weekScope === 'current' && styles.weekOptionTextSelected]}>今週</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ selected: weekScope === 'next' }} onPress={() => setWeekScope('next')} style={[styles.weekOption, weekScope === 'next' && styles.weekOptionSelected]}>
+          <Text style={[styles.weekOptionText, weekScope === 'next' && styles.weekOptionTextSelected]}>来週</Text>
+        </Pressable>
+      </View>
+
+      {upcomingByDate.length ? upcomingByDate.map(([date, entries]) => (
+        <View key={date} style={styles.dayGroup}>
+          <Text style={styles.dayGroupTitle}>{formatJapaneseDate(date, { weekday: true }).replace(/^\d+月/, '')}のタスク</Text>
+          {entries.map((entry) => {
+            const chore = choresById.get(entry.choreId);
+            if (!chore) return null;
+            return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} onToggle={() => void finish(entry.id)} />;
+          })}
+        </View>
+      )) : (
+        <Card style={styles.emptyCard}>
+          <Text style={styles.emptyBody}>{weekScope === 'current' ? '今週のこれからの予定はありません。' : '来週の予定はまだありません。'}</Text>
+        </Card>
+      )}
+
+      <View style={styles.quickLinks}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/history')}><Text style={styles.textLink}>実施履歴を見る ›</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/waste')}><Text style={styles.textLink}>ゴミ曜日を管理 ›</Text></Pressable>
+      </View>
+      </Page>
+    </>
+  );
+}
+
+function BrandBar() {
+  return (
+    <View style={styles.brandBar}>
+      <Pressable accessibilityRole="button" accessibilityLabel="家事一覧を開く" onPress={() => router.push('/chores')}>
+        <AppMark size={44} />
+      </Pressable>
+      <Text style={styles.brandName}>家事スケジュール</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="設定を開く" onPress={() => router.push('/settings')} style={styles.settingsButton}>
+        <Text style={styles.settingsSymbol}>⚙︎</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function urgency(status: string): number {
+  if (status === 'overdue') return 0;
+  if (status === 'inWindow') return 1;
+  if (status === 'initialPending') return 2;
+  return 3;
+}
+
+const styles = StyleSheet.create({
+  homePage: { gap: 12, paddingTop: 8, paddingBottom: 24 },
+  setupPage: { gap: 16, paddingTop: 12 },
+  brandBar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  brandName: { color: palette.ink, fontSize: 20, fontWeight: '800', flex: 1 },
+  settingsButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
+  settingsSymbol: { color: '#FFFFFF', fontSize: 24, lineHeight: 29 },
+  todayHeading: { gap: 2, marginTop: 3 },
+  date: { color: palette.muted, fontSize: 11, fontWeight: '500' },
+  title: { color: palette.ink, fontSize: 28, fontWeight: '800' },
+  progressCard: { backgroundColor: '#ECFAFD', borderColor: '#ECFAFD', padding: 17, gap: 10 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  progressCopy: { flex: 1, gap: 2 },
+  progressTitle: { color: palette.accent, fontSize: 13, fontWeight: '800' },
+  progressCaption: { color: palette.muted, fontSize: 11, fontWeight: '600' },
+  progressValue: { color: palette.accent, fontSize: 28, fontWeight: '800' },
+  progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3, backgroundColor: palette.accent },
+  weatherNotice: { backgroundColor: palette.accentSoft, borderColor: palette.accentSoft, gap: 4 },
+  noticeTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
+  noticeBody: { color: palette.muted, fontSize: 12, lineHeight: 18 },
+  wasteCard: { flexDirection: 'row', alignItems: 'center', padding: 13, gap: 12, backgroundColor: '#F0FAFD', borderColor: '#D9F0F8' },
+  wasteCopy: { flex: 1, gap: 4 },
+  wasteEyebrow: { color: palette.accent, fontSize: 11, fontWeight: '800' },
+  wasteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 7 },
+  wasteName: { color: palette.ink, fontSize: 13, fontWeight: '700', flex: 1 },
+  hideWaste: { color: palette.accent, fontSize: 10, fontWeight: '700', textDecorationLine: 'underline' },
+  wasteButton: { borderRadius: 11, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 9 },
+  wasteButtonText: { color: palette.accent, fontSize: 12, fontWeight: '700' },
+  smallCount: { color: palette.muted, fontSize: 11 },
+  emptyCard: { paddingVertical: 18 },
+  emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  emptyBody: { color: palette.muted, fontSize: 12, lineHeight: 18 },
+  textLink: { color: palette.accent, fontSize: 12, fontWeight: '700', paddingVertical: 4 },
+  weekSwitcher: { flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: palette.accentSoft, marginTop: 2 },
+  weekOption: { flex: 1, minHeight: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  weekOptionSelected: { backgroundColor: '#FFFFFF' },
+  weekOptionText: { color: palette.muted, fontSize: 12, fontWeight: '600' },
+  weekOptionTextSelected: { color: palette.accent, fontWeight: '800' },
+  dayGroup: { gap: 9, marginTop: 2 },
+  dayGroupTitle: { color: palette.muted, fontSize: 11, fontWeight: '600' },
+  quickLinks: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 4 },
+  loading: { color: palette.muted, fontSize: 13, paddingTop: 8 },
+  error: { color: palette.warning, fontSize: 13 },
+});

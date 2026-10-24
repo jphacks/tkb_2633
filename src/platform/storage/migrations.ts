@@ -1,11 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 6;
+const CURRENT_SCHEMA_VERSION = 7;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let version = versionRow?.user_version ?? 0;
+  const startingVersion = version;
 
   await database.execAsync(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`);
 
@@ -142,7 +143,7 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     (await database.getAllAsync<{ name: string }>('PRAGMA table_info(household_settings)'))
       .map((column) => column.name),
   );
-  const legacyWeatherSettings = version < CURRENT_SCHEMA_VERSION || !settingsColumns.has('weather_region');
+  const legacyWeatherSettings = version < 6 || !settingsColumns.has('weather_region');
   const weatherColumns = [
     ['weather_latitude', 'REAL'],
     ['weather_longitude', 'REAL'],
@@ -159,7 +160,37 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
   if (legacyWeatherSettings) {
     await database.execAsync('UPDATE household_settings SET weather_latitude = NULL, weather_longitude = NULL');
   }
-  if (version < CURRENT_SCHEMA_VERSION) {
+  if (version < 7) {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS appliances (
+        id TEXT PRIMARY KEY NOT NULL,
+        household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        manufacturer TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        model_number TEXT NOT NULL,
+        category TEXT,
+        display_name TEXT NOT NULL,
+        official_product_url TEXT,
+        official_manual_url TEXT NOT NULL,
+        analysis_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_appliances_household
+        ON appliances(household_id, display_name);
+
+      CREATE TABLE IF NOT EXISTS hidden_waste_occurrences (
+        schedule_id TEXT NOT NULL REFERENCES weekly_waste_schedules(id) ON DELETE CASCADE,
+        occurrence_date TEXT NOT NULL,
+        PRIMARY KEY (schedule_id, occurrence_date)
+      );
+    `);
+    if (!settingsColumns.has('notifications_enabled')) {
+      await database.execAsync('ALTER TABLE household_settings ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 0');
+    }
+    version = 7;
+  }
+  if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
   }
 }

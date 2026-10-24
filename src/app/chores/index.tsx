@@ -86,7 +86,7 @@ export default function ChoresScreen() {
         <Card><Text style={styles.emptyTitle}>家事が見つかりません</Text><Text style={styles.emptyText}>検索語やカテゴリを変えてください。</Text></Card>
       ) : visibleChores.map((chore) => (
         <Card key={chore.id} style={styles.choreCard}>
-          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} style={styles.choreCopy}>
+          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/settings/chore/[id]', params: { id: chore.id } })} style={styles.choreCopy}>
             <View style={styles.titleRow}>
               <Text style={styles.choreName}>{chore.name}</Text>
               {chore.enabled ? <StatusBadge status={statusByChore.get(chore.id) ?? 'initialPending'} /> : <Text style={styles.offTag}>OFF</Text>}
@@ -97,7 +97,7 @@ export default function ChoresScreen() {
             {chore.enabled ? <Text style={styles.period}>{scheduleLabel(snapshot.scheduleEntries.find((entry) => entry.choreId === chore.id))}</Text> : null}
           </Pressable>
           <View style={styles.footer}>
-            <AppButton title="詳細・編集" onPress={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} variant="secondary" compact />
+            <AppButton title="個別設定" onPress={() => router.push({ pathname: '/settings/chore/[id]', params: { id: chore.id } })} variant="secondary" compact />
             <View style={styles.switchRow}>
               <Text style={styles.switchLabel}>{chore.enabled ? '有効' : '無効'}</Text>
               <Switch

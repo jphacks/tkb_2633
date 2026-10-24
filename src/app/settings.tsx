@@ -4,13 +4,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
-import type { FrequencyMode } from '@/domain/chores/types';
+import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { Weekday } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { OpenMeteoGeocodingProvider } from '@/features/weather/open-meteo-geocoder';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
 import {
-  addHouseholdMember,
   clearWeatherLocation,
   saveWeatherLocation,
   setNotificationsEnabled,
@@ -47,12 +46,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [restDays, setRestDays] = useState<Weekday[]>(snapshot.settings.restDays as Weekday[]);
   const [heavyLimit, setHeavyLimit] = useState(snapshot.settings.heavyDailyLimit);
   const [normalLimit, setNormalLimit] = useState(snapshot.settings.normalDailyLimit);
-  const [memberName, setMemberName] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [weatherUpdating, setWeatherUpdating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
   const [weatherCandidates, setWeatherCandidates] = useState<WeatherRegionCandidate[]>([]);
+  const [weatherCandidate, setWeatherCandidate] = useState<WeatherRegionCandidate | null>(null);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const [notificationUpdating, setNotificationUpdating] = useState(false);
 
@@ -81,17 +81,6 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
-  const addMember = async () => {
-    try {
-      await addHouseholdMember(database, memberName);
-      setMemberName('');
-      await refresh();
-      setMessage('同居人を追加しました。家事詳細から担当を割り当てられます。');
-    } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : '追加できませんでした');
-    }
-  };
-
   const searchWeatherRegion = async () => {
     const region = weatherRegion.trim();
     if (region.length < 2) {
@@ -102,7 +91,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     setWeatherMessage(null);
     setWeatherCandidates([]);
     try {
-      const candidates = await weatherGeocoder.search(region);
+      const candidates = (await weatherGeocoder.search(region))
+        .filter((candidate) => candidate.countryCode?.toUpperCase() === 'JP');
       setWeatherCandidates(candidates);
       setWeatherMessage(candidates.length > 0
         ? { text: '候補から天気を調べたい地域を選んでください。', kind: 'success' }
@@ -117,7 +107,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
-  const selectWeatherRegion = async (candidate: WeatherRegionCandidate) => {
+  const confirmWeatherRegion = async () => {
+    const candidate = weatherCandidate;
+    if (!candidate) return;
     setWeatherUpdating(true);
     setWeatherMessage(null);
     try {
@@ -130,6 +122,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       await refresh({ waitForWeather: true });
       setWeatherRegion(weatherRegion.trim());
       setWeatherCandidates([]);
+      setWeatherCandidate(null);
       setWeatherMessage({ text: `天気を調べる地域を「${candidate.label}」に設定しました。`, kind: 'success' });
     } catch (cause) {
       setWeatherMessage({ text: cause instanceof Error ? cause.message : '地域を保存できませんでした。', kind: 'error' });
@@ -174,7 +167,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   return (
     <Page>
       <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
-      <ScreenHeading eyebrow="SETTINGS" title="設定" description="生活リズム、担当、アプリの連携枠を管理します。" />
+      <ScreenHeading eyebrow="SETTINGS" title="設定" description="家事の周期やアプリの使い方を調整できます。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
       <Card>
@@ -201,22 +194,41 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       </Card>
 
       <Card>
-        <SectionHeading title="家族・同居人" />
-        <Text style={styles.hint}>この端末内で家事の担当を分けられます。別端末との共有・同期は接続先を決めてから追加します。</Text>
-        <View style={styles.memberList}>
-          {snapshot.members.map((member) => (
-            <View key={member.id} style={styles.memberRow}>
-              <View style={styles.avatar}><Text style={styles.avatarText}>{member.displayName.slice(0, 1)}</Text></View>
-              <Text style={styles.memberName}>{member.displayName}</Text>
-              <Text style={styles.memberRole}>{member.id === 'local-member' ? 'あなた' : '同居人'}</Text>
+        <SectionHeading title="家事ごとの設定" />
+        <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
+        {groupChoresByCategory(snapshot.chores).map(([category, chores]) => {
+          const expanded = expandedCategories.has(category);
+          return (
+            <View key={category} style={styles.choreGroup}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded }}
+                onPress={() => setExpandedCategories((current) => {
+                  const next = new Set(current);
+                  if (next.has(category)) next.delete(category);
+                  else next.add(category);
+                  return next;
+                })}
+                style={styles.choreGroupHeader}>
+                <Text style={styles.choreGroupTitle}>{category}</Text>
+                <Text style={styles.groupCount}>{chores.length}件　{expanded ? '−' : '＋'}</Text>
+              </Pressable>
+              {expanded ? chores.map((chore) => (
+                <Pressable
+                  key={chore.id}
+                  accessibilityRole="button"
+                  onPress={() => router.push({ pathname: '/settings/chore/[id]', params: { id: chore.id } })}
+                  style={styles.choreSettingRow}>
+                  <View style={styles.choreSettingCopy}>
+                    <Text style={styles.choreSettingTitle}>{chore.name}</Text>
+                    <Text style={styles.hint}>{chore.enabled ? '有効' : '無効'} · 周期や負荷を調整</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              )) : null}
             </View>
-          ))}
-        </View>
-        <View style={styles.addMemberRow}>
-          <TextInput value={memberName} onChangeText={setMemberName} placeholder="名前を入力" placeholderTextColor={palette.muted} style={styles.memberInput} accessibilityLabel="同居人の名前" returnKeyType="done" />
-          <AppButton title="追加" onPress={() => void addMember()} variant="secondary" compact />
-        </View>
-        <AppButton title="家事の担当を割り当てる" onPress={() => router.push('/chores')} variant="quiet" compact />
+          );
+        })}
       </Card>
 
       <Card>
@@ -239,13 +251,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       </Card>
 
       <Card>
-        <SectionHeading title="外部機能の接続口" />
+        <SectionHeading title="天気予報・洗濯" />
         <FeatureStatus
           title="天気予報・洗濯予定"
           status={snapshot.settings.weatherLocation ? '地域指定中' : '未設定'}
           detail={snapshot.settings.weatherLocation
             ? `対象地域：${snapshot.settings.weatherLocation.displayName}。地域名と検索地点の座標は端末内に保存し、予報取得時にOpen-Meteoへ座標を送信します。`
-            : '地域名を入力して候補を選ぶと、Open-Meteoの予報で今後7日以内の洗濯予定を調整します。端末の位置情報は使いません。'}
+            : '市区町村を入力して候補を確定すると、予報を使って今後7日以内の洗濯予定を調整します。端末の位置情報は使いません。'}
         />
         <TextInput
           value={weatherRegion}
@@ -253,16 +265,17 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           onChangeText={(value) => {
             setWeatherRegion(value);
             setWeatherCandidates([]);
+            setWeatherCandidate(null);
             setWeatherMessage(null);
           }}
-          placeholder="例：横浜市、札幌市"
+          placeholder="市区町村名を入力（例：横浜市）"
           placeholderTextColor={palette.muted}
           style={styles.regionInput}
-          accessibilityLabel="天気を調べる地域"
+          accessibilityLabel="天気予報に使う市区町村"
           returnKeyType="search"
           onSubmitEditing={() => void searchWeatherRegion()}
         />
-        <Text style={styles.hint}>入力した地域名はOpen-Meteoの地域検索に送信されます。端末の位置情報は利用しません。</Text>
+        <Text style={styles.hint}>入力した市区町村名は候補検索に送信されます。候補を選んで確定すると地域を保存します。</Text>
         <View style={styles.weatherActions}>
           <AppButton
             title={weatherUpdating ? '検索・設定中…' : '地域を検索'}
@@ -283,13 +296,15 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
                 key={candidate.id}
                 accessibilityRole="button"
                 accessibilityLabel={`地域 ${candidate.label} を選択`}
+                accessibilityState={{ selected: weatherCandidate?.id === candidate.id }}
                 disabled={weatherUpdating}
-                onPress={() => void selectWeatherRegion(candidate)}
-                style={({ pressed }) => [styles.regionCandidate, pressed && styles.regionCandidatePressed]}
+                onPress={() => setWeatherCandidate(candidate)}
+                style={({ pressed }) => [styles.regionCandidate, weatherCandidate?.id === candidate.id && styles.regionCandidateSelected, pressed && styles.regionCandidatePressed]}
               >
                 <Text style={styles.regionCandidateText}>{candidate.label}</Text>
               </Pressable>
             ))}
+            <AppButton title="選択した地域で天気を設定" onPress={() => void confirmWeatherRegion()} disabled={!weatherCandidate || weatherUpdating} />
           </View>
         ) : null}
         {weatherMessage ? (
@@ -297,8 +312,6 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         ) : null}
         <View style={styles.divider} />
         <FeatureStatus title="家電お手入れ AI" status="検索操作時のみ接続" detail="家事一覧からメーカー・製品名・型番を入力して解析できます。APIキーはサーバー側だけで扱い、家電情報と確認済み結果は端末内に保存します。" />
-        <View style={styles.divider} />
-        <FeatureStatus title="家族間同期" status="未接続" detail="家事・担当・履歴は端末内に保存されます。同期先やアカウント方式は選定していません。" />
       </Card>
 
       <Text style={styles.footer}>家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。</Text>
@@ -325,6 +338,12 @@ function FeatureStatus({ title, status, detail }: { title: string; status: strin
   );
 }
 
+function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, ChoreDefinition[]][] {
+  const groups = new Map<string, ChoreDefinition[]>();
+  for (const chore of chores) groups.set(chore.category, [...(groups.get(chore.category) ?? []), chore]);
+  return [...groups.entries()];
+}
+
 const styles = StyleSheet.create({
   back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
   label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
@@ -335,18 +354,19 @@ const styles = StyleSheet.create({
   counter: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: palette.background, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
   counterButton: { color: palette.accent, fontSize: 20, fontWeight: '700', paddingHorizontal: 4 },
   counterValue: { minWidth: 18, color: palette.ink, textAlign: 'center', fontWeight: '700' },
-  memberList: { gap: 7 },
-  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
-  avatar: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accentSoft },
-  avatarText: { color: palette.accent, fontSize: 14, fontWeight: '700' },
-  memberName: { flex: 1, color: palette.ink, fontSize: 14, fontWeight: '600' },
-  memberRole: { color: palette.muted, fontSize: 11 },
-  addMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  memberInput: { flex: 1, minHeight: 42, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
+  choreGroup: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
+  choreGroupHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  choreGroupTitle: { color: palette.ink, fontSize: 14, fontWeight: '700' },
+  groupCount: { color: palette.muted, fontSize: 12, fontWeight: '600' },
+  choreSettingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
+  choreSettingCopy: { flex: 1, gap: 2 },
+  choreSettingTitle: { color: palette.ink, fontSize: 13, fontWeight: '600' },
+  chevron: { color: palette.accent, fontSize: 22 },
   regionInput: { minHeight: 44, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
   regionResults: { gap: 7 },
   regionCandidate: { minHeight: 42, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, justifyContent: 'center', backgroundColor: palette.surface },
   regionCandidatePressed: { backgroundColor: palette.accentSoft },
+  regionCandidateSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
   regionCandidateText: { color: palette.ink, fontSize: 13, fontWeight: '600' },
   feature: { gap: 5, paddingVertical: 2 },
   notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

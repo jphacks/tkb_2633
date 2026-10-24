@@ -3,39 +3,43 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthKey } from '@/domain/scheduling/local-date';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 export default function HistoryScreen() {
+  const params = useLocalSearchParams<{ choreId?: string }>();
+  const requestedChoreId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
   const { snapshot, loading, error } = usePlannerData();
   if (loading || !snapshot) return <Page><ScreenHeading eyebrow="HISTORY" title="実施履歴" description="履歴を読み込んでいます。" /></Page>;
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const membersById = new Map(snapshot.members.map((member) => [member.id, member]));
+  const selectedChore = requestedChoreId ? choresById.get(requestedChoreId) : undefined;
+  const completions = requestedChoreId
+    ? snapshot.completions.filter((item) => item.choreId === requestedChoreId)
+    : snapshot.completions;
   const thisMonth = monthKey(localDateFromDate(new Date()));
-  const completedThisMonth = snapshot.completions.filter((item) =>
+  const completedThisMonth = completions.filter((item) =>
     item.outcome === 'completed' && monthKey(localDateFromISODateTime(item.completedAt)) === thisMonth,
   ).length;
 
   return (
     <Page>
       <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
-      <ScreenHeading eyebrow="HISTORY" title="実施履歴" description="完了と未完了の記録を端末内に保存します。" />
+      <ScreenHeading eyebrow="HISTORY" title={selectedChore ? `${selectedChore.name}の履歴` : '実施履歴'} description="完了と未完了の記録を端末内に保存します。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       <Card style={styles.summary}>
         <View><Text style={styles.summaryLabel}>今月の完了</Text><Text style={styles.summaryValue}>{completedThisMonth}<Text style={styles.summaryUnit}>件</Text></Text></View>
         <Text style={styles.summaryNote}>完了日を基準に次の周期を計算します。</Text>
       </Card>
-      <SectionHeading title="最近の記録" trailing={<Text style={styles.count}>{snapshot.completions.length}件</Text>} />
-      {snapshot.completions.length === 0 ? (
+      <SectionHeading title="最近の記録" trailing={<Text style={styles.count}>{completions.length}件</Text>} />
+      {completions.length === 0 ? (
         <Card style={styles.emptyCard}>
           <Text style={styles.emptyMark}>✓</Text>
           <Text style={styles.emptyTitle}>家事の状態を記録できます</Text>
-          <Text style={styles.emptyText}>家事の詳細から「完了」または「未完了」を記録すると、日付と一緒に保存されます。</Text>
+          <Text style={styles.emptyText}>{selectedChore ? `${selectedChore.name}の完了・未完了を記録すると、ここに表示されます。` : '家事の説明から「完了」または「未完了」を記録すると、日付と一緒に保存されます。'}</Text>
           <AppButton title="今日の家事を見る" onPress={() => router.push('/')} variant="secondary" />
         </Card>
-      ) : snapshot.completions.slice(0, 100).map((completion) => {
+      ) : completions.slice(0, 100).map((completion) => {
         const chore = choresById.get(completion.choreId);
-        const memberName = completion.completedByMemberId ? membersById.get(completion.completedByMemberId)?.displayName : undefined;
         const date = localDateFromISODateTime(completion.completedAt);
         const isCompleted = completion.outcome === 'completed';
         return (
@@ -46,14 +50,14 @@ export default function HistoryScreen() {
             <View style={styles.copy}>
               <Text style={styles.choreName}>{chore?.name ?? '家事'}</Text>
               <Text style={styles.meta}>
-                {isCompleted ? '完了' : '未完了'} · {formatJapaneseDate(date, { year: true, weekday: true })}{memberName ? ` · ${memberName}` : ''}
+                {isCompleted ? '完了' : '未完了'} · {formatJapaneseDate(date, { year: true, weekday: true })}
               </Text>
             </View>
             <Text style={styles.source}>{completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : 'アプリ'}</Text>
           </Card>
         );
       })}
-      {snapshot.completions.length > 100 ? <Text style={styles.footnote}>最新の100件を表示しています。</Text> : null}
+      {completions.length > 100 ? <Text style={styles.footnote}>最新の100件を表示しています。</Text> : null}
     </Page>
   );
 }

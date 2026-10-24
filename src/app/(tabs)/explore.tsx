@@ -121,14 +121,14 @@ export default function CalendarScreen() {
             key={entry.id}
             chore={chore}
             completed={completedChoreIds.has(chore.id)}
-            onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })}
+            onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
             onToggle={() => void finish(entry.id)}
           />
         );
       })}
 
       {completedOnlyChores.map((chore) => (
-        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} />
+        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
       ))}
 
       {snapshot.scheduleEntries.some((entry) => entry.status === 'overdue') ? (
@@ -142,7 +142,7 @@ export default function CalendarScreen() {
                 key={`overdue-${entry.id}`}
                 chore={chore}
                 onToggle={() => void finish(entry.id)}
-                onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })}
+                onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
               />
             );
           })}

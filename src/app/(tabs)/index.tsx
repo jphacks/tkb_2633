@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
-import { AppMark } from '@/components/app-mark';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
 import { addDays, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, weekdayOf } from '@/domain/scheduling/local-date';
@@ -37,17 +36,14 @@ export default function HomeScreen() {
   }, [periodEnd, periodStart, snapshot, today]);
 
   if (loading || !snapshot) {
-    return <><Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} /><Page><BrandBar /><Text style={styles.loading}>今日の家事を読み込んでいます。</Text></Page></>;
+    return <><Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} /><Page><Text style={styles.loading}>今日の家事を読み込んでいます。</Text></Page></>;
   }
 
   if (!snapshot.settings.setupCompleted) {
     return (
       <>
         <Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} />
-        <Page contentStyle={styles.setupPage}>
-          {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
-          <FirstRunSetup snapshot={snapshot} onComplete={refresh} />
-        </Page>
+        <FirstRunSetup snapshot={snapshot} onComplete={refresh} loadError={error} />
       </>
     );
   }
@@ -98,12 +94,16 @@ export default function HomeScreen() {
     <>
       <Tabs.Screen options={{ tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
       <Page contentStyle={styles.homePage}>
-        <BrandBar />
         {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
 
       <View style={styles.todayHeading}>
-        <Text style={styles.date}>{formatJapaneseDate(today, { year: true, weekday: true })}</Text>
-        <Text style={styles.title}>今日のタスク</Text>
+        <View style={styles.todayCopy}>
+          <Text style={styles.date}>{formatJapaneseDate(today, { year: true, weekday: true })}</Text>
+          <Text style={styles.title}>今日のタスク</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="設定を開く" onPress={() => router.push('/settings')} style={styles.settingsButton}>
+          <Text style={styles.settingsSymbol}>⚙︎</Text>
+        </Pressable>
       </View>
 
       <Card style={styles.progressCard}>
@@ -153,10 +153,10 @@ export default function HomeScreen() {
       {pendingToday.map((entry) => {
         const chore = choresById.get(entry.choreId);
         if (!chore) return null;
-        return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} onToggle={() => void finish(entry.id)} />;
+        return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} onToggle={() => void finish(entry.id)} />;
       })}
       {completedTodayChores.map((chore) => (
-        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} />
+        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
       ))}
       {todayTotal === 0 ? (
         <Card style={styles.emptyCard}>
@@ -181,7 +181,7 @@ export default function HomeScreen() {
           {entries.map((entry) => {
             const chore = choresById.get(entry.choreId);
             if (!chore) return null;
-            return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} onToggle={() => void finish(entry.id)} />;
+            return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} onToggle={() => void finish(entry.id)} />;
           })}
         </View>
       )) : (
@@ -199,20 +199,6 @@ export default function HomeScreen() {
   );
 }
 
-function BrandBar() {
-  return (
-    <View style={styles.brandBar}>
-      <Pressable accessibilityRole="button" accessibilityLabel="家事一覧を開く" onPress={() => router.push('/chores')}>
-        <AppMark size={44} />
-      </Pressable>
-      <Text style={styles.brandName}>家事スケジュール</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="設定を開く" onPress={() => router.push('/settings')} style={styles.settingsButton}>
-        <Text style={styles.settingsSymbol}>⚙︎</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 function urgency(status: string): number {
   if (status === 'overdue') return 0;
   if (status === 'inWindow') return 1;
@@ -222,12 +208,10 @@ function urgency(status: string): number {
 
 const styles = StyleSheet.create({
   homePage: { gap: 12, paddingTop: 8, paddingBottom: 24 },
-  setupPage: { gap: 16, paddingTop: 12 },
-  brandBar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  brandName: { color: palette.ink, fontSize: 20, fontWeight: '800', flex: 1 },
+  todayHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 0 },
+  todayCopy: { flex: 1, gap: 2 },
   settingsButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
   settingsSymbol: { color: '#FFFFFF', fontSize: 24, lineHeight: 29 },
-  todayHeading: { gap: 2, marginTop: 3 },
   date: { color: palette.muted, fontSize: 11, fontWeight: '500' },
   title: { color: palette.ink, fontSize: 28, fontWeight: '800' },
   progressCard: { backgroundColor: '#ECFAFD', borderColor: '#ECFAFD', padding: 17, gap: 10 },

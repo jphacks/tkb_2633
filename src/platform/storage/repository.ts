@@ -485,9 +485,19 @@ export interface SetupSubmission {
   notificationsEnabled?: boolean;
   enabledChoreIds: EntityId[];
   previousDates: Record<EntityId, { date?: LocalDate; estimated?: boolean; unknownReason?: 'unknown' | 'skipped' }>;
+  weatherLocation: WeatherLocation | null;
 }
 
 export async function completeFirstSetup(database: SQLiteDatabase, submission: SetupSubmission): Promise<void> {
+  if (submission.weatherLocation) {
+    const { region, displayName, latitude, longitude } = submission.weatherLocation;
+    if (region.trim().length < 2 || region.trim().length > 120
+      || displayName.trim().length < 2 || displayName.trim().length > 200
+      || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+      || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      throw new RangeError('天気を調べる地域を候補から選んでください');
+    }
+  }
   const enabled = new Set(submission.enabledChoreIds);
   const definitions = await database.getAllAsync<DefinitionRow>(
     'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
@@ -496,9 +506,15 @@ export async function completeFirstSetup(database: SQLiteDatabase, submission: S
 
   await database.withTransactionAsync(async () => {
     await database.runAsync(
-      `UPDATE household_settings SET frequency_mode = ?, rest_days_json = ?, notifications_enabled = ?, setup_completed = 1, updated_at = ?
+      `UPDATE household_settings SET frequency_mode = ?, rest_days_json = ?, notifications_enabled = ?, setup_completed = 1,
+       weather_region = ?, weather_region_name = ?, weather_latitude = ?, weather_longitude = ?, updated_at = ?
        WHERE household_id = ?`,
-      submission.frequencyMode, JSON.stringify(submission.restDays), submission.notificationsEnabled ? 1 : 0, now, LOCAL_HOUSEHOLD_ID,
+      submission.frequencyMode, JSON.stringify(submission.restDays), submission.notificationsEnabled ? 1 : 0,
+      submission.weatherLocation?.region.trim() ?? null,
+      submission.weatherLocation?.displayName.trim() ?? null,
+      submission.weatherLocation ? Math.round(submission.weatherLocation.latitude * 100) / 100 : null,
+      submission.weatherLocation ? Math.round(submission.weatherLocation.longitude * 100) / 100 : null,
+      now, LOCAL_HOUSEHOLD_ID,
     );
     for (const row of definitions) {
       const isEnabled = enabled.has(row.id);

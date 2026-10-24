@@ -25,7 +25,8 @@ export default function AppTabs() {
     }}>
       <Tabs.Screen name="index" options={{ title: 'ホーム', tabBarIcon: tabIcon('⌂') }} />
       <Tabs.Screen name="explore" options={{ title: 'カレンダー', tabBarIcon: tabIcon('▦') }} />
-      <Tabs.Screen name="manual" options={{ title: '説明', tabBarIcon: tabIcon('▤') }} />
+      <Tabs.Screen name="guide" options={{ title: '家事の説明', tabBarIcon: tabIcon('≡') }} />
+      <Tabs.Screen name="manual" options={{ title: '家電の説明', tabBarIcon: tabIcon('▤') }} />
     </Tabs>
   );
 }

@@ -13,6 +13,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="chores" options={{ headerShown: false }} />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="settings/chore/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="history" />
           <Stack.Screen name="waste" options={{ headerShown: false }} />
         </Stack>

@@ -82,9 +82,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
-  const confirmWeatherRegion = async () => {
-    const candidate = weatherCandidate;
-    if (!candidate) return;
+  const selectWeatherRegion = async (candidate: WeatherRegionCandidate) => {
+    if (weatherUpdating) return;
+    setWeatherCandidate(candidate);
     setWeatherUpdating(true);
     setWeatherMessage(null);
     try {
@@ -96,10 +96,10 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       });
       await refresh({ waitForWeather: true });
       setWeatherRegion(weatherRegion.trim());
-      setWeatherResultsDismissed(true);
-      setWeatherCandidate(null);
+      setWeatherResultsDismissed(false);
       setWeatherMessage({ text: `天気を調べる地域を「${candidate.label}」に設定しました。`, kind: 'success' });
     } catch (cause) {
+      setWeatherCandidate(null);
       setWeatherMessage({ text: cause instanceof Error ? cause.message : '地域を保存できませんでした。', kind: 'error' });
     } finally {
       setWeatherUpdating(false);
@@ -268,13 +268,12 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
                 accessibilityLabel={`地域 ${candidate.label} を選択`}
                 accessibilityState={{ selected: weatherCandidate?.id === candidate.id }}
                 disabled={weatherUpdating}
-                onPress={() => setWeatherCandidate(candidate)}
+                onPress={() => void selectWeatherRegion(candidate)}
                 style={({ pressed }) => [styles.regionCandidate, weatherCandidate?.id === candidate.id && styles.regionCandidateSelected, pressed && styles.regionCandidatePressed]}
               >
                 <Text style={styles.regionCandidateText}>{candidate.label}</Text>
               </Pressable>
             ))}
-            <AppButton title="選択した市区町村で天気を設定" onPress={() => void confirmWeatherRegion()} disabled={!weatherCandidate || weatherUpdating} />
           </View>
         ) : null}
         {weatherSuggestions.status === 'empty' && !weatherResultsDismissed

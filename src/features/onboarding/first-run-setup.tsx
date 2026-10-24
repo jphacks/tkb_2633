@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
@@ -42,11 +42,22 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   const [weatherLocation, setWeatherLocation] = useState<WeatherLocation | null>(snapshot.settings.weatherLocation ?? null);
   const [weatherSearchEnabled, setWeatherSearchEnabled] = useState(false);
   const [weatherCandidate, setWeatherCandidate] = useState<WeatherRegionCandidate | null>(null);
-  const [weatherResultsDismissed, setWeatherResultsDismissed] = useState(false);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void notificationGateway.requestPermission()
+      .then((granted) => {
+        if (mounted) setNotificationsEnabled(granted);
+      })
+      .catch(() => {
+        if (mounted) setNotificationsEnabled(false);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const toggleRestDay = (weekday: Weekday) => {
     setRestDays((current) => current.includes(weekday)
@@ -63,32 +74,15 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
     });
   };
 
-  const toggleNotifications = async (enabled: boolean) => {
-    setError(null);
-    if (!enabled) {
-      setNotificationsEnabled(false);
-      return;
-    }
-    try {
-      const granted = await notificationGateway.requestPermission();
-      setNotificationsEnabled(granted);
-      if (!granted) setError('通知は有効になりませんでした。端末の設定から許可できます。');
-    } catch {
-      setError('通知の許可を確認できませんでした。設定から後で変更できます。');
-    }
-  };
-
-  const confirmWeatherCandidate = () => {
-    if (!weatherCandidate) return;
+  const selectWeatherCandidate = (candidate: WeatherRegionCandidate) => {
+    setWeatherCandidate(candidate);
     setWeatherLocation({
       region: weatherRegion.trim(),
-      displayName: weatherCandidate.label,
-      latitude: weatherCandidate.latitude,
-      longitude: weatherCandidate.longitude,
+      displayName: candidate.label,
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
     });
-    setWeatherMessage({ text: `「${weatherCandidate.label}」を天気に使う地域として選択しました。`, kind: 'success' });
-    setWeatherResultsDismissed(true);
-    setWeatherCandidate(null);
+    setWeatherMessage({ text: `「${candidate.label}」を天気に使う地域として選択しました。`, kind: 'success' });
   };
 
   const saveSetup = async (skipPreviousDates: boolean) => {
@@ -224,13 +218,6 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
                 </View>
               ))}
             </View>
-            <View style={styles.notificationCard}>
-              <View style={styles.notificationCopy}>
-                <Text style={styles.label}>家事の通知を受け取る</Text>
-                <Text style={styles.hint}>オンにすると端末の通知許可を確認します。通知時刻は設定画面から変更できます。</Text>
-              </View>
-              <Switch value={notificationsEnabled} onValueChange={(value) => void toggleNotifications(value)} />
-            </View>
           </>
         ) : null}
 
@@ -246,7 +233,6 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
                   setWeatherLocation(null);
                   setWeatherCandidate(null);
                   setWeatherSearchEnabled(true);
-                  setWeatherResultsDismissed(false);
                   setWeatherMessage(null);
                 }}
                 placeholder="例：横浜市、札幌市"
@@ -257,7 +243,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
               />
               {weatherSuggestions.status === 'searching' ? <ActivityIndicator color={palette.accent} /> : null}
             </View>
-            {weatherSuggestions.candidates.length > 0 && !weatherResultsDismissed ? (
+            {weatherSuggestions.candidates.length > 0 ? (
               <View style={styles.regionResults}>
                 <Text style={styles.label}>候補を選択</Text>
                 {weatherSuggestions.candidates.map((candidate) => (
@@ -265,18 +251,17 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
                     key={candidate.id}
                     accessibilityRole="button"
                     accessibilityState={{ selected: weatherCandidate?.id === candidate.id }}
-                    onPress={() => setWeatherCandidate(candidate)}
+                    onPress={() => selectWeatherCandidate(candidate)}
                     style={[styles.regionCandidate, weatherCandidate?.id === candidate.id && styles.regionCandidateSelected]}>
                     <Text style={styles.regionCandidateText}>{candidate.label}</Text>
                   </Pressable>
                 ))}
-                <AppButton title="選択した市区町村を確定" onPress={confirmWeatherCandidate} disabled={!weatherCandidate} />
               </View>
             ) : null}
-            {weatherSuggestions.status === 'empty' && !weatherResultsDismissed
+            {weatherSuggestions.status === 'empty'
               ? <Text style={styles.hint}>市区町村が見つかりませんでした。市区町村名を変えてください。</Text>
               : null}
-            {weatherSuggestions.status === 'error' && !weatherResultsDismissed
+            {weatherSuggestions.status === 'error'
               ? <Text style={styles.error}>{weatherSuggestions.error}</Text>
               : null}
             {weatherSuggestions.status === 'debouncing' || weatherSuggestions.status === 'searching'
@@ -344,8 +329,6 @@ const styles = StyleSheet.create({
   weekdayName: { color: palette.ink, fontSize: 15, fontWeight: '600' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   hint: { color: palette.muted, fontSize: 12, lineHeight: 18 },
-  notificationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 13, borderWidth: 1, borderColor: palette.border, backgroundColor: '#FFFFFF', marginTop: 4 },
-  notificationCopy: { flex: 1, gap: 4 },
   choreList: { gap: 7 },
   choreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, paddingVertical: 9 },
   choreCopy: { flex: 1, gap: 3, paddingRight: 10 },

@@ -15,7 +15,20 @@ import type {
 } from '@/features/notifications/contracts';
 
 export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
+  private permissionRequest: Promise<boolean> | null = null;
+
   async requestPermission(): Promise<boolean> {
+    if (this.permissionRequest) return this.permissionRequest;
+    const request = this.requestPermissionOnce();
+    this.permissionRequest = request;
+    try {
+      return await request;
+    } finally {
+      if (this.permissionRequest === request) this.permissionRequest = null;
+    }
+  }
+
+  private async requestPermissionOnce(): Promise<boolean> {
     if (Platform.OS === 'android') {
       await setNotificationChannelAsync('housework-reminders', {
         name: '家事のお知らせ',

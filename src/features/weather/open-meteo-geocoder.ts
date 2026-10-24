@@ -67,6 +67,16 @@ export class OpenMeteoGeocodingProvider {
     const query = region.trim();
     if (query.length < 2 || query.length > 120) throw new RangeError('市区町村名は2〜120文字で入力してください');
 
+    const kanaQuery = toKanaSearchQuery(query);
+    if (kanaQuery !== null) {
+      if (kanaQuery.length < 2) return [];
+      return (await this.searchName(kanaQuery, signal))
+        .filter(isMunicipality)
+        .sort((left, right) => (right.population ?? 0) - (left.population ?? 0)
+          || left.label.localeCompare(right.label, 'ja'))
+        .slice(0, 8);
+    }
+
     // Open-Meteo treats two-character searches as exact matches. Add the common
     // city suffix for shorthand input so "横浜" resolves to "横浜市".
     const searchName = /[市区町村]$/u.test(query) ? query : `${query}市`;
@@ -99,6 +109,79 @@ export class OpenMeteoGeocodingProvider {
       signal?.removeEventListener('abort', abort);
     }
   }
+}
+
+const kanaToRomaji: Record<string, string> = {
+  あ: 'a', い: 'i', う: 'u', え: 'e', お: 'o',
+  か: 'ka', き: 'ki', く: 'ku', け: 'ke', こ: 'ko',
+  さ: 'sa', し: 'shi', す: 'su', せ: 'se', そ: 'so',
+  た: 'ta', ち: 'chi', つ: 'tsu', て: 'te', と: 'to',
+  な: 'na', に: 'ni', ぬ: 'nu', ね: 'ne', の: 'no',
+  は: 'ha', ひ: 'hi', ふ: 'fu', へ: 'he', ほ: 'ho',
+  ま: 'ma', み: 'mi', む: 'mu', め: 'me', も: 'mo',
+  や: 'ya', ゆ: 'yu', よ: 'yo',
+  ら: 'ra', り: 'ri', る: 'ru', れ: 're', ろ: 'ro',
+  わ: 'wa', を: 'o', ん: 'n',
+  が: 'ga', ぎ: 'gi', ぐ: 'gu', げ: 'ge', ご: 'go',
+  ざ: 'za', じ: 'ji', ず: 'zu', ぜ: 'ze', ぞ: 'zo',
+  だ: 'da', ぢ: 'ji', づ: 'zu', で: 'de', ど: 'do',
+  ば: 'ba', び: 'bi', ぶ: 'bu', べ: 'be', ぼ: 'bo',
+  ぱ: 'pa', ぴ: 'pi', ぷ: 'pu', ぺ: 'pe', ぽ: 'po',
+  ゔ: 'vu',
+};
+
+const kanaDigraphToRomaji: Record<string, string> = {
+  きゃ: 'kya', きゅ: 'kyu', きょ: 'kyo',
+  しゃ: 'sha', しゅ: 'shu', しょ: 'sho',
+  ちゃ: 'cha', ちゅ: 'chu', ちょ: 'cho',
+  にゃ: 'nya', にゅ: 'nyu', にょ: 'nyo',
+  ひゃ: 'hya', ひゅ: 'hyu', ひょ: 'hyo',
+  みゃ: 'mya', みゅ: 'myu', みょ: 'myo',
+  りゃ: 'rya', りゅ: 'ryu', りょ: 'ryo',
+  ぎゃ: 'gya', ぎゅ: 'gyu', ぎょ: 'gyo',
+  じゃ: 'ja', じゅ: 'ju', じょ: 'jo',
+  びゃ: 'bya', びゅ: 'byu', びょ: 'byo',
+  ぴゃ: 'pya', ぴゅ: 'pyu', ぴょ: 'pyo',
+  てぃ: 'ti', でぃ: 'di', ふぁ: 'fa', ふぃ: 'fi', ふぇ: 'fe', ふぉ: 'fo',
+};
+
+/** Converts kana location queries to the romanized names indexed by Open-Meteo. */
+function toKanaSearchQuery(value: string): string | null {
+  const normalized = value.normalize('NFKC');
+  if (!/^[\u3041-\u3096\u30A1-\u30FA\u30FC\s]+$/u.test(normalized)) return null;
+
+  const hiragana = [...normalized].map((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint >= 0x30a1 && codePoint <= 0x30f6
+      ? String.fromCodePoint(codePoint - 0x60)
+      : character;
+  }).join('').replace(/\s/gu, '');
+  const municipalitySuffixes = ['ちょう', 'まち', 'むら', 'そん', 'し', 'く'];
+  const municipalitySuffix = municipalitySuffixes.find((suffix) => hiragana.endsWith(suffix));
+  const name = municipalitySuffix ? hiragana.slice(0, -municipalitySuffix.length) : hiragana;
+  let result = '';
+
+  for (let index = 0; index < name.length; index += 1) {
+    const character = name[index];
+    if (character === 'っ') {
+      const next = kanaDigraphToRomaji[name.slice(index + 1, index + 3)]
+        ?? kanaToRomaji[name[index + 1]];
+      if (next) result += next.startsWith('ch') ? 'c' : /^[bcdfghjklmnpqrstvwxyz]/u.exec(next)?.[0] ?? '';
+      continue;
+    }
+    if (character === 'ー') continue;
+
+    const digraph = kanaDigraphToRomaji[name.slice(index, index + 2)];
+    if (digraph) {
+      result += digraph;
+      index += 1;
+    } else {
+      result += kanaToRomaji[character] ?? '';
+    }
+  }
+
+  // Common Japanese place-name spellings omit long-vowel marks (Tokyo, Osaka, Kyoto).
+  return result.replace(/ou/gu, 'o').replace(/([aeiou])\1+/gu, '$1');
 }
 
 function isMunicipality(candidate: WeatherRegionCandidate): boolean {

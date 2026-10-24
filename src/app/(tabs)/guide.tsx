@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
@@ -11,10 +11,18 @@ import { recordIncompleteChore } from '@/platform/storage/repository';
 export default function ChoreGuideScreen() {
   const params = useLocalSearchParams<{ choreId?: string }>();
   const requestedId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
+  const navigation = useNavigation<{
+    addListener(event: 'tabPress', callback: () => void): () => void;
+    setParams(params: { choreId?: string | undefined }): void;
+  }>();
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [selection, setSelection] = useState<{ routeId?: string; choreId?: string }>({ routeId: requestedId });
   const [recordingIncomplete, setRecordingIncomplete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => navigation.addListener('tabPress', () => {
+    setSelection({ routeId: requestedId });
+    navigation.setParams({ choreId: undefined });
+  }), [navigation, requestedId]);
   const selectedChoreId = selection.routeId === requestedId
     ? selection.choreId ?? requestedId
     : requestedId;
@@ -24,7 +32,7 @@ export default function ChoreGuideScreen() {
   }
 
   const chores = snapshot.chores;
-  const selectedChore = chores.find((chore) => chore.id === selectedChoreId) ?? chores[0];
+  const selectedChore = selectedChoreId ? chores.find((chore) => chore.id === selectedChoreId) : undefined;
   const currentEntry = selectedChore
     ? snapshot.scheduleEntries.filter((entry) => entry.choreId === selectedChore.id)
       .find((entry) => entry.status === 'overdue' || entry.status === 'inWindow' || entry.status === 'initialPending')
@@ -47,15 +55,46 @@ export default function ChoreGuideScreen() {
     }
   };
 
+  if (!selectedChoreId) {
+    return (
+      <Page>
+        <ScreenHeading title="家事の説明" description="説明を見たい家事を選んでください。" />
+        {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+        {chores.length > 0 ? (
+          <View style={styles.choreList}>
+            {chores.map((chore) => (
+              <Pressable
+                key={chore.id}
+                accessibilityRole="button"
+                onPress={() => setSelection({ routeId: requestedId, choreId: chore.id })}
+                style={({ pressed }) => [styles.choreListRow, pressed && styles.choreListRowPressed]}>
+                <View style={styles.choreListCopy}>
+                  <Text style={styles.choreListName}>{chore.name}</Text>
+                  <Text style={styles.choreListCategory}>{chore.category}</Text>
+                </View>
+                <Text style={styles.choreListChevron}>›</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : <Card><Text style={styles.body}>家事がまだ登録されていません。</Text></Card>}
+      </Page>
+    );
+  }
+
   return (
     <Page>
-      <Pressable accessibilityRole="button" accessibilityLabel="前の画面に戻る" onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>‹  戻る</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="前の画面に戻る"
+        onPress={() => requestedId ? router.back() : setSelection({ routeId: requestedId })}
+        style={styles.backButton}>
+        <Text style={styles.backArrow}>‹</Text>
+        <Text style={styles.backText}>戻る</Text>
       </Pressable>
-      <ScreenHeading title="家事の説明" description="ホームで選んだ家事の手順、必要な道具、注意事項を確認できます。" />
+      <ScreenHeading title="家事の説明" description="手順、必要な道具、注意事項を確認できます。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       {selectedChore ? <ChoreGuide chore={selectedChore} /> : (
-        <Card><Text style={styles.body}>家事がまだ登録されていません。</Text></Card>
+        <Card><Text style={styles.body}>選んだ家事が見つかりませんでした。</Text></Card>
       )}
       {selectedChore ? (
         <AppButton
@@ -128,8 +167,16 @@ function ChoreGuide({ chore }: { chore: ChoreDefinition }) {
 }
 
 const styles = StyleSheet.create({
-  backButton: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingRight: 12 },
-  backText: { color: palette.accent, fontSize: 14, fontWeight: '700' },
+  backButton: { alignSelf: 'flex-start', minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingRight: 14, gap: 3 },
+  backArrow: { color: palette.accent, fontSize: 34, lineHeight: 40, fontWeight: '600' },
+  backText: { color: palette.accent, fontSize: 17, fontWeight: '700' },
+  choreList: { gap: 10 },
+  choreListRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: palette.border, borderRadius: 16, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 12 },
+  choreListRowPressed: { backgroundColor: palette.accentSoft },
+  choreListCopy: { flex: 1, gap: 4 },
+  choreListName: { color: palette.ink, fontSize: 16, fontWeight: '700' },
+  choreListCategory: { color: palette.muted, fontSize: 12 },
+  choreListChevron: { color: palette.accent, fontSize: 31, lineHeight: 36, fontWeight: '500', paddingLeft: 12 },
   otherChores: { gap: 8, paddingTop: 5 },
   recordActions: { gap: 4 },
   chorePicker: { gap: 8, paddingRight: 20 },

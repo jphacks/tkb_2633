@@ -12,6 +12,7 @@ export default function ChoresScreen() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('すべて');
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const categories = useMemo(() => ['すべて', ...new Set(snapshot?.chores.map((chore) => chore.category) ?? [])], [snapshot?.chores]);
   const visibleChores = useMemo(() => {
@@ -33,9 +34,12 @@ export default function ChoresScreen() {
 
   const toggle = async (chore: ChoreDefinition, enabled: boolean) => {
     setWorkingId(chore.id);
+    setToggleError(null);
     try {
       await setChoreEnabled(database, chore.id, enabled);
       await refresh();
+    } catch (cause) {
+      setToggleError(cause instanceof Error ? cause.message : '家事の設定を変更できませんでした。');
     } finally {
       setWorkingId(null);
     }
@@ -45,6 +49,12 @@ export default function ChoresScreen() {
     <Page>
       <ScreenHeading eyebrow="CHORES" title="家事一覧" description={`${snapshot.chores.filter((chore) => chore.enabled).length}件の家事を有効にしています。検索や設定変更ができます。`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+      {toggleError ? <Card><Text style={styles.error}>{toggleError}</Text></Card> : null}
+      <Card style={styles.applianceCard}>
+        <Text style={styles.applianceTitle}>家電のお手入れを追加</Text>
+        <Text style={styles.emptyText}>メーカー公式の取扱説明書を確認し、お手入れ項目を選んで家事に登録できます。</Text>
+        <AppButton title="家電を公式資料から調べる" onPress={() => router.push('/chores/appliance-care')} compact />
+      </Card>
       <TextInput
         accessibilityLabel="家事を検索"
         value={query}
@@ -66,7 +76,9 @@ export default function ChoresScreen() {
               <Text style={styles.choreName}>{chore.name}</Text>
               {chore.enabled ? <StatusBadge status={statusByChore.get(chore.id) ?? 'initialPending'} /> : <Text style={styles.offTag}>OFF</Text>}
             </View>
-            <Text style={styles.meta}>{chore.category} · {chore.recommendedCycleDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日ごと{chore.estimatedMinutes ? ` · 約${chore.estimatedMinutes}分` : ''}</Text>
+            <Text style={styles.meta}>{chore.category} · {chore.requiresCycleSelection
+              ? '周期未設定'
+              : `${chore.recommendedCycleDays ?? chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日ごと`}{chore.estimatedMinutes ? ` · 約${chore.estimatedMinutes}分` : ''}</Text>
             {chore.enabled ? <Text style={styles.period}>{scheduleLabel(snapshot.scheduleEntries.find((entry) => entry.choreId === chore.id))}</Text> : null}
           </Pressable>
           <View style={styles.footer}>
@@ -75,7 +87,7 @@ export default function ChoresScreen() {
               <Text style={styles.switchLabel}>{chore.enabled ? '有効' : '無効'}</Text>
               <Switch
                 value={chore.enabled}
-                disabled={workingId === chore.id}
+                disabled={workingId === chore.id || (!chore.enabled && Boolean(chore.requiresCycleSelection))}
                 onValueChange={(value) => void toggle(chore, value)}
                 trackColor={{ false: '#D5DAD4', true: '#A8C5AF' }}
                 thumbColor={chore.enabled ? palette.accent : '#FFFFFF'}
@@ -103,6 +115,8 @@ const styles = StyleSheet.create({
   search: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, color: palette.ink, fontSize: 14 },
   categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   choreCard: { gap: 12 },
+  applianceCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
+  applianceTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
   choreCopy: { gap: 5 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   choreName: { flex: 1, color: palette.ink, fontSize: 16, fontWeight: '700' },

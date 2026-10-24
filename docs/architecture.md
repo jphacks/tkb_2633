@@ -11,7 +11,7 @@
 
 - `src/app/index.tsx`: 初回設定、今日と近い家事、ゴミ収集日、完了操作
 - `src/app/explore.tsx`: 月間カレンダー。複数日にまたがる実施期間を表示
-- `src/app/chores/`: 家事一覧、検索、個別設定、手順・道具・注意点、担当と依存関係
+- `src/app/chores/`: 家事一覧、検索、個別設定、手順・道具・注意点、担当と依存関係、公式資料による家電お手入れ登録
 - `src/app/history.tsx`: 完了・未完了の日時・担当・実施元の履歴
 - `src/app/settings.tsx`: 頻度、休日、負荷上限、メンバー、機能接続状態
 - `src/app/waste.tsx`: ゴミ収集曜日の登録・編集・削除・通常収集日の表示
@@ -67,7 +67,20 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 
 ### 家電AI
 
-`src/features/appliance-care/contracts.ts` はメーカー公式資料に根拠を付けた解析結果の形を定義します。AI API、資料の検索・取得、結果確認、家事への追加は未接続です。
+- `src/app/chores/appliance-care.tsx`: メーカー、製品名、型番の入力、解析結果の確認、項目選択、既存家事への登録
+- `src/features/appliance-care/api-client.ts`: ExpoからAPIサーバーを呼ぶクライアント。iOS/Android Emulatorの初期URLと実機用環境変数を持つ
+- `src/features/appliance-care/contracts.ts`: 解析draftと公式出典の既存契約
+- `src/features/appliance-care/to-chore-definition.ts`: 承認された解析taskを既存 `ChoreDefinition` へ変換
+- `server/appliance-care-api/src/product-resolver.mjs`: 公式ドメイン限定の製品同定
+- `server/appliance-care-api/src/manual-resolver.mjs`: 公式資料の検索、PDF優先、URLとリダイレクト検証
+- `server/appliance-care-api/src/manual-analyzer.mjs`: PDFまたは公式Web資料をOpenAI Responses APIへ渡し、構造化結果を検証
+- `server/appliance-care-api/src/openai-responses-client.mjs`: サーバー専用のAPIキーでResponses APIを呼び出す
+
+`POST /api/appliance-care/analyze` は構造化されたメーカー名・製品名・型番を受け、`verified`、`ambiguous`、`not_found`、`error` を返します。Product Resolverが明確に一致した製品だけをManual Resolverへ渡します。検索候補と最終URLの両方が許可された公式ドメインに一致しない場合は採用しません。PDFが特定できたときは公式PDF URLをResponses APIの `input_file` として渡し、AIにはメーカー資料から根拠のあるお手入れだけをJSON Schemaで抽出させます。条件型の手入れに数値周期を推測させず、evidence URL、タスク重複、文字列長、周期範囲をコード側でも検証します。
+
+AI結果は `requiresUserReview: true` のdraftです。画面で選ばれた項目のみローカルSQLiteへ追加します。メーカー指定周期とユーザーの上書き周期は別フィールドです。周期がないtaskは「メーカー指定なし」と表示し、ユーザーが周期を決めるまで無効・未スケジュール状態で保存します。
+
+APIは特定クラウドに依存しないNode.jsモジュールです。ローカルは `npm run api:dev` で起動し、`OPENAI_API_KEY` はAPIサーバーの `.env.server` にのみ設定します。`.env.server.example` は空のキー欄を持つ雛形です。Expoクライアントにはキーを含めません。実OpenAI APIは手動E2Eに限り、通常テストではHTTP、検索結果、説明書取得、AI出力をmockします。
 
 ### 家族・同居人
 

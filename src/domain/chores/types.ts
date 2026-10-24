@@ -5,6 +5,20 @@ export type FrequencyMode = 'frequent' | 'balanced' | 'relaxed';
 export type LaundryDryingPreference = 'indoors' | 'outdoors' | 'either';
 export type ChoreStatus = 'initialPending' | 'scheduled' | 'inWindow' | 'overdue';
 
+export interface ChoreSourceEvidence {
+  url: string;
+  pageOrSection?: string;
+}
+
+export interface ApplianceCareSource {
+  manufacturer: string;
+  productName: string;
+  modelNumber: string;
+  manualUrl: string;
+  analyzedAt: ISODateTime;
+  evidence: ChoreSourceEvidence[];
+}
+
 export interface ChoreDefinition {
   id: EntityId;
   householdId: EntityId;
@@ -14,6 +28,12 @@ export interface ChoreDefinition {
   enabled: boolean;
   /** User override. When unset, the selected frequency mode supplies the cycle. */
   recommendedCycleDays?: number;
+  /** Manufacturer-stated starting interval. User edits are stored separately above. */
+  manufacturerRecommendedIntervalDays?: number;
+  /** Conditions stated by the manufacturer when no fixed cycle is specified. */
+  manufacturerRecommendedConditions?: string[];
+  /** True when the manufacturer gave no interval and the user has not selected one. */
+  requiresCycleSelection?: boolean;
   frequencyDaysByMode: Record<FrequencyMode, number>;
   /** Radius around the target date; 1 means target ±1 day. */
   windowRadiusDays: number;
@@ -28,6 +48,8 @@ export interface ChoreDefinition {
   tools: string[];
   cautions: string[];
   estimatedMinutes?: number;
+  /** Provenance for appliance-care chores created from a reviewed official manual analysis. */
+  applianceCareSource?: ApplianceCareSource;
 }
 
 export interface ChoreAssignment {

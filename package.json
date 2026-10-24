@@ -44,6 +44,7 @@
     "android": "expo run:android",
     "ios": "XCODE_XCCONFIG_FILE=./ios-build.xcconfig expo run:ios",
     "web": "expo start --web",
+    "api:dev": "node --env-file-if-exists=.env.server server/appliance-care-api/src/index.mjs",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.mjs",

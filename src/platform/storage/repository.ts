@@ -16,6 +16,9 @@ import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
+import type { ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
+import type { ApprovedApplianceCareTask, ApplianceCareProductIdentity } from '@/features/appliance-care/to-chore-definition';
+import { toApplianceCareChore } from '@/features/appliance-care/to-chore-definition';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
@@ -475,12 +478,52 @@ export async function updateChoreDefinition(
   );
 }
 
+export async function addApprovedApplianceCareChores(
+  database: SQLiteDatabase,
+  product: ApplianceCareProductIdentity,
+  analysis: ApplianceCareAnalysisDraft,
+  approvedTasks: readonly ApprovedApplianceCareTask[],
+): Promise<EntityId[]> {
+  if (approvedTasks.length === 0 || approvedTasks.length > 40) {
+    throw new RangeError('登録するお手入れ項目を1〜40件選んでください。');
+  }
+  await ensureLocalHousehold(database);
+  const definitions = approvedTasks.map((approved) => toApplianceCareChore(
+    createId('appliance-care'),
+    LOCAL_HOUSEHOLD_ID,
+    product,
+    analysis,
+    approved,
+  ));
+
+  await database.withTransactionAsync(async () => {
+    for (const definition of definitions) {
+      await database.runAsync(
+        'INSERT INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, ?, ?)',
+        definition.id, definition.householdId, definition.name, definition.enabled ? 1 : 0, JSON.stringify(definition),
+      );
+      await database.runAsync(
+        'INSERT INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)',
+        definition.id, 'skipped',
+      );
+      await database.runAsync(
+        'INSERT INTO chore_assignments (chore_id, member_id) VALUES (?, ?)',
+        definition.id, LOCAL_MEMBER_ID,
+      );
+    }
+  });
+  return definitions.map((definition) => definition.id);
+}
+
 export async function setChoreEnabled(database: SQLiteDatabase, choreId: EntityId, enabled: boolean): Promise<void> {
   const row = await database.getFirstAsync<{ definition_json: string }>(
     'SELECT definition_json FROM chore_definitions WHERE id = ?', choreId,
   );
   if (!row) throw new Error('Chore not found');
   const definition = { ...(JSON.parse(row.definition_json) as ChoreDefinition), enabled };
+  if (enabled && definition.requiresCycleSelection) {
+    throw new Error('メーカー指定の周期がありません。周期を設定してから有効にしてください。');
+  }
   await database.runAsync(
     'UPDATE chore_definitions SET enabled = ?, definition_json = ? WHERE id = ?',
     enabled ? 1 : 0, JSON.stringify(definition), choreId,

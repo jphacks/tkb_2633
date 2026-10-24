@@ -294,7 +294,9 @@ function appendRecurringEntries(options: {
 }
 
 function effectiveCycleDays(chore: ChoreDefinition, mode: ScheduleGenerationInput['settings']['frequencyMode']): number {
-  const days = chore.recommendedCycleDays ?? chore.frequencyDaysByMode[mode];
+  const days = chore.recommendedCycleDays
+    ?? chore.manufacturerRecommendedIntervalDays
+    ?? chore.frequencyDaysByMode[mode];
   if (!Number.isInteger(days) || days <= 0) {
     throw new RangeError(`Chore ${chore.id} must have a positive cycle in days`);
   }

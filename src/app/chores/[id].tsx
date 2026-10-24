@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette } from '@/components/planner-ui';
 import type { ChoreDefinition, ChoreLoad, LaundryDryingPreference } from '@/domain/chores/types';
@@ -39,7 +39,10 @@ function ChoreDetailContent({
   refresh: () => Promise<void>;
   database: SQLiteDatabase;
 }) {
-  const [cycleText, setCycleText] = useState(String(chore.recommendedCycleDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]));
+  const [cycleText, setCycleText] = useState(chore.requiresCycleSelection
+    ? ''
+    : String(chore.recommendedCycleDays ?? chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]));
+  const [cycleWasEdited, setCycleWasEdited] = useState(false);
   const [radiusText, setRadiusText] = useState(String(chore.windowRadiusDays));
   const [load, setLoad] = useState<ChoreLoad>(chore.load);
   const [holidayPriority, setHolidayPriority] = useState(chore.holidayPriority);
@@ -75,6 +78,10 @@ function ChoreDetailContent({
       setMessage('周期は1〜3650日の整数で入力してください。');
       return;
     }
+    if (enabled && chore.requiresCycleSelection && cycleDays === undefined) {
+      setMessage('メーカー指定の周期がありません。家事を有効にする前に周期を入力してください。');
+      return;
+    }
     if (!Number.isInteger(windowRadiusDays) || windowRadiusDays < 0 || windowRadiusDays > 7) {
       setMessage('期間幅は±0〜±7日の整数で入力してください。');
       return;
@@ -92,7 +99,14 @@ function ChoreDetailContent({
         holidayPriority,
         laundryDryingPreference: chore.category === '洗濯' ? dryingPreference : chore.laundryDryingPreference,
         windowRadiusDays,
-        recommendedCycleDays: cycleDays,
+        recommendedCycleDays: !cycleWasEdited
+          ? chore.recommendedCycleDays
+          : cycleDays === chore.manufacturerRecommendedIntervalDays
+            ? undefined
+            : cycleDays,
+        requiresCycleSelection: Boolean(chore.applianceCareSource
+          && chore.manufacturerRecommendedIntervalDays === undefined
+          && (!cycleWasEdited ? chore.recommendedCycleDays === undefined : cycleDays === undefined)),
       };
       await updateChoreDefinition(database, updated);
       await refresh();
@@ -181,15 +195,39 @@ function ChoreDetailContent({
         </Card>
       ) : null}
 
+      {chore.applianceCareSource ? (
+        <Card>
+          <SectionHeading title="メーカー公式資料" />
+          <Text style={styles.body}>
+            {chore.applianceCareSource.manufacturer} · {chore.applianceCareSource.productName}（{chore.applianceCareSource.modelNumber}）
+          </Text>
+          {chore.manufacturerRecommendedIntervalDays !== undefined
+            ? <Text style={styles.body}>メーカー指定の周期：{chore.manufacturerRecommendedIntervalDays}日</Text>
+            : <Text style={styles.body}>メーカー指定なし{chore.manufacturerRecommendedConditions?.length
+              ? ` · ${chore.manufacturerRecommendedConditions.join('、')}`
+              : ''}</Text>}
+          {chore.applianceCareSource.evidence.map((item, index) => (
+            <Pressable key={`${item.url}-${index}`} accessibilityRole="link" onPress={() => void Linking.openURL(item.url).catch(() => undefined)}>
+              <Text style={styles.sourceLink}>根拠資料{item.pageOrSection ? ` · ${item.pageOrSection}` : ''}を開く ↗</Text>
+            </Pressable>
+          ))}
+          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(chore.applianceCareSource!.manualUrl).catch(() => undefined)}>
+            <Text style={styles.sourceLink}>公式取扱説明書を開く ↗</Text>
+          </Pressable>
+        </Card>
+      ) : null}
+
       <Card>
         <SectionHeading title="個別設定" />
         <View style={styles.settingRow}>
-          <View style={styles.settingCopy}><Text style={styles.settingTitle}>家事を有効にする</Text><Text style={styles.body}>無効にしても完了履歴は残ります。</Text></View>
-          <Switch value={enabled} onValueChange={setEnabled} />
+          <View style={styles.settingCopy}><Text style={styles.settingTitle}>家事を有効にする</Text><Text style={styles.body}>{chore.requiresCycleSelection ? '周期を設定してから有効にできます。' : '無効にしても完了履歴は残ります。'}</Text></View>
+          <Switch value={enabled} onValueChange={setEnabled} disabled={chore.requiresCycleSelection && !cycleText.trim()} />
         </View>
         <View style={styles.fieldRow}>
-          <View style={styles.settingCopy}><Text style={styles.settingTitle}>周期</Text><Text style={styles.body}>頻度モードの初期値は{chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日です。</Text></View>
-          <View style={styles.numberField}><TextInput value={cycleText} onChangeText={setCycleText} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="家事周期の日数" /><Text style={styles.unit}>日</Text></View>
+          <View style={styles.settingCopy}><Text style={styles.settingTitle}>周期</Text><Text style={styles.body}>{chore.applianceCareSource && chore.manufacturerRecommendedIntervalDays === undefined
+            ? 'メーカー指定なし。周期を決めるまでは予定に追加されません。'
+            : `頻度モードの初期値は${chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日です。`}</Text></View>
+          <View style={styles.numberField}><TextInput value={cycleText} onChangeText={(value) => { setCycleWasEdited(true); setCycleText(value); if (chore.requiresCycleSelection) setEnabled(Boolean(value.trim())); }} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="家事周期の日数" placeholder={chore.requiresCycleSelection ? '入力' : undefined} /><Text style={styles.unit}>日</Text></View>
         </View>
         <View style={styles.fieldRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>実施期間の幅</Text><Text style={styles.body}>基準日から前後に何日広げるか</Text></View>
@@ -243,7 +281,6 @@ function ChoreDetailContent({
         <AppButton title="この家事の履歴を見る" onPress={() => router.push('/history')} variant="secondary" />
       </Card>
 
-      {chore.category === '家電' ? <Text style={styles.machineNote}>家電のメーカー・型番別情報は、公式資料とAI連携の仕様確定後に追加できる設計です。</Text> : null}
     </Page>
   );
 }
@@ -276,7 +313,7 @@ const styles = StyleSheet.create({
   lastDone: { backgroundColor: palette.background, borderRadius: 12, padding: 12, gap: 3 },
   lastDoneLabel: { color: palette.muted, fontSize: 11, fontWeight: '600' },
   lastDoneDate: { color: palette.ink, fontSize: 14, fontWeight: '700' },
-  machineNote: { color: palette.muted, fontSize: 11, lineHeight: 17, textAlign: 'center' },
+  sourceLink: { color: palette.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   error: { color: palette.warning, fontSize: 13 },
   success: { color: palette.accent, fontSize: 13, fontWeight: '600' },
 });

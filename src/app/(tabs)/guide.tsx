@@ -24,12 +24,12 @@ export default function ChoreGuideScreen() {
   }), [navigation]);
   const selectedChoreId = requestedId;
   const chores = useMemo(() => snapshot?.chores ?? [], [snapshot]);
-  const query = searchText.trim().normalize('NFKC').toLocaleLowerCase();
+  const query = normalizeChoreSearchText(searchText.trim());
   const { matchingChores, otherChores } = useMemo(() => {
     if (!query) return { matchingChores: chores, otherChores: [] as ChoreDefinition[] };
 
     const ranked = chores.map((chore, index) => {
-      const name = chore.name.normalize('NFKC').toLocaleLowerCase();
+      const name = normalizeChoreSearchText(chore.name);
       const matchIndex = name.indexOf(query);
       return { chore, index, matchIndex };
     });
@@ -166,6 +166,14 @@ export default function ChoreGuideScreen() {
       ) : null}
     </Page>
   );
+}
+
+function normalizeChoreSearchText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, (character) =>
+      String.fromCharCode(character.charCodeAt(0) - 0x60));
 }
 
 function ChoreListRow({ chore, onPress }: { chore: ChoreDefinition; onPress: () => void }) {

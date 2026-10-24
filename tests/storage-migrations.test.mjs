@@ -21,7 +21,7 @@ test('schema migration creates the latest local planner schema and occurrence vi
   const { connection, database } = sqliteAdapter();
   try {
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 9);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 10);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all().map((column) => column.name);
     assert.equal(settingsColumns.includes('notifications_enabled'), true);
     const applianceColumns = connection.prepare('PRAGMA table_info(appliances)').all().map((column) => column.name);
@@ -49,6 +49,7 @@ test('version 6 migration tolerates a notification preference column already pre
       DROP INDEX IF EXISTS idx_completions_household_scheduled;
       DROP TABLE hidden_waste_occurrences;
       DROP TABLE appliances;
+      ALTER TABLE chore_completions DROP COLUMN previous_chore_state_json;
       ALTER TABLE chore_completions DROP COLUMN scheduled_window_end;
       ALTER TABLE chore_completions DROP COLUMN scheduled_window_start;
       ALTER TABLE chore_completions DROP COLUMN scheduled_date;
@@ -57,7 +58,7 @@ test('version 6 migration tolerates a notification preference column already pre
 
     await migrateLocalDatabase(database);
 
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 9);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 10);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all();
     assert.equal(settingsColumns.filter((column) => column.name === 'notifications_enabled').length, 1);
     assert.equal(connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'appliances'").get().name, 'appliances');
@@ -65,6 +66,7 @@ test('version 6 migration tolerates a notification preference column already pre
     assert.equal(completionColumns.filter((column) => column === 'scheduled_date').length, 1);
     assert.equal(completionColumns.includes('scheduled_window_start'), true);
     assert.equal(completionColumns.includes('scheduled_window_end'), true);
+    assert.equal(completionColumns.filter((column) => column === 'previous_chore_state_json').length, 1);
   } finally {
     connection.close();
   }

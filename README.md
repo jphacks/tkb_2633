@@ -52,6 +52,7 @@ npm run android   # 起動中のAndroid Emulatorで開発ビルドを作成・�
 ```
 
 SQLiteとウィジェットを含むネイティブ開発ビルドが必要です。Expo Goでは確認できません。初回ビルドはiOS/AndroidのSDK部品を取得するため時間がかかる場合があります。
+`npm run ios` は `ios-build.xcconfig` を使い、Xcode 27の明示的モジュール生成に関する互換性問題を避けます。
 
 ### 2回目以降
 

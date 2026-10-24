@@ -29,11 +29,14 @@ export default function CalendarScreen() {
     entry.windowEnd >= dates[0] && entry.windowStart <= dates[dates.length - 1],
   );
   const entriesOnDate = (date: LocalDate) => visibleEntries.filter((entry) => date >= entry.windowStart && date <= entry.windowEnd);
-  const selectedEntries = entriesOnDate(selectedDate).sort((left, right) => left.suggestedDate.localeCompare(right.suggestedDate));
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const completedChoreIds = new Set(snapshot.completions
     .filter((completion) => completion.outcome === 'completed' && localDateFromISODateTime(completion.completedAt) === selectedDate)
     .map((completion) => completion.choreId));
+  const selectedEntries = entriesOnDate(selectedDate).sort((left, right) =>
+    Number(completedChoreIds.has(left.choreId)) - Number(completedChoreIds.has(right.choreId))
+    || left.suggestedDate.localeCompare(right.suggestedDate),
+  );
   const completedOnlyChores = [...completedChoreIds]
     .filter((choreId) => !selectedEntries.some((entry) => entry.choreId === choreId))
     .map((choreId) => choresById.get(choreId))

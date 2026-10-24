@@ -9,8 +9,8 @@ import { localDateFromDate } from '@/domain/scheduling/local-date';
 import type { Weekday, WeatherLocation } from '@/domain/shared/types';
 import { completeFirstSetup, nextInitialDateChoice } from '@/platform/storage/repository';
 import { ExpoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
-import { OpenMeteoGeocodingProvider } from '@/features/weather/open-meteo-geocoder';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
+import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
 
 const modeOptions: { id: FrequencyMode; title: string }[] = [
@@ -24,7 +24,6 @@ const weekdayOptions: { id: Weekday; label: string }[] = [
   { id: 5, label: '金' }, { id: 6, label: '土' }, { id: 7, label: '日' },
 ];
 const notificationGateway = new ExpoLocalNotificationGateway();
-const weatherGeocoder = new OpenMeteoGeocodingProvider();
 const setupStepCount = 5;
 
 type PreviousChoice = 'today' | 'week' | 'month' | 'unknown';
@@ -41,10 +40,11 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   const [notificationsEnabled, setNotificationsEnabled] = useState(snapshot.settings.notificationsEnabled);
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
   const [weatherLocation, setWeatherLocation] = useState<WeatherLocation | null>(snapshot.settings.weatherLocation ?? null);
-  const [weatherCandidates, setWeatherCandidates] = useState<WeatherRegionCandidate[]>([]);
+  const [weatherSearchEnabled, setWeatherSearchEnabled] = useState(false);
   const [weatherCandidate, setWeatherCandidate] = useState<WeatherRegionCandidate | null>(null);
-  const [weatherSearching, setWeatherSearching] = useState(false);
+  const [weatherResultsDismissed, setWeatherResultsDismissed] = useState(false);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
+  const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,33 +78,6 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
     }
   };
 
-  const searchWeatherRegion = async () => {
-    const region = weatherRegion.trim();
-    if (region.length < 2) {
-      setWeatherMessage({ text: '市区町村名を2文字以上で入力してください。', kind: 'error' });
-      return;
-    }
-    setWeatherSearching(true);
-    setWeatherMessage(null);
-    setWeatherCandidate(null);
-    setWeatherCandidates([]);
-    try {
-      const candidates = (await weatherGeocoder.search(region))
-        .filter((candidate) => candidate.countryCode?.toUpperCase() === 'JP');
-      setWeatherCandidates(candidates);
-      setWeatherMessage(candidates.length > 0
-        ? { text: '市区町村の候補を選択してください。', kind: 'success' }
-        : { text: '候補が見つかりませんでした。市区町村名を変えて再検索してください。', kind: 'error' });
-    } catch (cause) {
-      setWeatherMessage({
-        text: cause instanceof Error ? cause.message : '地域を検索できませんでした。通信状態を確認してください。',
-        kind: 'error',
-      });
-    } finally {
-      setWeatherSearching(false);
-    }
-  };
-
   const confirmWeatherCandidate = () => {
     if (!weatherCandidate) return;
     setWeatherLocation({
@@ -114,7 +87,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
       longitude: weatherCandidate.longitude,
     });
     setWeatherMessage({ text: `「${weatherCandidate.label}」を天気に使う地域として選択しました。`, kind: 'success' });
-    setWeatherCandidates([]);
+    setWeatherResultsDismissed(true);
     setWeatherCandidate(null);
   };
 
@@ -267,33 +240,27 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
             <View style={styles.weatherSearch}>
               <TextInput
                 value={weatherRegion}
-                editable={!weatherSearching && !saving}
+                editable={!saving}
                 onChangeText={(value) => {
                   setWeatherRegion(value);
                   setWeatherLocation(null);
                   setWeatherCandidate(null);
-                  setWeatherCandidates([]);
+                  setWeatherSearchEnabled(true);
+                  setWeatherResultsDismissed(false);
                   setWeatherMessage(null);
                 }}
                 placeholder="例：横浜市、札幌市"
                 placeholderTextColor={palette.muted}
                 style={styles.regionInput}
                 accessibilityLabel="天気予報に使う市区町村"
-                returnKeyType="search"
-                onSubmitEditing={() => void searchWeatherRegion()}
+                returnKeyType="done"
               />
-              <AppButton
-                title={weatherSearching ? '検索中…' : '市区町村を検索'}
-                onPress={() => void searchWeatherRegion()}
-                disabled={weatherSearching || saving || weatherRegion.trim().length < 2}
-                variant="secondary"
-              />
-              {weatherSearching ? <ActivityIndicator color={palette.accent} /> : null}
+              {weatherSuggestions.status === 'searching' ? <ActivityIndicator color={palette.accent} /> : null}
             </View>
-            {weatherCandidates.length ? (
+            {weatherSuggestions.candidates.length > 0 && !weatherResultsDismissed ? (
               <View style={styles.regionResults}>
                 <Text style={styles.label}>候補を選択</Text>
-                {weatherCandidates.map((candidate) => (
+                {weatherSuggestions.candidates.map((candidate) => (
                   <Pressable
                     key={candidate.id}
                     accessibilityRole="button"
@@ -306,9 +273,18 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
                 <AppButton title="選択した市区町村を確定" onPress={confirmWeatherCandidate} disabled={!weatherCandidate} />
               </View>
             ) : null}
+            {weatherSuggestions.status === 'empty' && !weatherResultsDismissed
+              ? <Text style={styles.hint}>市区町村が見つかりませんでした。市区町村名を変えてください。</Text>
+              : null}
+            {weatherSuggestions.status === 'error' && !weatherResultsDismissed
+              ? <Text style={styles.error}>{weatherSuggestions.error}</Text>
+              : null}
+            {weatherSuggestions.status === 'debouncing' || weatherSuggestions.status === 'searching'
+              ? <Text style={styles.hint}>市区町村を検索しています…</Text>
+              : null}
             {weatherLocation ? <Text style={styles.selectedRegion}>天気に使う地域：{weatherLocation.displayName}</Text> : null}
             {weatherMessage ? <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text> : null}
-            <Text style={styles.hint}>入力した市区町村名は候補検索に送信されます。天気連動は候補を選んだ場合だけ動作します。端末の位置情報は使いません。</Text>
+            <Text style={styles.hint}>入力すると候補を検索します。候補は「市区町村、都道府県」で表示します。天気連動は候補を確定した場合だけ動作します。</Text>
           </>
         ) : null}
 

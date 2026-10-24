@@ -49,6 +49,9 @@ export default function ChoreGuideScreen() {
 
   return (
     <Page>
+      <Pressable accessibilityRole="button" accessibilityLabel="前の画面に戻る" onPress={() => router.back()} style={styles.backButton}>
+        <Text style={styles.backText}>‹  戻る</Text>
+      </Pressable>
       <ScreenHeading title="家事の説明" description="ホームで選んだ家事の手順、必要な道具、注意事項を確認できます。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       {selectedChore ? <ChoreGuide chore={selectedChore} /> : (
@@ -125,6 +128,8 @@ function ChoreGuide({ chore }: { chore: ChoreDefinition }) {
 }
 
 const styles = StyleSheet.create({
+  backButton: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingRight: 12 },
+  backText: { color: palette.accent, fontSize: 14, fontWeight: '700' },
   otherChores: { gap: 8, paddingTop: 5 },
   recordActions: { gap: 4 },
   chorePicker: { gap: 8, paddingRight: 20 },

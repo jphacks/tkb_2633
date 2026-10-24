@@ -1,6 +1,7 @@
 import { Tabs, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { LinearTransition, SlideInLeft, SlideOutRight } from 'react-native-reanimated';
 
 import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
@@ -15,6 +16,7 @@ type WeekScope = 'current' | 'next';
 export default function HomeScreen() {
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [animatedCompletedChoreIds, setAnimatedCompletedChoreIds] = useState<Set<string>>(new Set());
   const [wasteMessage, setWasteMessage] = useState<string | null>(null);
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
   const today = localDateFromDate(new Date());
@@ -68,8 +70,12 @@ export default function HomeScreen() {
     const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
     if (!entry || completingIds.has(entryId)) return;
     setCompletingIds((current) => new Set(current).add(entryId));
+    let inserted = false;
     try {
-      await completeChore(database, entry);
+      inserted = await completeChore(database, entry);
+      if (inserted) {
+        setAnimatedCompletedChoreIds((current) => new Set(current).add(entry.choreId));
+      }
       await refresh();
     } finally {
       setCompletingIds((current) => {
@@ -153,10 +159,23 @@ export default function HomeScreen() {
       {pendingToday.map((entry) => {
         const chore = choresById.get(entry.choreId);
         if (!chore) return null;
-        return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} onToggle={() => void finish(entry.id)} />;
+        return (
+          <Animated.View key={entry.id} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
+            <TaskCheckboxRow
+              chore={chore}
+              onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
+              onToggle={completingIds.has(entry.id) ? undefined : () => void finish(entry.id)}
+            />
+          </Animated.View>
+        );
       })}
       {completedTodayChores.map((chore) => (
-        <TaskCheckboxRow key={`completed-${chore.id}`} chore={chore} completed onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+        <Animated.View
+          key={`completed-${chore.id}`}
+          entering={animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
+          layout={LinearTransition.duration(240)}>
+          <TaskCheckboxRow chore={chore} completed onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+        </Animated.View>
       ))}
       {todayTotal === 0 ? (
         <Card style={styles.emptyCard}>
@@ -181,7 +200,15 @@ export default function HomeScreen() {
           {entries.map((entry) => {
             const chore = choresById.get(entry.choreId);
             if (!chore) return null;
-            return <TaskCheckboxRow key={entry.id} chore={chore} onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} onToggle={() => void finish(entry.id)} />;
+            return (
+              <Animated.View key={entry.id} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
+                <TaskCheckboxRow
+                  chore={chore}
+                  onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
+                  onToggle={completingIds.has(entry.id) ? undefined : () => void finish(entry.id)}
+                />
+              </Animated.View>
+            );
           })}
         </View>
       )) : (

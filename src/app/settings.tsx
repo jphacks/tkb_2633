@@ -1,14 +1,14 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { Weekday } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { OpenMeteoGeocodingProvider } from '@/features/weather/open-meteo-geocoder';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
+import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
 import {
   clearWeatherLocation,
   saveWeatherLocation,
@@ -27,7 +27,6 @@ const weekdays: { id: Weekday; label: string }[] = [
   { id: 1, label: '月' }, { id: 2, label: '火' }, { id: 3, label: '水' }, { id: 4, label: '木' },
   { id: 5, label: '金' }, { id: 6, label: '土' }, { id: 7, label: '日' },
 ];
-const weatherGeocoder = new OpenMeteoGeocodingProvider();
 const notificationGateway = new ExpoLocalNotificationGateway();
 
 export default function SettingsScreen() {
@@ -51,10 +50,12 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [weatherUpdating, setWeatherUpdating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
-  const [weatherCandidates, setWeatherCandidates] = useState<WeatherRegionCandidate[]>([]);
+  const [weatherSearchEnabled, setWeatherSearchEnabled] = useState(false);
   const [weatherCandidate, setWeatherCandidate] = useState<WeatherRegionCandidate | null>(null);
+  const [weatherResultsDismissed, setWeatherResultsDismissed] = useState(false);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const [notificationUpdating, setNotificationUpdating] = useState(false);
+  const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
 
   const toggleRestDay = (day: Weekday) => {
     setRestDays((current) => current.includes(day)
@@ -81,32 +82,6 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
-  const searchWeatherRegion = async () => {
-    const region = weatherRegion.trim();
-    if (region.length < 2) {
-      setWeatherMessage({ text: '地域名を2文字以上で入力してください。', kind: 'error' });
-      return;
-    }
-    setWeatherUpdating(true);
-    setWeatherMessage(null);
-    setWeatherCandidates([]);
-    try {
-      const candidates = (await weatherGeocoder.search(region))
-        .filter((candidate) => candidate.countryCode?.toUpperCase() === 'JP');
-      setWeatherCandidates(candidates);
-      setWeatherMessage(candidates.length > 0
-        ? { text: '候補から天気を調べたい地域を選んでください。', kind: 'success' }
-        : { text: '地域が見つかりませんでした。市区町村名などで再検索してください。', kind: 'error' });
-    } catch (cause) {
-      setWeatherMessage({
-        text: cause instanceof Error ? cause.message : '地域を検索できませんでした。通信状態を確認して再試行してください。',
-        kind: 'error',
-      });
-    } finally {
-      setWeatherUpdating(false);
-    }
-  };
-
   const confirmWeatherRegion = async () => {
     const candidate = weatherCandidate;
     if (!candidate) return;
@@ -121,7 +96,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       });
       await refresh({ waitForWeather: true });
       setWeatherRegion(weatherRegion.trim());
-      setWeatherCandidates([]);
+      setWeatherResultsDismissed(true);
       setWeatherCandidate(null);
       setWeatherMessage({ text: `天気を調べる地域を「${candidate.label}」に設定しました。`, kind: 'success' });
     } catch (cause) {
@@ -137,7 +112,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     try {
       await clearWeatherLocation(database);
       await refresh({ waitForWeather: true });
-      setWeatherCandidates([]);
+      setWeatherResultsDismissed(true);
+      setWeatherCandidate(null);
       setWeatherMessage({ text: '天気連動を停止し、保存した地域を削除しました。', kind: 'success' });
     } catch (cause) {
       setWeatherMessage({ text: cause instanceof Error ? cause.message : '天気連動を停止できませんでした。', kind: 'error' });
@@ -264,7 +240,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           editable={!weatherUpdating}
           onChangeText={(value) => {
             setWeatherRegion(value);
-            setWeatherCandidates([]);
+            setWeatherSearchEnabled(true);
+            setWeatherResultsDismissed(false);
             setWeatherCandidate(null);
             setWeatherMessage(null);
           }}
@@ -272,26 +249,19 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           placeholderTextColor={palette.muted}
           style={styles.regionInput}
           accessibilityLabel="天気予報に使う市区町村"
-          returnKeyType="search"
-          onSubmitEditing={() => void searchWeatherRegion()}
+          returnKeyType="done"
         />
-        <Text style={styles.hint}>入力した市区町村名は候補検索に送信されます。候補を選んで確定すると地域を保存します。</Text>
+        <Text style={styles.hint}>入力すると候補を検索します。候補は「市区町村、都道府県」で表示します。</Text>
+        {weatherSuggestions.status === 'searching' ? <ActivityIndicator color={palette.accent} /> : null}
         <View style={styles.weatherActions}>
-          <AppButton
-            title={weatherUpdating ? '検索・設定中…' : '地域を検索'}
-            onPress={() => void searchWeatherRegion()}
-            disabled={weatherUpdating || weatherRegion.trim().length < 2}
-            variant="secondary"
-            compact
-          />
           {snapshot.settings.weatherLocation ? (
             <AppButton title="連動を解除" onPress={() => void disableWeather()} disabled={weatherUpdating} variant="quiet" compact />
           ) : null}
         </View>
-        {weatherCandidates.length > 0 ? (
+        {weatherSuggestions.candidates.length > 0 && !weatherResultsDismissed ? (
           <View style={styles.regionResults}>
             <Text style={styles.label}>候補を選択</Text>
-            {weatherCandidates.map((candidate) => (
+            {weatherSuggestions.candidates.map((candidate) => (
               <Pressable
                 key={candidate.id}
                 accessibilityRole="button"
@@ -304,9 +274,18 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
                 <Text style={styles.regionCandidateText}>{candidate.label}</Text>
               </Pressable>
             ))}
-            <AppButton title="選択した地域で天気を設定" onPress={() => void confirmWeatherRegion()} disabled={!weatherCandidate || weatherUpdating} />
+            <AppButton title="選択した市区町村で天気を設定" onPress={() => void confirmWeatherRegion()} disabled={!weatherCandidate || weatherUpdating} />
           </View>
         ) : null}
+        {weatherSuggestions.status === 'empty' && !weatherResultsDismissed
+          ? <Text style={styles.hint}>市区町村が見つかりませんでした。市区町村名を変えてください。</Text>
+          : null}
+        {weatherSuggestions.status === 'error' && !weatherResultsDismissed
+          ? <Text style={styles.error}>{weatherSuggestions.error}</Text>
+          : null}
+        {weatherSuggestions.status === 'debouncing' || weatherSuggestions.status === 'searching'
+          ? <Text style={styles.hint}>市区町村を検索しています…</Text>
+          : null}
         {weatherMessage ? (
           <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text>
         ) : null}

@@ -1,32 +1,21 @@
-import { NativeTabs } from 'expo-router/native-tabs';
-import { useColorScheme } from 'react-native';
-
-import { Colors } from '@/constants/theme';
+import { Tabs } from 'expo-router';
+import { palette } from '@/components/planner-ui';
 
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-
   return (
-    <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>今日</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="explore">
-        <NativeTabs.Trigger.Label>カレンダー</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs screenOptions={{
+      headerShown: false,
+      tabBarActiveTintColor: palette.accent,
+      tabBarInactiveTintColor: palette.muted,
+      tabBarStyle: { backgroundColor: '#FBFAF7', borderTopColor: palette.border },
+      tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+    }}>
+      <Tabs.Screen name="index" options={{ title: '今日' }} />
+      <Tabs.Screen name="explore" options={{ title: 'カレンダー' }} />
+      <Tabs.Screen name="chores" options={{ title: '家事' }} />
+      <Tabs.Screen name="history" options={{ title: '履歴' }} />
+      <Tabs.Screen name="settings" options={{ title: '設定' }} />
+      <Tabs.Screen name="waste" options={{ href: null }} />
+    </Tabs>
   );
 }

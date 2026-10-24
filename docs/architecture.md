@@ -2,46 +2,78 @@
 
 ## 基本方針
 
-天気・AI・家族間同期など外部機能を使う場面を除き、家事データとスケジュールは端末内で扱います。ローカルSQLiteを保存先とし、外部サービスは機能ごとのポートを介して接続します。
+- 通常の家事管理は端末内で完結する。保存先はExpo SQLite。
+- スケジュールの生成・再生成と、家族・同居人の担当割り当てはオフラインで動く。
+- 天気、AI、アカウント／端末間同期などの外部処理は機能ポートの後ろに分離する。
+- 外部仕様が未決の機能は、データ契約・接続口・OS登録を先に用意し、外部サービスを呼び出さない。
 
-## できている土台
+## アプリの導線
 
-- `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、担当、依存関係、予定、完了履歴、曜日ごとのゴミ収集日、同期待ち変更の初期テーブル。
-- `src/features/waste/weekly-scheduler.ts`: 曜日設定を指定期間の収集日に展開。
-- `src/platform/notifications/expo-local-notification-gateway.ts`: OSの端末内通知を予約・取り消しする汎用アダプター。通知時刻や文面、完了操作は呼び出し側から渡す。
-- `src/platform/widgets/`: iOSとAndroidそれぞれの「次の家事」ウィジェット登録コンポーネントと、アプリからスナップショットを更新するゲートウェイ。
-- `src/features/weather/contracts.ts`: 天気取得とスケジュール調整のポート。調整は `WEATHER_ADJUSTMENTS_ENABLED = false` で無効。
-- `src/features/appliance-care/contracts.ts`: 公式資料に基づく家電お手入れ情報の解析結果を受け取る契約。AIや資料取得先は未接続。
-- `src/features/waste/contracts.ts`: 例外データの意味や適用順を決めずに、後から例外処理を接続する契約。
-- `src/features/sync/contracts.ts`: 家族間同期用の変更キュー契約。同期サーバーやアカウント方式は未選定。
-- `src/domain/scheduling/contracts.ts`: 家事予定の生成・未完了予定の再調整エンジン契約。エンジン本体は未実装。
+- `src/app/index.tsx`: 初回設定、今日と近い家事、ゴミ収集日、完了操作
+- `src/app/explore.tsx`: 月間カレンダー。複数日にまたがる実施期間を表示
+- `src/app/chores/`: 家事一覧、検索、個別設定、手順・道具・注意点、担当と依存関係
+- `src/app/history.tsx`: 完了日・担当・実施元の履歴
+- `src/app/settings.tsx`: 頻度、休日、負荷上限、メンバー、機能接続状態
+- `src/app/waste.tsx`: ゴミ収集曜日の登録・編集・削除・通常収集日の表示
+- `src/features/onboarding/first-run-setup.tsx`: 初回設定を3段階で入力
 
-## 未決定の機能を追加する場所
+## 保存と初期データ
+
+- `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更のスキーマ
+- `src/platform/storage/repository.ts`: 初期マスター投入、SQLite読み書き、初回設定、完了の重複防止、予定再生成
+- `src/domain/chores/catalog.ts`: 18件の家事名、初期手順・道具・注意点・負荷、3つの頻度モードの暫定周期
+- `src/domain/chores/types.ts`: 家事、実施状態、完了記録、世帯設定の型
+
+家事一覧と周期案は企画書で未確定です。現在のマスターは動作確認用の初期案で、家事単位の周期は編集できます。初期設定で「今日／1週間前／1か月前」を選んだ日付は概算の印を保持します。「不明」とスキップは初回分散に入り、履歴は削除しません。
+
+SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。予定は同じエンジンから再生成し、履歴は独立テーブルに残します。完了は `schedule_entry_id` の一意制約と保存前確認で二重記録を防ぎます。
+
+## スケジューラ
+
+- `src/domain/scheduling/engine.ts`: 全家事に共通する周期・期間・休日・負荷・依存関係のエンジン
+- `src/domain/scheduling/local-date.ts`: タイムゾーンによる日付ずれを避ける日単位の計算
+- `src/domain/scheduling/contracts.ts`: エンジン入出力と設定契約
+
+現在から180日先までの期間を生成します。未完了家事は期間を過ぎても1つの超過予定として表示し、経過周期数を保持しながら次の周期案を計算します。完了後は実際の端末日を新しい基準日にします。
+
+内部推奨日は実施期間の中から選びます。まず期間内で負荷を分散し、休日優先の家事は設定休日を含む期間を選びます。期間内に1日の上限が収まらない場合は、周期30日未満で最大±4日、30日以上で最大±7日の範囲で期間を移動します。重い家事は初期1日1件、普通は1日2件、軽い家事は上限なしです。上限と期間幅は設定・家事詳細で変更できます。
+
+依存関係は「先に行う家事」から「後に行う家事」へ保存し、後の家事の推奨日が先の家事より前にならないようにします。循環する依存関係は保存前に拒否します。
+
+## ゴミ収集日
+
+- `src/features/waste/weekly-scheduler.ts`: 曜日を日付範囲に展開する純粋関数
+- `src/features/waste/contracts.ts`: 曜日設定、収集日、例外取得・適用ポート
+
+曜日設定はSQLiteに保存して、ホームとゴミ収集日画面に表示します。祝日や臨時変更の種類・優先順位・保存形式は未決定のため、例外処理は実行しません。
+
+## 通知とウィジェット
+
+- `src/features/notifications/contracts.ts` と `src/platform/notifications/`: 日時指定の端末内通知ゲートウェイ
+- `src/features/widgets/contracts.ts` と `src/platform/widgets/`: 次の家事スナップショットと、iOS SwiftUI / Android Jetpack Compose のウィジェット
+
+スナップショットをアプリから両OSのウィジェットへ更新します。表示サイズ、ユーザー操作、更新周期は調整対象です。通知の通知時刻初期値は9:00ですが、通知許可を求める時期、内容、操作、再通知規則が未決定のため、通知予約はまだ行いません。
+
+## 外部機能の枠
 
 ### 天気
 
-天気API、場所の取得方法、天候条件、洗濯を含む家事への適用規則を選んでから、`WeatherForecastProvider` と `WeatherAdjustmentPolicy` の実装を追加します。現状、スケジュールの日付は天気で変わりません。
+`src/features/weather/contracts.ts` に予報Providerと調整Policyの契約があります。取得先、場所、天候条件、洗濯を含めた調整ルールが決まるまでProviderを接続しません。現在、天気で予定や干し方を自動変更しません。洗濯の干し方希望は家事の詳細から手動で設定し、端末内に保存します。
 
-### ゴミ収集日の例外
+### 家電AI
 
-通常の曜日設定は動かせます。祝日などの例外の種類・優先順位は決めていないため、`WasteExceptionSource` と `WasteExceptionPolicy` の実装および保存形式は未追加です。
+`src/features/appliance-care/contracts.ts` はメーカー公式資料に根拠を付けた解析結果の形を定義します。AI API、資料の検索・取得、結果確認、家事への追加は未接続です。
 
-### 通知
+### 家族・同居人
 
-端末内で日時指定の通知を予約・取り消しできます。通知権限を要求するタイミング、表示文、通知アクション、再通知の規則はまだ接続していません。リモート通知サービスも使っていません。
+メンバーと担当は同じ端末のローカルデータとして管理します。端末間共有には同期先が必要ですが、サーバーやアカウント方式が未決定のため送信しません。同期待ち変更用テーブルと `src/features/sync/contracts.ts` は接続枠です。
 
-### ウィジェット
+## テストとCI
 
-`NextChoreWidget` をiOSとAndroidに登録し、同じスナップショット契約で更新する枠を用意しました。今の表示は空状態の仮表示です。データ更新の時期、操作、表示サイズなどは今後決定します。
-
-### AI
-
-`ApplianceCareAnalyzer` の契約だけを置いています。AI API、公式資料の検索・取得、解析、ユーザー確認画面は実装していません。
-
-## オフラインと家族共有
-
-各端末の家事管理をSQLiteで完結させます。世帯・担当者のデータ形式と同期待ち変更のテーブルは用意しましたが、端末間で家族が同じ情報を見るには同期先が必要です。`HouseholdSyncGateway` を通す形にし、同期先が未設定の今は他端末へ変更を送信しません。
+- `tests/scheduling.test.mjs`: 周期、初回負荷分散、休日、超過、依存順、循環検知
+- `npm run check`: lint、TypeScript型チェック、単体テスト
+- `.github/workflows/ci.yml`: Pull Requestと `main` pushで `npm ci` と `npm run check`
 
 ## ネイティブ開発
 
-Expo Widgetsはネイティブ拡張を含むため、ウィジェットを確認するときはiOS・Androidの開発ビルドを作成します。Expo Goではウィジェットを実行できません。
+Expo Widgetsはネイティブ拡張を含むため、iOS・Androidの開発ビルドで確認します。`ios/` と `android/` は生成物でGit管理しません。

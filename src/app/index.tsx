@@ -1,88 +1,151 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
-const colors = {
-  background: '#F7F6F2',
-  surface: '#FFFFFF',
-  ink: '#21312B',
-  muted: '#748078',
-  accent: '#477A62',
-  border: '#E5E8E3',
-};
+import { ChoreScheduleCard } from '@/components/chore-schedule-card';
+import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
+import { addDays, formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
+import { usePlannerData } from '@/hooks/use-planner-data';
+import { completeChore } from '@/platform/storage/repository';
 
 export default function HomeScreen() {
+  const { snapshot, loading, error, refresh, database } = usePlannerData();
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const today = localDateFromDate(new Date());
+
+  if (loading || !snapshot) {
+    return <Page><ScreenHeading eyebrow="HOUSEWORK, IN GOOD TIME" title="家事のお知らせ" description="端末内の予定を読み込んでいます。" /></Page>;
+  }
+
+  if (!snapshot.settings.setupCompleted) {
+    return (
+      <Page>
+        <ScreenHeading eyebrow="HOUSEWORK, IN GOOD TIME" title="家事のお知らせ" description="家事の予定を、生活に合わせて整えましょう。" />
+        {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+        <FirstRunSetup snapshot={snapshot} onComplete={refresh} />
+      </Page>
+    );
+  }
+
+  const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
+  const prioritized = [...snapshot.scheduleEntries].sort((left, right) =>
+    urgency(left.status) - urgency(right.status) || left.suggestedDate.localeCompare(right.suggestedDate),
+  );
+  const weekEnd = addDays(today, 7);
+  const thisWeekCount = snapshot.scheduleEntries.filter((entry) =>
+    entry.status === 'overdue' || (entry.suggestedDate >= today && entry.suggestedDate <= weekEnd),
+  ).length;
+  const todayWaste = snapshot.upcomingWasteDates.filter((occurrence) => occurrence.date === today);
+
+  const finish = async (entryId: string) => {
+    const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
+    if (!entry || completingIds.has(entryId)) return;
+    setCompletingIds((current) => new Set(current).add(entryId));
+    try {
+      await completeChore(database, entry);
+      await refresh();
+    } finally {
+      setCompletingIds((current) => {
+        const next = new Set(current);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  };
+
+  const openChore = (choreId: string) => {
+    router.push({ pathname: '/chores/[id]', params: { id: choreId } });
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.eyebrow}>HOUSEWORK, IN GOOD TIME</Text>
-        <Text style={styles.title}>家事のお知らせ</Text>
-        <Text style={styles.subtitle}>今日やることを、無理のないペースで。</Text>
+    <Page>
+      <ScreenHeading eyebrow="HOUSEWORK, IN GOOD TIME" title="今日の家事" description={formatJapaneseDate(today, { weekday: true })} />
 
-        <View style={styles.primaryCard}>
-          <Text style={styles.cardLabel}>次の家事</Text>
-          <Text style={styles.cardTitle}>スケジュールを準備しています</Text>
-          <Text style={styles.cardBody}>
-            家事を登録すると、実施期間と次の予定がここに表示されます。
-          </Text>
+      {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+
+      <Card style={styles.summaryCard}>
+        <View style={styles.summaryTop}>
+          <View style={styles.summaryCopy}>
+            <Text style={styles.summaryLabel}>今週の予定</Text>
+            <Text style={styles.summaryValue}>{thisWeekCount}<Text style={styles.summaryUnit}>件</Text></Text>
+          </View>
+          <View style={styles.summaryMark}><Text style={styles.summaryMarkText}>⌂</Text></View>
         </View>
+        <Text style={styles.summaryFoot}>実施期間の中で、できるタイミングに進めましょう。</Text>
+      </Card>
 
-        <Text style={styles.sectionTitle}>このアプリの土台</Text>
-        <View style={styles.listCard}>
-          <FeatureRow title="端末内の保存" detail="オフラインで使う家事データ" />
-          <FeatureRow title="曜日ごとのゴミ収集" detail="例外ルールは後から追加" />
-          <FeatureRow title="天気・AI連携" detail="外部機能を追加できる接続口" />
-          <FeatureRow title="通知・ウィジェット" detail="iOS / Android の拡張枠" last />
-        </View>
+      {todayWaste.length > 0 ? (
+        <Card style={styles.wasteNotice}>
+          <View style={styles.wasteIcon}><Text style={styles.wasteIconText}>♻</Text></View>
+          <View style={styles.wasteCopy}>
+            <Text style={styles.wasteEyebrow}>今日のゴミ収集</Text>
+            <Text style={styles.wasteNames}>{todayWaste.map((item) => item.label).join('・')}</Text>
+          </View>
+          <AppButton title="曜日" onPress={() => router.push('/waste')} variant="secondary" compact />
+        </Card>
+      ) : null}
 
-        <Text style={styles.footer}>機能の詳細は、決まり次第ここへつなぎます。</Text>
-      </ScrollView>
-    </SafeAreaView>
+      <SectionHeading title="次の家事" trailing={<Text style={styles.smallCount}>{prioritized.length}件の予定</Text>} />
+      {prioritized.length === 0 ? (
+        <Card>
+          <Text style={styles.emptyTitle}>予定はまだありません</Text>
+          <Text style={styles.emptyBody}>家事一覧から家事を有効にすると、予定が作られます。</Text>
+          <AppButton title="家事一覧を見る" onPress={() => router.push('/chores')} variant="secondary" />
+        </Card>
+      ) : prioritized.slice(0, 5).map((entry) => {
+        const chore = choresById.get(entry.choreId);
+        if (!chore) return null;
+        return (
+          <ChoreScheduleCard
+            key={entry.id}
+            entry={entry}
+            chore={chore}
+            members={snapshot.members}
+            onOpen={() => openChore(chore.id)}
+            onComplete={() => void finish(entry.id)}
+          />
+        );
+      })}
+
+      <SectionHeading title="すぐ開く" />
+      <View style={styles.quickActions}>
+        <AppButton title="家事を探す" onPress={() => router.push('/chores')} variant="secondary" compact />
+        <AppButton title="月間カレンダー" onPress={() => router.push('/explore')} variant="secondary" compact />
+        <AppButton title="ゴミ曜日" onPress={() => router.push('/waste')} variant="secondary" compact />
+      </View>
+      <Text style={styles.localNote}>家事データと予定はこの端末に保存され、オフラインで使えます。</Text>
+    </Page>
   );
 }
 
-function FeatureRow({
-  title,
-  detail,
-  last = false,
-}: {
-  title: string;
-  detail: string;
-  last?: boolean;
-}) {
-  return (
-    <View style={[styles.featureRow, !last && styles.featureDivider]}>
-      <View style={styles.featureCopy}>
-        <Text style={styles.featureTitle}>{title}</Text>
-        <Text style={styles.featureDetail}>{detail}</Text>
-      </View>
-      <View style={styles.readyDot} />
-    </View>
-  );
+function urgency(status: string): number {
+  if (status === 'overdue') return 0;
+  if (status === 'inWindow') return 1;
+  if (status === 'initialPending') return 2;
+  return 3;
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 40, gap: 18 },
-  eyebrow: { color: colors.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
-  title: { color: colors.ink, fontSize: 30, fontWeight: '700', marginTop: -10 },
-  subtitle: { color: colors.muted, fontSize: 15, marginTop: -12 },
-  primaryCard: {
-    backgroundColor: colors.accent,
-    borderRadius: 24,
-    padding: 22,
-    gap: 10,
-    marginTop: 4,
-  },
-  cardLabel: { color: '#DCE9DF', fontSize: 13, fontWeight: '600' },
-  cardTitle: { color: '#FFFFFF', fontSize: 21, fontWeight: '700' },
-  cardBody: { color: '#E8F0EA', fontSize: 14, lineHeight: 21 },
-  sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '700', marginTop: 4 },
-  listCard: { backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 16 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15 },
-  featureDivider: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
-  featureCopy: { gap: 4 },
-  featureTitle: { color: colors.ink, fontSize: 14, fontWeight: '600' },
-  featureDetail: { color: colors.muted, fontSize: 12 },
-  readyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
-  footer: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 2 },
+  summaryCard: { backgroundColor: palette.accent, borderColor: palette.accent, padding: 21, gap: 12 },
+  summaryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  summaryCopy: { gap: 2 },
+  summaryLabel: { color: '#DCE9DF', fontSize: 13, fontWeight: '600' },
+  summaryValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800' },
+  summaryUnit: { fontSize: 15, fontWeight: '600' },
+  summaryFoot: { color: '#E8F0EA', fontSize: 12, lineHeight: 18 },
+  summaryMark: { width: 56, height: 56, borderRadius: 18, backgroundColor: '#609078', alignItems: 'center', justifyContent: 'center' },
+  summaryMarkText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
+  wasteNotice: { flexDirection: 'row', alignItems: 'center', padding: 13, gap: 11, backgroundColor: '#F3F6E9', borderColor: '#E4E8D5' },
+  wasteIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E4EBCF', alignItems: 'center', justifyContent: 'center' },
+  wasteIconText: { color: '#718449', fontSize: 19 },
+  wasteCopy: { flex: 1, gap: 3 },
+  wasteEyebrow: { color: '#718449', fontSize: 11, fontWeight: '700' },
+  wasteNames: { color: palette.ink, fontSize: 14, fontWeight: '700' },
+  smallCount: { color: palette.muted, fontSize: 12 },
+  emptyTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
+  emptyBody: { color: palette.muted, fontSize: 13, lineHeight: 20 },
+  quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  localNote: { color: palette.muted, fontSize: 11, textAlign: 'center', marginTop: 2 },
+  error: { color: palette.warning, fontSize: 13 },
 });

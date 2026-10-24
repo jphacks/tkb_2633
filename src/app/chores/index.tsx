@@ -1,0 +1,119 @@
+import { router } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+
+import { AppButton, Card, ChoiceChip, Page, ScreenHeading, StatusBadge, palette } from '@/components/planner-ui';
+import type { ChoreDefinition } from '@/domain/chores/types';
+import { usePlannerData } from '@/hooks/use-planner-data';
+import { setChoreEnabled } from '@/platform/storage/repository';
+
+export default function ChoresScreen() {
+  const { snapshot, loading, error, refresh, database } = usePlannerData();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('すべて');
+  const [workingId, setWorkingId] = useState<string | null>(null);
+
+  const categories = useMemo(() => ['すべて', ...new Set(snapshot?.chores.map((chore) => chore.category) ?? [])], [snapshot?.chores]);
+  const visibleChores = useMemo(() => {
+    if (!snapshot) return [];
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    return snapshot.chores.filter((chore) =>
+      (category === 'すべて' || chore.category === category)
+      && (!normalizedQuery || `${chore.name} ${chore.category} ${chore.locationOrAppliance ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)),
+    );
+  }, [snapshot, query, category]);
+
+  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="CHORES" title="家事一覧" description="家事を読み込んでいます。" /></Page>;
+
+  const statusByChore = new Map<string, string>();
+  for (const entry of snapshot.scheduleEntries) {
+    const previous = statusByChore.get(entry.choreId);
+    if (!previous || statusRank(entry.status) < statusRank(previous)) statusByChore.set(entry.choreId, entry.status);
+  }
+
+  const toggle = async (chore: ChoreDefinition, enabled: boolean) => {
+    setWorkingId(chore.id);
+    try {
+      await setChoreEnabled(database, chore.id, enabled);
+      await refresh();
+    } finally {
+      setWorkingId(null);
+    }
+  };
+
+  return (
+    <Page>
+      <ScreenHeading eyebrow="CHORES" title="家事一覧" description={`${snapshot.chores.filter((chore) => chore.enabled).length}件の家事を有効にしています。検索や設定変更ができます。`} />
+      {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+      <TextInput
+        accessibilityLabel="家事を検索"
+        value={query}
+        onChangeText={setQuery}
+        placeholder="家事名・場所で検索"
+        placeholderTextColor={palette.muted}
+        style={styles.search}
+        returnKeyType="search"
+      />
+      <View style={styles.categories}>
+        {categories.map((item) => <ChoiceChip key={item} label={item} selected={category === item} onPress={() => setCategory(item)} />)}
+      </View>
+      {visibleChores.length === 0 ? (
+        <Card><Text style={styles.emptyTitle}>家事が見つかりません</Text><Text style={styles.emptyText}>検索語やカテゴリを変えてください。</Text></Card>
+      ) : visibleChores.map((chore) => (
+        <Card key={chore.id} style={styles.choreCard}>
+          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} style={styles.choreCopy}>
+            <View style={styles.titleRow}>
+              <Text style={styles.choreName}>{chore.name}</Text>
+              {chore.enabled ? <StatusBadge status={statusByChore.get(chore.id) ?? 'initialPending'} /> : <Text style={styles.offTag}>OFF</Text>}
+            </View>
+            <Text style={styles.meta}>{chore.category} · {chore.recommendedCycleDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日ごと{chore.estimatedMinutes ? ` · 約${chore.estimatedMinutes}分` : ''}</Text>
+            {chore.enabled ? <Text style={styles.period}>{scheduleLabel(snapshot.scheduleEntries.find((entry) => entry.choreId === chore.id))}</Text> : null}
+          </Pressable>
+          <View style={styles.footer}>
+            <AppButton title="詳細・編集" onPress={() => router.push({ pathname: '/chores/[id]', params: { id: chore.id } })} variant="secondary" compact />
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>{chore.enabled ? '有効' : '無効'}</Text>
+              <Switch
+                value={chore.enabled}
+                disabled={workingId === chore.id}
+                onValueChange={(value) => void toggle(chore, value)}
+                trackColor={{ false: '#D5DAD4', true: '#A8C5AF' }}
+                thumbColor={chore.enabled ? palette.accent : '#FFFFFF'}
+              />
+            </View>
+          </View>
+        </Card>
+      ))}
+      <Text style={styles.footnote}>家事を無効にしても、過去の完了履歴は残ります。</Text>
+    </Page>
+  );
+}
+
+function scheduleLabel(entry: { windowStart: string; windowEnd: string; status: string } | undefined): string {
+  if (!entry) return '予定を計算中';
+  if (entry.status === 'overdue') return '推奨期間を超過';
+  return `${entry.windowStart.replaceAll('-', '/')}〜${entry.windowEnd.replaceAll('-', '/')}`;
+}
+
+function statusRank(status: string): number {
+  return status === 'overdue' ? 0 : status === 'inWindow' ? 1 : status === 'initialPending' ? 2 : 3;
+}
+
+const styles = StyleSheet.create({
+  search: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, color: palette.ink, fontSize: 14 },
+  categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  choreCard: { gap: 12 },
+  choreCopy: { gap: 5 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  choreName: { flex: 1, color: palette.ink, fontSize: 16, fontWeight: '700' },
+  meta: { color: palette.muted, fontSize: 12 },
+  period: { color: palette.accent, fontSize: 12, fontWeight: '600' },
+  offTag: { color: palette.muted, backgroundColor: palette.background, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '700' },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 8 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  switchLabel: { color: palette.muted, fontSize: 11, fontWeight: '600' },
+  emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  emptyText: { color: palette.muted, fontSize: 13, lineHeight: 20 },
+  footnote: { color: palette.muted, fontSize: 11, lineHeight: 17, textAlign: 'center' },
+  error: { color: palette.warning, fontSize: 13 },
+});

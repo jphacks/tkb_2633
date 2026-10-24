@@ -1,0 +1,73 @@
+import { StyleSheet, Text, View } from 'react-native';
+
+import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthKey } from '@/domain/scheduling/local-date';
+import { usePlannerData } from '@/hooks/use-planner-data';
+import { router } from 'expo-router';
+
+export default function HistoryScreen() {
+  const { snapshot, loading, error } = usePlannerData();
+  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="HISTORY" title="実施履歴" description="履歴を読み込んでいます。" /></Page>;
+
+  const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
+  const membersById = new Map(snapshot.members.map((member) => [member.id, member]));
+  const thisMonth = monthKey(localDateFromDate(new Date()));
+  const completedThisMonth = snapshot.completions.filter((item) => monthKey(localDateFromISODateTime(item.completedAt)) === thisMonth).length;
+
+  return (
+    <Page>
+      <ScreenHeading eyebrow="HISTORY" title="実施履歴" description="完了した家事と実際に行った日を記録しています。" />
+      {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+      <Card style={styles.summary}>
+        <View><Text style={styles.summaryLabel}>今月の完了</Text><Text style={styles.summaryValue}>{completedThisMonth}<Text style={styles.summaryUnit}>件</Text></Text></View>
+        <Text style={styles.summaryNote}>完了日を基準に次の周期を計算します。</Text>
+      </Card>
+      <SectionHeading title="最近の記録" trailing={<Text style={styles.count}>{snapshot.completions.length}件</Text>} />
+      {snapshot.completions.length === 0 ? (
+        <Card style={styles.emptyCard}>
+          <Text style={styles.emptyMark}>✓</Text>
+          <Text style={styles.emptyTitle}>完了すると記録が残ります</Text>
+          <Text style={styles.emptyText}>今日の画面や家事の詳細から「完了」を押すと、実際に行った日が保存されます。</Text>
+          <AppButton title="今日の家事を見る" onPress={() => router.push('/')} variant="secondary" />
+        </Card>
+      ) : snapshot.completions.slice(0, 100).map((completion) => {
+        const chore = choresById.get(completion.choreId);
+        const memberName = completion.completedByMemberId ? membersById.get(completion.completedByMemberId)?.displayName : undefined;
+        const date = localDateFromISODateTime(completion.completedAt);
+        return (
+          <Card key={completion.id} style={styles.historyCard}>
+            <View style={styles.checkMark}><Text style={styles.checkText}>✓</Text></View>
+            <View style={styles.copy}>
+              <Text style={styles.choreName}>{chore?.name ?? '家事'}</Text>
+              <Text style={styles.meta}>{formatJapaneseDate(date, { year: true, weekday: true })}{memberName ? ` · ${memberName}` : ''}</Text>
+            </View>
+            <Text style={styles.source}>{completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : 'アプリ'}</Text>
+          </Card>
+        );
+      })}
+      {snapshot.completions.length > 100 ? <Text style={styles.footnote}>最新の100件を表示しています。</Text> : null}
+    </Page>
+  );
+}
+
+const styles = StyleSheet.create({
+  summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
+  summaryLabel: { color: palette.accent, fontSize: 12, fontWeight: '700' },
+  summaryValue: { color: palette.ink, fontSize: 28, fontWeight: '800' },
+  summaryUnit: { fontSize: 13, fontWeight: '600' },
+  summaryNote: { maxWidth: 145, color: palette.muted, fontSize: 11, lineHeight: 16 },
+  count: { color: palette.muted, fontSize: 12 },
+  emptyCard: { alignItems: 'center', paddingVertical: 26 },
+  emptyMark: { color: palette.accent, fontSize: 30, fontWeight: '700' },
+  emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  emptyText: { color: palette.muted, fontSize: 13, lineHeight: 20, textAlign: 'center' },
+  historyCard: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 13, paddingHorizontal: 14 },
+  checkMark: { width: 32, height: 32, borderRadius: 11, backgroundColor: palette.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  checkText: { color: palette.accent, fontSize: 16, fontWeight: '800' },
+  copy: { flex: 1, gap: 3 },
+  choreName: { color: palette.ink, fontSize: 14, fontWeight: '700' },
+  meta: { color: palette.muted, fontSize: 11 },
+  source: { color: palette.muted, fontSize: 10 },
+  footnote: { color: palette.muted, fontSize: 11, textAlign: 'center' },
+  error: { color: palette.warning, fontSize: 13 },
+});

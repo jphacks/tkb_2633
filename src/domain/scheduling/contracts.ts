@@ -1,18 +1,35 @@
 import type {
+  ChoreState,
   ChoreCompletion,
   ChoreDefinition,
   ChoreDependency,
   ChoreScheduleEntry,
+  FrequencyMode,
 } from '@/domain/chores/types';
-import type { EntityId, LocalDate } from '@/domain/shared/types';
+import type { EntityId, LocalDate, Weekday } from '@/domain/shared/types';
+
+export interface ScheduleLoadLimits {
+  heavyDailyLimit: number;
+  normalDailyLimit: number;
+}
+
+export interface ScheduleSettings {
+  frequencyMode: FrequencyMode;
+  restDays: readonly Weekday[];
+  loadLimits: ScheduleLoadLimits;
+}
 
 export interface ScheduleGenerationInput {
   householdId: EntityId;
   from: LocalDate;
   through: LocalDate;
+  today: LocalDate;
   chores: readonly ChoreDefinition[];
+  states: readonly ChoreState[];
+  assignments: readonly { choreId: EntityId; memberIds: readonly EntityId[] }[];
   dependencies: readonly ChoreDependency[];
   completions: readonly ChoreCompletion[];
+  settings: ScheduleSettings;
 }
 
 export interface ScheduleEngine {

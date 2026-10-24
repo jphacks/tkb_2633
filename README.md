@@ -1,11 +1,6 @@
-<<<<<<< HEAD
-# 家事お知らせアプリ
-=======
-# サンプル（プロダクト名）
-家事自動生成
->>>>>>> bbf8083 (initial commit)
+# 家事自動生成
 
-生活スタイルに合わせて家事の予定を整え、「何を・いつ頃・どうやって行うか」を知らせるスマートフォンアプリです。
+家事お知らせアプリとして、生活スタイルに合わせて家事の予定を自動生成し、「何を・いつ頃・どうやって行うか」を知らせます。
 
 ## 製品概要
 
@@ -49,9 +44,45 @@
 
 ## 開発
 
+### 必要な環境
+
+- Node.js 22.13 以上
+- iOSを動かす場合: Xcode 26.4 以上と iOS Simulator
+- Androidを動かす場合: Android Studio、Android SDK、Android Emulator
+
+### 初回起動
+
 ```sh
 npm ci
-npx expo start
+npm run ios       # iOS Simulatorでネイティブ開発ビルドを作成・起動
+# または
+npm run android   # 起動中のAndroid Emulatorでネイティブ開発ビルドを作成・起動
 ```
 
-ウィジェットを含むネイティブ機能の確認には、Expo Goではなく開発ビルドを使用します。
+SQLite、通知、ウィジェットなどのネイティブ機能を含むため、Expo Goではなく `expo-dev-client` を含む開発ビルドを使います。初回はネイティブアプリのビルドに時間がかかります。
+
+### 2回目以降
+
+```sh
+npm start
+```
+
+Metroが起動したら、ターミナルで `i`（iOS）または `a`（Android）を押して、インストール済みの開発ビルドを開きます。TypeScript/JavaScriptだけの変更なら、ネイティブアプリの再ビルドは不要です。
+
+`npm ci` の後処理では、作業フォルダーのパスに日本語が含まれる環境でCocoaPodsがHermesのパスを扱えるよう、`node_modules` 内のpodspec出力をUTF-8に揃えます。アプリのソースコードやネイティブ生成物には変更を加えません。
+
+ネイティブ依存パッケージや `app.json` の変更後は、生成済みネイティブプロジェクトを作り直してから起動します。
+
+```sh
+npx expo prebuild --clean
+npm run ios       # または npm run android
+```
+
+生成される `ios/` と `android/` は `.gitignore` 対象です。設定変更は `app.json` とソースコードに反映し、生成物はコミットしません。
+
+### 確認コマンド
+
+```sh
+npm run check     # lint と TypeScript の型チェック
+npm run doctor    # Expo依存関係・設定の診断
+```

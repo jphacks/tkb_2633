@@ -38,7 +38,7 @@ export default function HelpScreen() {
 
       <Card>
         <SectionHeading title="設定" />
-        <Text style={styles.body}>歯車から家事の頻度、休日、通知、天気を確認する地域などを調整できます。</Text>
+        <Text style={styles.body}>家事の頻度、休日、通知、天気を確認する地域などは設定で調整できます。この画面の「設定を開く」から移動できます。</Text>
         <Text style={styles.hint}>天気連動を使う場合は地域を設定してください。通知の許可は端末の設定から変更できます。</Text>
       </Card>
 

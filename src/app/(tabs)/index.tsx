@@ -158,14 +158,9 @@ export default function HomeScreen() {
           <Text style={styles.date}>{formatJapaneseDate(today, { year: true, weekday: true })}</Text>
           <Text style={styles.title}>今日のタスク</Text>
         </View>
-        <View style={styles.headerActions}>
-          <Pressable accessibilityRole="button" accessibilityLabel="ヘルプを開く" onPress={() => router.push('/help')} style={({ pressed }) => [styles.helpButton, pressed && styles.actionPressed]}>
-            <Text style={styles.helpSymbol}>?</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="設定を開く" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.settingsButton, pressed && styles.actionPressed]}>
-            <Text style={styles.settingsSymbol}>⚙︎</Text>
-          </Pressable>
-        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="ヘルプを開く" onPress={() => router.push('/help')} style={({ pressed }) => [styles.helpButton, pressed && styles.actionPressed]}>
+          <Text style={styles.helpSymbol}>?</Text>
+        </Pressable>
       </View>
 
       <Card style={styles.progressCard}>
@@ -330,11 +325,8 @@ const styles = StyleSheet.create({
   homePage: { gap: 12, paddingTop: 8, paddingBottom: 24 },
   todayHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 0 },
   todayCopy: { flex: 1, gap: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  helpButton: { width: 40, height: 40, borderRadius: 13, borderWidth: 1.5, borderColor: palette.accent, backgroundColor: palette.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  helpSymbol: { color: palette.accent, fontSize: 22, fontWeight: '800', lineHeight: 26 },
-  settingsButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
-  settingsSymbol: { color: '#FFFFFF', fontSize: 24, lineHeight: 29 },
+  helpButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
+  helpSymbol: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', lineHeight: 29 },
   actionPressed: { opacity: 0.72 },
   date: { color: palette.muted, fontSize: 11, fontWeight: '500' },
   title: { color: palette.ink, fontSize: 28, fontWeight: '800' },

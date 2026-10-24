@@ -16,6 +16,8 @@ import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { EntityId, Household, HouseholdMember, LocalDate, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
+import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
+import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
@@ -33,6 +35,8 @@ export interface PlannerSnapshot {
   completions: ChoreCompletion[];
   wasteSchedules: WeeklyWasteSchedule[];
   upcomingWasteDates: ReturnType<typeof generateWeeklyCollectionDates>;
+  weatherOutcome: WeatherScheduleOutcome;
+  weatherAdjustmentCount: number;
 }
 
 interface HouseholdRow {
@@ -49,6 +53,8 @@ interface SettingsRow {
   notification_hour: number;
   notification_minute: number;
   setup_completed: number;
+  weather_latitude: number | null;
+  weather_longitude: number | null;
 }
 
 interface DefinitionRow {
@@ -154,7 +160,7 @@ export async function loadPlannerSnapshot(
   );
   const settingsRow = await database.getFirstAsync<SettingsRow>(
     `SELECT frequency_mode, rest_days_json, heavy_daily_limit, normal_daily_limit,
-            notification_hour, notification_minute, setup_completed
+            notification_hour, notification_minute, setup_completed, weather_latitude, weather_longitude
      FROM household_settings WHERE household_id = ?`, LOCAL_HOUSEHOLD_ID,
   );
   if (!householdRow || !settingsRow) throw new Error('Local household could not be initialized');
@@ -201,6 +207,9 @@ export async function loadPlannerSnapshot(
     notificationHour: settingsRow.notification_hour,
     notificationMinute: settingsRow.notification_minute,
     setupCompleted: Boolean(settingsRow.setup_completed),
+    weatherLocation: settingsRow.weather_latitude !== null && settingsRow.weather_longitude !== null
+      ? { latitude: settingsRow.weather_latitude, longitude: settingsRow.weather_longitude }
+      : undefined,
   };
   const chores = definitionRows.map((row) => ({
     ...(JSON.parse(row.definition_json) as ChoreDefinition),
@@ -248,6 +257,8 @@ export async function loadPlannerSnapshot(
   }));
 
   let scheduleEntries: ChoreScheduleEntry[] = [];
+  const weatherOutcome: WeatherScheduleOutcome = settings.weatherLocation ? 'current' : 'disabled';
+  const weatherAdjustmentCount = 0;
   if (settings.setupCompleted) {
     const input: ScheduleGenerationInput = {
       householdId: household.id,
@@ -288,6 +299,47 @@ export async function loadPlannerSnapshot(
     completions,
     wasteSchedules,
     upcomingWasteDates,
+    weatherOutcome,
+    weatherAdjustmentCount,
+  };
+}
+
+/** Applies weather after the normal snapshot is ready, so forecast latency never blocks offline screens. */
+export async function applyWeatherToPlannerSnapshot(
+  database: SQLiteDatabase,
+  snapshot: PlannerSnapshot,
+  canCommit: () => boolean = () => true,
+): Promise<PlannerSnapshot> {
+  if (!snapshot.settings.setupCompleted || !snapshot.settings.weatherLocation) {
+    return { ...snapshot, weatherOutcome: 'disabled', weatherAdjustmentCount: 0 };
+  }
+
+  const weatherResult = await optimizeLaundryScheduleForWeather({
+    householdId: snapshot.household.id,
+    today: localDateFromDate(new Date()),
+    location: snapshot.settings.weatherLocation,
+    chores: snapshot.chores,
+    completions: snapshot.completions,
+    dependencies: snapshot.dependencies,
+    settings: {
+      frequencyMode: snapshot.settings.frequencyMode,
+      restDays: snapshot.settings.restDays as Weekday[],
+      loadLimits: {
+        heavyDailyLimit: snapshot.settings.heavyDailyLimit,
+        normalDailyLimit: snapshot.settings.normalDailyLimit,
+      },
+    },
+    schedule: snapshot.scheduleEntries,
+  });
+
+  if (weatherResult.outcome === 'adjusted' && canCommit()) {
+    await replaceGeneratedSchedule(database, snapshot.household.id, weatherResult.schedule);
+  }
+  return {
+    ...snapshot,
+    scheduleEntries: weatherResult.schedule,
+    weatherOutcome: weatherResult.outcome,
+    weatherAdjustmentCount: weatherResult.adjustmentCount,
   };
 }
 
@@ -368,6 +420,31 @@ export async function updatePlannerSettings(
      normal_daily_limit = ?, updated_at = ? WHERE household_id = ?`,
     settings.frequencyMode, JSON.stringify(settings.restDays), settings.heavyDailyLimit,
     settings.normalDailyLimit, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
+  );
+}
+
+export async function saveWeatherLocation(
+  database: SQLiteDatabase,
+  location: { latitude: number; longitude: number },
+): Promise<void> {
+  if (!Number.isFinite(location.latitude) || location.latitude < -90 || location.latitude > 90
+    || !Number.isFinite(location.longitude) || location.longitude < -180 || location.longitude > 180) {
+    throw new RangeError('位置情報が正しくありません');
+  }
+  const latitude = Math.round(location.latitude * 100) / 100;
+  const longitude = Math.round(location.longitude * 100) / 100;
+  await database.runAsync(
+    `UPDATE household_settings SET weather_latitude = ?, weather_longitude = ?, updated_at = ?
+     WHERE household_id = ?`,
+    latitude, longitude, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
+  );
+}
+
+export async function clearWeatherLocation(database: SQLiteDatabase): Promise<void> {
+  await database.runAsync(
+    `UPDATE household_settings SET weather_latitude = NULL, weather_longitude = NULL, updated_at = ?
+     WHERE household_id = ?`,
+    new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );
 }
 

@@ -29,6 +29,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "天気に合わせて洗濯予定を調整するため、現在地のおおよその座標を使います。"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",

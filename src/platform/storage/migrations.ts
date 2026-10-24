@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -130,9 +130,18 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     version = 3;
   }
 
-  if (version < CURRENT_SCHEMA_VERSION) {
+  if (version < 4) {
     await database.execAsync(`
       ALTER TABLE chore_completions ADD COLUMN outcome TEXT NOT NULL DEFAULT 'completed';
+      PRAGMA user_version = 4;
+    `);
+    version = 4;
+  }
+
+  if (version < CURRENT_SCHEMA_VERSION) {
+    await database.execAsync(`
+      ALTER TABLE household_settings ADD COLUMN weather_latitude REAL;
+      ALTER TABLE household_settings ADD COLUMN weather_longitude REAL;
       PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
     `);
   }

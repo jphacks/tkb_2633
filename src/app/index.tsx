@@ -75,6 +75,19 @@ export default function HomeScreen() {
         <Text style={styles.summaryFoot}>実施期間の中で、できるタイミングに進めましょう。</Text>
       </Card>
 
+      {snapshot.weatherOutcome === 'adjusted' ? (
+        <Card style={styles.weatherNotice}>
+          <Text style={styles.weatherTitle}>天気に合わせて洗濯予定を調整しました</Text>
+          <Text style={styles.weatherBody}>{snapshot.weatherAdjustmentCount}件を、既存の実施期間と家事の制約内で見直しています。</Text>
+        </Card>
+      ) : null}
+      {snapshot.weatherOutcome === 'unavailable' ? (
+        <Card style={styles.weatherFallback}>
+          <Text style={styles.weatherTitle}>天気予報を取得できませんでした</Text>
+          <Text style={styles.weatherBody}>ルールで作成した通常の家事予定を表示しています。</Text>
+        </Card>
+      ) : null}
+
       {todayWaste.length > 0 ? (
         <Card style={styles.wasteNotice}>
           <View style={styles.wasteIcon}><Text style={styles.wasteIconText}>♻</Text></View>
@@ -134,6 +147,10 @@ const styles = StyleSheet.create({
   summaryValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800' },
   summaryUnit: { fontSize: 15, fontWeight: '600' },
   summaryFoot: { color: '#E8F0EA', fontSize: 12, lineHeight: 18 },
+  weatherNotice: { backgroundColor: '#EEF5F0', borderColor: '#D9E6DC', gap: 4 },
+  weatherFallback: { backgroundColor: '#FFF8EC', borderColor: '#F0E3CB', gap: 4 },
+  weatherTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
+  weatherBody: { color: palette.muted, fontSize: 12, lineHeight: 18 },
   summaryMark: { width: 56, height: 56, borderRadius: 18, backgroundColor: '#609078', alignItems: 'center', justifyContent: 'center' },
   summaryMarkText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
   wasteNotice: { flexDirection: 'row', alignItems: 'center', padding: 13, gap: 11, backgroundColor: '#F3F6E9', borderColor: '#E4E8D5' },

@@ -1,4 +1,4 @@
-import type { EntityId, ISODateTime, LocalDate } from '@/domain/shared/types';
+import type { EntityId, GeoCoordinates, ISODateTime, LocalDate } from '@/domain/shared/types';
 
 export type ChoreLoad = 'light' | 'normal' | 'heavy';
 export type FrequencyMode = 'frequent' | 'balanced' | 'relaxed';
@@ -88,4 +88,6 @@ export interface HouseholdPlannerSettings {
   notificationHour: number;
   notificationMinute: number;
   setupCompleted: boolean;
+  /** Approximate, user-approved device location used only for weather forecasts. */
+  weatherLocation?: GeoCoordinates;
 }

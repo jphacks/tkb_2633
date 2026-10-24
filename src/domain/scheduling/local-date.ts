@@ -10,7 +10,9 @@ export function localDateFromDate(date: Date): LocalDate {
 }
 
 export function localDateFromISODateTime(value: string): LocalDate {
-  return value.slice(0, 10) as LocalDate;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new RangeError(`Invalid ISO date-time: ${value}`);
+  return localDateFromDate(date);
 }
 
 export function parseLocalDate(value: LocalDate): Date {

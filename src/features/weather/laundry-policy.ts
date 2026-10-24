@@ -37,6 +37,13 @@ interface DayLoad {
   total: number;
 }
 
+interface LaundryCandidate {
+  date: LocalDate;
+  windowStart: LocalDate;
+  windowEnd: LocalDate;
+  shiftDays: number;
+}
+
 /** Pure policy that only proposes date changes for eligible laundry entries. */
 export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
   readonly DailyWeather[],
@@ -85,39 +92,46 @@ export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
 
       const radius = Math.max(0, Math.trunc(chore.windowRadiusDays));
       const maxShift = Math.max(0, Math.trunc(chore.maxShiftDays));
-      const minimumDate = laterDate(this.context.today, addDays(current.cycleBaseDate, -maxShift - radius));
-      const maximumDate = earlierDate(forecastThrough, addDays(current.cycleBaseDate, maxShift + radius));
       const originalDate = current.suggestedDate;
 
       removeLoad(loads, chore, originalDate);
-      const candidates: LocalDate[] = [];
-      for (let date = minimumDate; date <= maximumDate; date = addDays(date, 1)) {
-        if (!isSuitableLaundryDay(forecastByDate.get(date))) continue;
-        if (!fitsLoadLimits(loads.get(date), chore, this.context.settings)) continue;
-        if (!respectsDependencies(date, current, this.context.dependencies, entriesByChore)) continue;
-        candidates.push(date);
+      const candidates: LaundryCandidate[] = [];
+      for (let shiftDays = -maxShift; shiftDays <= maxShift; shiftDays += 1) {
+        const shiftedBase = addDays(current.cycleBaseDate, shiftDays);
+        const windowStart = addDays(shiftedBase, -radius);
+        const windowEnd = addDays(shiftedBase, radius);
+        const candidateStart = laterDate(this.context.today, windowStart);
+        const candidateEnd = earlierDate(forecastThrough, windowEnd);
+        for (let date = candidateStart; date <= candidateEnd; date = addDays(date, 1)) {
+          if (!isSuitableLaundryDay(forecastByDate.get(date))) continue;
+          if (!fitsLoadLimits(loads.get(date), chore, this.context.settings)) continue;
+          if (!respectsDependencies(date, current, this.context.dependencies, entriesByChore)) continue;
+          candidates.push({ date, windowStart, windowEnd, shiftDays });
+        }
       }
 
       candidates.sort((left, right) => {
-        const distanceDifference = Math.abs(daysBetween(originalDate, left)) - Math.abs(daysBetween(originalDate, right));
+        const distanceDifference = Math.abs(daysBetween(originalDate, left.date)) - Math.abs(daysBetween(originalDate, right.date));
         if (distanceDifference !== 0) return distanceDifference;
         if (chore.holidayPriority) {
-          const leftRestDay = this.context.settings.restDays.includes(weekdayOf(left)) ? 0 : 1;
-          const rightRestDay = this.context.settings.restDays.includes(weekdayOf(right)) ? 0 : 1;
+          const leftRestDay = this.context.settings.restDays.includes(weekdayOf(left.date)) ? 0 : 1;
+          const rightRestDay = this.context.settings.restDays.includes(weekdayOf(right.date)) ? 0 : 1;
           if (leftRestDay !== rightRestDay) return leftRestDay - rightRestDay;
         }
-        const loadDifference = (loads.get(left)?.total ?? 0) - (loads.get(right)?.total ?? 0);
-        return loadDifference || left.localeCompare(right);
+        const loadDifference = (loads.get(left.date)?.total ?? 0) - (loads.get(right.date)?.total ?? 0);
+        return loadDifference
+          || Math.abs(left.shiftDays) - Math.abs(right.shiftDays)
+          || left.date.localeCompare(right.date)
+          || left.windowStart.localeCompare(right.windowStart);
       });
 
-      const suggestedDate = candidates[0];
-      if (!suggestedDate || suggestedDate === originalDate) {
+      const candidate = candidates[0];
+      if (!candidate || candidate.date === originalDate) {
         addLoad(loads, chore, originalDate);
         continue;
       }
 
-      const windowStart = minimumDate;
-      const windowEnd = addDays(current.cycleBaseDate, maxShift + radius);
+      const { date: suggestedDate, windowStart, windowEnd } = candidate;
       const status: ChoreScheduleEntry['status'] = current.status === 'overdue'
         ? 'overdue'
         : this.context.today >= windowStart && this.context.today <= windowEnd

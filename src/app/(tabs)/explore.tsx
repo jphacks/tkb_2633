@@ -4,7 +4,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
-import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
+import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
+import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore } from '@/platform/storage/repository';
@@ -31,21 +32,15 @@ export default function CalendarScreen() {
   );
   const entriesOnDate = (date: LocalDate) => visibleEntries.filter((entry) => date >= entry.windowStart && date <= entry.windowEnd);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const completedOnSelectedDate = snapshot.completions.filter((completion) =>
-    completion.outcome === 'completed'
-      && (completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt)) === selectedDate,
-  );
-  const isEntryCompleted = (entry: (typeof visibleEntries)[number]) => completedOnSelectedDate.some((completion) =>
-    completion.scheduleEntryId ? completion.scheduleEntryId === entry.id : completion.choreId === entry.choreId,
-  );
+  const completedOnSelectedDate = snapshot.completions.filter((completion) => completionIncludesDate(completion, selectedDate));
+  const isEntryCompleted = (entry: (typeof visibleEntries)[number]) =>
+    snapshot.completions.some((completion) => completionMatchesEntry(completion, entry));
   const selectedEntries = entriesOnDate(selectedDate).sort((left, right) =>
     Number(isEntryCompleted(left)) - Number(isEntryCompleted(right))
     || left.suggestedDate.localeCompare(right.suggestedDate),
   );
   const completedOnlyCompletions = completedOnSelectedDate
-    .filter((completion) => !selectedEntries.some((entry) => completion.scheduleEntryId
-      ? entry.id === completion.scheduleEntryId
-      : entry.choreId === completion.choreId))
+    .filter((completion) => !selectedEntries.some((entry) => completionMatchesEntry(completion, entry)))
     .flatMap((completion) => {
       const chore = choresById.get(completion.choreId);
       return chore ? [{ completion, chore }] : [];
@@ -53,12 +48,7 @@ export default function CalendarScreen() {
   const completedCount = selectedEntries.filter(isEntryCompleted).length + completedOnlyCompletions.length;
   const periodRows = selectedEntries.flatMap((entry) => {
     const chore = choresById.get(entry.choreId);
-    const completed = snapshot.completions.some((completion) => completion.outcome === 'completed'
-      && (completion.scheduleEntryId === entry.id
-        || (completion.choreId === entry.choreId
-          && completion.scheduledDate === entry.suggestedDate
-          && (!completion.scheduledWindowStart || completion.scheduledWindowStart === entry.windowStart)
-          && (!completion.scheduledWindowEnd || completion.scheduledWindowEnd === entry.windowEnd))));
+    const completed = isEntryCompleted(entry);
     return chore ? [{
       id: entry.id,
       name: chore.name,
@@ -69,9 +59,8 @@ export default function CalendarScreen() {
   });
   for (const completion of snapshot.completions) {
     if (completion.outcome !== 'completed'
-      || (completion.scheduleEntryId && selectedEntries.some((entry) => entry.id === completion.scheduleEntryId))) continue;
-    const start = completion.scheduledWindowStart ?? completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt);
-    const end = completion.scheduledWindowEnd ?? completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt);
+      || selectedEntries.some((entry) => completionMatchesEntry(completion, entry))) continue;
+    const { start, end } = completionPeriod(completion);
     if (selectedDate < start || selectedDate > end) continue;
     const chore = choresById.get(completion.choreId);
     if (chore) periodRows.push({ id: `completed:${completion.id}`, name: chore.name, start, end, completed: true });

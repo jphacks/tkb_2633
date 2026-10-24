@@ -149,7 +149,7 @@ export default function CalendarScreen() {
                 }}
                 style={[styles.dayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay]}>
                 <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber, selected && styles.selectedDayNumber]}>{Number(date.slice(-2))}</Text>
-                <CalendarTaskCountIndicator count={dayEntries.length} colors={snapshot.settings.calendarCountColors} selected={selected} />
+                <CalendarTaskCountIndicator count={dayEntries.length} colors={snapshot.settings.calendarCountColors} mode={snapshot.settings.calendarCountDisplayMode} selected={selected} />
               </Pressable>
             );
           })}

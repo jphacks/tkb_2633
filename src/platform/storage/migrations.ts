@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 11;
+const CURRENT_SCHEMA_VERSION = 12;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -223,6 +223,15 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     }
     await database.execAsync('PRAGMA user_version = 11');
     version = 11;
+  }
+  if (version < 12) {
+    if (!settingsColumns.has('calendar_count_display_mode')) {
+      await database.execAsync(`
+        ALTER TABLE household_settings ADD COLUMN calendar_count_display_mode TEXT NOT NULL DEFAULT 'bar';
+      `);
+    }
+    await database.execAsync('PRAGMA user_version = 12');
+    version = 12;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

@@ -19,6 +19,8 @@ export interface CalendarCountColors {
   high: string;
 }
 
+export type CalendarCountDisplayMode = 'bar' | 'dots';
+
 /** Monday = 1 through Sunday = 7, independent of the device locale. */
 export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 

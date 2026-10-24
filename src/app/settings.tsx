@@ -7,7 +7,7 @@ import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palet
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
-import type { Weekday } from '@/domain/shared/types';
+import type { CalendarCountDisplayMode, Weekday } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
 import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
@@ -15,7 +15,7 @@ import {
   clearWeatherLocation,
   saveWeatherLocation,
   setNotificationsEnabled,
-  updateCalendarCountColors,
+  updateCalendarCountDisplay,
   updatePlannerSettings,
 } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
@@ -49,6 +49,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [heavyLimit, setHeavyLimit] = useState(snapshot.settings.heavyDailyLimit);
   const [normalLimit, setNormalLimit] = useState(snapshot.settings.normalDailyLimit);
   const [calendarCountColors, setCalendarCountColors] = useState(snapshot.settings.calendarCountColors);
+  const [calendarCountDisplayMode, setCalendarCountDisplayMode] = useState<CalendarCountDisplayMode>(snapshot.settings.calendarCountDisplayMode);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [calendarColorsSaving, setCalendarColorsSaving] = useState(false);
@@ -92,7 +93,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     setCalendarColorsSaving(true);
     setCalendarColorsMessage(null);
     try {
-      await updateCalendarCountColors(database, calendarCountColors);
+      await updateCalendarCountDisplay(database, { colors: calendarCountColors, displayMode: calendarCountDisplayMode });
       await refresh();
       setCalendarColorsMessage('カレンダーの色を保存しました。');
     } catch (cause) {
@@ -207,7 +208,15 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
       <Card>
         <SectionHeading title="カレンダーの家事数表示" />
-        <Text style={styles.hint}>日付の下に表示する短い横棒の色を、家事の件数帯ごとに選べます。</Text>
+        <Text style={styles.label}>表示方法</Text>
+        <View style={styles.modeRow}>
+          <ChoiceChip label="短い横棒" selected={calendarCountDisplayMode === 'bar'} onPress={() => setCalendarCountDisplayMode('bar')} />
+          <ChoiceChip label="点" selected={calendarCountDisplayMode === 'dots'} onPress={() => setCalendarCountDisplayMode('dots')} />
+        </View>
+        <Text style={styles.hint}>{calendarCountDisplayMode === 'bar'
+          ? '横棒は1本だけを色で表示し、数字は付けません。'
+          : '1〜4件はその件数分、5〜9件は中間色の1〜5個、10〜14件は多件数色の1〜5個で表示します。15件以上は多件数色の5個で固定します。'}</Text>
+        <Text style={styles.label}>件数帯ごとの色</Text>
         {([
           { key: 'low', title: '1〜4件' },
           { key: 'medium', title: '5〜9件' },
@@ -241,20 +250,20 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <Text style={styles.label}>表示プレビュー</Text>
           <View style={styles.previewRow}>
             {[
-              { count: 3, label: '1〜4件' },
-              { count: 7, label: '5〜9件' },
-              { count: 12, label: '10件以上' },
+              { count: 4, label: '1〜4件' },
+              { count: 9, label: '5〜9件' },
+              { count: 15, label: '10件以上' },
             ].map(({ count, label }) => (
               <View key={label} style={styles.previewCell}>
                 <Text style={styles.previewDate}>24</Text>
-                <CalendarTaskCountIndicator count={count} colors={calendarCountColors} />
+                <CalendarTaskCountIndicator count={count} colors={calendarCountColors} mode={calendarCountDisplayMode} />
                 <Text style={styles.previewCount}>{count}件</Text>
               </View>
             ))}
           </View>
         </View>
         {calendarColorsMessage ? <Text style={calendarColorsMessage.includes('保存しました') ? styles.success : styles.error}>{calendarColorsMessage}</Text> : null}
-        <AppButton title={calendarColorsSaving ? '保存中…' : '色を保存'} onPress={() => void saveCalendarColors()} disabled={calendarColorsSaving} />
+        <AppButton title={calendarColorsSaving ? '保存中…' : '表示設定を保存'} onPress={() => void saveCalendarColors()} disabled={calendarColorsSaving} />
       </Card>
 
       <Card>

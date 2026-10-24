@@ -53,28 +53,36 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
     if (state?.initialPending && state.initialScheduledDate) {
       const initialDate = state.initialScheduledDate;
       let overdueCycles = input.today > initialDate ? 1 : 0;
-      let overdueEnd = initialDate;
       let firstBaseDate = addDays(initialDate, cycleDays);
       while (input.today > addDays(firstBaseDate, radius)) {
         overdueCycles += 1;
-        overdueEnd = addDays(firstBaseDate, radius);
         firstBaseDate = addDays(firstBaseDate, cycleDays);
       }
 
-      choreEntries.push({
-        id: `${chore.id}:initial`,
-        householdId: input.householdId,
-        choreId: chore.id,
-        cycleBaseDate: initialDate,
-        windowStart: initialDate,
-        windowEnd: initialDate,
-        suggestedDate: initialDate,
-        status: input.today > initialDate ? 'overdue' : 'initialPending',
-        assignedMemberIds: assignment,
-        ...(overdueCycles > 0
-          ? { overdueDays: Math.max(1, daysBetween(overdueEnd, input.today)), overdueCycles }
-          : {}),
-      });
+      if (overdueCycles > 0) {
+        choreEntries.push(createOverdueEntry({
+          chore,
+          entryId: `${chore.id}:initial`,
+          originalBaseDate: initialDate,
+          overdueDays: Math.max(1, daysBetween(initialDate, input.today)),
+          overdueCycles,
+          assignedMemberIds: assignment,
+          input,
+          loadByDate,
+        }));
+      } else {
+        choreEntries.push({
+          id: `${chore.id}:initial`,
+          householdId: input.householdId,
+          choreId: chore.id,
+          cycleBaseDate: initialDate,
+          windowStart: initialDate,
+          windowEnd: initialDate,
+          suggestedDate: initialDate,
+          status: 'initialPending',
+          assignedMemberIds: assignment,
+        });
+      }
       appendRecurringEntries({
         chore,
         cycleDays,
@@ -144,20 +152,16 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
 
       if (expiredPeriods > 0) {
         const overdueEnd = addDays(firstBaseDate, radius);
-        const overdueDays = Math.max(1, daysBetween(overdueEnd, input.today));
-        choreEntries.push({
-          id: `${chore.id}:${firstBaseDate}`,
-          householdId: input.householdId,
-          choreId: chore.id,
-          cycleBaseDate: firstBaseDate,
-          windowStart: addDays(firstBaseDate, -radius),
-          windowEnd: overdueEnd,
-          suggestedDate: firstBaseDate,
-          status: 'overdue',
-          assignedMemberIds: assignment,
-          overdueDays,
+        choreEntries.push(createOverdueEntry({
+          chore,
+          entryId: `${chore.id}:${firstBaseDate}`,
+          originalBaseDate: firstBaseDate,
+          overdueDays: Math.max(1, daysBetween(overdueEnd, input.today)),
           overdueCycles: expiredPeriods,
-        });
+          assignedMemberIds: assignment,
+          input,
+          loadByDate,
+        }));
       }
 
       appendRecurringEntries({
@@ -184,6 +188,45 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
     || loadRank(choresById.get(right.choreId)?.load ?? 'light') - loadRank(choresById.get(left.choreId)?.load ?? 'light')
     || left.choreId.localeCompare(right.choreId),
   );
+}
+
+function createOverdueEntry(options: {
+  chore: ChoreDefinition;
+  entryId: EntityId;
+  originalBaseDate: LocalDate;
+  overdueDays: number;
+  overdueCycles: number;
+  assignedMemberIds: EntityId[];
+  input: ScheduleGenerationInput;
+  loadByDate: Map<LocalDate, DayLoad>;
+}): ChoreScheduleEntry {
+  const candidate = findCandidate({
+    chore: options.chore,
+    baseDate: options.input.from,
+    radius: 0,
+    maxShift: daysBetween(options.input.from, options.input.through),
+    minDate: options.input.from,
+    from: options.input.from,
+    through: options.input.through,
+    restDays: options.input.settings.restDays,
+    loadByDate: options.loadByDate,
+    limits: options.input.settings.loadLimits,
+  });
+  const suggestedDate = candidate?.suggestedDate ?? options.input.from;
+  reserveLoad(options.chore, suggestedDate, options.loadByDate);
+  return {
+    id: options.entryId,
+    householdId: options.input.householdId,
+    choreId: options.chore.id,
+    cycleBaseDate: options.originalBaseDate,
+    windowStart: suggestedDate,
+    windowEnd: suggestedDate,
+    suggestedDate,
+    status: 'overdue',
+    assignedMemberIds: options.assignedMemberIds,
+    overdueDays: options.overdueDays,
+    overdueCycles: options.overdueCycles,
+  };
 }
 
 function appendRecurringEntries(options: {

@@ -146,8 +146,10 @@ test('an incomplete first-run date stays fixed and records overdue cycles', () =
   const initial = entries.find((entry) => entry.id === 'vacuum:initial');
 
   assert.ok(initial);
-  assert.equal(initial.suggestedDate, '2026-10-24');
+  assert.ok(initial.suggestedDate >= '2026-11-02');
+  assert.equal(initial.windowStart, initial.suggestedDate);
   assert.equal(initial.status, 'overdue');
+  assert.equal(initial.overdueDays, 9);
   assert.equal(initial.overdueCycles, 2);
   assert.ok(entries.some((entry) => entry.cycleBaseDate === '2026-11-07'));
 });
@@ -183,8 +185,10 @@ test('missed cycles remain one overdue entry and future cycles continue', () => 
     states: [{ choreId: 'air-filter', lastCompletedDate: '2026-09-01', lastCompletedEstimated: false, initialPending: false }],
   }));
 
-  assert.equal(entries.filter((entry) => entry.status === 'overdue').length, 1);
-  assert.equal(entries[0].overdueCycles, 7);
+  const overdueEntries = entries.filter((entry) => entry.status === 'overdue');
+  assert.equal(overdueEntries.length, 1);
+  assert.equal(overdueEntries[0].overdueCycles, 7);
+  assert.ok(overdueEntries[0].suggestedDate >= input().today);
   assert.ok(entries.some((entry) => entry.status === 'scheduled' || entry.status === 'inWindow'));
 });
 

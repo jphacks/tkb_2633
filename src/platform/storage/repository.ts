@@ -62,6 +62,7 @@ interface StateRow {
   last_completed_date: string | null;
   last_completed_estimated: number;
   initial_pending: number;
+  initial_scheduled_date: string | null;
   unknown_reason: 'unknown' | 'skipped' | null;
 }
 
@@ -162,7 +163,8 @@ export async function loadPlannerSnapshot(
       'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ? ORDER BY name', LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<StateRow>(
-      `SELECT s.chore_id, s.last_completed_date, s.last_completed_estimated, s.initial_pending, s.unknown_reason
+      `SELECT s.chore_id, s.last_completed_date, s.last_completed_estimated, s.initial_pending,
+              s.initial_scheduled_date, s.unknown_reason
        FROM chore_state s JOIN chore_definitions d ON d.id = s.chore_id WHERE d.household_id = ?`, LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<MemberRow>(
@@ -208,6 +210,7 @@ export async function loadPlannerSnapshot(
     lastCompletedDate: (row.last_completed_date ?? undefined) as LocalDate | undefined,
     lastCompletedEstimated: Boolean(row.last_completed_estimated),
     initialPending: Boolean(row.initial_pending),
+    initialScheduledDate: (row.initial_scheduled_date ?? undefined) as LocalDate | undefined,
     unknownReason: row.unknown_reason ?? undefined,
   }));
   const members = memberRows.map((row): HouseholdMember => ({
@@ -301,6 +304,13 @@ async function replaceGeneratedSchedule(
         entry.id, entry.householdId, entry.choreId, entry.windowStart, entry.windowEnd,
         entry.suggestedDate, entry.status, JSON.stringify(entry),
       );
+      if (entry.id === `${entry.choreId}:initial`) {
+        await database.runAsync(
+          `UPDATE chore_state SET initial_scheduled_date = ?
+           WHERE chore_id = ? AND initial_pending = 1 AND initial_scheduled_date IS NULL`,
+          entry.suggestedDate, entry.choreId,
+        );
+      }
     }
   });
 }
@@ -334,11 +344,12 @@ export async function completeFirstSetup(database: SQLiteDatabase, submission: S
       );
       const previous = submission.previousDates[row.id] ?? { unknownReason: 'skipped' as const };
       await database.runAsync(
-        `INSERT INTO chore_state (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO chore_state
+         (chore_id, last_completed_date, last_completed_estimated, initial_pending, initial_scheduled_date, unknown_reason)
+         VALUES (?, ?, ?, ?, NULL, ?)
          ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
          last_completed_estimated = excluded.last_completed_estimated, initial_pending = excluded.initial_pending,
-         unknown_reason = excluded.unknown_reason`,
+         initial_scheduled_date = NULL, unknown_reason = excluded.unknown_reason`,
         row.id, isEnabled ? previous.date ?? null : null, previous.estimated ? 1 : 0,
         isEnabled && !previous.date ? 1 : 0, isEnabled && !previous.date ? previous.unknownReason ?? 'skipped' : null,
       );
@@ -404,7 +415,7 @@ export async function completeChore(
       `INSERT INTO chore_state (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
        VALUES (?, ?, 0, 0, NULL)
        ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
-       last_completed_estimated = 0, initial_pending = 0, unknown_reason = NULL`,
+       last_completed_estimated = 0, initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL`,
       entry.choreId, completedDate,
     );
     inserted = true;

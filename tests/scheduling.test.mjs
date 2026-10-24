@@ -130,6 +130,28 @@ test('unknown first-run chores get recurring dates after their first planned occ
   assert.ok(new Set(entries.map((entry) => entry.id)).size === entries.length);
 });
 
+test('an incomplete first-run date stays fixed and records overdue cycles', () => {
+  const entries = generateHouseworkSchedule(input({
+    from: '2026-11-02',
+    today: '2026-11-02',
+    through: '2026-11-30',
+    chores: [chore('vacuum')],
+    states: [{
+      choreId: 'vacuum',
+      initialPending: true,
+      initialScheduledDate: '2026-10-24',
+      lastCompletedEstimated: false,
+    }],
+  }));
+  const initial = entries.find((entry) => entry.id === 'vacuum:initial');
+
+  assert.ok(initial);
+  assert.equal(initial.suggestedDate, '2026-10-24');
+  assert.equal(initial.status, 'overdue');
+  assert.equal(initial.overdueCycles, 2);
+  assert.ok(entries.some((entry) => entry.cycleBaseDate === '2026-11-07'));
+});
+
 test('holiday-priority windows include one of the configured rest days', () => {
   const entries = generateHouseworkSchedule(input({
     chores: [chore('deep-clean', {

@@ -74,6 +74,7 @@ export interface ChoreState {
   lastCompletedDate?: LocalDate;
   lastCompletedEstimated: boolean;
   initialPending: boolean;
+  initialScheduledDate?: LocalDate;
   unknownReason?: 'unknown' | 'skipped';
 }
 

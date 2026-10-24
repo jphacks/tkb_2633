@@ -50,7 +50,45 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
     const maxShift = Math.max(0, chore.maxShiftDays ?? (cycleDays < 30 ? 4 : 7));
     const choreEntries: ChoreScheduleEntry[] = [];
 
-    if (state?.initialPending || !lastCompleted) {
+    if (state?.initialPending && state.initialScheduledDate) {
+      const initialDate = state.initialScheduledDate;
+      let overdueCycles = input.today > initialDate ? 1 : 0;
+      let overdueEnd = initialDate;
+      let firstBaseDate = addDays(initialDate, cycleDays);
+      while (input.today > addDays(firstBaseDate, radius)) {
+        overdueCycles += 1;
+        overdueEnd = addDays(firstBaseDate, radius);
+        firstBaseDate = addDays(firstBaseDate, cycleDays);
+      }
+
+      choreEntries.push({
+        id: `${chore.id}:initial`,
+        householdId: input.householdId,
+        choreId: chore.id,
+        cycleBaseDate: initialDate,
+        windowStart: initialDate,
+        windowEnd: initialDate,
+        suggestedDate: initialDate,
+        status: input.today > initialDate ? 'overdue' : 'initialPending',
+        assignedMemberIds: assignment,
+        ...(overdueCycles > 0
+          ? { overdueDays: Math.max(1, daysBetween(overdueEnd, input.today)), overdueCycles }
+          : {}),
+      });
+      appendRecurringEntries({
+        chore,
+        cycleDays,
+        radius,
+        maxShift,
+        firstBaseDate,
+        firstOccurrence: 1,
+        assignment,
+        input,
+        entriesByChore,
+        loadByDate,
+        choreEntries,
+      });
+    } else if (state?.initialPending || !lastCompleted) {
       const dependencyDate = latestDependencyDate(chore.id, input.dependencies, entriesByChore, 0);
       const candidate = findCandidate({
         chore,
@@ -128,7 +166,7 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
         radius,
         maxShift,
         firstBaseDate: firstUnexpiredBase,
-        firstOccurrence: expiredPeriods,
+        firstOccurrence: 1,
         assignment,
         input,
         entriesByChore,

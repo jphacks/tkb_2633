@@ -1,19 +1,25 @@
 import type { ISODateTime } from '@/domain/shared/types';
 
+export interface TodayWidgetChore {
+  id: string;
+  name: string;
+  completed: boolean;
+}
+
 export interface NextChoreWidgetSnapshot {
-  todayChoreNames: readonly string[];
+  chores: readonly TodayWidgetChore[];
   remainingCount: number;
   updatedAt: ISODateTime;
 }
 
 export interface NextChoreWidgetDisplayProps {
-  firstChore: string;
-  secondChore: string;
-  thirdChore: string;
+  chores: readonly TodayWidgetChore[];
+  pendingWidgetCompletionIds: readonly string[];
   remainingCount: number;
   updatedAt: ISODateTime;
 }
 
 export interface WidgetGateway {
   updateNextChore(snapshot: NextChoreWidgetSnapshot): void;
+  getPendingWidgetCompletionIds(): Promise<readonly string[]>;
 }

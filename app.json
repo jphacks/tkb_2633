@@ -38,6 +38,7 @@
       ],
       "expo-sqlite",
       "expo-notifications",
+      "./plugins/with-android-widget-completion",
       [
         "expo-widgets",
         {

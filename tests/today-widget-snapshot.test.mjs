@@ -1,15 +1,64 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { registerHooks } from 'node:module';
+import { dirname, extname, resolve as resolvePath } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { createTodayWidgetSnapshot } from '../src/features/widgets/today-widget-snapshot.ts';
+const projectRoot = fileURLToPath(new URL('../', import.meta.url));
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    let target;
+    if (specifier.startsWith('@/')) {
+      target = resolvePath(projectRoot, 'src', specifier.slice(2));
+    } else if ((specifier.startsWith('./') || specifier.startsWith('../')) && context.parentURL?.startsWith('file:')) {
+      target = resolvePath(dirname(fileURLToPath(context.parentURL)), specifier);
+    }
+    if (target && !extname(target)) {
+      for (const extension of ['.ts', '.tsx', '.js', '.mjs']) {
+        if (existsSync(target + extension)) return nextResolve(pathToFileURL(target + extension).href, context);
+      }
+      const indexPath = resolvePath(target, 'index.ts');
+      if (existsSync(indexPath)) return nextResolve(pathToFileURL(indexPath).href, context);
+    }
+    return nextResolve(specifier, context);
+  },
+});
+
+const { createTodayWidgetSnapshot } = await import('../src/features/widgets/today-widget-snapshot.ts');
+const today = '2026-10-24';
+const updatedAt = '2026-10-24T03:00:00.000Z';
+
+function entry(choreId, overrides = {}) {
+  return {
+    id: `entry-${choreId}`,
+    householdId: 'home',
+    choreId,
+    cycleBaseDate: today,
+    windowStart: today,
+    windowEnd: today,
+    suggestedDate: today,
+    status: 'inWindow',
+    assignedMemberIds: [],
+    ...overrides,
+  };
+}
+
+function completion(id, choreId, overrides = {}) {
+  return { id, householdId: 'home', choreId, completedAt: updatedAt, outcome: 'completed', ...overrides };
+}
+
+function snapshot(entries, chores, completions = [], date = today) {
+  return createTodayWidgetSnapshot(entries, chores, completions, date, updatedAt);
+}
 
 test('widget displays at most three today chores in scheduler priority order', () => {
   const entries = [
-    { choreId: 'future', status: 'scheduled', suggestedDate: '2026-10-27' },
-    { choreId: 'normal', status: 'scheduled', suggestedDate: '2026-10-24' },
-    { choreId: 'overdue', status: 'overdue', suggestedDate: '2026-10-20' },
-    { choreId: 'window', status: 'inWindow', suggestedDate: '2026-10-24' },
-    { choreId: 'initial', status: 'initialPending', suggestedDate: '2026-10-24' },
+    entry('future', { status: 'scheduled', windowStart: '2026-10-26', windowEnd: '2026-10-28', suggestedDate: '2026-10-27' }),
+    entry('normal', { status: 'scheduled' }),
+    entry('overdue', { status: 'overdue', windowStart: '2026-10-21', windowEnd: '2026-10-23', suggestedDate: '2026-10-22' }),
+    entry('window'),
+    entry('initial', { status: 'initialPending' }),
   ];
   const chores = [
     { id: 'future', name: '明後日の家事' },
@@ -18,8 +67,61 @@ test('widget displays at most three today chores in scheduler priority order', (
     { id: 'window', name: '実施期間中の家事' },
     { id: 'initial', name: '初回の家事' },
   ];
-  const snapshot = createTodayWidgetSnapshot(entries, chores, '2026-10-24', '2026-10-24T00:00:00.000Z');
-  assert.deepEqual(snapshot.todayChoreNames, ['期限超過の家事', '実施期間中の家事', '初回の家事']);
-  assert.equal(snapshot.todayChoreNames.length, 3);
-  assert.equal(snapshot.remainingCount, 1);
+  const result = snapshot(entries, chores);
+  assert.deepEqual(result.chores, [
+    { id: 'entry-overdue', name: '期限超過の家事', completed: false },
+    { id: 'entry-window', name: '実施期間中の家事', completed: false },
+    { id: 'entry-initial', name: '初回の家事', completed: false },
+  ]);
+  assert.equal(result.remainingCount, 1);
+  assert.equal(result.updatedAt, updatedAt);
+});
+
+test('widget includes the whole execution window and only one day after its end', () => {
+  const entries = [entry('windowed', { windowEnd: '2026-10-26', suggestedDate: '2026-10-26', status: 'scheduled' })];
+  const chores = [{ id: 'windowed', name: '期間内の家事' }];
+  for (const date of ['2026-10-24', '2026-10-25', '2026-10-26', '2026-10-27']) {
+    assert.deepEqual(snapshot(entries, chores, [], date).chores, [
+      { id: 'entry-windowed', name: '期間内の家事', completed: false },
+    ], date);
+  }
+  for (const date of ['2026-10-23', '2026-10-28']) {
+    assert.deepEqual(snapshot(entries, chores, [], date).chores, [], date);
+  }
+});
+
+test('completed chores remain checked below pending chores and become unchecked after undo', () => {
+  const entries = [entry('done'), entry('pending')];
+  const chores = [{ id: 'done', name: '完了した家事' }, { id: 'pending', name: '未完了の家事' }];
+  const completed = completion('done-record', 'done', { scheduleEntryId: 'entry-done' });
+  assert.deepEqual(snapshot(entries, chores, [completed]).chores, [
+    { id: 'entry-pending', name: '未完了の家事', completed: false },
+    { id: 'entry-done', name: '完了した家事', completed: true },
+  ]);
+  assert.equal(snapshot(entries, chores).chores.find((row) => row.id === 'entry-done').completed, false);
+});
+
+test('regenerated schedules retain completed occurrences without completing the next occurrence', () => {
+  const entries = [entry('repeat', { id: 'next-occurrence' })];
+  const chores = [{ id: 'repeat', name: '繰り返す家事' }, { id: 'yesterday', name: '昨日の家事' }];
+  const completions = [
+    completion('previous-occurrence', 'repeat', {
+      scheduleEntryId: 'old-entry', scheduledDate: today, scheduledWindowStart: today, scheduledWindowEnd: today,
+    }),
+    completion('incomplete-record', 'repeat', { scheduleEntryId: 'next-occurrence', outcome: 'incomplete' }),
+    completion('yesterday-record', 'yesterday', { completedAt: '2026-10-23T03:00:00.000Z' }),
+  ];
+  assert.deepEqual(snapshot(entries, chores, completions).chores, [
+    { id: 'next-occurrence', name: '繰り返す家事', completed: false },
+    { id: 'completed:previous-occurrence', name: '繰り返す家事', completed: true },
+  ]);
+});
+
+test('missing chore definitions do not consume widget rows or inflate the remaining count', () => {
+  const chores = ['one', 'two', 'three', 'four'].map((id) => ({ id, name: id }));
+  const result = snapshot([entry('removed'), ...chores.map((chore) => entry(chore.id))], chores);
+  assert.deepEqual(result.chores.map((row) => row.name), ['one', 'two', 'three']);
+  assert.equal(result.remainingCount, 1);
+  assert.deepEqual(snapshot([entry('removed')], []).chores, []);
+  assert.equal(snapshot([entry('removed')], []).remainingCount, 0);
 });

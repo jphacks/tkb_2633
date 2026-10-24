@@ -38,7 +38,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "postinstall": "node ./scripts/patch-hermes-podspec-encoding.cjs",
+    "postinstall": "node ./scripts/patch-hermes-podspec-encoding.cjs && node ./scripts/patch-expo-widget-open-app.cjs",
     "start": "expo start --dev-client",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",

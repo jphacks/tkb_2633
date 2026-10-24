@@ -1,32 +1,70 @@
-import { Text, VStack } from '@expo/ui/swift-ui';
+import { Button, HStack, Text, VStack } from '@expo/ui/swift-ui';
+import {
+  buttonStyle,
+  containerBackground,
+  font,
+  foregroundStyle,
+  lineLimit,
+  padding,
+} from '@expo/ui/swift-ui/modifiers';
 import { createWidget } from 'expo-widgets';
 
-interface NextChoreWidgetProps {
-  firstChore: string;
-  secondChore: string;
-  thirdChore: string;
-  remainingCount: number;
-  updatedAt: string;
-}
+import type { NextChoreWidgetDisplayProps } from '@/features/widgets/contracts';
 
-function NextChoreWidget(props: NextChoreWidgetProps) {
+function NextChoreWidget(props: NextChoreWidgetDisplayProps) {
   'widget';
 
+  const chores = props.chores ?? [];
+  const remainingCount = props.remainingCount ?? 0;
+
   return (
-    <VStack>
-      <Text>今日の家事</Text>
-      {props.firstChore ? <Text>□ {props.firstChore}</Text> : <Text>予定はありません</Text>}
-      {props.secondChore ? <Text>□ {props.secondChore}</Text> : null}
-      {props.thirdChore ? <Text>□ {props.thirdChore}</Text> : null}
-      {props.remainingCount > 0 ? <Text>ほか{props.remainingCount}件</Text> : null}
+    <VStack alignment="leading" spacing={6} modifiers={[padding({ all: 14 }), containerBackground('#FFFFFF', 'widget')] }>
+      <Text modifiers={[font({ size: 17, weight: 'bold' }), foregroundStyle('#292C3B')]}>
+        今日の家事
+      </Text>
+      {chores.length === 0 ? (
+        <Text modifiers={[font({ size: 13 }), foregroundStyle('#68718B')]}>予定はありません</Text>
+      ) : chores.map((chore) => {
+        // Only code inside this function is serialized into the widget runtime.
+        const content = (
+          <HStack key={chore.id} alignment="center" spacing={7}>
+            <Text modifiers={[font({ size: 16, weight: 'semibold' }), foregroundStyle(chore.completed ? '#4AADE0' : '#68718B')]}>
+              {chore.completed ? '✓' : '○'}
+            </Text>
+            <Text modifiers={[font({ size: 13, weight: chore.completed ? 'regular' : 'medium' }), foregroundStyle(chore.completed ? '#68718B' : '#292C3B'), lineLimit(1)]}>
+              {chore.name}
+            </Text>
+          </HStack>
+        );
+
+        if (chore.completed) return content;
+
+        return (
+          <Button
+            key={chore.id}
+            target={`complete:${chore.id}`}
+            onPress={() => ({
+              chores: (props.chores ?? []).map((item) => item.id === chore.id ? { ...item, completed: true } : item),
+              pendingWidgetCompletionIds: [...new Set([...(props.pendingWidgetCompletionIds ?? []), chore.id])],
+            })}
+            modifiers={[buttonStyle('plain')]}
+          >
+            {content}
+          </Button>
+        );
+      })}
+      {remainingCount > 0 ? (
+        <Text modifiers={[font({ size: 11, weight: 'medium' }), foregroundStyle('#68718B')]}>
+          ほか{remainingCount}件
+        </Text>
+      ) : null}
     </VStack>
   );
 }
 
 export default createWidget('NextChoreWidget', NextChoreWidget, {
-  firstChore: '',
-  secondChore: '',
-  thirdChore: '',
+  chores: [],
+  pendingWidgetCompletionIds: [],
   remainingCount: 0,
   updatedAt: '',
 });

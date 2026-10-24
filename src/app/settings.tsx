@@ -320,7 +320,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
         </View>
         <View style={styles.divider} />
-        <FeatureStatus title="次の家事ウィジェット" status="iOS・Android" detail="iOSは2×2と中サイズ、Androidは2×2です。Schedulerの今日の優先順から最大3件を表示します。" />
+        <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
       </Card>
 
       <Card>

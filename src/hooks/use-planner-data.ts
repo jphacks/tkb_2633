@@ -2,11 +2,11 @@ import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
 
-import { localDateFromDate } from '@/domain/scheduling/local-date';
+import { completionMatchesEntry } from '@/domain/scheduling/completion-matching';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
-import { applyWeatherToPlannerSnapshot, loadPlannerSnapshot } from '@/platform/storage/repository';
+import { applyWeatherToPlannerSnapshot, completeChore, loadPlannerSnapshot } from '@/platform/storage/repository';
 import { expoWidgetGateway } from '@/platform/widgets/expo-widget-gateway';
-import { createTodayWidgetSnapshot } from '@/features/widgets/today-widget-snapshot';
+import { publishTodayWidgetSnapshot } from '@/features/widgets/publish-today-widget-snapshot';
 
 export function usePlannerData() {
   const database = useSQLiteContext();
@@ -15,23 +15,25 @@ export function usePlannerData() {
   const [error, setError] = useState<string | null>(null);
   const refreshRevision = useRef(0);
 
-  const publishWidgetSnapshot = useCallback((data: PlannerSnapshot) => {
-    const today = localDateFromDate(new Date());
-    expoWidgetGateway.updateNextChore(createTodayWidgetSnapshot(
-      data.scheduleEntries,
-      data.chores,
-      today,
-      new Date().toISOString(),
-    ));
-  }, []);
-
   const refresh = useCallback(async (options: { waitForWeather?: boolean } = {}) => {
     const revision = ++refreshRevision.current;
     try {
-      const data = await loadPlannerSnapshot(database);
+      let data = await loadPlannerSnapshot(database);
+      try {
+        const pendingIds = await expoWidgetGateway.getPendingWidgetCompletionIds();
+        let completedFromWidget = false;
+        for (const entryId of pendingIds) {
+          const entry = data.scheduleEntries.find((candidate) => candidate.id === entryId);
+          if (!entry || data.completions.some((completion) => completionMatchesEntry(completion, entry))) continue;
+          completedFromWidget = (await completeChore(database, entry, undefined, 'widget')) || completedFromWidget;
+        }
+        if (completedFromWidget) data = await loadPlannerSnapshot(database);
+      } catch {
+        // Keep the planner usable if widget state cannot be read on this platform.
+      }
       if (revision !== refreshRevision.current) return;
       setSnapshot(data);
-      publishWidgetSnapshot(data);
+      publishTodayWidgetSnapshot(data);
       setError(null);
 
       if (data.settings.weatherLocation) {
@@ -42,7 +44,7 @@ export function usePlannerData() {
         ).then((weatherData) => {
           if (revision !== refreshRevision.current) return;
           setSnapshot(weatherData);
-          publishWidgetSnapshot(weatherData);
+          publishTodayWidgetSnapshot(weatherData);
         }).catch((cause) => {
           if (revision === refreshRevision.current) {
             setError(cause instanceof Error ? cause.message : '天気に合わせて予定を保存できませんでした');
@@ -58,7 +60,7 @@ export function usePlannerData() {
     } finally {
       if (revision === refreshRevision.current) setLoading(false);
     }
-  }, [database, publishWidgetSnapshot]);
+  }, [database]);
 
   useFocusEffect(useCallback(() => {
     void refresh();

@@ -796,6 +796,7 @@ export async function completeChore(
   database: SQLiteDatabase,
   entry: ChoreScheduleEntry,
   memberId?: EntityId,
+  source: NonNullable<ChoreCompletion['source']> = 'inApp',
 ): Promise<boolean> {
   if (entry.status === 'initialPending' && !entry.id.endsWith(':initial')) return false;
   let inserted = false;
@@ -822,9 +823,9 @@ export async function completeChore(
     if (existing) {
       await database.runAsync(
         `UPDATE chore_completions SET outcome = 'completed', completed_at = ?,
-         completed_by_member_id = ?, source = 'inApp', scheduled_date = ?,
+         completed_by_member_id = ?, source = ?, scheduled_date = ?,
          scheduled_window_start = ?, scheduled_window_end = ?, previous_chore_state_json = ? WHERE id = ?`,
-        completedAt.toISOString(), memberId ?? null, entry.suggestedDate, entry.windowStart, entry.windowEnd,
+        completedAt.toISOString(), memberId ?? null, source, entry.suggestedDate, entry.windowStart, entry.windowEnd,
         previousStateJson, existing.id,
       );
     } else {
@@ -832,8 +833,8 @@ export async function completeChore(
         `INSERT INTO chore_completions
          (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id,
           scheduled_date, scheduled_window_start, scheduled_window_end, outcome, previous_chore_state_json)
-         VALUES (?, ?, ?, ?, ?, 'inApp', ?, ?, ?, ?, 'completed', ?)`,
-        createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
+        createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null, source,
         entry.id, entry.suggestedDate, entry.windowStart, entry.windowEnd, previousStateJson,
       );
     }

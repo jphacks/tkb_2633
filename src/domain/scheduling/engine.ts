@@ -261,6 +261,7 @@ function effectiveCycleDays(chore: ChoreDefinition, mode: ScheduleGenerationInpu
 function latestCompletionDates(completions: readonly ChoreCompletion[]): Map<EntityId, LocalDate> {
   const latest = new Map<EntityId, LocalDate>();
   for (const completion of completions) {
+    if (completion.outcome === 'incomplete') continue;
     const date = localDateFromISODateTime(completion.completedAt);
     if (!latest.has(completion.choreId) || date > latest.get(completion.choreId)!) {
       latest.set(completion.choreId, date);

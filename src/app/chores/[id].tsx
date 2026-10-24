@@ -5,9 +5,9 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-nati
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette } from '@/components/planner-ui';
 import type { ChoreDefinition, ChoreLoad, LaundryDryingPreference } from '@/domain/chores/types';
-import { formatJapaneseDate, localDateFromISODateTime } from '@/domain/scheduling/local-date';
+import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime } from '@/domain/scheduling/local-date';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { completeChore, replaceChoreDependencies, setChoreAssignments, updateChoreDefinition } from '@/platform/storage/repository';
+import { completeChore, recordIncompleteChore, replaceChoreDependencies, setChoreAssignments, updateChoreDefinition } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
 
 const loadOptions: { id: ChoreLoad; label: string }[] = [
@@ -53,7 +53,7 @@ function ChoreDetailContent({
   const entries = snapshot.scheduleEntries.filter((entry) => entry.choreId === chore.id);
   const currentEntry = entries.find((entry) => entry.status === 'overdue' || entry.status === 'inWindow' || entry.status === 'initialPending') ?? entries[0];
   const state = snapshot.states.find((item) => item.choreId === chore.id);
-  const previousCompletion = snapshot.completions.find((item) => item.choreId === chore.id);
+  const previousCompletion = snapshot.completions.find((item) => item.choreId === chore.id && item.outcome === 'completed');
   const latestCompletion = state?.lastCompletedDate ?? (previousCompletion ? localDateFromISODateTime(previousCompletion.completedAt) : undefined);
 
   const toggleAssignee = (memberId: string) => {
@@ -119,6 +119,21 @@ function ChoreDetailContent({
     }
   };
 
+  const recordIncomplete = async () => {
+    if (!currentEntry || currentEntry.windowStart > localDateFromDate(new Date())) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const recorded = await recordIncompleteChore(database, currentEntry);
+      setMessage(recorded ? '未完了を記録し、予定を再計算しました。' : 'この予定はすでに完了として記録されています。');
+      await refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '未完了を記録できませんでした');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Page>
       <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  家事一覧</Text></Pressable>
@@ -133,6 +148,15 @@ function ChoreDetailContent({
         <Text style={styles.period}>{currentEntry ? `${formatJapaneseDate(currentEntry.windowStart)}〜${formatJapaneseDate(currentEntry.windowEnd)}` : '現在、予定はありません'}</Text>
         {currentEntry?.status === 'overdue' ? <Text style={styles.overdue}>推奨期間から{currentEntry.overdueDays ?? 0}日経過 · {currentEntry.overdueCycles ?? 1}周期分</Text> : null}
         <AppButton title="完了にする" onPress={() => void finish()} disabled={!currentEntry || saving} />
+        <AppButton
+          title="未完了を記録"
+          onPress={() => void recordIncomplete()}
+          disabled={!currentEntry || currentEntry.windowStart > localDateFromDate(new Date()) || saving}
+          variant="secondary"
+        />
+        {currentEntry && currentEntry.windowStart > localDateFromDate(new Date()) ? (
+          <Text style={styles.body}>未完了の記録は実施期間が始まると選べます。</Text>
+        ) : null}
       </Card>
 
       <Card>

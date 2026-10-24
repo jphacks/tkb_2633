@@ -12,11 +12,13 @@ export default function HistoryScreen() {
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const membersById = new Map(snapshot.members.map((member) => [member.id, member]));
   const thisMonth = monthKey(localDateFromDate(new Date()));
-  const completedThisMonth = snapshot.completions.filter((item) => monthKey(localDateFromISODateTime(item.completedAt)) === thisMonth).length;
+  const completedThisMonth = snapshot.completions.filter((item) =>
+    item.outcome === 'completed' && monthKey(localDateFromISODateTime(item.completedAt)) === thisMonth,
+  ).length;
 
   return (
     <Page>
-      <ScreenHeading eyebrow="HISTORY" title="実施履歴" description="完了した家事と実際に行った日を記録しています。" />
+      <ScreenHeading eyebrow="HISTORY" title="実施履歴" description="完了と未完了の記録を端末内に保存します。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       <Card style={styles.summary}>
         <View><Text style={styles.summaryLabel}>今月の完了</Text><Text style={styles.summaryValue}>{completedThisMonth}<Text style={styles.summaryUnit}>件</Text></Text></View>
@@ -26,20 +28,25 @@ export default function HistoryScreen() {
       {snapshot.completions.length === 0 ? (
         <Card style={styles.emptyCard}>
           <Text style={styles.emptyMark}>✓</Text>
-          <Text style={styles.emptyTitle}>完了すると記録が残ります</Text>
-          <Text style={styles.emptyText}>今日の画面や家事の詳細から「完了」を押すと、実際に行った日が保存されます。</Text>
+          <Text style={styles.emptyTitle}>家事の状態を記録できます</Text>
+          <Text style={styles.emptyText}>家事の詳細から「完了」または「未完了」を記録すると、日付と一緒に保存されます。</Text>
           <AppButton title="今日の家事を見る" onPress={() => router.push('/')} variant="secondary" />
         </Card>
       ) : snapshot.completions.slice(0, 100).map((completion) => {
         const chore = choresById.get(completion.choreId);
         const memberName = completion.completedByMemberId ? membersById.get(completion.completedByMemberId)?.displayName : undefined;
         const date = localDateFromISODateTime(completion.completedAt);
+        const isCompleted = completion.outcome === 'completed';
         return (
           <Card key={completion.id} style={styles.historyCard}>
-            <View style={styles.checkMark}><Text style={styles.checkText}>✓</Text></View>
+            <View style={[styles.checkMark, !isCompleted && styles.incompleteMark]}>
+              <Text style={[styles.checkText, !isCompleted && styles.incompleteText]}>{isCompleted ? '✓' : '×'}</Text>
+            </View>
             <View style={styles.copy}>
               <Text style={styles.choreName}>{chore?.name ?? '家事'}</Text>
-              <Text style={styles.meta}>{formatJapaneseDate(date, { year: true, weekday: true })}{memberName ? ` · ${memberName}` : ''}</Text>
+              <Text style={styles.meta}>
+                {isCompleted ? '完了' : '未完了'} · {formatJapaneseDate(date, { year: true, weekday: true })}{memberName ? ` · ${memberName}` : ''}
+              </Text>
             </View>
             <Text style={styles.source}>{completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : 'アプリ'}</Text>
           </Card>
@@ -64,6 +71,8 @@ const styles = StyleSheet.create({
   historyCard: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 13, paddingHorizontal: 14 },
   checkMark: { width: 32, height: 32, borderRadius: 11, backgroundColor: palette.accentSoft, alignItems: 'center', justifyContent: 'center' },
   checkText: { color: palette.accent, fontSize: 16, fontWeight: '800' },
+  incompleteMark: { backgroundColor: '#F4E7E3' },
+  incompleteText: { color: palette.warning },
   copy: { flex: 1, gap: 3 },
   choreName: { color: palette.ink, fontSize: 14, fontWeight: '700' },
   meta: { color: palette.muted, fontSize: 11 },

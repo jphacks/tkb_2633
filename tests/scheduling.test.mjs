@@ -152,6 +152,16 @@ test('an incomplete first-run date stays fixed and records overdue cycles', () =
   assert.ok(entries.some((entry) => entry.cycleBaseDate === '2026-11-07'));
 });
 
+test('an incomplete record never becomes a new completion-cycle base date', () => {
+  const entries = generateHouseworkSchedule(input({
+    chores: [chore('bath')],
+    completions: [{ choreId: 'bath', outcome: 'incomplete', completedAt: '2026-10-23T12:00:00.000Z' }],
+  }));
+
+  assert.equal(entries[0].id, 'bath:initial');
+  assert.equal(entries[0].status, 'initialPending');
+});
+
 test('holiday-priority windows include one of the configured rest days', () => {
   const entries = generateHouseworkSchedule(input({
     chores: [chore('deep-clean', {

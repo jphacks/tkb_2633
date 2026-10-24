@@ -63,6 +63,7 @@ export interface ChoreCompletion {
   choreId: EntityId;
   completedAt: ISODateTime;
   completedByMemberId?: EntityId;
+  outcome: 'completed' | 'incomplete';
   source?: 'inApp' | 'notification' | 'widget';
   scheduleEntryId?: EntityId;
   completionNote?: 'completedNow' | 'alreadyDone';

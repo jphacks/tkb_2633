@@ -72,6 +72,7 @@ interface CompletionRow {
   chore_id: string;
   completed_at: string;
   completed_by_member_id: string | null;
+  outcome: ChoreCompletion['outcome'];
   source: ChoreCompletion['source'] | null;
   schedule_entry_id: string | null;
 }
@@ -178,7 +179,7 @@ export async function loadPlannerSnapshot(
       'SELECT id, predecessor_chore_id, successor_chore_id, policy_json FROM chore_dependencies WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<CompletionRow>(
-      `SELECT id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id
+      `SELECT id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, outcome
        FROM chore_completions WHERE household_id = ? ORDER BY completed_at DESC`, LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<WasteRow>(
@@ -235,6 +236,7 @@ export async function loadPlannerSnapshot(
     choreId: row.chore_id,
     completedAt: row.completed_at,
     completedByMemberId: row.completed_by_member_id ?? undefined,
+    outcome: row.outcome,
     source: row.source ?? undefined,
     scheduleEntryId: row.schedule_entry_id ?? undefined,
   }));
@@ -401,16 +403,24 @@ export async function completeChore(
   const completedAt = new Date();
   const completedDate = localDateFromDate(completedAt);
   await database.withTransactionAsync(async () => {
-    const existing = await database.getFirstAsync<{ id: string }>(
-      'SELECT id FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
+    const existing = await database.getFirstAsync<{ id: string; outcome: ChoreCompletion['outcome'] }>(
+      'SELECT id, outcome FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
     );
-    if (existing) return;
-    await database.runAsync(
-      `INSERT INTO chore_completions
-       (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id)
-       VALUES (?, ?, ?, ?, ?, 'inApp', ?)`,
-      createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null, entry.id,
-    );
+    if (existing?.outcome === 'completed') return;
+    if (existing) {
+      await database.runAsync(
+        `UPDATE chore_completions SET outcome = 'completed', completed_at = ?,
+         completed_by_member_id = ?, source = 'inApp' WHERE id = ?`,
+        completedAt.toISOString(), memberId ?? null, existing.id,
+      );
+    } else {
+      await database.runAsync(
+        `INSERT INTO chore_completions
+         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, outcome)
+         VALUES (?, ?, ?, ?, ?, 'inApp', ?, 'completed')`,
+        createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null, entry.id,
+      );
+    }
     await database.runAsync(
       `INSERT INTO chore_state (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
        VALUES (?, ?, 0, 0, NULL)
@@ -421,6 +431,37 @@ export async function completeChore(
     inserted = true;
   });
   return inserted;
+}
+
+export async function recordIncompleteChore(
+  database: SQLiteDatabase,
+  entry: ChoreScheduleEntry,
+  memberId?: EntityId,
+): Promise<boolean> {
+  let recorded = false;
+  const recordedAt = new Date().toISOString();
+  await database.withTransactionAsync(async () => {
+    const existing = await database.getFirstAsync<{ id: string; outcome: ChoreCompletion['outcome'] }>(
+      'SELECT id, outcome FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
+    );
+    if (existing?.outcome === 'completed') return;
+    if (existing) {
+      await database.runAsync(
+        `UPDATE chore_completions SET outcome = 'incomplete', completed_at = ?,
+         completed_by_member_id = ?, source = 'inApp' WHERE id = ?`,
+        recordedAt, memberId ?? null, existing.id,
+      );
+    } else {
+      await database.runAsync(
+        `INSERT INTO chore_completions
+         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id, outcome)
+         VALUES (?, ?, ?, ?, ?, 'inApp', ?, 'incomplete')`,
+        createId('completion'), entry.householdId, entry.choreId, recordedAt, memberId ?? null, entry.id,
+      );
+    }
+    recorded = true;
+  });
+  return recorded;
 }
 
 export async function setChoreAssignments(

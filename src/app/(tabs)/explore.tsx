@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
@@ -148,12 +149,7 @@ export default function CalendarScreen() {
                 }}
                 style={[styles.dayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay]}>
                 <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber, selected && styles.selectedDayNumber]}>{Number(date.slice(-2))}</Text>
-                <View style={styles.dots}>
-                  {dayEntries.slice(0, 3).map((entry) => (
-                    <View key={entry.id} style={[styles.dot, entry.status === 'overdue' ? styles.dotOverdue : entry.status === 'inWindow' ? styles.dotInWindow : null]} />
-                  ))}
-                  {dayEntries.length > 3 ? <Text style={styles.moreCount}>+{dayEntries.length - 3}</Text> : null}
-                </View>
+                <CalendarTaskCountIndicator count={dayEntries.length} colors={snapshot.settings.calendarCountColors} selected={selected} />
               </Pressable>
             );
           })}
@@ -262,7 +258,6 @@ const styles = StyleSheet.create({
   outsideMonth: { color: '#B7BED0' },
   weekendNumber: { color: '#78819A' },
   selectedDayNumber: { color: '#FFFFFF' },
-  dots: { minHeight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
   periodPanel: { gap: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 11 },
   periodPanelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   periodPanelTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
@@ -278,10 +273,6 @@ const styles = StyleSheet.create({
   periodBarCompleted: { backgroundColor: '#AAB1C1' },
   periodRange: { color: palette.muted, fontSize: 10 },
   noPeriods: { color: palette.muted, fontSize: 12, paddingVertical: 4 },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: palette.accent },
-  dotInWindow: { backgroundColor: '#86A78F' },
-  dotOverdue: { backgroundColor: palette.warning },
-  moreCount: { color: palette.muted, fontSize: 8, lineHeight: 9 },
   smallCount: { color: palette.muted, fontSize: 12 },
   emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
   emptyText: { color: palette.muted, fontSize: 13, lineHeight: 20 },

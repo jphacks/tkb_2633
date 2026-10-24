@@ -21,7 +21,7 @@ test('schema migration creates the latest local planner schema and occurrence vi
   const { connection, database } = sqliteAdapter();
   try {
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 10);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 11);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all().map((column) => column.name);
     assert.equal(settingsColumns.includes('notifications_enabled'), true);
     const applianceColumns = connection.prepare('PRAGMA table_info(appliances)').all().map((column) => column.name);
@@ -58,7 +58,7 @@ test('version 6 migration tolerates a notification preference column already pre
 
     await migrateLocalDatabase(database);
 
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 10);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 11);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all();
     assert.equal(settingsColumns.filter((column) => column.name === 'notifications_enabled').length, 1);
     assert.equal(connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'appliances'").get().name, 'appliances');

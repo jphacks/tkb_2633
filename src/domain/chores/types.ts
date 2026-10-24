@@ -1,4 +1,4 @@
-import type { EntityId, ISODateTime, LocalDate, WeatherLocation } from '@/domain/shared/types';
+import type { CalendarCountColors, EntityId, ISODateTime, LocalDate, WeatherLocation } from '@/domain/shared/types';
 
 export type ChoreLoad = 'light' | 'normal' | 'heavy';
 export type FrequencyMode = 'frequent' | 'balanced' | 'relaxed';
@@ -122,6 +122,7 @@ export interface HouseholdPlannerSettings {
   notificationMinute: number;
   notificationsEnabled: boolean;
   setupCompleted: boolean;
+  calendarCountColors: CalendarCountColors;
   /** Region selected from user-entered text for weather forecasts. */
   weatherLocation?: WeatherLocation;
 }

@@ -4,6 +4,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
+import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { Weekday } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
@@ -13,6 +15,7 @@ import {
   clearWeatherLocation,
   saveWeatherLocation,
   setNotificationsEnabled,
+  updateCalendarCountColors,
   updatePlannerSettings,
 } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
@@ -45,8 +48,11 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [restDays, setRestDays] = useState<Weekday[]>(snapshot.settings.restDays as Weekday[]);
   const [heavyLimit, setHeavyLimit] = useState(snapshot.settings.heavyDailyLimit);
   const [normalLimit, setNormalLimit] = useState(snapshot.settings.normalDailyLimit);
+  const [calendarCountColors, setCalendarCountColors] = useState(snapshot.settings.calendarCountColors);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [calendarColorsSaving, setCalendarColorsSaving] = useState(false);
+  const [calendarColorsMessage, setCalendarColorsMessage] = useState<string | null>(null);
   const [weatherUpdating, setWeatherUpdating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
@@ -79,6 +85,20 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       setMessage(cause instanceof Error ? cause.message : '保存できませんでした');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveCalendarColors = async () => {
+    setCalendarColorsSaving(true);
+    setCalendarColorsMessage(null);
+    try {
+      await updateCalendarCountColors(database, calendarCountColors);
+      await refresh();
+      setCalendarColorsMessage('カレンダーの色を保存しました。');
+    } catch (cause) {
+      setCalendarColorsMessage(cause instanceof Error ? cause.message : '色を保存できませんでした。');
+    } finally {
+      setCalendarColorsSaving(false);
     }
   };
 
@@ -183,6 +203,58 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         </View>
         {message ? <Text style={message.includes('保存し') || message.includes('追加しました') ? styles.success : styles.error}>{message}</Text> : null}
         <AppButton title={saving ? '保存中…' : '設定を保存'} onPress={() => void save()} disabled={saving} />
+      </Card>
+
+      <Card>
+        <SectionHeading title="カレンダーの家事数表示" />
+        <Text style={styles.hint}>日付の下に表示する短い横棒の色を、家事の件数帯ごとに選べます。</Text>
+        {([
+          { key: 'low', title: '1〜4件' },
+          { key: 'medium', title: '5〜9件' },
+          { key: 'high', title: '10件以上' },
+        ] as const).map(({ key, title }) => (
+          <View key={key} style={styles.colorTier}>
+            <Text style={styles.label}>{title}</Text>
+            <View style={styles.colorOptionRow}>
+              {CALENDAR_COUNT_COLOR_OPTIONS.map((option) => {
+                const selected = calendarCountColors[key] === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${title}の色を${option.name}にする`}
+                    accessibilityState={{ selected }}
+                    onPress={() => setCalendarCountColors((current) => ({ ...current, [key]: option.value }))}
+                    style={styles.colorOption}
+                  >
+                    <View style={[styles.colorSwatch, { backgroundColor: option.value }, selected && styles.colorSwatchSelected]}>
+                      {selected ? <Text style={styles.colorCheck}>✓</Text> : null}
+                    </View>
+                    <Text style={[styles.colorOptionLabel, selected && styles.colorOptionLabelSelected]}>{option.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+        <View style={styles.calendarPreview}>
+          <Text style={styles.label}>表示プレビュー</Text>
+          <View style={styles.previewRow}>
+            {[
+              { count: 3, label: '1〜4件' },
+              { count: 7, label: '5〜9件' },
+              { count: 12, label: '10件以上' },
+            ].map(({ count, label }) => (
+              <View key={label} style={styles.previewCell}>
+                <Text style={styles.previewDate}>24</Text>
+                <CalendarTaskCountIndicator count={count} colors={calendarCountColors} />
+                <Text style={styles.previewCount}>{count}件</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+        {calendarColorsMessage ? <Text style={calendarColorsMessage.includes('保存しました') ? styles.success : styles.error}>{calendarColorsMessage}</Text> : null}
+        <AppButton title={calendarColorsSaving ? '保存中…' : '色を保存'} onPress={() => void saveCalendarColors()} disabled={calendarColorsSaving} />
       </Card>
 
       <Card>
@@ -351,6 +423,19 @@ const styles = StyleSheet.create({
   hint: { color: palette.muted, fontSize: 12, lineHeight: 18 },
   limitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   limitCopy: { flex: 1, gap: 3 },
+  colorTier: { gap: 8, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
+  colorOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  colorOption: { width: 38, alignItems: 'center', gap: 3 },
+  colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  colorSwatchSelected: { borderColor: palette.ink },
+  colorCheck: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', lineHeight: 19, textShadowColor: '#333333', textShadowRadius: 2 },
+  colorOptionLabel: { color: palette.muted, fontSize: 10 },
+  colorOptionLabelSelected: { color: palette.ink, fontWeight: '700' },
+  calendarPreview: { gap: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: '#FBFCFE' },
+  previewRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  previewCell: { minWidth: 76, alignItems: 'center', gap: 2 },
+  previewDate: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  previewCount: { color: palette.muted, fontSize: 10 },
   counter: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: palette.background, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
   counterButton: { color: palette.accent, fontSize: 20, fontWeight: '700', paddingHorizontal: 4 },
   counterValue: { minWidth: 18, color: palette.ink, textAlign: 'center', fontWeight: '700' },

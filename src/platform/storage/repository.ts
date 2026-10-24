@@ -10,10 +10,11 @@ import type {
   FrequencyMode,
   HouseholdPlannerSettings,
 } from '@/domain/chores/types';
+import { parseCalendarCountColors } from '@/domain/calendar/count-colors';
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import { generateHouseworkSchedule, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
-import type { EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
+import type { CalendarCountColors, EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
@@ -69,6 +70,7 @@ interface SettingsRow {
   weather_region_name: string | null;
   weather_latitude: number | null;
   weather_longitude: number | null;
+  calendar_count_colors_json: string;
 }
 
 interface DefinitionRow {
@@ -237,7 +239,7 @@ export async function loadPlannerSnapshot(
   const settingsRow = await database.getFirstAsync<SettingsRow>(
     `SELECT frequency_mode, rest_days_json, heavy_daily_limit, normal_daily_limit,
             notification_hour, notification_minute, notifications_enabled, setup_completed, weather_region, weather_region_name,
-            weather_latitude, weather_longitude
+            weather_latitude, weather_longitude, calendar_count_colors_json
      FROM household_settings WHERE household_id = ?`, LOCAL_HOUSEHOLD_ID,
   );
   if (!householdRow || !settingsRow) throw new Error('Local household could not be initialized');
@@ -295,6 +297,7 @@ export async function loadPlannerSnapshot(
     notificationMinute: settingsRow.notification_minute,
     notificationsEnabled: Boolean(settingsRow.notifications_enabled),
     setupCompleted: Boolean(settingsRow.setup_completed),
+    calendarCountColors: parseCalendarCountColors(settingsRow.calendar_count_colors_json),
     weatherLocation: settingsRow.weather_region !== null
       && settingsRow.weather_region_name !== null
       && settingsRow.weather_latitude !== null
@@ -554,6 +557,20 @@ export async function updatePlannerSettings(
      normal_daily_limit = ?, updated_at = ? WHERE household_id = ?`,
     settings.frequencyMode, JSON.stringify(settings.restDays), settings.heavyDailyLimit,
     settings.normalDailyLimit, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
+  );
+}
+
+export async function updateCalendarCountColors(
+  database: SQLiteDatabase,
+  colors: CalendarCountColors,
+): Promise<void> {
+  const validColors = [colors.low, colors.medium, colors.high];
+  if (validColors.some((color) => !/^#[0-9a-f]{6}$/i.test(color))) {
+    throw new RangeError('カレンダーの色を選び直してください。');
+  }
+  await database.runAsync(
+    'UPDATE household_settings SET calendar_count_colors_json = ?, updated_at = ? WHERE household_id = ?',
+    JSON.stringify(colors), new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );
 }
 

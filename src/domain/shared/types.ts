@@ -13,6 +13,12 @@ export interface WeatherLocation extends GeoCoordinates {
   displayName: string;
 }
 
+export interface CalendarCountColors {
+  low: string;
+  medium: string;
+  high: string;
+}
+
 /** Monday = 1 through Sunday = 7, independent of the device locale. */
 export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 

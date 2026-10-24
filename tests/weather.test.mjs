@@ -178,7 +178,8 @@ test('Open-Meteo geocoder parses candidate labels and handles no matches', () =>
     longitude: 139.64,
   }] }), [{
     id: 1,
-    label: '横浜市, 神奈川県, 日本',
+    name: '横浜市',
+    label: '横浜市, 神奈川県',
     countryCode: 'JP',
     latitude: 35.44,
     longitude: 139.64,
@@ -201,6 +202,7 @@ test('Open-Meteo geocoder sends the entered region and validates failures', asyn
         name: '札幌市',
         admin1: '北海道',
         country: '日本',
+        feature_code: 'PPLA',
         latitude: 43.06,
         longitude: 141.35,
       }] }),
@@ -211,8 +213,8 @@ test('Open-Meteo geocoder sends the entered region and validates failures', asyn
   assert.equal(requestedUrl.pathname, '/v1/search');
   assert.equal(requestedUrl.searchParams.get('name'), '札幌市');
   assert.equal(requestedUrl.searchParams.get('language'), 'ja');
-  assert.equal(requestedUrl.searchParams.get('count'), '10');
-  assert.equal(results[0].label, '札幌市, 北海道, 日本');
+  assert.equal(requestedUrl.searchParams.get('count'), '20');
+  assert.equal(results[0].label, '札幌市, 北海道');
 
   await assert.rejects(() => geocoder.search('東'), /2〜120文字/);
   const httpFailure = new OpenMeteoGeocodingProvider(async () => ({ ok: false, status: 503 }));

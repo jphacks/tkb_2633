@@ -780,6 +780,19 @@ export async function completeChore(
   const completedAt = new Date();
   const completedDate = localDateFromDate(completedAt);
   await database.withTransactionAsync(async () => {
+    const previousStateRow = await database.getFirstAsync<StateRow>(
+      `SELECT chore_id, last_completed_date, last_completed_estimated, initial_pending,
+       initial_scheduled_date, unknown_reason FROM chore_state WHERE chore_id = ?`, entry.choreId,
+    );
+    const previousState: ChoreState | null = previousStateRow ? {
+      choreId: previousStateRow.chore_id,
+      lastCompletedDate: (previousStateRow.last_completed_date ?? undefined) as LocalDate | undefined,
+      lastCompletedEstimated: Boolean(previousStateRow.last_completed_estimated),
+      initialPending: Boolean(previousStateRow.initial_pending),
+      initialScheduledDate: (previousStateRow.initial_scheduled_date ?? undefined) as LocalDate | undefined,
+      unknownReason: previousStateRow.unknown_reason ?? undefined,
+    } : null;
+    const previousStateJson = JSON.stringify(previousState);
     const existing = await database.getFirstAsync<{ id: string; outcome: ChoreCompletion['outcome'] }>(
       'SELECT id, outcome FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
     );
@@ -788,17 +801,18 @@ export async function completeChore(
       await database.runAsync(
         `UPDATE chore_completions SET outcome = 'completed', completed_at = ?,
          completed_by_member_id = ?, source = 'inApp', scheduled_date = ?,
-         scheduled_window_start = ?, scheduled_window_end = ? WHERE id = ?`,
-        completedAt.toISOString(), memberId ?? null, entry.suggestedDate, entry.windowStart, entry.windowEnd, existing.id,
+         scheduled_window_start = ?, scheduled_window_end = ?, previous_chore_state_json = ? WHERE id = ?`,
+        completedAt.toISOString(), memberId ?? null, entry.suggestedDate, entry.windowStart, entry.windowEnd,
+        previousStateJson, existing.id,
       );
     } else {
       await database.runAsync(
         `INSERT INTO chore_completions
          (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id,
-          scheduled_date, scheduled_window_start, scheduled_window_end, outcome)
-         VALUES (?, ?, ?, ?, ?, 'inApp', ?, ?, ?, ?, 'completed')`,
+          scheduled_date, scheduled_window_start, scheduled_window_end, outcome, previous_chore_state_json)
+         VALUES (?, ?, ?, ?, ?, 'inApp', ?, ?, ?, ?, 'completed', ?)`,
         createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null,
-        entry.id, entry.suggestedDate, entry.windowStart, entry.windowEnd,
+        entry.id, entry.suggestedDate, entry.windowStart, entry.windowEnd, previousStateJson,
       );
     }
     await database.runAsync(
@@ -811,6 +825,118 @@ export async function completeChore(
     inserted = true;
   });
   return inserted;
+}
+
+export async function undoCompletedChore(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
+  let undone = false;
+  const undoneAt = new Date().toISOString();
+  await database.withTransactionAsync(async () => {
+    const completion = await database.getFirstAsync<{
+      chore_id: string;
+      outcome: ChoreCompletion['outcome'];
+      schedule_entry_id: string | null;
+      scheduled_date: string | null;
+      previous_chore_state_json: string | null;
+    }>(
+      `SELECT chore_id, outcome, schedule_entry_id, scheduled_date, previous_chore_state_json
+       FROM chore_completions WHERE id = ?`, completionId,
+    );
+    if (!completion || completion.outcome !== 'completed') return;
+
+    await database.runAsync(
+      `UPDATE chore_completions SET outcome = 'incomplete', completed_at = ?,
+       completed_by_member_id = NULL, source = 'inApp'
+       WHERE id = ?`,
+      undoneAt, completionId,
+    );
+    if (completion.previous_chore_state_json !== null) {
+      const previousState = JSON.parse(completion.previous_chore_state_json) as ChoreState | null;
+      await restoreChoreState(database, completion.chore_id, previousState);
+    } else {
+      await restoreLegacyChoreState(database, completion.chore_id, completion.schedule_entry_id, completion.scheduled_date);
+    }
+    undone = true;
+  });
+  return undone;
+}
+
+async function restoreChoreState(database: SQLiteDatabase, choreId: EntityId, state: ChoreState | null): Promise<void> {
+  if (!state) {
+    await database.runAsync('DELETE FROM chore_state WHERE chore_id = ?', choreId);
+    return;
+  }
+  await database.runAsync(
+    `INSERT INTO chore_state
+     (chore_id, last_completed_date, last_completed_estimated, initial_pending, initial_scheduled_date, unknown_reason)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
+     last_completed_estimated = excluded.last_completed_estimated, initial_pending = excluded.initial_pending,
+     initial_scheduled_date = excluded.initial_scheduled_date, unknown_reason = excluded.unknown_reason`,
+    choreId, state.lastCompletedDate ?? null, state.lastCompletedEstimated ? 1 : 0,
+    state.initialPending ? 1 : 0, state.initialScheduledDate ?? null, state.unknownReason ?? null,
+  );
+}
+
+async function restoreLegacyChoreState(
+  database: SQLiteDatabase,
+  choreId: EntityId,
+  scheduleEntryId: string | null,
+  scheduledDate: string | null,
+): Promise<void> {
+  if (scheduleEntryId?.endsWith(':initial')) {
+    await restoreChoreState(database, choreId, {
+      choreId,
+      lastCompletedEstimated: false,
+      initialPending: true,
+      initialScheduledDate: (scheduledDate ?? undefined) as LocalDate | undefined,
+    });
+    return;
+  }
+
+  const cycleBaseDate = scheduleEntryId?.match(/:(\d{4}-\d{2}-\d{2})$/)?.[1] as LocalDate | undefined;
+  if (cycleBaseDate) {
+    const config = await database.getFirstAsync<{ definition_json: string; frequency_mode: FrequencyMode }>(
+      `SELECT d.definition_json, s.frequency_mode FROM chore_definitions d
+       JOIN household_settings s ON s.household_id = ? WHERE d.id = ?`,
+      LOCAL_HOUSEHOLD_ID, choreId,
+    );
+    if (config) {
+      const chore = JSON.parse(config.definition_json) as ChoreDefinition;
+      const cycleDays = chore.userIntervalDays
+        ?? chore.recommendedCycleDays
+        ?? chore.manufacturerRecommendedIntervalDays
+        ?? chore.frequencyDaysByMode[config.frequency_mode];
+      if (Number.isInteger(cycleDays) && cycleDays > 0) {
+        await restoreChoreState(database, choreId, {
+          choreId,
+          lastCompletedDate: addDays(cycleBaseDate, -cycleDays),
+          lastCompletedEstimated: false,
+          initialPending: false,
+        });
+        return;
+      }
+    }
+  }
+
+  const previousCompletion = await database.getFirstAsync<{ completed_at: string }>(
+    `SELECT completed_at FROM chore_completions
+     WHERE chore_id = ? AND outcome = 'completed' ORDER BY completed_at DESC LIMIT 1`, choreId,
+  );
+  if (previousCompletion) {
+    await restoreChoreState(database, choreId, {
+      choreId,
+      lastCompletedDate: localDateFromDate(new Date(previousCompletion.completed_at)),
+      lastCompletedEstimated: false,
+      initialPending: false,
+    });
+    return;
+  }
+  await restoreChoreState(database, choreId, {
+    choreId,
+    lastCompletedEstimated: false,
+    initialPending: true,
+    initialScheduledDate: (scheduledDate ?? undefined) as LocalDate | undefined,
+  });
 }
 
 export async function recordIncompleteChore(

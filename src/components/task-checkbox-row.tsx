@@ -18,9 +18,9 @@ export function TaskCheckboxRow({ chore, completed = false, deemphasized = false
       </Pressable>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityLabel={`${chore.name}を完了`}
-        accessibilityState={{ checked: completed, disabled: completed || !onToggle }}
-        disabled={completed || !onToggle}
+        accessibilityLabel={`${chore.name}を${completed ? '未完了に戻す' : '完了'}`}
+        accessibilityState={{ checked: completed, disabled: !onToggle }}
+        disabled={!onToggle}
         onPress={onToggle}
         hitSlop={8}
         style={[styles.checkbox, completed && styles.checkboxCompleted]}>

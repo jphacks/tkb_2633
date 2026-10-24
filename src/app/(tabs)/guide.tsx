@@ -9,19 +9,27 @@ import { usePlannerData } from '@/hooks/use-planner-data';
 import { recordIncompleteChore } from '@/platform/storage/repository';
 
 export default function ChoreGuideScreen() {
-  const params = useLocalSearchParams<{ choreId?: string }>();
+  const params = useLocalSearchParams<{ choreId?: string; returnTo?: 'home' | 'calendar' }>();
   const requestedId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
+  const requestedReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const returnTo = requestedReturnTo === 'home' || requestedReturnTo === 'calendar' ? requestedReturnTo : undefined;
   const navigation = useNavigation('/(tabs)') as {
     addListener(event: 'tabPress', callback: () => void): () => void;
-    setParams(params: { choreId?: string | undefined }): void;
+    setParams(params: { choreId?: string | undefined; returnTo?: 'home' | 'calendar' | undefined }): void;
   };
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [searchText, setSearchText] = useState('');
   const [recordingIncomplete, setRecordingIncomplete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => navigation.addListener('tabPress', () => {
-    navigation.setParams({ choreId: undefined });
+    navigation.setParams({ choreId: undefined, returnTo: undefined });
   }), [navigation]);
+  const returnFromDetail = () => {
+    navigation.setParams({ choreId: undefined, returnTo: undefined });
+    if (returnTo === 'home') router.navigate('/');
+    else if (returnTo === 'calendar') router.navigate('/(tabs)/explore');
+  };
+  const selectChoreFromList = (choreId: string) => router.setParams({ choreId, returnTo: undefined });
   const selectedChoreId = requestedId;
   const chores = useMemo(() => snapshot?.chores ?? [], [snapshot]);
   const query = normalizeChoreSearchText(searchText.trim());
@@ -93,7 +101,7 @@ export default function ChoreGuideScreen() {
             {query && matchingChores.length === 0 ? <Card><Text style={styles.body}>見出しに一致する家事はありません。</Text></Card> : null}
             <View style={styles.choreList}>
               {matchingChores.map((chore) => (
-                <ChoreListRow key={chore.id} chore={chore} onPress={() => router.setParams({ choreId: chore.id })} />
+                <ChoreListRow key={chore.id} chore={chore} onPress={() => selectChoreFromList(chore.id)} />
               ))}
             </View>
             {query && otherChores.length > 0 ? (
@@ -101,7 +109,7 @@ export default function ChoreGuideScreen() {
                 <SectionHeading title="ほかの家事" />
                 <View style={styles.choreList}>
                   {otherChores.map((chore) => (
-                    <ChoreListRow key={chore.id} chore={chore} onPress={() => router.setParams({ choreId: chore.id })} />
+                    <ChoreListRow key={chore.id} chore={chore} onPress={() => selectChoreFromList(chore.id)} />
                   ))}
                 </View>
               </>
@@ -117,7 +125,7 @@ export default function ChoreGuideScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="前の画面に戻る"
-        onPress={() => router.setParams({ choreId: undefined })}
+        onPress={returnFromDetail}
         style={styles.backButton}>
         <Text style={styles.backArrow}>‹</Text>
         <Text style={styles.backText}>戻る</Text>

@@ -11,10 +11,10 @@ import { completionIncludesDate, completionMatchesEntry, completionPeriod } from
 import { addDays, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { completeChore, setWasteOccurrenceHidden } from '@/platform/storage/repository';
+import { completeChore, setWasteOccurrenceHidden, undoCompletedChore } from '@/platform/storage/repository';
 
 type WeekScope = 'current' | 'next';
-type UpcomingTaskRow = { id: string; choreId: string; completed: boolean; deemphasized?: boolean; entry?: ChoreScheduleEntry };
+type UpcomingTaskRow = { id: string; choreId: string; completed: boolean; deemphasized?: boolean; entry?: ChoreScheduleEntry; completionId?: string };
 
 export default function HomeScreen() {
   const { snapshot, loading, error, refresh, database } = usePlannerData();
@@ -63,7 +63,7 @@ export default function HomeScreen() {
       const lastDate = period.end < periodEnd ? period.end : periodEnd;
       if (firstDate > lastDate) continue;
       for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
-        addRow(date, { id: `completed:${completion.id}:${date}`, choreId: completion.choreId, completed: true });
+        addRow(date, { id: `completed:${completion.id}:${date}`, choreId: completion.choreId, completed: true, completionId: completion.id });
       }
     }
     for (const group of groups.values()) {
@@ -117,6 +117,21 @@ export default function HomeScreen() {
       setCompletingIds((current) => {
         const next = new Set(current);
         next.delete(entryId);
+        return next;
+      });
+    }
+  };
+
+  const undo = async (completionId: string) => {
+    if (completingIds.has(completionId)) return;
+    setCompletingIds((current) => new Set(current).add(completionId));
+    try {
+      await undoCompletedChore(database, completionId);
+      await refresh();
+    } finally {
+      setCompletingIds((current) => {
+        const next = new Set(current);
+        next.delete(completionId);
         return next;
       });
     }
@@ -200,7 +215,7 @@ export default function HomeScreen() {
             <TaskCheckboxRow
               chore={chore}
               deemphasized={today < entry.suggestedDate}
-              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
+              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
               onToggle={completingIds.has(entry.id) ? undefined : () => void finish(entry.id)}
             />
           </Animated.View>
@@ -209,12 +224,18 @@ export default function HomeScreen() {
       {completedEntriesToday.map((entry) => {
         const chore = choresById.get(entry.choreId);
         if (!chore) return null;
+        const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
         return (
           <Animated.View
             key={`completed-${entry.id}`}
             entering={animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
             layout={LinearTransition.duration(240)}>
-            <TaskCheckboxRow chore={chore} completed onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+            <TaskCheckboxRow
+              chore={chore}
+              completed
+              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
+              onToggle={completion && !completingIds.has(completion.id) ? () => void undo(completion.id) : undefined}
+            />
           </Animated.View>
         );
       })}
@@ -226,7 +247,12 @@ export default function HomeScreen() {
             key={`completed-${completion.id}`}
             entering={animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
             layout={LinearTransition.duration(240)}>
-            <TaskCheckboxRow chore={chore} completed onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+            <TaskCheckboxRow
+              chore={chore}
+              completed
+              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
+              onToggle={!completingIds.has(completion.id) ? () => void undo(completion.id) : undefined}
+            />
           </Animated.View>
         );
       })}
@@ -253,14 +279,21 @@ export default function HomeScreen() {
           {entries.map((row) => {
             const chore = choresById.get(row.choreId);
             if (!chore) return null;
+            const matchedCompletion = row.entry
+              ? snapshot.completions.find((completion) => completionMatchesEntry(completion, row.entry!))
+              : undefined;
+            const completionId = row.completionId ?? matchedCompletion?.id;
+            const entryId = row.entry?.id;
             return (
               <Animated.View key={row.id} entering={row.completed && animatedCompletedChoreIds.has(row.choreId) ? SlideInLeft.duration(320) : undefined} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
                 <TaskCheckboxRow
                   chore={chore}
                   completed={row.completed}
                   deemphasized={row.deemphasized}
-                  onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
-                  onToggle={!row.entry || row.completed || completingIds.has(row.entry.id) ? undefined : () => void finish(row.entry!.id)}
+                  onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
+                  onToggle={row.completed
+                    ? completionId && !completingIds.has(completionId) ? () => void undo(completionId) : undefined
+                    : entryId && !completingIds.has(entryId) ? () => void finish(entryId) : undefined}
                 />
               </Animated.View>
             );

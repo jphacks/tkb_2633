@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -206,6 +206,13 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
       PRAGMA user_version = 9;
     `);
     version = 9;
+  }
+  if (version < 10) {
+    await database.execAsync(`
+      ALTER TABLE chore_completions ADD COLUMN previous_chore_state_json TEXT;
+      PRAGMA user_version = 10;
+    `);
+    version = 10;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

@@ -8,7 +8,7 @@ import { completionIncludesDate, completionMatchesEntry, completionPeriod } from
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { completeChore } from '@/platform/storage/repository';
+import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -76,15 +76,16 @@ export default function CalendarScreen() {
     const nextMonth = next.getUTCMonth();
     setMonth({ year: nextYear, monthIndex: nextMonth });
     setSelectedDate(`${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01` as LocalDate);
-    setPeriodsExpanded(false);
   };
 
-  const finish = async (entryId: string) => {
+  const toggleEntry = async (entryId: string) => {
     const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
     if (!entry || completingIds.has(entryId)) return;
     setCompletingIds((current) => new Set(current).add(entryId));
     try {
-      await completeChore(database, entry);
+      const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
+      if (completion) await undoCompletedChore(database, completion.id);
+      else await completeChore(database, entry);
       await refresh();
     } finally {
       setCompletingIds((current) => {
@@ -95,15 +96,31 @@ export default function CalendarScreen() {
     }
   };
 
+  const undoCompletion = async (completionId: string) => {
+    if (completingIds.has(completionId)) return;
+    setCompletingIds((current) => new Set(current).add(completionId));
+    try {
+      await undoCompletedChore(database, completionId);
+      await refresh();
+    } finally {
+      setCompletingIds((current) => {
+        const next = new Set(current);
+        next.delete(completionId);
+        return next;
+      });
+    }
+  };
+
   return (
     <Page>
       <ScreenHeading title="カレンダー" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+      <Pressable accessible={false} onPress={() => setPeriodsExpanded((expanded) => !expanded)}>
       <Card style={styles.calendarCard}>
         <View style={styles.monthHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel="前の月" onPress={() => moveMonth(-1)} style={styles.monthArrow}><Text style={styles.arrowText}>‹</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="前の月" onPress={(event) => { event.stopPropagation(); moveMonth(-1); }} style={styles.monthArrow}><Text style={styles.arrowText}>‹</Text></Pressable>
           <Text style={styles.monthTitle}>{month.year}年{month.monthIndex + 1}月</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="次の月" onPress={() => moveMonth(1)} style={styles.monthArrow}><Text style={styles.arrowText}>›</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="次の月" onPress={(event) => { event.stopPropagation(); moveMonth(1); }} style={styles.monthArrow}><Text style={styles.arrowText}>›</Text></Pressable>
         </View>
         <View style={styles.weekRow}>
           {weekdayLabels.map((label, index) => <Text key={label} style={[styles.weekday, (index === 0 || index === 6) && styles.weekend]}>{label}</Text>)}
@@ -121,8 +138,8 @@ export default function CalendarScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`${formatJapaneseDate(date)}、家事${dayEntries.length}件`}
                 accessibilityState={{ selected }}
-                onPress={() => {
-                  setPeriodsExpanded((expanded) => date === selectedDate ? !expanded : true);
+                onPress={(event) => {
+                  event.stopPropagation();
                   setSelectedDate(date);
                   if (!inMonth) {
                     const tapped = parseLocalDate(date);
@@ -145,7 +162,7 @@ export default function CalendarScreen() {
           <View style={styles.periodPanel}>
             <View style={styles.periodPanelHeader}>
               <Text style={styles.periodPanelTitle}>{formatJapaneseDate(selectedDate)}を含む実施期間</Text>
-              <Pressable accessibilityRole="button" onPress={() => setPeriodsExpanded(false)}>
+              <Pressable accessibilityRole="button" onPress={(event) => { event.stopPropagation(); setPeriodsExpanded(false); }}>
                 <Text style={styles.periodPanelClose}>閉じる</Text>
               </Pressable>
             </View>
@@ -177,6 +194,7 @@ export default function CalendarScreen() {
           </View>
         ) : null}
       </Card>
+      </Pressable>
 
       <SectionHeading title={formatJapaneseDate(selectedDate, { weekday: true })} trailing={<Text style={styles.smallCount}>{selectedEntries.length + completedOnlyCompletions.length}件・{completedCount}件完了</Text>} />
       {selectedEntries.length + completedOnlyCompletions.length === 0 ? (
@@ -189,14 +207,20 @@ export default function CalendarScreen() {
             key={entry.id}
             chore={chore}
             completed={isEntryCompleted(entry)}
-            onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
-            onToggle={() => void finish(entry.id)}
+            onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
+            onToggle={() => void toggleEntry(entry.id)}
           />
         );
       })}
 
       {completedOnlyCompletions.map(({ completion, chore }) => (
-        <TaskCheckboxRow key={`completed-${completion.id}`} chore={chore} completed onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+        <TaskCheckboxRow
+          key={`completed-${completion.id}`}
+          chore={chore}
+          completed
+          onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
+          onToggle={selectedDate >= today && !completingIds.has(completion.id) ? () => void undoCompletion(completion.id) : undefined}
+        />
       ))}
 
       {snapshot.scheduleEntries.some((entry) => entry.status === 'overdue') ? (
@@ -209,8 +233,8 @@ export default function CalendarScreen() {
               <TaskCheckboxRow
                 key={`overdue-${entry.id}`}
                 chore={chore}
-                onToggle={() => void finish(entry.id)}
-                onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
+                onToggle={() => void toggleEntry(entry.id)}
+                onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
               />
             );
           })}

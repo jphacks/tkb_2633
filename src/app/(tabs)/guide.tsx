@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
@@ -11,27 +11,43 @@ import { recordIncompleteChore } from '@/platform/storage/repository';
 export default function ChoreGuideScreen() {
   const params = useLocalSearchParams<{ choreId?: string }>();
   const requestedId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
-  const navigation = useNavigation<{
+  const navigation = useNavigation('/(tabs)') as {
     addListener(event: 'tabPress', callback: () => void): () => void;
     setParams(params: { choreId?: string | undefined }): void;
-  }>();
+  };
   const { snapshot, loading, error, refresh, database } = usePlannerData();
-  const [selection, setSelection] = useState<{ routeId?: string; choreId?: string }>({ routeId: requestedId });
+  const [searchText, setSearchText] = useState('');
   const [recordingIncomplete, setRecordingIncomplete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => navigation.addListener('tabPress', () => {
-    setSelection({ routeId: requestedId });
     navigation.setParams({ choreId: undefined });
-  }), [navigation, requestedId]);
-  const selectedChoreId = selection.routeId === requestedId
-    ? selection.choreId ?? requestedId
-    : requestedId;
+  }), [navigation]);
+  const selectedChoreId = requestedId;
+  const chores = useMemo(() => snapshot?.chores ?? [], [snapshot]);
+  const query = searchText.trim().normalize('NFKC').toLocaleLowerCase();
+  const { matchingChores, otherChores } = useMemo(() => {
+    if (!query) return { matchingChores: chores, otherChores: [] as ChoreDefinition[] };
+
+    const ranked = chores.map((chore, index) => {
+      const name = chore.name.normalize('NFKC').toLocaleLowerCase();
+      const matchIndex = name.indexOf(query);
+      return { chore, index, matchIndex };
+    });
+    const matching = ranked
+      .filter((item) => item.matchIndex >= 0)
+      .sort((left, right) => left.matchIndex - right.matchIndex || left.index - right.index)
+      .map((item) => item.chore);
+    const matchedIds = new Set(matching.map((chore) => chore.id));
+    return {
+      matchingChores: matching,
+      otherChores: chores.filter((chore) => !matchedIds.has(chore.id)),
+    };
+  }, [chores, query]);
 
   if (loading || !snapshot) {
     return <Page><ScreenHeading title="家事の説明" description="家事を読み込んでいます。" /></Page>;
   }
 
-  const chores = snapshot.chores;
   const selectedChore = selectedChoreId ? chores.find((chore) => chore.id === selectedChoreId) : undefined;
   const currentEntry = selectedChore
     ? snapshot.scheduleEntries.filter((entry) => entry.choreId === selectedChore.id)
@@ -60,22 +76,37 @@ export default function ChoreGuideScreen() {
       <Page>
         <ScreenHeading title="家事の説明" description="説明を見たい家事を選んでください。" />
         {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+        <TextInput
+          accessibilityLabel="家事名を検索"
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+          onChangeText={setSearchText}
+          placeholder="家事名で検索"
+          placeholderTextColor={palette.muted}
+          returnKeyType="search"
+          style={styles.searchInput}
+          value={searchText}
+        />
         {chores.length > 0 ? (
-          <View style={styles.choreList}>
-            {chores.map((chore) => (
-              <Pressable
-                key={chore.id}
-                accessibilityRole="button"
-                onPress={() => setSelection({ routeId: requestedId, choreId: chore.id })}
-                style={({ pressed }) => [styles.choreListRow, pressed && styles.choreListRowPressed]}>
-                <View style={styles.choreListCopy}>
-                  <Text style={styles.choreListName}>{chore.name}</Text>
-                  <Text style={styles.choreListCategory}>{chore.category}</Text>
+          <>
+            {query ? <SectionHeading title="検索結果" trailing={<Text style={styles.resultCount}>{matchingChores.length}件</Text>} /> : null}
+            {query && matchingChores.length === 0 ? <Card><Text style={styles.body}>見出しに一致する家事はありません。</Text></Card> : null}
+            <View style={styles.choreList}>
+              {matchingChores.map((chore) => (
+                <ChoreListRow key={chore.id} chore={chore} onPress={() => router.setParams({ choreId: chore.id })} />
+              ))}
+            </View>
+            {query && otherChores.length > 0 ? (
+              <>
+                <SectionHeading title="ほかの家事" />
+                <View style={styles.choreList}>
+                  {otherChores.map((chore) => (
+                    <ChoreListRow key={chore.id} chore={chore} onPress={() => router.setParams({ choreId: chore.id })} />
+                  ))}
                 </View>
-                <Text style={styles.choreListChevron}>›</Text>
-              </Pressable>
-            ))}
-          </View>
+              </>
+            ) : null}
+          </>
         ) : <Card><Text style={styles.body}>家事がまだ登録されていません。</Text></Card>}
       </Page>
     );
@@ -86,7 +117,7 @@ export default function ChoreGuideScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="前の画面に戻る"
-        onPress={() => requestedId ? router.back() : setSelection({ routeId: requestedId })}
+        onPress={() => router.setParams({ choreId: undefined })}
         style={styles.backButton}>
         <Text style={styles.backArrow}>‹</Text>
         <Text style={styles.backText}>戻る</Text>
@@ -125,7 +156,7 @@ export default function ChoreGuideScreen() {
                 key={chore.id}
                 accessibilityRole="button"
                 accessibilityState={{ selected: selectedChore?.id === chore.id }}
-                onPress={() => setSelection({ routeId: requestedId, choreId: chore.id })}
+                onPress={() => router.setParams({ choreId: chore.id })}
                 style={[styles.choreOption, selectedChore?.id === chore.id && styles.choreOptionSelected]}>
                 <Text style={[styles.choreOptionText, selectedChore?.id === chore.id && styles.choreOptionTextSelected]}>{chore.name}</Text>
               </Pressable>
@@ -134,6 +165,22 @@ export default function ChoreGuideScreen() {
         </View>
       ) : null}
     </Page>
+  );
+}
+
+function ChoreListRow({ chore, onPress }: { chore: ChoreDefinition; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${chore.name}、${chore.category}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.choreListRow, pressed && styles.choreListRowPressed]}>
+      <View style={styles.choreListCopy}>
+        <Text style={styles.choreListName}>{chore.name}</Text>
+        <Text style={styles.choreListCategory}>{chore.category}</Text>
+      </View>
+      <Text style={styles.choreListChevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -171,6 +218,8 @@ const styles = StyleSheet.create({
   backArrow: { color: palette.accent, fontSize: 34, lineHeight: 40, fontWeight: '600' },
   backText: { color: palette.accent, fontSize: 17, fontWeight: '700' },
   choreList: { gap: 10 },
+  searchInput: { minHeight: 52, borderWidth: 1, borderColor: palette.border, borderRadius: 16, backgroundColor: '#FFFFFF', color: palette.ink, fontSize: 16, paddingHorizontal: 16 },
+  resultCount: { color: palette.muted, fontSize: 12, fontWeight: '600' },
   choreListRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: palette.border, borderRadius: 16, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 12 },
   choreListRowPressed: { backgroundColor: palette.accentSoft },
   choreListCopy: { flex: 1, gap: 4 },

@@ -163,7 +163,7 @@ export default function HomeScreen() {
           <Animated.View key={entry.id} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
             <TaskCheckboxRow
               chore={chore}
-              onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
+              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
               onToggle={completingIds.has(entry.id) ? undefined : () => void finish(entry.id)}
             />
           </Animated.View>
@@ -174,7 +174,7 @@ export default function HomeScreen() {
           key={`completed-${chore.id}`}
           entering={animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
           layout={LinearTransition.duration(240)}>
-          <TaskCheckboxRow chore={chore} completed onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
+          <TaskCheckboxRow chore={chore} completed onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })} />
         </Animated.View>
       ))}
       {todayTotal === 0 ? (
@@ -204,7 +204,7 @@ export default function HomeScreen() {
               <Animated.View key={entry.id} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
                 <TaskCheckboxRow
                   chore={chore}
-                  onOpen={() => router.push({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
+                  onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id } })}
                   onToggle={completingIds.has(entry.id) ? undefined : () => void finish(entry.id)}
                 />
               </Animated.View>

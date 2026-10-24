@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-nati
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ChoreDefinition, ChoreLoad, LaundryDryingPreference } from '@/domain/chores/types';
 import { formatJapaneseDate, localDateFromISODateTime } from '@/domain/scheduling/local-date';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { updateChoreDefinition } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
@@ -19,7 +20,7 @@ export default function ChoreSettingsScreen() {
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const chore = snapshot?.chores.find((item) => item.id === choreId);
 
-  if (loading || !snapshot) return <Page><ScreenHeading title="家事ごとの設定" description="設定を読み込んでいます。" /></Page>;
+  if (loading || !snapshot) return <PlannerLoadState title="家事ごとの設定" message="設定を読み込んでいます。" error={error} retry={refresh} />;
   if (!chore) return <Page><ScreenHeading title="家事が見つかりません" /><AppButton title="設定へ戻る" onPress={() => router.back()} /></Page>;
 
   return <ChoreSettingsContent key={chore.id} chore={chore} snapshot={snapshot} error={error} refresh={refresh} saveDefinition={(definition) => updateChoreDefinition(database, definition)} />;
@@ -84,9 +85,9 @@ function ChoreSettingsContent({
         holidayPriority,
         laundryDryingPreference: chore.category === '洗濯' ? dryingPreference : chore.laundryDryingPreference,
         windowRadiusDays,
-        recommendedCycleDays: chore.applianceId
-          ? (!cycleWasEdited ? chore.recommendedCycleDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays)
-          : (!cycleWasEdited ? chore.recommendedCycleDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays),
+        recommendedCycleDays: !cycleWasEdited
+          ? chore.recommendedCycleDays
+          : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays,
         userIntervalDays: chore.applianceId
           ? (!cycleWasEdited ? chore.userIntervalDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays)
           : chore.userIntervalDays,

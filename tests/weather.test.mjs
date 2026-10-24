@@ -190,6 +190,41 @@ test('Open-Meteo geocoder parses candidate labels and handles no matches', () =>
   assert.throws(() => parseOpenMeteoGeocodingResponse({ error: true, reason: 'bad query' }), /bad query/);
 });
 
+test('concurrent forecast requests share one fetch and return independent data', async () => {
+  let calls = 0;
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  const provider = new OpenMeteoForecastProvider(async () => {
+    calls += 1;
+    await waiting;
+    return { ok: true, json: async () => ({ daily: {
+      time: [today], weather_code: [1], precipitation_probability_max: [10], precipitation_sum: [0],
+    } }) };
+  });
+  const query = { householdId, location: weatherLocation(), from: today, through: today };
+  const first = provider.fetchForecast(query);
+  const second = provider.fetchForecast(query);
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(calls, 1);
+  results[0][0].weatherCode = 99;
+  assert.equal(results[1][0].weatherCode, 1);
+});
+
+test('failed shared forecasts can be retried', async () => {
+  let calls = 0;
+  const provider = new OpenMeteoForecastProvider(async () => {
+    calls += 1;
+    throw new Error('offline');
+  });
+  const query = { householdId, location: weatherLocation(), from: today, through: today };
+  const failed = await Promise.allSettled([provider.fetchForecast(query), provider.fetchForecast(query)]);
+  assert.ok(failed.every((result) => result.status === 'rejected'));
+  assert.equal(calls, 1);
+  await assert.rejects(provider.fetchForecast(query), /offline/);
+  assert.equal(calls, 2);
+});
+
 test('Open-Meteo geocoder sends the entered region and validates failures', async () => {
   let requestedUrl;
   const geocoder = new OpenMeteoGeocodingProvider(async (input) => {

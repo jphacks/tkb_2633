@@ -2,36 +2,25 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { addUserInteractionListener } from 'expo-widgets';
 import { useCallback, useEffect } from 'react';
-import { AppState, useColorScheme } from 'react-native';
+import { useColorScheme } from 'react-native';
 
-import { completionMatchesEntry } from '@/domain/scheduling/completion-matching';
-import { completeChore, initializeLocalDatabase, loadPlannerSnapshot } from '@/platform/storage/repository';
-import { publishTodayWidgetSnapshot } from '@/features/widgets/publish-today-widget-snapshot';
-import { expoWidgetGateway } from '@/platform/widgets/expo-widget-gateway';
+import { initializeLocalDatabase } from '@/platform/storage/repository';
+import { syncDailyHouseworkDigest } from '@/features/notifications/daily-housework-digest';
+import { refreshPlannerFromWidget } from '@/platform/widgets/refresh-planner-from-widget';
+import { expoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
+import '@/platform/notifications/configure-foreground-notifications';
 
 function WidgetInteractionBridge() {
   const database = useSQLiteContext();
 
   const processCompletion = useCallback(async (scheduleEntryId: string) => {
     try {
-      let snapshot = await loadPlannerSnapshot(database);
-      const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === scheduleEntryId);
-      if (entry && !snapshot.completions.some((completion) => completionMatchesEntry(completion, entry))) {
-        await completeChore(database, entry, undefined, 'widget');
-        snapshot = await loadPlannerSnapshot(database);
-      }
-      publishTodayWidgetSnapshot(snapshot);
+      const { snapshot } = await refreshPlannerFromWidget(database, [scheduleEntryId]);
+      await syncDailyHouseworkDigest(expoLocalNotificationGateway, snapshot);
     } catch {
       // Widget actions should not interrupt the app if local data cannot be refreshed.
     }
   }, [database]);
-
-  const processPendingCompletions = useCallback(async () => {
-    const pendingIds = await expoWidgetGateway.getPendingWidgetCompletionIds();
-    for (const scheduleEntryId of pendingIds) {
-      await processCompletion(scheduleEntryId);
-    }
-  }, [processCompletion]);
 
   useEffect(() => {
     const interactionSubscription = addUserInteractionListener((event) => {
@@ -40,16 +29,10 @@ function WidgetInteractionBridge() {
         void processCompletion(event.target.slice(prefix.length));
       }
     });
-    void processPendingCompletions();
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void processPendingCompletions();
-    });
-
     return () => {
       interactionSubscription.remove();
-      appStateSubscription.remove();
     };
-  }, [processCompletion, processPendingCompletions]);
+  }, [processCompletion]);
 
   return null;
 }

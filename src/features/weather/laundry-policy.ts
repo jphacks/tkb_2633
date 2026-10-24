@@ -77,6 +77,7 @@ export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
           && isLaundryChore(chore)
           && chore.laundryDryingPreference !== 'indoors'
           && entry.status !== 'initialPending'
+          && entry.status !== 'overdue'
           && !completedScheduleIds.has(entry.id)
           && entry.suggestedDate >= this.context.today
           && entry.suggestedDate <= forecastThrough;

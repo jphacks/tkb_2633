@@ -8,6 +8,7 @@ import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-ind
 import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { CalendarCountDisplayMode, Weekday } from '@/domain/shared/types';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
 import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
@@ -34,7 +35,7 @@ const notificationGateway = new ExpoLocalNotificationGateway();
 
 export default function SettingsScreen() {
   const { snapshot, loading, error: loadError, refresh, database } = usePlannerData();
-  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="SETTINGS" title="設定" description="設定を読み込んでいます。" /></Page>;
+  if (loading || !snapshot) return <PlannerLoadState title="設定" message="設定を読み込んでいます。" error={loadError} retry={refresh} />;
   return <SettingsContent snapshot={snapshot} loadError={loadError} refresh={refresh} database={database} />;
 }
 
@@ -315,7 +316,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <View style={styles.notificationRow}>
           <View style={styles.limitCopy}>
             <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
-            <Text style={styles.hint}>通知をオンにした操作で端末の許可を確認します。具体的な通知時刻や再通知は未設定です。</Text>
+            <Text style={styles.hint}>毎朝9時に、期間の開始日・最終日・終了翌日に未完了の家事をまとめて通知します。</Text>
           </View>
           <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
         </View>

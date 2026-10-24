@@ -5,6 +5,7 @@ import Animated, { LinearTransition, SlideInLeft, SlideOutRight } from 'react-na
 
 import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
 import type { ChoreScheduleEntry } from '@/domain/chores/types';
 import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
@@ -21,6 +22,7 @@ export default function HomeScreen() {
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   const [animatedCompletedChoreIds, setAnimatedCompletedChoreIds] = useState<Set<string>>(new Set());
   const [wasteMessage, setWasteMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
   const today = localDateFromDate(new Date());
   const thisWeekEnd = addDays(today, 7 - weekdayOf(today));
@@ -74,7 +76,7 @@ export default function HomeScreen() {
   }, [periodEnd, periodStart, snapshot, today]);
 
   if (loading || !snapshot) {
-    return <><Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} /><Page><Text style={styles.loading}>今日の家事を読み込んでいます。</Text></Page></>;
+    return <><Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} /><PlannerLoadState title="今日の家事" message="今日の家事を読み込んでいます。" error={error} retry={refresh} /></>;
   }
 
   if (!snapshot.settings.setupCompleted) {
@@ -106,6 +108,7 @@ export default function HomeScreen() {
     const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
     if (!entry || completingIds.has(entryId)) return;
     setCompletingIds((current) => new Set(current).add(entryId));
+    setActionError(null);
     let inserted = false;
     try {
       inserted = await completeChore(database, entry);
@@ -113,6 +116,8 @@ export default function HomeScreen() {
         setAnimatedCompletedChoreIds((current) => new Set(current).add(entry.choreId));
       }
       await refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');
     } finally {
       setCompletingIds((current) => {
         const next = new Set(current);
@@ -125,9 +130,12 @@ export default function HomeScreen() {
   const undo = async (completionId: string) => {
     if (completingIds.has(completionId)) return;
     setCompletingIds((current) => new Set(current).add(completionId));
+    setActionError(null);
     try {
       await undoCompletedChore(database, completionId);
       await refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : '完了を取り消せませんでした。');
     } finally {
       setCompletingIds((current) => {
         const next = new Set(current);
@@ -151,7 +159,7 @@ export default function HomeScreen() {
     <>
       <Tabs.Screen options={{ tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
       <Page contentStyle={styles.homePage}>
-        {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+        {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text></Card> : null}
 
       <View style={styles.todayHeading}>
         <View style={styles.todayCopy}>

@@ -46,6 +46,7 @@ export function parseOpenMeteoDailyResponse(value: unknown): DailyWeather[] {
 /** Open-Meteo forecast client with a short in-memory cache for repeated screen refreshes. */
 export class OpenMeteoForecastProvider implements WeatherForecastProvider<WeatherLocation, readonly DailyWeather[]> {
   private readonly cache = new Map<string, { expiresAt: number; forecast: DailyWeather[] }>();
+  private readonly pending = new Map<string, Promise<DailyWeather[]>>();
   private readonly fetcher: FetchLike;
   private readonly now: () => number;
   private readonly timeoutMs: number;
@@ -67,6 +68,19 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<Weathe
     if (cached && cached.expiresAt > this.now()) return cached.forecast.map((day) => ({ ...day }));
     if (cached) this.cache.delete(cacheKey);
 
+    let request = this.pending.get(cacheKey);
+    if (!request) {
+      request = this.fetchUncachedForecast(query, cacheKey);
+      this.pending.set(cacheKey, request);
+    }
+    try {
+      return (await request).map((day) => ({ ...day }));
+    } finally {
+      if (this.pending.get(cacheKey) === request) this.pending.delete(cacheKey);
+    }
+  }
+
+  private async fetchUncachedForecast(query: WeatherForecastQuery<WeatherLocation>, cacheKey: string): Promise<DailyWeather[]> {
     const url = new URL(OPEN_METEO_FORECAST_URL);
     url.searchParams.set('latitude', String(query.location.latitude));
     url.searchParams.set('longitude', String(query.location.longitude));
@@ -84,7 +98,7 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<Weathe
       const forecast = parseOpenMeteoDailyResponse(await response.json());
       const requestedForecast = forecast.filter((day) => day.date >= query.from && day.date <= query.through);
       this.cache.set(cacheKey, { expiresAt: this.now() + CACHE_TTL_MS, forecast: requestedForecast });
-      return requestedForecast.map((day) => ({ ...day }));
+      return requestedForecast;
     } finally {
       clearTimeout(timeout);
     }

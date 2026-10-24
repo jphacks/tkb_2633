@@ -57,6 +57,7 @@ export async function optimizeLaundryScheduleForWeather(
       && isLaundryChore(chore)
       && chore.laundryDryingPreference !== 'indoors'
       && entry.status !== 'initialPending'
+      && entry.status !== 'overdue'
       && !completedScheduleIds.has(entry.id)
       && entry.suggestedDate >= input.today
       && entry.suggestedDate <= forecastThrough;

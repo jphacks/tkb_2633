@@ -4,12 +4,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
+import { calendarEntriesOnDate } from '@/domain/calendar/day-entries';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -20,21 +22,19 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState<LocalDate>(today);
   const [periodsExpanded, setPeriodsExpanded] = useState(false);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="SCHEDULE" title="カレンダー" description="予定を読み込んでいます。" /></Page>;
+  if (loading || !snapshot) return <PlannerLoadState title="カレンダー" message="予定を読み込んでいます。" error={error} retry={refresh} />;
 
   const dates = monthDates(month.year, month.monthIndex);
   const leadingCells = weekdayOf(dates[0]) % 7;
   const gridStart = addDays(dates[0], -leadingCells);
   const weekCount = Math.ceil((leadingCells + dates.length) / 7);
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
-  const visibleEntries = snapshot.scheduleEntries.filter((entry) =>
-    entry.windowEnd >= dates[0] && entry.windowStart <= dates[dates.length - 1],
-  );
-  const entriesOnDate = (date: LocalDate) => visibleEntries.filter((entry) => date >= entry.windowStart && date <= entry.windowEnd);
+  const entriesOnDate = (date: LocalDate) => calendarEntriesOnDate(snapshot.scheduleEntries, date);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const completedOnSelectedDate = snapshot.completions.filter((completion) => completionIncludesDate(completion, selectedDate));
-  const isEntryCompleted = (entry: (typeof visibleEntries)[number]) =>
+  const isEntryCompleted = (entry: (typeof snapshot.scheduleEntries)[number]) =>
     snapshot.completions.some((completion) => completionMatchesEntry(completion, entry));
   const selectedEntries = entriesOnDate(selectedDate).sort((left, right) =>
     Number(isEntryCompleted(left)) - Number(isEntryCompleted(right))
@@ -76,18 +76,20 @@ export default function CalendarScreen() {
     const nextYear = next.getUTCFullYear();
     const nextMonth = next.getUTCMonth();
     setMonth({ year: nextYear, monthIndex: nextMonth });
-    setSelectedDate(`${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01` as LocalDate);
   };
 
   const toggleEntry = async (entryId: string) => {
     const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
     if (!entry || completingIds.has(entryId)) return;
     setCompletingIds((current) => new Set(current).add(entryId));
+    setActionError(null);
     try {
       const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
       if (completion) await undoCompletedChore(database, completion.id);
       else await completeChore(database, entry);
       await refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');
     } finally {
       setCompletingIds((current) => {
         const next = new Set(current);
@@ -100,9 +102,12 @@ export default function CalendarScreen() {
   const undoCompletion = async (completionId: string) => {
     if (completingIds.has(completionId)) return;
     setCompletingIds((current) => new Set(current).add(completionId));
+    setActionError(null);
     try {
       await undoCompletedChore(database, completionId);
       await refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : '完了を取り消せませんでした。');
     } finally {
       setCompletingIds((current) => {
         const next = new Set(current);
@@ -115,7 +120,7 @@ export default function CalendarScreen() {
   return (
     <Page>
       <ScreenHeading title="カレンダー" />
-      {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
+      {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text></Card> : null}
       <Pressable accessible={false} onPress={() => setPeriodsExpanded((expanded) => !expanded)}>
       <Card style={styles.calendarCard}>
         <View style={styles.monthHeader}>
@@ -204,7 +209,7 @@ export default function CalendarScreen() {
             chore={chore}
             completed={isEntryCompleted(entry)}
             onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
-            onToggle={() => void toggleEntry(entry.id)}
+            onToggle={!completingIds.has(entry.id) ? () => void toggleEntry(entry.id) : undefined}
           />
         );
       })}
@@ -215,7 +220,7 @@ export default function CalendarScreen() {
           chore={chore}
           completed
           onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
-          onToggle={selectedDate >= today && !completingIds.has(completion.id) ? () => void undoCompletion(completion.id) : undefined}
+          onToggle={!completingIds.has(completion.id) ? () => void undoCompletion(completion.id) : undefined}
         />
       ))}
 
@@ -229,7 +234,7 @@ export default function CalendarScreen() {
               <TaskCheckboxRow
                 key={`overdue-${entry.id}`}
                 chore={chore}
-                onToggle={() => void toggleEntry(entry.id)}
+                onToggle={!completingIds.has(entry.id) ? () => void toggleEntry(entry.id) : undefined}
                 onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
               />
             );

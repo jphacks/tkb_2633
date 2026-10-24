@@ -28,6 +28,31 @@ import { migrateLocalDatabase } from '@/platform/storage/migrations';
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
 
+const initializedHouseholds = new WeakSet<SQLiteDatabase>();
+const operationTails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
+const plannerVersions = new WeakMap<SQLiteDatabase, number>();
+const snapshotVersions = new WeakMap<PlannerSnapshot, number>();
+
+function runDatabaseOperation<T>(database: SQLiteDatabase, operation: () => Promise<T>): Promise<T> {
+  const previous = operationTails.get(database) ?? Promise.resolve();
+  const pending = previous.then(operation, operation);
+  const tail = pending.then(() => undefined, () => undefined);
+  operationTails.set(database, tail);
+  void tail.then(() => {
+    if (operationTails.get(database) === tail) operationTails.delete(database);
+  });
+  return pending;
+}
+
+function serializePlannerOperation<Args extends unknown[], Result>(
+  operation: (database: SQLiteDatabase, ...args: Args) => Promise<Result>,
+): (database: SQLiteDatabase, ...args: Args) => Promise<Result> {
+  return (database, ...args) => runDatabaseOperation(database, () => {
+    plannerVersions.set(database, (plannerVersions.get(database) ?? 0) + 1);
+    return operation(database, ...args);
+  });
+}
+
 export interface PlannerSnapshot {
   household: Household;
   settings: HouseholdPlannerSettings;
@@ -148,12 +173,13 @@ interface HiddenWasteRow {
   occurrence_date: string;
 }
 
-export async function initializeLocalDatabase(database: SQLiteDatabase): Promise<void> {
+async function initializeLocalDatabaseImpl(database: SQLiteDatabase): Promise<void> {
   await migrateLocalDatabase(database);
-  await ensureLocalHousehold(database);
+  await ensureLocalHouseholdImpl(database);
 }
 
-export async function ensureLocalHousehold(database: SQLiteDatabase): Promise<void> {
+async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void> {
+  if (initializedHouseholds.has(database)) return;
   const now = new Date().toISOString();
   const definitions = createHouseholdChoreDefinitions(LOCAL_HOUSEHOLD_ID);
   await database.withTransactionAsync(async () => {
@@ -188,9 +214,10 @@ export async function ensureLocalHousehold(database: SQLiteDatabase): Promise<vo
       );
     }
   });
+  initializedHouseholds.add(database);
 }
 
-export async function loadApplianceCareReviewContext(
+async function loadApplianceCareReviewContextImpl(
   database: SQLiteDatabase,
   applianceId: EntityId,
 ): Promise<ApplianceCareReviewContext | null> {
@@ -229,11 +256,11 @@ export async function loadApplianceCareReviewContext(
   };
 }
 
-export async function loadPlannerSnapshot(
+async function loadPlannerSnapshotImpl(
   database: SQLiteDatabase,
   today = localDateFromDate(new Date()),
 ): Promise<PlannerSnapshot> {
-  await ensureLocalHousehold(database);
+  await ensureLocalHouseholdImpl(database);
   const householdRow = await database.getFirstAsync<HouseholdRow>(
     'SELECT id, name, created_at FROM households WHERE id = ?', LOCAL_HOUSEHOLD_ID,
   );
@@ -407,7 +434,7 @@ export async function loadPlannerSnapshot(
   const hiddenOccurrenceKeys = new Set(hiddenWasteRows.map((row) => `${row.schedule_id}:${row.occurrence_date}`));
   const { visible: upcomingWasteDates, hidden: hiddenWasteDates } = splitWasteOccurrencesByVisibility(generatedWasteDates, hiddenOccurrenceKeys);
 
-  return {
+  const snapshot: PlannerSnapshot = {
     household,
     settings,
     chores,
@@ -424,6 +451,8 @@ export async function loadPlannerSnapshot(
     weatherOutcome,
     weatherAdjustmentCount,
   };
+  snapshotVersions.set(snapshot, plannerVersions.get(database) ?? 0);
+  return snapshot;
 }
 
 /** Applies weather after the normal snapshot is ready, so forecast latency never blocks offline screens. */
@@ -431,12 +460,14 @@ export async function applyWeatherToPlannerSnapshot(
   database: SQLiteDatabase,
   snapshot: PlannerSnapshot,
   canCommit: () => boolean = () => true,
-): Promise<PlannerSnapshot> {
+  optimize = optimizeLaundryScheduleForWeather,
+): Promise<PlannerSnapshot | null> {
   if (!snapshot.settings.setupCompleted || !snapshot.settings.weatherLocation) {
     return { ...snapshot, weatherOutcome: 'disabled', weatherAdjustmentCount: 0 };
   }
 
-  const weatherResult = await optimizeLaundryScheduleForWeather({
+  const version = snapshotVersions.get(snapshot) ?? plannerVersions.get(database) ?? 0;
+  const weatherResult = await optimize({
     householdId: snapshot.household.id,
     today: localDateFromDate(new Date()),
     location: snapshot.settings.weatherLocation,
@@ -454,15 +485,21 @@ export async function applyWeatherToPlannerSnapshot(
     schedule: snapshot.scheduleEntries,
   });
 
-  if (weatherResult.outcome === 'adjusted' && canCommit()) {
-    await replaceGeneratedSchedule(database, snapshot.household.id, weatherResult.schedule);
-  }
-  return {
-    ...snapshot,
-    scheduleEntries: weatherResult.schedule,
-    weatherOutcome: weatherResult.outcome,
-    weatherAdjustmentCount: weatherResult.adjustmentCount,
-  };
+  return runDatabaseOperation(database, async () => {
+    if (!canCommit() || version !== (plannerVersions.get(database) ?? 0)) return null;
+    if (weatherResult.outcome === 'adjusted') {
+      await replaceGeneratedSchedule(database, snapshot.household.id, weatherResult.schedule);
+    }
+    const result: PlannerSnapshot = {
+      ...snapshot,
+      scheduleEntries: weatherResult.schedule,
+      weatherOutcome: weatherResult.outcome,
+      weatherAdjustmentCount: weatherResult.adjustmentCount,
+    };
+    plannerVersions.set(database, version + 1);
+    snapshotVersions.set(result, version + 1);
+    return result;
+  });
 }
 
 async function replaceGeneratedSchedule(
@@ -470,15 +507,29 @@ async function replaceGeneratedSchedule(
   householdId: EntityId,
   entries: readonly ChoreScheduleEntry[],
 ): Promise<void> {
+  const previous = await database.getAllAsync<{ id: string; entry_json: string }>(
+    'SELECT id, entry_json FROM chore_schedule_entries WHERE household_id = ?', householdId,
+  );
+  const previousById = new Map(previous.map((row) => [row.id, row.entry_json]));
+  const nextById = new Map(entries.map((entry) => [entry.id, JSON.stringify(entry)]));
+  const removed = previous.filter((row) => !nextById.has(row.id));
+  const changed = entries.filter((entry) => previousById.get(entry.id) !== nextById.get(entry.id));
+  if (removed.length === 0 && changed.length === 0) return;
+
   await database.withTransactionAsync(async () => {
-    await database.runAsync('DELETE FROM chore_schedule_entries WHERE household_id = ?', householdId);
-    for (const entry of entries) {
+    for (const row of removed) {
+      await database.runAsync('DELETE FROM chore_schedule_entries WHERE household_id = ? AND id = ?', householdId, row.id);
+    }
+    for (const entry of changed) {
       await database.runAsync(
         `INSERT INTO chore_schedule_entries
          (id, household_id, chore_id, window_start, window_end, suggested_date, status, entry_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET window_start = excluded.window_start,
+         window_end = excluded.window_end, suggested_date = excluded.suggested_date,
+         status = excluded.status, entry_json = excluded.entry_json`,
         entry.id, entry.householdId, entry.choreId, entry.windowStart, entry.windowEnd,
-        entry.suggestedDate, entry.status, JSON.stringify(entry),
+        entry.suggestedDate, entry.status, nextById.get(entry.id)!,
       );
       if (entry.id === `${entry.choreId}:initial`) {
         await database.runAsync(
@@ -500,7 +551,7 @@ export interface SetupSubmission {
   weatherLocation: WeatherLocation | null;
 }
 
-export async function completeFirstSetup(database: SQLiteDatabase, submission: SetupSubmission): Promise<void> {
+async function completeFirstSetupImpl(database: SQLiteDatabase, submission: SetupSubmission): Promise<void> {
   if (submission.weatherLocation) {
     const { region, displayName, latitude, longitude } = submission.weatherLocation;
     if (region.trim().length < 2 || region.trim().length > 120
@@ -550,7 +601,7 @@ export async function completeFirstSetup(database: SQLiteDatabase, submission: S
   });
 }
 
-export async function updatePlannerSettings(
+async function updatePlannerSettingsImpl(
   database: SQLiteDatabase,
   settings: Pick<HouseholdPlannerSettings, 'frequencyMode' | 'restDays' | 'heavyDailyLimit' | 'normalDailyLimit'>,
 ): Promise<void> {
@@ -562,7 +613,7 @@ export async function updatePlannerSettings(
   );
 }
 
-export async function updateCalendarCountDisplay(
+async function updateCalendarCountDisplayImpl(
   database: SQLiteDatabase,
   settings: { colors: CalendarCountColors; displayMode: CalendarCountDisplayMode },
 ): Promise<void> {
@@ -579,14 +630,14 @@ export async function updateCalendarCountDisplay(
   );
 }
 
-export async function setNotificationsEnabled(database: SQLiteDatabase, enabled: boolean): Promise<void> {
+async function setNotificationsEnabledImpl(database: SQLiteDatabase, enabled: boolean): Promise<void> {
   await database.runAsync(
     'UPDATE household_settings SET notifications_enabled = ?, updated_at = ? WHERE household_id = ?',
     enabled ? 1 : 0, new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );
 }
 
-export async function saveWeatherLocation(
+async function saveWeatherLocationImpl(
   database: SQLiteDatabase,
   location: WeatherLocation,
 ): Promise<void> {
@@ -608,7 +659,7 @@ export async function saveWeatherLocation(
   );
 }
 
-export async function clearWeatherLocation(database: SQLiteDatabase): Promise<void> {
+async function clearWeatherLocationImpl(database: SQLiteDatabase): Promise<void> {
   await database.runAsync(
     `UPDATE household_settings SET weather_region = NULL, weather_region_name = NULL,
      weather_latitude = NULL, weather_longitude = NULL, updated_at = ?
@@ -617,7 +668,7 @@ export async function clearWeatherLocation(database: SQLiteDatabase): Promise<vo
   );
 }
 
-export async function updateChoreDefinition(
+async function updateChoreDefinitionImpl(
   database: SQLiteDatabase,
   definition: ChoreDefinition,
 ): Promise<void> {
@@ -634,7 +685,7 @@ export interface SaveReviewedApplianceResult {
   noCycleTaskCount: number;
 }
 
-export async function saveReviewedApplianceCare(
+async function saveReviewedApplianceCareImpl(
   database: SQLiteDatabase,
   product: Omit<ApplianceCareProductIdentity, 'applianceId'> & { applianceId?: EntityId },
   analysis: ApplianceCareAnalysisDraft,
@@ -643,7 +694,7 @@ export async function saveReviewedApplianceCare(
   if (approvedTasks.length > 40 || analysis.tasks.length === 0 || analysis.tasks.length > 40) {
     throw new RangeError('お手入れ項目は1〜40件の範囲で保存してください。');
   }
-  await ensureLocalHousehold(database);
+  await ensureLocalHouseholdImpl(database);
   const now = new Date().toISOString();
   const applianceId = product.applianceId ?? createId('appliance');
   const existingAppliance = await database.getFirstAsync<{
@@ -777,7 +828,7 @@ export async function saveReviewedApplianceCare(
   return { applianceId, scheduledTaskCount, duplicateTaskCount, noCycleTaskCount };
 }
 
-export async function setChoreEnabled(database: SQLiteDatabase, choreId: EntityId, enabled: boolean): Promise<void> {
+async function setChoreEnabledImpl(database: SQLiteDatabase, choreId: EntityId, enabled: boolean): Promise<void> {
   const row = await database.getFirstAsync<{ definition_json: string }>(
     'SELECT definition_json FROM chore_definitions WHERE id = ?', choreId,
   );
@@ -792,7 +843,7 @@ export async function setChoreEnabled(database: SQLiteDatabase, choreId: EntityI
   );
 }
 
-export async function completeChore(
+async function completeChoreImpl(
   database: SQLiteDatabase,
   entry: ChoreScheduleEntry,
   memberId?: EntityId,
@@ -850,31 +901,63 @@ export async function completeChore(
   return inserted;
 }
 
-export async function undoCompletedChore(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
+async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
   let undone = false;
-  const undoneAt = new Date().toISOString();
   await database.withTransactionAsync(async () => {
     const completion = await database.getFirstAsync<{
+      sequence: number;
       chore_id: string;
       outcome: ChoreCompletion['outcome'];
       schedule_entry_id: string | null;
       scheduled_date: string | null;
       previous_chore_state_json: string | null;
     }>(
-      `SELECT chore_id, outcome, schedule_entry_id, scheduled_date, previous_chore_state_json
+      `SELECT rowid AS sequence, chore_id, outcome, schedule_entry_id, scheduled_date, previous_chore_state_json
        FROM chore_completions WHERE id = ?`, completionId,
     );
     if (!completion || completion.outcome !== 'completed') return;
 
     await database.runAsync(
-      `UPDATE chore_completions SET outcome = 'incomplete', completed_at = ?,
+      `UPDATE chore_completions SET outcome = 'incomplete',
        completed_by_member_id = NULL, source = 'inApp'
        WHERE id = ?`,
-      undoneAt, completionId,
+      completionId,
     );
+    const history = await database.getAllAsync<{
+      sequence: number;
+      outcome: ChoreCompletion['outcome'];
+      completed_at: string;
+      previous_chore_state_json: string | null;
+    }>(
+      `SELECT rowid AS sequence, outcome, completed_at, previous_chore_state_json FROM chore_completions
+       WHERE chore_id = ? ORDER BY completed_at DESC, rowid DESC`, completion.chore_id,
+    );
+    const latestRemaining = history.find((row) => row.outcome === 'completed');
     if (completion.previous_chore_state_json !== null) {
-      const previousState = JSON.parse(completion.previous_chore_state_json) as ChoreState | null;
+      let previousState = JSON.parse(completion.previous_chore_state_json) as ChoreState | null;
+      let beforeSequence = completion.sequence;
+      // A saved prior state may itself point at a completion that was undone earlier.
+      while (previousState?.lastCompletedDate) {
+        const previousDate = previousState.lastCompletedDate;
+        const undonePrevious = history.find((row) => row.sequence < beforeSequence
+          && row.outcome === 'incomplete' && row.previous_chore_state_json !== null
+          && localDateFromDate(new Date(row.completed_at)) === previousDate);
+        if (!undonePrevious) break;
+        previousState = JSON.parse(undonePrevious.previous_chore_state_json!) as ChoreState | null;
+        beforeSequence = undonePrevious.sequence;
+      }
+      const remainingDate = latestRemaining ? localDateFromDate(new Date(latestRemaining.completed_at)) : undefined;
+      if (remainingDate && (!previousState?.lastCompletedDate || remainingDate >= previousState.lastCompletedDate)) {
+        previousState = { choreId: completion.chore_id, lastCompletedDate: remainingDate, lastCompletedEstimated: false, initialPending: false };
+      }
       await restoreChoreState(database, completion.chore_id, previousState);
+    } else if (latestRemaining) {
+      await restoreChoreState(database, completion.chore_id, {
+        choreId: completion.chore_id,
+        lastCompletedDate: localDateFromDate(new Date(latestRemaining.completed_at)),
+        lastCompletedEstimated: false,
+        initialPending: false,
+      });
     } else {
       await restoreLegacyChoreState(database, completion.chore_id, completion.schedule_entry_id, completion.scheduled_date);
     }
@@ -962,7 +1045,7 @@ async function restoreLegacyChoreState(
   });
 }
 
-export async function recordIncompleteChore(
+async function recordIncompleteChoreImpl(
   database: SQLiteDatabase,
   entry: ChoreScheduleEntry,
   memberId?: EntityId,
@@ -996,7 +1079,7 @@ export async function recordIncompleteChore(
   return recorded;
 }
 
-export async function setChoreAssignments(
+async function setChoreAssignmentsImpl(
   database: SQLiteDatabase,
   choreId: EntityId,
   memberIds: readonly EntityId[],
@@ -1011,7 +1094,7 @@ export async function setChoreAssignments(
   });
 }
 
-export async function addHouseholdMember(database: SQLiteDatabase, displayName: string): Promise<EntityId> {
+async function addHouseholdMemberImpl(database: SQLiteDatabase, displayName: string): Promise<EntityId> {
   const normalized = displayName.trim();
   if (!normalized) throw new Error('メンバー名を入力してください');
   const id = createId('member');
@@ -1022,7 +1105,7 @@ export async function addHouseholdMember(database: SQLiteDatabase, displayName: 
   return id;
 }
 
-export async function replaceChoreDependencies(
+async function replaceChoreDependenciesImpl(
   database: SQLiteDatabase,
   successorChoreId: EntityId,
   predecessorChoreIds: readonly EntityId[],
@@ -1065,7 +1148,7 @@ export async function replaceChoreDependencies(
   });
 }
 
-export async function saveWeeklyWasteSchedule(
+async function saveWeeklyWasteScheduleImpl(
   database: SQLiteDatabase,
   schedule: { id?: EntityId; label: string; collectionWeekdays: readonly Weekday[] },
 ): Promise<void> {
@@ -1082,7 +1165,7 @@ export async function saveWeeklyWasteSchedule(
   );
 }
 
-export async function setWasteOccurrenceHidden(
+async function setWasteOccurrenceHiddenImpl(
   database: SQLiteDatabase,
   scheduleId: EntityId,
   occurrenceDate: LocalDate,
@@ -1102,7 +1185,7 @@ export async function setWasteOccurrenceHidden(
   }
 }
 
-export async function deleteWeeklyWasteSchedule(database: SQLiteDatabase, scheduleId: EntityId): Promise<void> {
+async function deleteWeeklyWasteScheduleImpl(database: SQLiteDatabase, scheduleId: EntityId): Promise<void> {
   await database.runAsync(
     'DELETE FROM weekly_waste_schedules WHERE id = ? AND household_id = ?', scheduleId, LOCAL_HOUSEHOLD_ID,
   );
@@ -1128,3 +1211,27 @@ function parseJson<T>(value: string, fallback: T): T {
     return fallback;
   }
 }
+
+// Serialize reads and writes across screens and widget callbacks on this connection.
+export const initializeLocalDatabase = serializePlannerOperation(initializeLocalDatabaseImpl);
+export const ensureLocalHousehold = serializePlannerOperation(ensureLocalHouseholdImpl);
+export const loadApplianceCareReviewContext = serializePlannerOperation(loadApplianceCareReviewContextImpl);
+export const loadPlannerSnapshot = serializePlannerOperation(loadPlannerSnapshotImpl);
+export const completeFirstSetup = serializePlannerOperation(completeFirstSetupImpl);
+export const updatePlannerSettings = serializePlannerOperation(updatePlannerSettingsImpl);
+export const updateCalendarCountDisplay = serializePlannerOperation(updateCalendarCountDisplayImpl);
+export const setNotificationsEnabled = serializePlannerOperation(setNotificationsEnabledImpl);
+export const saveWeatherLocation = serializePlannerOperation(saveWeatherLocationImpl);
+export const clearWeatherLocation = serializePlannerOperation(clearWeatherLocationImpl);
+export const updateChoreDefinition = serializePlannerOperation(updateChoreDefinitionImpl);
+export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl);
+export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl);
+export const completeChore = serializePlannerOperation(completeChoreImpl);
+export const undoCompletedChore = serializePlannerOperation(undoCompletedChoreImpl);
+export const recordIncompleteChore = serializePlannerOperation(recordIncompleteChoreImpl);
+export const setChoreAssignments = serializePlannerOperation(setChoreAssignmentsImpl);
+export const addHouseholdMember = serializePlannerOperation(addHouseholdMemberImpl);
+export const replaceChoreDependencies = serializePlannerOperation(replaceChoreDependenciesImpl);
+export const saveWeeklyWasteSchedule = serializePlannerOperation(saveWeeklyWasteScheduleImpl);
+export const setWasteOccurrenceHidden = serializePlannerOperation(setWasteOccurrenceHiddenImpl);
+export const deleteWeeklyWasteSchedule = serializePlannerOperation(deleteWeeklyWasteScheduleImpl);

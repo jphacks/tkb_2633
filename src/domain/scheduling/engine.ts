@@ -39,6 +39,13 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
   const entriesByChore = new Map<EntityId, ChoreScheduleEntry[]>();
   const entries: ChoreScheduleEntry[] = [];
 
+  for (const chore of enabledChores) {
+    const state = stateByChore.get(chore.id);
+    if (state?.initialPending && state.initialScheduledDate && state.initialScheduledDate >= input.today) {
+      reserveLoad(chore, state.initialScheduledDate, loadByDate);
+    }
+  }
+
   for (const chore of orderedChores) {
     const state = stateByChore.get(chore.id);
     const stateDate = state?.lastCompletedDate;
@@ -64,6 +71,7 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
           chore,
           entryId: `${chore.id}:initial`,
           originalBaseDate: initialDate,
+          windowRadiusDays: 0,
           overdueDays: Math.max(1, daysBetween(initialDate, input.today)),
           overdueCycles,
           assignedMemberIds: assignment,
@@ -156,6 +164,7 @@ export function generateHouseworkSchedule(input: ScheduleGenerationInput): Chore
           chore,
           entryId: `${chore.id}:${firstBaseDate}`,
           originalBaseDate: firstBaseDate,
+          windowRadiusDays: radius,
           overdueDays: Math.max(1, daysBetween(overdueEnd, input.today)),
           overdueCycles: expiredPeriods,
           assignedMemberIds: assignment,
@@ -194,6 +203,7 @@ function createOverdueEntry(options: {
   chore: ChoreDefinition;
   entryId: EntityId;
   originalBaseDate: LocalDate;
+  windowRadiusDays: number;
   overdueDays: number;
   overdueCycles: number;
   assignedMemberIds: EntityId[];
@@ -219,8 +229,8 @@ function createOverdueEntry(options: {
     householdId: options.input.householdId,
     choreId: options.chore.id,
     cycleBaseDate: options.originalBaseDate,
-    windowStart: suggestedDate,
-    windowEnd: suggestedDate,
+    windowStart: addDays(options.originalBaseDate, -options.windowRadiusDays),
+    windowEnd: addDays(options.originalBaseDate, options.windowRadiusDays),
     suggestedDate,
     status: 'overdue',
     assignedMemberIds: options.assignedMemberIds,

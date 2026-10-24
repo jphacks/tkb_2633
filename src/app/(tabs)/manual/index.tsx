@@ -3,16 +3,17 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 
 export default function ManualScreen() {
-  const { snapshot, loading, error } = usePlannerData();
+  const { snapshot, loading, error, refresh } = usePlannerData();
   const [addDialogVisible, setAddDialogVisible] = useState(false);
   const [productName, setProductName] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
 
   if (loading || !snapshot) {
-    return <Page><ScreenHeading title="説明" description="家電を読み込んでいます。" /></Page>;
+    return <PlannerLoadState title="家電" message="家電を読み込んでいます。" error={error} retry={refresh} />;
   }
 
   function continueToProductDetails() {

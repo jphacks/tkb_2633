@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { localDateFromDate } from '@/domain/scheduling/local-date';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { recordIncompleteChore } from '@/platform/storage/repository';
 
@@ -53,7 +54,7 @@ export default function ChoreGuideScreen() {
   }, [chores, query]);
 
   if (loading || !snapshot) {
-    return <Page><ScreenHeading title="家事の説明" description="家事を読み込んでいます。" /></Page>;
+    return <PlannerLoadState title="家事の説明" message="家事を読み込んでいます。" error={error} retry={refresh} />;
   }
 
   const selectedChore = selectedChoreId ? chores.find((chore) => chore.id === selectedChoreId) : undefined;

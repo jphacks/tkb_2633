@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-nati
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { setChoreEnabled } from '@/platform/storage/repository';
 
@@ -24,7 +25,7 @@ export default function ChoresScreen() {
     );
   }, [snapshot, query, category]);
 
-  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="CHORES" title="家事一覧" description="家事を読み込んでいます。" /></Page>;
+  if (loading || !snapshot) return <PlannerLoadState title="家事一覧" message="家事を読み込んでいます。" error={error} retry={refresh} />;
 
   const statusByChore = new Map<string, string>();
   for (const entry of snapshot.scheduleEntries) {

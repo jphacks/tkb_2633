@@ -2,6 +2,7 @@ import {
   AndroidImportance,
   cancelScheduledNotificationAsync,
   getPermissionsAsync,
+  getAllScheduledNotificationsAsync,
   requestPermissionsAsync,
   scheduleNotificationAsync,
   setNotificationChannelAsync,
@@ -47,6 +48,24 @@ export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
     return requested.granted;
   }
 
+  async hasPermission(): Promise<boolean> {
+    return (await getPermissionsAsync()).granted;
+  }
+
+  async getScheduledRequests(): Promise<readonly LocalNotificationRequest[]> {
+    return (await getAllScheduledNotificationsAsync()).map((notification) => {
+      const { __houseworkFireAt, ...data } = notification.content.data ?? {};
+      return {
+        key: notification.identifier,
+        title: notification.content.title ?? '',
+        body: notification.content.body ?? '',
+        ...(notification.content.subtitle ? { subtitle: notification.content.subtitle } : {}),
+        fireAt: typeof __houseworkFireAt === 'string' ? __houseworkFireAt : '',
+        data: data as LocalNotificationRequest['data'],
+      };
+    });
+  }
+
   async schedule(request: LocalNotificationRequest): Promise<string> {
     const fireAt = new Date(request.fireAt);
     if (Number.isNaN(fireAt.getTime())) {
@@ -57,12 +76,15 @@ export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
       identifier: request.key,
       content: {
         title: request.title,
+        ...(request.subtitle ? { subtitle: request.subtitle } : {}),
         body: request.body,
-        data: request.data,
+        data: { ...request.data, __houseworkFireAt: request.fireAt },
+        color: '#4AADE0',
       },
       trigger: {
         type: SchedulableTriggerInputTypes.DATE,
         date: fireAt,
+        channelId: 'housework-reminders',
       },
     });
   }
@@ -71,3 +93,5 @@ export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
     await cancelScheduledNotificationAsync(notificationId);
   }
 }
+
+export const expoLocalNotificationGateway = new ExpoLocalNotificationGateway();

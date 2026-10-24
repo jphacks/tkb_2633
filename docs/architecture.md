@@ -56,7 +56,7 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 - `src/features/notifications/contracts.ts` と `src/platform/notifications/`: 日時指定の端末内通知ゲートウェイ
 - `src/features/widgets/contracts.ts` と `src/platform/widgets/`: 今日の家事スナップショットと、iOS SwiftUI / Android Jetpack Compose のウィジェット
 
-初回設定と設定画面に通知ON/OFFを表示します。OS許可ダイアログはユーザーがONにした時だけ要求し、未許可なら設定はOFFのままです。通知時刻初期値は9:00ですが、通知タイミングや延期・再通知の規則が未決定のため、通知予約はまだ行いません。ウィジェットはiOS systemSmall（2×2）とsystemMedium、Androidは2×2に対応します。今日の実施期間内と期間終了翌日の家事を優先順で最大3件表示し、丸を押すと完了できます。完了した家事はチェック付きで残ります。
+初回設定と設定画面に通知ON/OFFを表示します。通知許可があり、設定がONの場合は毎朝9:00に、その日に実施期間へ入る家事・期間最終日の家事・期間終了翌日の家事をまとめて通知します。すでに完了した家事は除き、期間終了翌日を過ぎた家事には通知しません。ウィジェットはiOS systemSmall（2×2）とsystemMedium、Androidは2×2に対応します。今日の実施期間内と期間終了翌日の家事を優先順で最大3件表示し、丸を押すと完了できます。完了した家事はチェック付きで残ります。
 
 ## 外部機能
 

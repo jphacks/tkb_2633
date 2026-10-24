@@ -2,14 +2,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthKey } from '@/domain/scheduling/local-date';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { router, useLocalSearchParams } from 'expo-router';
 
 export default function HistoryScreen() {
   const params = useLocalSearchParams<{ choreId?: string }>();
   const requestedChoreId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
-  const { snapshot, loading, error } = usePlannerData();
-  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="HISTORY" title="実施履歴" description="履歴を読み込んでいます。" /></Page>;
+  const { snapshot, loading, error, refresh } = usePlannerData();
+  if (loading || !snapshot) return <PlannerLoadState title="実施履歴" message="履歴を読み込んでいます。" error={error} retry={refresh} />;
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const selectedChore = requestedChoreId ? choresById.get(requestedChoreId) : undefined;

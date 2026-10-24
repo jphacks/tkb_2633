@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { Weekday } from '@/domain/shared/types';
+import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { deleteWeeklyWasteSchedule, saveWeeklyWasteSchedule, setWasteOccurrenceHidden } from '@/platform/storage/repository';
 
@@ -21,7 +22,7 @@ export default function WasteScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  if (loading || !snapshot) return <Page><ScreenHeading eyebrow="WASTE DAY" title="ゴミ収集日" description="曜日設定を読み込んでいます。" /></Page>;
+  if (loading || !snapshot) return <PlannerLoadState title="ゴミ収集日" message="曜日設定を読み込んでいます。" error={loadError} retry={refresh} />;
 
   const toggleWeekday = (day: Weekday) => {
     setSelectedWeekdays((current) => current.includes(day)

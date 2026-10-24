@@ -15,6 +15,11 @@ export function localDateFromISODateTime(value: string): LocalDate {
   return localDateFromDate(date);
 }
 
+export function millisecondsUntilNextLocalDay(now: Date): number {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return next.getTime() - now.getTime();
+}
+
 export function parseLocalDate(value: LocalDate): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) throw new RangeError(`Invalid local date: ${value}`);

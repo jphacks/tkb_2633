@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
 
 import type {
   ApplianceCareAnalysisStage,
@@ -96,14 +97,50 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 function isApiResponse(value: unknown): value is ApplianceCareApiResponse {
-  if (!value || typeof value !== 'object' || !('status' in value)) return false;
+  if (!isRecord(value)) return false;
   const status = value.status;
-  if (status === 'not_found') return 'message' in value && typeof value.message === 'string';
-  if (status === 'ambiguous') return 'candidates' in value && Array.isArray(value.candidates);
-  if (status === 'error') return 'code' in value && 'message' in value
-    && typeof value.code === 'string' && typeof value.message === 'string';
-  if (status === 'verified') return 'product' in value && 'officialSources' in value && 'analysis' in value;
-  return false;
+  if (status === 'not_found') return nonemptyString(value.message);
+  if (status === 'error') return nonemptyString(value.code) && nonemptyString(value.message);
+  if (status === 'ambiguous') return Array.isArray(value.candidates) && value.candidates.length > 0
+    && value.candidates.every((candidate) => isRecord(candidate)
+      && nonemptyString(candidate.manufacturer) && nonemptyString(candidate.productName)
+      && (candidate.modelNumber === undefined || nonemptyString(candidate.modelNumber))
+      && nonemptyString(candidate.officialProductUrl)
+      && isOfficialApplianceUrl(candidate.officialProductUrl, candidate.manufacturer));
+  if (status !== 'verified' || !isRecord(value.product) || !isRecord(value.officialSources) || !isRecord(value.analysis)) return false;
+  const { product, officialSources, analysis } = value;
+  if (!nonemptyString(product.manufacturer) || !nonemptyString(product.productName) || !nonemptyString(product.modelNumber)
+    || (product.category !== undefined && typeof product.category !== 'string')
+    || !nonemptyString(officialSources.manualUrl) || !isOfficialApplianceUrl(officialSources.manualUrl, product.manufacturer)
+    || (officialSources.productUrl !== undefined && (typeof officialSources.productUrl !== 'string'
+      || !isOfficialApplianceUrl(officialSources.productUrl, product.manufacturer)))) return false;
+  const manufacturer = product.manufacturer;
+  return nonemptyString(analysis.manufacturer) && nonemptyString(analysis.model)
+    && nonemptyString(analysis.analyzedAt) && Number.isFinite(new Date(analysis.analyzedAt).getTime())
+    && analysis.requiresUserReview === true && Array.isArray(analysis.tasks)
+    && analysis.tasks.length > 0 && analysis.tasks.length <= 40
+    && analysis.tasks.every((task) => isRecord(task) && nonemptyString(task.name)
+      && stringArray(task.steps) && task.steps.length > 0 && stringArray(task.tools) && stringArray(task.safetyCautions)
+      && (task.recommendedIntervalDays === undefined || (typeof task.recommendedIntervalDays === 'number'
+        && Number.isInteger(task.recommendedIntervalDays) && task.recommendedIntervalDays > 0 && task.recommendedIntervalDays <= 3650))
+      && (task.recommendedConditions === undefined || stringArray(task.recommendedConditions))
+      && (task.estimatedMinutes === undefined || (typeof task.estimatedMinutes === 'number' && Number.isFinite(task.estimatedMinutes) && task.estimatedMinutes >= 0))
+      && Array.isArray(task.evidence) && task.evidence.length > 0
+      && task.evidence.every((source) => isRecord(source) && nonemptyString(source.url)
+        && isOfficialApplianceUrl(source.url, manufacturer)
+        && (source.pageOrSection === undefined || typeof source.pageOrSection === 'string')));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(nonemptyString);
 }
 
 function isJobAccepted(value: unknown): value is { jobId: string } {

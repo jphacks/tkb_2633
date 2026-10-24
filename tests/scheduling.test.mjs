@@ -147,7 +147,8 @@ test('an incomplete first-run date stays fixed and records overdue cycles', () =
 
   assert.ok(initial);
   assert.ok(initial.suggestedDate >= '2026-11-02');
-  assert.equal(initial.windowStart, initial.suggestedDate);
+  assert.equal(initial.windowStart, '2026-10-24');
+  assert.equal(initial.windowEnd, '2026-10-24');
   assert.equal(initial.status, 'overdue');
   assert.equal(initial.overdueDays, 9);
   assert.equal(initial.overdueCycles, 2);
@@ -162,6 +163,32 @@ test('an incomplete record never becomes a new completion-cycle base date', () =
 
   assert.equal(entries[0].id, 'bath:initial');
   assert.equal(entries[0].status, 'initialPending');
+});
+
+test('overdue execution windows retain their original deadline across refresh days', () => {
+  const chores = [chore('old')];
+  const states = [{ choreId: 'old', lastCompletedDate: '2026-10-01', lastCompletedEstimated: false, initialPending: false }];
+  for (const date of ['2026-10-24', '2026-10-25']) {
+    const overdue = generateHouseworkSchedule(input({ chores, states, from: date, today: date }))
+      .find((entry) => entry.status === 'overdue');
+    assert.equal(overdue.windowStart, '2026-10-07');
+    assert.equal(overdue.windowEnd, '2026-10-09');
+  }
+});
+
+test('fixed first-run dates reserve capacity before another unknown chore is placed', () => {
+  for (const reversed of [false, true]) {
+  const chores = [chore('fixed', { load: 'heavy' }), chore('new', { load: 'heavy' })];
+  const entries = generateHouseworkSchedule(input({
+    chores: reversed ? chores.reverse() : chores,
+    states: [
+      { choreId: 'fixed', initialPending: true, initialScheduledDate: '2026-10-24', lastCompletedEstimated: false },
+      { choreId: 'new', initialPending: true, lastCompletedEstimated: false },
+    ],
+  }));
+  const initialDates = entries.filter((entry) => entry.id.endsWith(':initial')).map((entry) => entry.suggestedDate);
+  assert.equal(new Set(initialDates).size, 2);
+  }
 });
 
 test('holiday-priority windows include one of the configured rest days', () => {

@@ -97,6 +97,8 @@ export interface ChoreCompletion {
   scheduleEntryId?: EntityId;
   /** The date this occurrence was scheduled for, kept even if completion regenerates the schedule. */
   scheduledDate?: LocalDate;
+  scheduledWindowStart?: LocalDate;
+  scheduledWindowEnd?: LocalDate;
   completionNote?: 'completedNow' | 'alreadyDone';
   estimatedDate?: boolean;
 }

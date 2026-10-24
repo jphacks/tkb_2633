@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 8;
+const CURRENT_SCHEMA_VERSION = 9;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -195,8 +195,17 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
       ALTER TABLE chore_completions ADD COLUMN scheduled_date TEXT;
       CREATE INDEX IF NOT EXISTS idx_completions_household_scheduled
         ON chore_completions(household_id, scheduled_date);
+      PRAGMA user_version = 8;
     `);
     version = 8;
+  }
+  if (version < 9) {
+    await database.execAsync(`
+      ALTER TABLE chore_completions ADD COLUMN scheduled_window_start TEXT;
+      ALTER TABLE chore_completions ADD COLUMN scheduled_window_end TEXT;
+      PRAGMA user_version = 9;
+    `);
+    version = 9;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
-import { addDays, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
+import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore } from '@/platform/storage/repository';
@@ -16,6 +16,7 @@ export default function CalendarScreen() {
   const today = localDateFromDate(new Date());
   const [month, setMonth] = useState(() => ({ year: new Date().getFullYear(), monthIndex: new Date().getMonth() }));
   const [selectedDate, setSelectedDate] = useState<LocalDate>(today);
+  const [periodsExpanded, setPeriodsExpanded] = useState(false);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
 
   if (loading || !snapshot) return <Page><ScreenHeading eyebrow="SCHEDULE" title="カレンダー" description="予定を読み込んでいます。" /></Page>;
@@ -50,6 +51,35 @@ export default function CalendarScreen() {
       return chore ? [{ completion, chore }] : [];
     });
   const completedCount = selectedEntries.filter(isEntryCompleted).length + completedOnlyCompletions.length;
+  const periodRows = selectedEntries.flatMap((entry) => {
+    const chore = choresById.get(entry.choreId);
+    const completed = snapshot.completions.some((completion) => completion.outcome === 'completed'
+      && (completion.scheduleEntryId === entry.id
+        || (completion.choreId === entry.choreId
+          && completion.scheduledDate === entry.suggestedDate
+          && (!completion.scheduledWindowStart || completion.scheduledWindowStart === entry.windowStart)
+          && (!completion.scheduledWindowEnd || completion.scheduledWindowEnd === entry.windowEnd))));
+    return chore ? [{
+      id: entry.id,
+      name: chore.name,
+      start: entry.windowStart,
+      end: entry.windowEnd,
+      completed,
+    }] : [];
+  });
+  for (const completion of snapshot.completions) {
+    if (completion.outcome !== 'completed'
+      || (completion.scheduleEntryId && selectedEntries.some((entry) => entry.id === completion.scheduleEntryId))) continue;
+    const start = completion.scheduledWindowStart ?? completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt);
+    const end = completion.scheduledWindowEnd ?? completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt);
+    if (selectedDate < start || selectedDate > end) continue;
+    const chore = choresById.get(completion.choreId);
+    if (chore) periodRows.push({ id: `completed:${completion.id}`, name: chore.name, start, end, completed: true });
+  }
+  periodRows.sort((left, right) => left.start.localeCompare(right.start) || left.name.localeCompare(right.name));
+  const selectedWeekStart = addDays(selectedDate, -(weekdayOf(selectedDate) % 7));
+  const selectedWeekEnd = addDays(selectedWeekStart, 6);
+  const selectedWeekDates = Array.from({ length: 7 }, (_, index) => addDays(selectedWeekStart, index));
 
   const moveMonth = (offset: number) => {
     const next = new Date(Date.UTC(month.year, month.monthIndex + offset, 1));
@@ -57,6 +87,7 @@ export default function CalendarScreen() {
     const nextMonth = next.getUTCMonth();
     setMonth({ year: nextYear, monthIndex: nextMonth });
     setSelectedDate(`${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01` as LocalDate);
+    setPeriodsExpanded(false);
   };
 
   const finish = async (entryId: string) => {
@@ -102,6 +133,7 @@ export default function CalendarScreen() {
                 accessibilityLabel={`${formatJapaneseDate(date)}、家事${dayEntries.length}件`}
                 accessibilityState={{ selected }}
                 onPress={() => {
+                  setPeriodsExpanded((expanded) => date === selectedDate ? !expanded : true);
                   setSelectedDate(date);
                   if (!inMonth) {
                     const tapped = parseLocalDate(date);
@@ -120,6 +152,41 @@ export default function CalendarScreen() {
             );
           })}
         </View>
+        {periodsExpanded ? (
+          <View style={styles.periodPanel}>
+            <View style={styles.periodPanelHeader}>
+              <Text style={styles.periodPanelTitle}>{formatJapaneseDate(selectedDate)}を含む実施期間</Text>
+              <Pressable accessibilityRole="button" onPress={() => setPeriodsExpanded(false)}>
+                <Text style={styles.periodPanelClose}>閉じる</Text>
+              </Pressable>
+            </View>
+            <View style={styles.periodDateRow}>
+              {selectedWeekDates.map((date) => (
+                <Text key={date} style={[styles.periodDate, date === selectedDate && styles.periodDateSelected]}>{Number(date.slice(-2))}</Text>
+              ))}
+            </View>
+            {periodRows.length ? periodRows.map((period) => {
+              const clippedStart = period.start < selectedWeekStart ? selectedWeekStart : period.start;
+              const clippedEnd = period.end > selectedWeekEnd ? selectedWeekEnd : period.end;
+              const left = daysBetween(selectedWeekStart, clippedStart) / 7 * 100;
+              const width = (daysBetween(clippedStart, clippedEnd) + 1) / 7 * 100;
+              const rangeLabel = period.start === period.end
+                ? formatJapaneseDate(period.start)
+                : `${formatJapaneseDate(period.start)}〜${formatJapaneseDate(period.end)}`;
+              return (
+                <View key={period.id} style={styles.periodRow} accessibilityLabel={`${period.name}、${rangeLabel}`}>
+                  <Text style={[styles.periodName, period.completed && styles.periodCompletedText]} numberOfLines={1}>{period.name}</Text>
+                  <View style={styles.periodTrack}>
+                    <View style={[styles.periodBar, period.completed && styles.periodBarCompleted, { left: `${left}%`, width: `${width}%` }]} />
+                  </View>
+                  <Text style={styles.periodRange}>{rangeLabel}</Text>
+                </View>
+              );
+            }) : (
+              <Text style={styles.noPeriods}>この日に重なる実施期間はありません。</Text>
+            )}
+          </View>
+        ) : null}
       </Card>
 
       <SectionHeading title={formatJapaneseDate(selectedDate, { weekday: true })} trailing={<Text style={styles.smallCount}>{selectedEntries.length + completedOnlyCompletions.length}件・{completedCount}件完了</Text>} />
@@ -183,6 +250,21 @@ const styles = StyleSheet.create({
   weekendNumber: { color: '#78819A' },
   selectedDayNumber: { color: '#FFFFFF' },
   dots: { minHeight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  periodPanel: { gap: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 11 },
+  periodPanelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  periodPanelTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
+  periodPanelClose: { color: palette.accent, fontSize: 12, fontWeight: '700' },
+  periodDateRow: { flexDirection: 'row', paddingBottom: 1 },
+  periodDate: { width: '14.2857%', textAlign: 'center', color: palette.muted, fontSize: 10, fontWeight: '600' },
+  periodDateSelected: { color: palette.accent, fontWeight: '800' },
+  periodRow: { gap: 3 },
+  periodName: { color: palette.ink, fontSize: 12, fontWeight: '700' },
+  periodCompletedText: { color: '#858B9E', textDecorationLine: 'line-through' },
+  periodTrack: { height: 8, borderRadius: 4, backgroundColor: '#EFF2F7', overflow: 'hidden' },
+  periodBar: { position: 'absolute', top: 0, bottom: 0, borderRadius: 4, backgroundColor: palette.accent },
+  periodBarCompleted: { backgroundColor: '#AAB1C1' },
+  periodRange: { color: palette.muted, fontSize: 10 },
+  noPeriods: { color: palette.muted, fontSize: 12, paddingVertical: 4 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: palette.accent },
   dotInWindow: { backgroundColor: '#86A78F' },
   dotOverdue: { backgroundColor: palette.warning },

@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { createHouseholdChoreDefinitions } from '@/domain/chores/catalog';
+import { upgradeBuiltInScheduleDefaults } from '@/domain/chores/catalog-upgrade';
 import type {
   ChoreCompletion,
   ChoreDefinition,
@@ -33,7 +34,7 @@ import { freshCalendarAvailability, getDeviceTimeZone } from '@/features/google-
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
-const BUILT_IN_CHORE_CATALOG_VERSION = 2;
+const BUILT_IN_CHORE_CATALOG_VERSION = 3;
 
 export function plannerGenerationRange(today: LocalDate) {
   return { from: today, through: addDays(today, 180) };
@@ -224,7 +225,8 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
     const catalogVersionRow = await database.getFirstAsync<{ built_in_chore_catalog_version: number }>(
       'SELECT built_in_chore_catalog_version FROM household_settings WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
     );
-    if ((catalogVersionRow?.built_in_chore_catalog_version ?? 0) < BUILT_IN_CHORE_CATALOG_VERSION) {
+    const previousCatalogVersion = catalogVersionRow?.built_in_chore_catalog_version ?? 0;
+    if (previousCatalogVersion < BUILT_IN_CHORE_CATALOG_VERSION) {
       const legacyBuiltIns = await database.getAllAsync<{ id: string; definition_json: string }>(
         `SELECT id, definition_json FROM chore_definitions
          WHERE household_id = ? AND id GLOB 'chore-[0-9][0-9]'`, LOCAL_HOUSEHOLD_ID,
@@ -244,9 +246,13 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
           'SELECT enabled, definition_json FROM chore_definitions WHERE id = ?', definition.id,
         );
         if (existing) {
-          // Refresh the supplied guide text without resetting the user's cycles, load or enabled state.
+          const stored = JSON.parse(existing.definition_json) as ChoreDefinition;
+          const upgrade = previousCatalogVersion < 3
+            ? upgradeBuiltInScheduleDefaults(stored, definition)
+            : { definition: stored, scheduleChanged: false };
+          // Refresh the guide and untouched defaults; user-selected values and overrides stay intact.
           const updated: ChoreDefinition = {
-            ...(JSON.parse(existing.definition_json) as ChoreDefinition),
+            ...upgrade.definition,
             name: definition.name,
             category: definition.category,
             description: definition.description,
@@ -258,12 +264,17 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
             cautions: definition.cautions,
             trivia: definition.trivia,
             sourceNotes: definition.sourceNotes,
+            schedulingNotes: definition.schedulingNotes,
             enabled: Boolean(existing.enabled),
           };
           await database.runAsync(
             'UPDATE chore_definitions SET name = ?, definition_json = ? WHERE id = ?',
             updated.name, JSON.stringify(updated), definition.id,
           );
+          if (upgrade.scheduleChanged) {
+            // Cached windows belong to the old defaults. History and cycle anchors are kept separately.
+            await database.runAsync('DELETE FROM chore_schedule_entries WHERE chore_id = ?', definition.id);
+          }
         }
         await database.runAsync(
           'INSERT OR IGNORE INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, 1, ?)',
@@ -278,7 +289,7 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
           definition.id, LOCAL_MEMBER_ID,
         );
       }
-      await repairFutureCompletionStates(database);
+      if (previousCatalogVersion < 2) await repairFutureCompletionStates(database);
       await database.runAsync(
         'UPDATE household_settings SET built_in_chore_catalog_version = ? WHERE household_id = ?',
         BUILT_IN_CHORE_CATALOG_VERSION, LOCAL_HOUSEHOLD_ID,

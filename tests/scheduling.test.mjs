@@ -249,7 +249,7 @@ test('dependency cycles are detected before schedule generation', () => {
   assert.equal(wouldCreateDependencyCycle(dependencies, 'a', 'c'), false);
 });
 
-test('light chores keep a single-day period even when an older cached period was wider', () => {
+test('light chores retain their explicit period when a cached period exists', () => {
   const date = '2026-10-23';
   const entries = generateHouseworkSchedule(input({
     chores: [chore('light', { load: 'light', windowRadiusDays: 2, maxShiftDays: 0 })],
@@ -258,8 +258,10 @@ test('light chores keep a single-day period even when an older cached period was
       windowStart: '2026-10-21', windowEnd: '2026-10-25', suggestedDate: date, status: 'inWindow', assignedMemberIds: [] }],
   }));
   assert.ok(entries.length > 0);
-  assert.ok(entries.every((entry) => entry.windowStart === entry.suggestedDate && entry.windowEnd === entry.suggestedDate));
-  assert.equal(entries[0].status, 'overdue');
+  assert.ok(entries.every((entry) => daysBetween(entry.windowStart, entry.windowEnd) === 4));
+  assert.equal(entries[0].windowStart, '2026-10-21');
+  assert.equal(entries[0].windowEnd, '2026-10-25');
+  assert.equal(entries[0].status, 'inWindow');
 });
 
 test('load, cycle, frequency, holidays, and load limits preserve scheduling invariants in 72 configurations', () => {
@@ -267,7 +269,7 @@ test('load, cycle, frequency, holidays, and load limits preserve scheduling inva
     for (const cycle of [1, 2, 7, 30]) {
       for (const frequencyMode of ['frequent', 'balanced', 'relaxed']) {
         for (const restDays of [[], [6, 7]]) {
-          const radius = load === 'light' ? 0 : load === 'normal' ? 1 : 2;
+          const radius = load === 'heavy' ? 2 : 1;
           const entries = generateHouseworkSchedule(input({
             through: '2026-11-30',
             chores: [chore('matrix', { load, windowRadiusDays: radius, holidayPriority: restDays.length > 0,

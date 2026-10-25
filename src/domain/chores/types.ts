@@ -49,12 +49,15 @@ export interface ChoreDefinition {
   /** True when the manufacturer gave no interval and the user has not selected one. */
   requiresCycleSelection?: boolean;
   frequencyDaysByMode: Record<FrequencyMode, number>;
+  /** Explains provisional or condition-based intervals in the current recurring model. */
+  schedulingNotes?: string;
   /** Radius around the target date; 1 means target ±1 day. */
   windowRadiusDays: number;
   /** Maximum movement from the cycle date when holidays or load require it. */
   maxShiftDays: number;
   load: ChoreLoad;
   holidayPriority: boolean;
+  /** The default cycle is daily in every frequency mode; individual overrides still take precedence. */
   everyday: boolean;
   locationOrAppliance?: string;
   laundryDryingPreference?: LaundryDryingPreference;

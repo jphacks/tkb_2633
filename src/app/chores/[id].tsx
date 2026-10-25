@@ -1,14 +1,17 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
 import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
-import type { ChoreDefinition, ChoreLoad, LaundryDryingPreference } from '@/domain/chores/types';
+import type { ChoreDefinition, ChoreLoad } from '@/domain/chores/types';
 import { formatJapaneseDate, localDateFromISODateTime } from '@/domain/scheduling/local-date';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { updateChoreDefinition } from '@/platform/storage/repository';
+import { updateChoreSettings } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
+
+import { useChoreSettingsAutosave } from '@/features/settings/use-chore-settings-autosave';
+import type { ChoreSettingsPatch } from '@/domain/chores/settings-patch';
+import { parseSettingInteger } from '@/domain/chores/settings-patch';
 
 const loadOptions: { id: ChoreLoad; label: string }[] = [
   { id: 'light', label: '軽い' }, { id: 'normal', label: '普通' }, { id: 'heavy', label: '重い' },
@@ -23,33 +26,22 @@ export default function ChoreSettingsScreen() {
   if (loading || !snapshot) return <PlannerLoadState title="家事ごとの設定" message="設定を読み込んでいます。" error={error} retry={refresh} />;
   if (!chore) return <Page><BackButton onPress={() => router.back()} /><ScreenHeading title="家事が見つかりません" /></Page>;
 
-  return <ChoreSettingsContent key={chore.id} chore={chore} snapshot={snapshot} error={error} refresh={refresh} saveDefinition={(definition) => updateChoreDefinition(database, definition)} />;
+  return <ChoreSettingsContent key={chore.id} chore={chore} snapshot={snapshot} error={error} savePatch={async (patch) => { if (await updateChoreSettings(database, chore.id, patch)) await refresh(); }} />;
 }
 
 function ChoreSettingsContent({
   chore,
   snapshot,
   error,
-  refresh,
-  saveDefinition,
+  savePatch,
 }: {
   chore: ChoreDefinition;
   snapshot: PlannerSnapshot;
   error: string | null;
-  refresh: () => Promise<void>;
-  saveDefinition: (definition: ChoreDefinition) => Promise<void>;
+  savePatch: (patch: ChoreSettingsPatch) => Promise<void>;
 }) {
-  const [cycleText, setCycleText] = useState(chore.requiresCycleSelection
-    ? ''
-    : String(chore.userIntervalDays ?? chore.recommendedCycleDays ?? chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[snapshot.settings.frequencyMode]));
-  const [cycleWasEdited, setCycleWasEdited] = useState(false);
-  const [radiusText, setRadiusText] = useState(String(chore.windowRadiusDays));
-  const [load, setLoad] = useState<ChoreLoad>(chore.load);
-  const [holidayPriority, setHolidayPriority] = useState(chore.holidayPriority);
-  const [dryingPreference, setDryingPreference] = useState<LaundryDryingPreference>(chore.laundryDryingPreference ?? 'either');
-  const [enabled, setEnabled] = useState(chore.enabled);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const autosave = useChoreSettingsAutosave(chore, snapshot.settings.frequencyMode, savePatch);
+  const { cycleText, radiusText, load, holidayPriority, dryingPreference, enabled } = autosave.draft;
 
   const state = snapshot.states.find((item) => item.choreId === chore.id);
   const previousCompletion = snapshot.completions
@@ -57,69 +49,21 @@ function ChoreSettingsContent({
     .sort((left, right) => right.completedAt.localeCompare(left.completedAt))[0];
   const latestCompletion = state?.lastCompletedDate ?? (previousCompletion ? localDateFromISODateTime(previousCompletion.completedAt) : undefined);
 
-  const save = async () => {
-    const cycleDays = cycleText.trim() ? Number(cycleText) : undefined;
-    const windowRadiusDays = Number(radiusText);
-    if (cycleDays !== undefined && (!Number.isInteger(cycleDays) || cycleDays < 1 || cycleDays > 3650)) {
-      setMessage('周期は1〜3650日の整数で入力してください。');
-      return;
-    }
-    if (enabled && chore.requiresCycleSelection && cycleDays === undefined) {
-      setMessage('メーカー指定の周期がありません。家事を有効にする前に周期を入力してください。');
-      return;
-    }
-    if (!radiusText.trim() || !Number.isInteger(windowRadiusDays) || windowRadiusDays < 0 || windowRadiusDays > 14) {
-      setMessage('期間幅は±0〜±14日の整数で入力してください。');
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
-    try {
-      const updated: ChoreDefinition = {
-        ...chore,
-        enabled: chore.applianceCareSource && chore.manufacturerRecommendedIntervalDays === undefined && cycleDays === undefined
-          ? false
-          : enabled,
-        load,
-        holidayPriority,
-        laundryDryingPreference: chore.category === '洗濯' ? dryingPreference : chore.laundryDryingPreference,
-        windowRadiusDays,
-        recommendedCycleDays: !cycleWasEdited
-          ? chore.recommendedCycleDays
-          : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays,
-        userIntervalDays: chore.applianceId
-          ? (!cycleWasEdited ? chore.userIntervalDays : cycleDays === chore.manufacturerRecommendedIntervalDays ? undefined : cycleDays)
-          : chore.userIntervalDays,
-        requiresCycleSelection: Boolean(chore.applianceCareSource
-          && chore.manufacturerRecommendedIntervalDays === undefined
-          && (cycleWasEdited ? cycleDays === undefined : chore.userIntervalDays === undefined && chore.recommendedCycleDays === undefined)),
-      };
-      await saveDefinition(updated);
-      await refresh();
-      setMessage('設定を保存し、予定を更新しました。');
-    } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : '保存できませんでした');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <Page>
-      <BackButton onPress={() => router.back()} />
+      <BackButton onPress={() => void autosave.navigateAfterSave(() => router.back())} />
       <ScreenHeading eyebrow={chore.category.toUpperCase()} title={`${chore.name}の設定`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
 
       <Card>
         <SectionHeading title="個別設定" />
-        <SectionHeading title="基本" />
+        <SectionHeading title="基本" level="subsection" />
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingTitle}>家事を有効にする</Text>
             <Text style={styles.body}>{chore.requiresCycleSelection ? '周期を設定してから有効にできます。' : '無効にしても完了履歴は残ります。'}</Text>
           </View>
-          <Switch value={enabled} onValueChange={setEnabled} disabled={chore.requiresCycleSelection && !cycleText.trim()} />
+          <Switch value={enabled} accessibilityLabel="家事を有効にする" onValueChange={autosave.changeEnabled} disabled={chore.requiresCycleSelection && parseSettingInteger(cycleText, 1, 3650) === undefined} />
         </View>
         <View style={styles.fieldRow}>
           <View style={styles.settingCopy}>
@@ -135,7 +79,8 @@ function ChoreSettingsContent({
           <View style={styles.numberField}>
             <TextInput
               value={cycleText}
-              onChangeText={(value) => { setCycleWasEdited(true); setCycleText(value); if (chore.requiresCycleSelection) setEnabled(Boolean(value.trim())); }}
+              onChangeText={autosave.changeCycle}
+              onEndEditing={() => void autosave.flush()}
               keyboardType="number-pad"
               style={styles.numberInput}
               accessibilityLabel="家事周期の日数"
@@ -144,46 +89,50 @@ function ChoreSettingsContent({
             <Text style={styles.unit}>日</Text>
           </View>
         </View>
+        {autosave.cycleError ? <Text style={styles.error}>{autosave.cycleError}</Text> : null}
         {chore.schedulingNotes ? <Text style={styles.body}>{chore.schedulingNotes}</Text> : null}
         {chore.applianceId && chore.manufacturerRecommendedIntervalDays !== undefined
           && (chore.userIntervalDays ?? chore.recommendedCycleDays) !== undefined
           && (chore.userIntervalDays ?? chore.recommendedCycleDays) !== chore.manufacturerRecommendedIntervalDays ? (
-            <AppButton title="メーカー推奨に戻す" onPress={() => { setCycleWasEdited(true); setCycleText(String(chore.manufacturerRecommendedIntervalDays)); }} variant="quiet" compact />
+            <AppButton title="メーカー推奨に戻す" onPress={autosave.resetCycle} variant="quiet" compact />
           ) : null}
 
-        <SectionHeading title="実施スケジュール" />
+        <SectionHeading title="実施スケジュール" level="subsection" />
         <View style={styles.fieldRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>実施期間の幅</Text><Text style={styles.body}>基準日から前後に何日広げるか（0〜14日）</Text></View>
-          <View style={styles.numberField}><Text style={styles.unit}>±</Text><TextInput value={radiusText} onChangeText={setRadiusText} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="実施期間の日数幅" /><Text style={styles.unit}>日</Text></View>
+          <View style={styles.numberField}><Text style={styles.unit}>±</Text><TextInput value={radiusText} onChangeText={autosave.changeRadius} onEndEditing={() => void autosave.flush()} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="実施期間の日数幅" /><Text style={styles.unit}>日</Text></View>
         </View>
+        {autosave.radiusError ? <Text style={styles.error}>{autosave.radiusError}</Text> : null}
         <View style={styles.settingBlock}>
           <Text style={styles.settingTitle}>負荷</Text>
-          <View style={styles.chipRow}>{loadOptions.map((option) => <ChoiceChip key={option.id} label={option.label} selected={load === option.id} onPress={() => setLoad(option.id)} />)}</View>
+          <View style={styles.chipRow}>{loadOptions.map((option) => <ChoiceChip key={option.id} label={option.label} selected={load === option.id} onPress={() => autosave.changeLoad(option.id)} />)}</View>
         </View>
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>休日を優先</Text><Text style={styles.body}>実施期間に設定した休日を含めます。</Text></View>
-          <Switch value={holidayPriority} onValueChange={setHolidayPriority} />
+          <Switch value={holidayPriority} accessibilityLabel="休日を優先" onValueChange={autosave.changeHoliday} />
         </View>
 
         {chore.category === '洗濯' ? (
           <View style={styles.settingBlock}>
-            <SectionHeading title="洗濯" />
+            <SectionHeading title="洗濯" level="subsection" />
             <Text style={styles.settingTitle}>基本の干し方</Text>
             <View style={styles.chipRow}>
-              <ChoiceChip label="どちらでも" selected={dryingPreference === 'either'} onPress={() => setDryingPreference('either')} />
-              <ChoiceChip label="外干し" selected={dryingPreference === 'outdoors'} onPress={() => setDryingPreference('outdoors')} />
-              <ChoiceChip label="部屋干し" selected={dryingPreference === 'indoors'} onPress={() => setDryingPreference('indoors')} />
+              <ChoiceChip label="どちらでも" selected={dryingPreference === 'either'} onPress={() => autosave.changeDrying('either')} />
+              <ChoiceChip label="外干し" selected={dryingPreference === 'outdoors'} onPress={() => autosave.changeDrying('outdoors')} />
+              <ChoiceChip label="部屋干し" selected={dryingPreference === 'indoors'} onPress={() => autosave.changeDrying('indoors')} />
             </View>
           </View>
         ) : null}
 
-        <SectionHeading title="前回の実施" />
+        <SectionHeading title="前回の実施" level="subsection" />
         {latestCompletion
           ? <Text style={styles.body}>{formatJapaneseDate(latestCompletion, { year: true })}{state?.lastCompletedEstimated ? 'ごろ（概算）' : ''}</Text>
           : <Text style={styles.body}>前回の実施時期は未登録です。</Text>}
-        {message ? <Text style={message.includes('保存し') ? styles.success : styles.error}>{message}</Text> : null}
-        <AppButton title={saving ? '保存中…' : '個別設定を保存'} onPress={() => void save()} disabled={saving} />
-        <AppButton title="この家事の履歴を見る" onPress={() => router.push({ pathname: '/history', params: { choreId: chore.id } })} variant="secondary" />
+        <Text accessibilityLiveRegion="polite" style={autosave.status.phase === 'error' ? styles.error : styles.success}>
+          {autosave.status.error ?? (autosave.status.phase === 'saving' || autosave.status.phase === 'pending' ? '保存中…' : autosave.status.phase === 'saved' ? '保存しました' : '変更は自動で保存されます。')}
+        </Text>
+        {autosave.status.phase === 'error' ? <AppButton title="保存を再試行" onPress={() => void autosave.flush()} variant="secondary" /> : null}
+        <AppButton title="この家事の履歴を見る" onPress={() => void autosave.navigateAfterSave(() => router.push({ pathname: '/history', params: { choreId: chore.id } }))} variant="secondary" />
       </Card>
     </Page>
   );
@@ -193,13 +142,13 @@ const styles = StyleSheet.create({
   body: { ...typography.caption, color: palette.muted },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 6 },
   settingCopy: { flex: 1, gap: 3 },
-  settingTitle: { ...typography.label, color: palette.ink, fontWeight: '700' },
+  settingTitle: { ...typography.control, color: palette.ink, fontWeight: '700' },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   numberField: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border, borderRadius: 11, paddingHorizontal: 8, backgroundColor: palette.background },
-  numberInput: { ...typography.body, width: 64, paddingVertical: 8, textAlign: 'center', color: palette.ink, fontWeight: '700' },
+  numberInput: { ...typography.control, width: 64, paddingVertical: 8, textAlign: 'center', color: palette.ink, fontWeight: '700' },
   unit: { ...typography.caption, color: palette.muted },
   settingBlock: { gap: 8, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  error: { ...typography.label, color: palette.warning },
-  success: { ...typography.label, color: palette.accent, fontWeight: '600' },
+  error: { ...typography.caption, color: palette.warning },
+  success: { ...typography.caption, color: palette.accent, fontWeight: '600' },
 });

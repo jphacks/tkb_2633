@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Card, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { palette, typography } from '@/components/planner-ui';
+import { AccordionSection } from '@/components/accordion-section';
 
 function CreditLink({ title, url }: { title: string; url: string }) {
   const [failed, setFailed] = useState(false);
@@ -23,13 +24,13 @@ export function LocationAttribution() {
 }
 
 export function DataCredits() {
-  return <Card>
-    <SectionHeading title="クレジット" />
+  const [expanded, setExpanded] = useState(false);
+  return <AccordionSection title="クレジット" expanded={expanded} onToggle={() => setExpanded((value) => !value)}>
     <WeatherAttribution />
     <LocationAttribution />
     <CreditLink title="データライセンス：CC BY 4.0" url="https://creativecommons.org/licenses/by/4.0/" />
     <Text style={styles.body}>天気予報はOpen-Meteo、地域検索はGeoNamesのデータを使用しています。取得したデータをもとに地域候補を日本語で表示し、洗濯予定の推奨日を調整しています。</Text>
-  </Card>;
+  </AccordionSection>;
 }
 
 const styles = StyleSheet.create({

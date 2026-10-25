@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
   progressCopy: { flex: 1, gap: 2 },
   progressTitle: { ...typography.label, color: palette.accent, fontWeight: '800' },
   progressCaption: { ...typography.caption, color: palette.muted, fontWeight: '600' },
-  progressValue: { color: palette.accent, fontSize: 28, fontWeight: '800' },
+  progressValue: { ...typography.title, color: palette.accent, fontWeight: '800' },
   progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3, backgroundColor: palette.accent },
   weatherNotice: { backgroundColor: palette.accentSoft, borderColor: palette.accentSoft, gap: 4 },

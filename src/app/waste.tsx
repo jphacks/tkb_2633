@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
@@ -20,10 +20,14 @@ export default function WasteScreen() {
   const [saving, setSaving] = useState(false);
   const [expandedUpcoming, setExpandedUpcoming] = useState(false);
   const [updatingOccurrence, setUpdatingOccurrence] = useState(false);
+  const mutationInFlight = useRef(false);
+  const busy = saving || updatingOccurrence;
 
   if (loading || !snapshot) return <PlannerLoadState title="ゴミ収集日" message="曜日設定を読み込んでいます。" error={loadError} retry={refresh} />;
 
   const save = async (schedule: WasteScheduleInput) => {
+    if (mutationInFlight.current) throw new Error('別の変更を保存しています。完了後にもう一度お試しください。');
+    mutationInFlight.current = true;
     setSaving(true);
     setMessage(null);
     try {
@@ -31,11 +35,12 @@ export default function WasteScreen() {
       setEditing(undefined);
       await refresh();
       setMessage('収集日を保存しました。');
-    } finally { setSaving(false); }
+    } finally { mutationInFlight.current = false; setSaving(false); }
   };
 
   const remove = async (scheduleId: string) => {
-    if (saving) return;
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setMessage(null);
     try {
@@ -46,12 +51,14 @@ export default function WasteScreen() {
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : '収集日を削除できませんでした。');
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
 
   const setOccurrenceHidden = async (scheduleId: string, date: `${number}-${number}-${number}`, hidden: boolean) => {
-    if (updatingOccurrence) return;
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setUpdatingOccurrence(true);
     setMessage(null);
     try {
@@ -61,6 +68,7 @@ export default function WasteScreen() {
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'ゴミ予定を更新できませんでした。');
     } finally {
+      mutationInFlight.current = false;
       setUpdatingOccurrence(false);
     }
   };
@@ -76,7 +84,7 @@ export default function WasteScreen() {
       <ScreenHeading eyebrow="WASTE DAY" title="ゴミ収集日" description="ゴミの種類を検索して選び、曜日や周期を登録します。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
-      <WasteScheduleEditor key={editing?.id ?? 'new'} initial={editing} onSubmit={save} onCancel={editing ? () => setEditing(undefined) : undefined} disabled={saving} />
+      <WasteScheduleEditor key={editing?.id ?? 'new'} initial={editing} onSubmit={save} onCancel={editing ? () => setEditing(undefined) : undefined} disabled={busy} />
       {message ? <Text accessibilityLiveRegion="polite" style={message.includes('しました') ? styles.success : styles.error}>{message}</Text> : null}
 
       <SectionHeading title="登録済み" trailing={<Text style={styles.count}>{snapshot.wasteSchedules.length}種類</Text>} />
@@ -89,8 +97,8 @@ export default function WasteScreen() {
             <Text style={styles.days}>{wasteScheduleDescription(schedule)}</Text>
           </View>
           <View style={styles.actions}>
-            <AppButton title="編集" onPress={() => { setEditing(schedule); setMessage(null); }} variant="secondary" disabled={saving} compact />
-            <AppButton title="削除" onPress={() => void remove(schedule.id)} variant="danger" disabled={saving} compact />
+            <AppButton title="編集" onPress={() => { setEditing(schedule); setMessage(null); }} variant="secondary" disabled={busy} compact />
+            <AppButton title="削除" onPress={() => void remove(schedule.id)} variant="danger" disabled={busy} compact />
           </View>
         </Card>
       ))}
@@ -102,7 +110,7 @@ export default function WasteScreen() {
             <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
             <Text style={[styles.occurrenceLabel, { color: wasteTypeColor(occurrence.label) }]}>{occurrence.label}</Text>
           </View>
-          <AppButton title="今回は表示しない" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, true)} variant="quiet" disabled={updatingOccurrence} compact />
+          <AppButton title="今回は表示しない" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, true)} variant="quiet" disabled={busy} compact />
         </Card>
       ))}
       </AccordionSection>
@@ -116,7 +124,7 @@ export default function WasteScreen() {
             <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
             <Text style={[styles.occurrenceLabel, { color: wasteTypeColor(occurrence.label) }]}>{occurrence.label}</Text>
           </View>
-          <AppButton title="再表示" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, false)} variant="secondary" disabled={updatingOccurrence} compact />
+          <AppButton title="再表示" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, false)} variant="secondary" disabled={busy} compact />
         </Card>
       ))}
     </Page>
@@ -127,7 +135,7 @@ const styles = StyleSheet.create({
   count: { ...typography.caption, color: palette.muted },
   scheduleCard: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   scheduleCopy: { flex: 1, minWidth: 120, gap: 4 },
-  scheduleName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  scheduleName: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   days: { ...typography.caption, color: palette.muted },
   actions: { flexDirection: 'row', gap: 6 },
   occurrence: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -24,6 +24,7 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
   const [anchorDate, setAnchorDate] = useState<LocalDate | undefined>(initial?.anchorDate);
   const [monthlyDay, setMonthlyDay] = useState(String(initial?.monthlyDay ?? Number(today.slice(-2))));
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const candidates = label ? [] : searchWasteTypes(query);
   const locked = disabled || saving;
@@ -48,7 +49,8 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
     } else setWeekdays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort());
   };
   const save = async () => {
-    if (locked || !canSave || !label) return;
+    if (locked || savingRef.current || !canSave || !label) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -58,7 +60,7 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
       setMonthlyDay(String(Number(today.slice(-2))));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '収集日を保存できませんでした。');
-    } finally { setSaving(false); }
+    } finally { savingRef.current = false; setSaving(false); }
   };
 
   return (
@@ -66,7 +68,7 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
       <SectionHeading title={initial ? '収集日を編集' : '収集日を追加'} />
       <TextInput accessibilityLabel="ゴミの種類" value={query} editable={!locked}
         onChangeText={(value) => { setQuery(value); setLabel(null); setError(null); }} maxLength={80}
-        placeholder="ゴミの種類を入力（例：かね）" placeholderTextColor={palette.muted} style={styles.input} returnKeyType="done" />
+        placeholder="ゴミの種類（例：可燃ゴミ）" placeholderTextColor={palette.muted} style={styles.input} returnKeyType="done" />
       {label ? (
         <View style={[styles.selection, { borderColor: wasteTypeColor(label) }]}><Text style={[styles.selectionText, { color: wasteTypeColor(label) }]}>{label}</Text><AppButton title="選び直す" onPress={() => setLabel(null)} variant="quiet" compact disabled={locked} /></View>
       ) : query.trim() ? (

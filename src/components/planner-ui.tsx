@@ -43,10 +43,10 @@ export function Card({ children, style }: PropsWithChildren<{ style?: object }>)
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function SectionHeading({ title, trailing }: { title: string; trailing?: ReactNode }) {
+export function SectionHeading({ title, trailing, level = 'section' }: { title: string; trailing?: ReactNode; level?: 'section' | 'subsection' }) {
   return (
     <View style={styles.sectionHeading}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[styles.sectionTitle, level === 'subsection' && styles.subsectionTitle]}>{title}</Text>
       {trailing}
     </View>
   );
@@ -148,18 +148,19 @@ export function MutedText({ children }: PropsWithChildren) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.background },
-  page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 15 },
+  page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 12 },
   heading: { gap: 5, marginBottom: 2 },
   eyebrow: { ...typography.caption, color: palette.accent, fontWeight: '700', letterSpacing: 1.4 },
   title: { ...typography.title, color: palette.ink, fontWeight: '700' },
   description: { ...typography.body, color: palette.muted },
-  card: { backgroundColor: palette.surface, borderRadius: 16, borderWidth: 1, borderColor: palette.border, padding: 16, gap: 12 },
+  card: { backgroundColor: palette.surface, borderRadius: 16, borderWidth: 1, borderColor: palette.border, padding: 14, gap: 10 },
   sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', columnGap: 12, rowGap: 4, marginTop: 2 },
   sectionTitle: { ...typography.section, color: palette.ink, fontWeight: '700', flexShrink: 1 },
+  subsectionTitle: { ...typography.control },
   backButton: { alignSelf: 'flex-start', minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingRight: 16, gap: 6 },
   backIcon: { width: 20, height: 24, alignItems: 'center', justifyContent: 'center' },
   backChevron: { width: 11, height: 11, borderLeftWidth: 2.5, borderBottomWidth: 2.5, borderColor: palette.accent, transform: [{ rotate: '45deg' }] },
-  backText: { ...typography.body, color: palette.accent, fontWeight: '700' },
+  backText: { ...typography.control, color: palette.accent, fontWeight: '700' },
   button: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 10 },
   buttonCompact: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 12 },
   button_primary: { backgroundColor: palette.accent },
@@ -168,7 +169,7 @@ const styles = StyleSheet.create({
   button_danger: { backgroundColor: palette.warningSoft },
   buttonDisabled: { opacity: 0.45 },
   buttonPressed: { opacity: 0.75 },
-  buttonText: { ...typography.label, fontWeight: '700', textAlign: 'center' },
+  buttonText: { ...typography.control, fontWeight: '700', textAlign: 'center' },
   buttonTextCompact: { ...typography.label },
   buttonText_primary: { color: '#FFFFFF' },
   buttonText_secondary: { color: palette.accent },

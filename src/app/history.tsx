@@ -66,7 +66,7 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
   summaryLabel: { ...typography.label, color: palette.accent, fontWeight: '700' },
-  summaryValue: { color: palette.ink, fontSize: 28, fontWeight: '800' },
+  summaryValue: { ...typography.title, color: palette.ink, fontWeight: '800' },
   summaryUnit: { ...typography.caption, fontWeight: '600' },
   summaryNote: { ...typography.caption, maxWidth: 145, color: palette.muted },
   count: { ...typography.caption, color: palette.muted },
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
   incompleteMark: { backgroundColor: '#F4E7E3' },
   incompleteText: { color: palette.warning },
   copy: { flex: 1, gap: 3 },
-  choreName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  choreName: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   meta: { ...typography.caption, color: palette.muted },
   source: { ...typography.caption, color: palette.muted },
   footnote: { ...typography.caption, color: palette.muted, textAlign: 'center' },

@@ -2,6 +2,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { createHouseholdChoreDefinitions } from '@/domain/chores/catalog';
 import { upgradeBuiltInScheduleDefaults } from '@/domain/chores/catalog-upgrade';
+import { applyChoreSettingsPatch } from '@/domain/chores/settings-patch';
+import type { ChoreSettingsPatch } from '@/domain/chores/settings-patch';
 import type {
   ChoreCompletion,
   ChoreDefinition,
@@ -855,6 +857,20 @@ async function clearWeatherLocationImpl(database: SQLiteDatabase): Promise<void>
      WHERE household_id = ?`,
     new Date().toISOString(), LOCAL_HOUSEHOLD_ID,
   );
+}
+
+async function updateChoreSettingsImpl(database: SQLiteDatabase, choreId: EntityId, patch: ChoreSettingsPatch): Promise<boolean> {
+  const row = await database.getFirstAsync<{ enabled: number; definition_json: string }>(
+    'SELECT enabled, definition_json FROM chore_definitions WHERE id = ? AND household_id = ?', choreId, LOCAL_HOUSEHOLD_ID,
+  );
+  if (!row) throw new Error('家事が見つかりません。');
+  const current = { ...JSON.parse(row.definition_json) as ChoreDefinition, enabled: Boolean(row.enabled) };
+  if (current.archived) throw new Error('この家事は現在の家事一覧から削除されています。');
+  const updated = applyChoreSettingsPatch(current, patch);
+  if (choreScheduleSignature(current) === choreScheduleSignature(updated)) return false;
+  await updateChoreDefinitionImpl(database, updated);
+  plannerVersions.set(database, (plannerVersions.get(database) ?? 0) + 1);
+  return true;
 }
 
 async function updateChoreDefinitionImpl(
@@ -1938,6 +1954,7 @@ export const setNotificationsEnabled = serializePlannerOperation(setNotification
 export const saveWeatherLocation = serializePlannerOperation(saveWeatherLocationImpl);
 export const clearWeatherLocation = serializePlannerOperation(clearWeatherLocationImpl);
 export const updateChoreDefinition = serializePlannerOperation(updateChoreDefinitionImpl);
+export const updateChoreSettings = serializeDatabaseOperation(updateChoreSettingsImpl);
 export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl);
 export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl);
 export const completeChore = serializePlannerOperation(completeChoreImpl);

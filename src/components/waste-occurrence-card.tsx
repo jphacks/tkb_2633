@@ -22,6 +22,7 @@ export function WasteOccurrenceCard({ occurrence, compact = false, hidden = fals
         accessibilityLabel={`${occurrence.label}の${occurrence.date}のゴミ出しを${hidden ? '再表示' : '非表示'}`}
         accessibilityState={{ checked: hidden, disabled: busy }}
         disabled={busy}
+        hitSlop={8}
         onPress={onToggle}
         style={styles.action}>
         {compact ? <Text style={styles.caption}>ゴミ出し非表示</Text> : null}
@@ -39,8 +40,8 @@ const styles = StyleSheet.create({
   row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, paddingVertical: 12 },
   compactRow: { minHeight: 56, paddingVertical: 5 },
   copy: { flex: 1, gap: 4 },
-  name: { ...typography.body, color: palette.ink, fontWeight: '600' },
-  compactName: { ...typography.label },
+  name: { ...typography.subheading, color: palette.ink, fontWeight: '600' },
+  compactName: { ...typography.body },
   caption: { ...typography.caption, color: palette.muted },
   action: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkboxColumn: { width: 28, alignItems: 'center' },

@@ -6,6 +6,7 @@ import { createDatabase } from './helpers/sqlite.mjs';
 import { localDateFromDate, weekdayOf } from '../src/domain/scheduling/local-date.ts';
 import { calendarWasteLabel } from '../src/features/waste/type-appearance.ts';
 import { HELP_SECTIONS } from '../src/features/help/help-content.ts';
+import { typography } from '../src/components/planner-typography.ts';
 
 const repository = await import('../src/platform/storage/repository.ts');
 const today = localDateFromDate(new Date());
@@ -82,7 +83,8 @@ test('compact waste checkbox has the same trailing center as chore checkbox and 
   const choreCheck = chore.nodes().find((node) => node.props.accessibilityRole === 'checkbox');
   assert.equal(column.props.style.width, choreCheck.props.style[0].width);
   const name = waste.nodes().find((node) => node.type === 'Text' && node.children.includes('可燃ごみ'));
-  assert.ok(name.props.style[1].fontSize >= 20 && name.props.style[1].fontSize < 22);
+  assert.equal(name.props.style[1].fontSize, typography.body.fontSize);
+  assert.ok(typography.body.fontSize < typography.subheading.fontSize);
   assert.ok(waste.text().includes('ゴミ出し非表示'));
 });
 
@@ -139,9 +141,11 @@ test('settings end with working weather and location attribution and omit redund
     // Inspect and exercise the shared credit links with the actual linking API mocked at its boundary.
     const credits = screenHarness('src/components/data-credits.tsx', { exportName: 'DataCredits',
       mocks: { 'react-native': { Text: 'Text', View: 'View', Pressable: 'Pressable', StyleSheet: { create: (value) => value }, Linking: { openURL: async (url) => { urls.push(url); } } } } });
+    assert.equal(credits.nodes().filter((node) => node.props.accessibilityRole === 'link').length, 0);
+    await credits.press('クレジットを開く');
     for (const link of credits.nodes().filter((node) => node.props.accessibilityRole === 'link')) await link.props.onPress();
     assert.deepEqual(urls, ['https://open-meteo.com/', 'https://www.geonames.org/', 'https://creativecommons.org/licenses/by/4.0/']);
-    assert.ok(screen.text().indexOf('クレジット') > screen.text().indexOf('ローカルSQLite'));
+    assert.ok(screen.text().indexOf('クレジット') < screen.text().indexOf('ローカルSQLite'), 'storage footer stays last');
     await screen.press('家事ごとの設定を開く');
     const kitchen = screen.nodes().find((node) => node.props.accessibilityRole === 'button' && node.children.some((child) => child.children?.includes('キッチン')));
     assert.ok(kitchen); kitchen.props.onPress(); await screen.flush();

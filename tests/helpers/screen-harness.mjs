@@ -27,7 +27,8 @@ export function screenHarness(filename, options = {}) {
   const react = {
     useState: hook,
     useRef: (value) => hook(() => ({ current: value }))[0],
-    useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: () => {},
+    useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
+    useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     createElement: (type, props, ...children) => jsx(type, { ...props, children }),
   };
   const transition = { duration: () => transition, springify: () => transition };
@@ -39,6 +40,7 @@ export function screenHarness(filename, options = {}) {
       FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
         ...(props.data ?? []).slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index }))] }),
       Platform: { OS: options.platform ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
+      AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) },
@@ -125,6 +127,11 @@ export function screenHarness(filename, options = {}) {
       assert.ok(node, `missing input: ${label}`);
       assert.notEqual(node.props.editable, false, `read-only input: ${label}`);
       node.props.onChangeText(value); await flush();
+    },
+    async endEditing(label) {
+      const node = nodes().find((item) => item.type === 'TextInput' && item.props.accessibilityLabel === label);
+      assert.ok(node, `missing input: ${label}`);
+      await node.props.onEndEditing?.(); await flush();
     },
   };
 }

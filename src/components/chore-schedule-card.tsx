@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   copy: { flex: 1, gap: 4 },
   category: { ...typography.caption, color: palette.muted, fontWeight: '600' },
-  name: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  name: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateIcon: { color: palette.accent, fontSize: 17, fontWeight: '700' },
   date: { ...typography.label, color: palette.ink, fontWeight: '600' },

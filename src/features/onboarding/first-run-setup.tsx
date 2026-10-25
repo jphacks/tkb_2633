@@ -54,6 +54,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [wasteSchedules, setWasteSchedules] = useState<WasteScheduleInput[]>(() => [...snapshot.wasteSchedules]);
   const [editingWaste, setEditingWaste] = useState<WasteScheduleInput | undefined>();
@@ -98,6 +99,8 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   };
 
   const saveSetup = async (skipWasteSetup: boolean) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -119,6 +122,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '初回設定を保存できませんでした');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -365,7 +369,7 @@ const styles = StyleSheet.create({
   modeList: { gap: 9, marginTop: 3 },
   modeOption: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: palette.accent, borderRadius: 15, backgroundColor: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 11 },
   modeSelected: { backgroundColor: palette.accentSoft },
-  modeTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  modeTitle: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   selectedText: { color: palette.accent },
   weekdayList: { gap: 9, marginTop: 1 },
   weekdayOption: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 15, borderWidth: 1, borderColor: palette.accent, backgroundColor: '#FFFFFF', paddingHorizontal: 15 },
@@ -376,7 +380,7 @@ const styles = StyleSheet.create({
   choreList: { gap: 7 },
   choreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, paddingVertical: 9 },
   choreCopy: { flex: 1, gap: 3, paddingRight: 10 },
-  choreName: { ...typography.body, color: palette.ink, fontWeight: '600' },
+  choreName: { ...typography.subheading, color: palette.ink, fontWeight: '600' },
   choreCategory: { ...typography.caption, color: palette.muted },
   checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
   checkboxSelected: { backgroundColor: palette.accent, borderColor: palette.accent },

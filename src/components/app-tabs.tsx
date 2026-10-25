@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { StyleSheet, View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette } from '@/components/planner-ui';
+import { palette, typography } from '@/components/planner-ui';
 import { plannerTabBarLayout } from './planner-tab-bar';
 
 function tabIcon(name: SymbolViewProps['name']) {
@@ -24,7 +24,7 @@ export default function AppTabs() {
       tabBarActiveTintColor: palette.accent,
       tabBarInactiveTintColor: palette.muted,
       tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 },
-      tabBarLabelStyle: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
+      tabBarLabelStyle: { ...typography.tab, fontWeight: '600' },
       tabBarItemStyle: { paddingBottom: 4 },
     }}>
       <Tabs.Screen name="index" options={{ title: 'ホーム', tabBarIcon: tabIcon({ ios: 'house', android: 'house' }) }} />

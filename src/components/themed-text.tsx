@@ -1,6 +1,7 @@
 import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 
 import { Fonts, ThemeColor } from '@/constants/theme';
+import { typography } from '@/components/planner-typography';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ThemedTextProps = TextProps & {
@@ -16,42 +17,35 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 
 const styles = StyleSheet.create({
   small: {
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
     fontWeight: 500,
   },
   smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
     fontWeight: 700,
   },
   default: {
-    fontSize: 16,
-    lineHeight: 24,
+    ...typography.body,
     fontWeight: 500,
   },
   title: {
-    fontSize: 48,
+    ...typography.title,
     fontWeight: 600,
-    lineHeight: 52,
   },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
+    ...typography.section,
     fontWeight: 600,
   },
   link: {
-    lineHeight: 30,
-    fontSize: 14,
+    ...typography.label,
   },
   linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
+    ...typography.label,
     color: '#3c87f7',
   },
   code: {
     fontFamily: Fonts.mono,
     fontWeight: Platform.select({ android: 700 }) ?? 500,
-    fontSize: 12,
+    ...typography.small,
   },
 });

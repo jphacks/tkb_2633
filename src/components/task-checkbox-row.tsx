@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
   deemphasizedRow: { backgroundColor: '#FAFBFD', borderColor: '#E8ECF3' },
   completedRow: { backgroundColor: '#F0F1F5', borderColor: '#F0F1F5' },
   copy: { flex: 1, gap: 4, minHeight: 42, justifyContent: 'center' },
-  name: { ...typography.body, color: palette.ink, fontWeight: '600' },
+  name: { ...typography.subheading, color: palette.ink, fontWeight: '600' },
   category: { ...typography.caption, color: palette.muted },
   deemphasizedText: { color: '#727B91' },
   deemphasizedCategory: { color: '#949CAF' },

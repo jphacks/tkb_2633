@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   applianceIcon: { width: 54, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accentSoft },
   applianceIconText: { color: palette.accent, fontSize: 25, fontWeight: '700' },
   applianceCopy: { flex: 1, gap: 5 },
-  applianceName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  applianceName: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   applianceMeta: { ...typography.caption, color: palette.muted },
   chevron: { color: palette.muted, fontSize: 26, fontWeight: '300' },
   emptyCard: { paddingVertical: 24 },

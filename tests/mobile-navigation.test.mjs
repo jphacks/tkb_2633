@@ -4,6 +4,7 @@ import test from 'node:test';
 import { screenHarness } from './helpers/screen-harness.mjs';
 import { createDatabase } from './helpers/sqlite.mjs';
 import { localDateFromDate } from '../src/domain/scheduling/local-date.ts';
+import { typography } from '../src/components/planner-typography.ts';
 
 const repository = await import('../src/platform/storage/repository.ts');
 
@@ -29,7 +30,7 @@ test('mobile back controls share a readable label and touch area while preservin
       const back = screen.button('前の画面に戻る');
       const text = back.children.find((child) => child.type === 'Text');
       assert.deepEqual(text.children, ['戻る'], `${route}: visible label`);
-      assert.ok(text.props.style.fontSize >= 20, `${route}: readable label`);
+      assert.equal(text.props.style.fontSize, typography.control.fontSize, `${route}: shared readable control size`);
       const style = back.props.style({ pressed: false })[0];
       assert.ok(style.minHeight >= 48, `${route}: touch area`);
       commonStyle ??= style;
@@ -72,8 +73,7 @@ test('mobile tab bar reserves space for labels on phones with and without a home
       const options = screen.nodes().find((node) => node.props.screenOptions).props.screenOptions;
       assert.equal(options.tabBarStyle.paddingBottom, bottom);
       assert.ok(options.tabBarStyle.height - bottom >= 60, 'icon and readable label need room above the safe area');
-      assert.ok(options.tabBarLabelStyle.fontSize >= 16);
-      assert.ok(options.tabBarLabelStyle.lineHeight >= 22);
+      assert.deepEqual(options.tabBarLabelStyle, { ...typography.tab, fontWeight: '600' });
       const home = screenHarness('src/app/(tabs)/index.tsx', { database: h.database, snapshot: () => snapshot, mocks });
       const homeTabStyle = home.nodes().find((node) => node.props.options?.tabBarStyle).props.options.tabBarStyle;
       assert.deepEqual(homeTabStyle, options.tabBarStyle, 'home must not replace the shared tab bar with the previous short layout');

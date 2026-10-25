@@ -21,7 +21,9 @@ export async function analyzeApplianceCareRequest(
   baseUrl = applianceCareApiBaseUrl(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
   onStage?: (stage: ApplianceCareAnalysisStage) => void,
+  signal?: AbortSignal,
 ): Promise<ApplianceCareApiResponse> {
+  if (signal?.aborted) return temporaryError('解析の通信を中断しました。');
   const normalized = {
     manufacturer: request.manufacturer.trim(),
     productName: request.productName.trim(),
@@ -39,6 +41,8 @@ export async function analyzeApplianceCareRequest(
   }
 
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const startResponse = await fetch(`${baseUrl}/api/appliance-care/jobs`, {
@@ -48,6 +52,7 @@ export async function analyzeApplianceCareRequest(
       signal: controller.signal,
     });
     const startPayload: unknown = await readJson(startResponse);
+    if (controller.signal.aborted) return temporaryError(signal?.aborted ? '解析の通信を中断しました。' : '解析がタイムアウトしました。時間をおいて再試行してください。');
     if (isApiResponse(startPayload)) return startPayload;
     if (!startResponse.ok || !isJobAccepted(startPayload)) {
       return temporaryError('家電解析APIに接続できません。APIサーバーの状態を確認してください。');
@@ -61,6 +66,7 @@ export async function analyzeApplianceCareRequest(
         signal: controller.signal,
       });
       const statusPayload: unknown = await readJson(statusResponse);
+      if (controller.signal.aborted) return temporaryError(signal?.aborted ? '解析の通信を中断しました。' : '解析がタイムアウトしました。時間をおいて再試行してください。');
       if (isApiResponse(statusPayload)) return statusPayload;
       if (!statusResponse.ok || !isJobStatus(statusPayload)) {
         return temporaryError('解析状況を確認できません。通信状態を確認して再試行してください。');
@@ -77,13 +83,14 @@ export async function analyzeApplianceCareRequest(
       }
       await waitForAppliancePoll(applianceCarePollDelay(pollAttempt++, statusPayload.pollAfterMs), controller.signal);
     }
-    return temporaryError('解析がタイムアウトしました。時間をおいて再試行してください。');
+    return temporaryError(signal?.aborted ? '解析の通信を中断しました。' : '解析がタイムアウトしました。時間をおいて再試行してください。');
   } catch {
-    return temporaryError(controller.signal.aborted
+    return temporaryError(signal?.aborted ? '解析の通信を中断しました。' : controller.signal.aborted
       ? '解析がタイムアウトしました。時間をおいて再試行してください。'
       : '家電解析APIに接続できません。APIサーバーと接続先URLを確認してください。');
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 

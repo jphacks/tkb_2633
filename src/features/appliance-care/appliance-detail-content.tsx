@@ -80,7 +80,7 @@ function MaintenanceTaskCard({ task, chore, manufacturer, index }: {
         </View>
       )}
       {task.recommendedConditions?.length && !noSchedule ? task.recommendedConditions.map((condition) => <Text key={condition} style={styles.body}>メーカー指定条件：{condition}</Text>) : null}
-      <SectionHeading title="手順" />
+      <SectionHeading title="手順" level="subsection" />
       {task.steps.map((step, stepIndex) => <Text key={`${stepIndex}-${step}`} style={styles.body}>{stepIndex + 1}. {step}</Text>)}
       <Text style={styles.body}>必要な道具：{task.tools.length ? task.tools.join('、') : '記載なし'}</Text>
       {task.safetyCautions.length > 0 ? (
@@ -108,19 +108,19 @@ const styles = StyleSheet.create({
   listContent: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 15 },
   listHeader: { gap: 15 },
   detailHeader: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  modelTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  modelTitle: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   productCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
-  productMeta: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  productMeta: { ...typography.label, color: palette.ink, fontWeight: '700' },
   taskIndex: { ...typography.caption, color: palette.accent, fontWeight: '800', letterSpacing: 1 },
-  taskTitle: { ...typography.section, color: palette.ink, fontWeight: '700' },
+  taskTitle: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   body: { ...typography.body, color: palette.muted },
   note: { ...typography.caption, color: palette.muted },
   intervalBlock: { gap: 4, padding: 12, borderRadius: 12, backgroundColor: palette.surface },
   intervalActual: { ...typography.body, color: palette.accent, fontWeight: '800' },
   noSchedule: { gap: 4, padding: 12, borderRadius: 12, backgroundColor: '#FFF8EC', borderWidth: 1, borderColor: '#F0E3CB' },
-  noScheduleTitle: { ...typography.body, color: '#8D682E', fontWeight: '800' },
+  noScheduleTitle: { ...typography.label, color: '#8D682E', fontWeight: '800' },
   cautionBox: { gap: 4, padding: 12, borderRadius: 12, backgroundColor: palette.warningSoft },
-  cautionTitle: { ...typography.body, color: palette.warning, fontWeight: '800' },
+  cautionTitle: { ...typography.label, color: palette.warning, fontWeight: '800' },
   cautionText: { ...typography.body, color: palette.warning },
   link: { ...typography.label, color: palette.accent, fontWeight: '700', textDecorationLine: 'underline' },
   invalidLink: { ...typography.caption, color: palette.muted },

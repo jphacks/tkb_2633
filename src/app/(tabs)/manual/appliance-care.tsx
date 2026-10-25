@@ -29,12 +29,14 @@ export default function ApplianceCareScreen() {
   const savedApplianceId = useRef<string | undefined>(applianceId);
   const [analysisSaved, setAnalysisSaved] = useState(false);
   const savingRef = useRef(false);
+  const analysisRequest = useRef<AbortController | null>(null);
   const [cycleValues, setCycleValues] = useState<Record<number, string>>({});
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [stage, setStage] = useState<ApplianceCareAnalysisStage>('product_verification');
   const [savedContext, setSavedContext] = useState<ApplianceCareReviewContext | null>(null);
   const loadingAppliance = Boolean(applianceId) && !savedContext && !message;
+  useEffect(() => () => { analysisRequest.current?.abort(); }, []);
 
   useEffect(() => {
     if (!applianceId) return;
@@ -71,13 +73,17 @@ export default function ApplianceCareScreen() {
       return;
     }
     savingRef.current = true;
+    const controller = new AbortController();
+    analysisRequest.current = controller;
     setWorking(true);
     setMessage(null);
     setResult(null);
     setAnalysisSaved(false);
     setStage('product_verification');
     try {
-      const nextResult = await analyzeApplianceCareRequest(request, undefined, undefined, setStage);
+      const nextResult = await analyzeApplianceCareRequest(request, undefined, undefined,
+        (nextStage) => { if (!controller.signal.aborted) setStage(nextStage); }, controller.signal);
+      if (controller.signal.aborted) return;
       setResult(nextResult);
       if (nextResult.status === 'verified') {
         const values = defaultApplianceCycles(nextResult.analysis, savedContext?.chores);
@@ -89,10 +95,12 @@ export default function ApplianceCareScreen() {
         }
       }
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setMessage(cause instanceof Error ? cause.message : '解析に失敗しました。');
     } finally {
+      if (analysisRequest.current === controller) analysisRequest.current = null;
       savingRef.current = false;
-      setWorking(false);
+      if (!controller.signal.aborted) setWorking(false);
     }
   };
 
@@ -133,7 +141,7 @@ export default function ApplianceCareScreen() {
 
   return (
     <Page>
-      <BackButton onPress={() => returnTo ? router.dismissTo(returnTo) : router.back()} />
+      <BackButton onPress={() => { analysisRequest.current?.abort(); if (returnTo) router.dismissTo(returnTo); else router.back(); }} />
       <ScreenHeading
         eyebrow="OFFICIAL MANUAL"
         title={applianceId ? '公式資料を再解析' : '家電を追加'}
@@ -346,10 +354,10 @@ const styles = StyleSheet.create({
   cycleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border },
   flexCopy: { flex: 1, gap: 3 },
   cycleInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, backgroundColor: palette.background },
-  cycleInput: { minWidth: 54, paddingVertical: 7, color: palette.ink, textAlign: 'center', fontWeight: '700' },
+  cycleInput: { ...typography.control, minWidth: 54, paddingVertical: 7, color: palette.ink, textAlign: 'center', fontWeight: '700' },
   noCycleTag: { ...typography.caption, color: '#8D682E', fontWeight: '800' },
   invalidLink: { ...typography.caption, color: palette.muted },
   cautionBox: { backgroundColor: palette.warningSoft, borderRadius: 12, padding: 12, gap: 4 },
-  cautionTitle: { ...typography.body, color: palette.warning, fontWeight: '800' },
+  cautionTitle: { ...typography.label, color: palette.warning, fontWeight: '800' },
   cautionText: { ...typography.body, color: palette.warning },
 });

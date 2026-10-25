@@ -50,3 +50,48 @@ test('valid verified analysis still reaches the screen', async () => {
     assert.deepEqual(await analyzeApplianceCareRequest(request, 'https://api.example.test'), payload);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('cancelled appliance requests make no network call and abort an in-flight request', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0; let requestSignal;
+    globalThis.fetch = async (_url, options) => {
+      calls++; requestSignal = options.signal;
+      return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+    };
+    const cancelled = new AbortController(); cancelled.abort();
+    assert.match((await analyzeApplianceCareRequest(request, 'https://api.example.test', 1000, undefined, cancelled.signal)).message, /中断/);
+    assert.equal(calls, 0);
+    const controller = new AbortController();
+    const pending = analyzeApplianceCareRequest(request, 'https://api.example.test', 1000, undefined, controller.signal);
+    controller.abort();
+    assert.match((await pending).message, /中断/);
+    assert.equal(calls, 1); assert.equal(requestSignal.aborted, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('appliance polling stops immediately after cancellation instead of requesting later job updates', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0; const controller = new AbortController();
+    globalThis.fetch = async () => {
+      calls++;
+      return Response.json(calls === 1 ? { jobId: 'job' } : { stage: 'product_verification', done: false, pollAfterMs: 30000 });
+    };
+    const result = await analyzeApplianceCareRequest(request, 'https://api.example.test', 1000, () => controller.abort(), controller.signal);
+    assert.match(result.message, /中断/); assert.equal(calls, 2);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('appliance client rejects delayed results after cancellation even if fetch ignores abort', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let resolve; const controller = new AbortController();
+    globalThis.fetch = () => new Promise((done) => { resolve = done; });
+    const pending = analyzeApplianceCareRequest(request, 'https://api.example.test', 1000, undefined, controller.signal);
+    controller.abort();
+    resolve(Response.json({ status: 'error', code: 'UNEXPECTED_LATE_RESULT', message: 'stale' }));
+    const result = await pending;
+    assert.match(result.message, /中断/); assert.notEqual(result.code, 'UNEXPECTED_LATE_RESULT');
+  } finally { globalThis.fetch = originalFetch; }
+});

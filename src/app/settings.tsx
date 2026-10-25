@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
@@ -77,11 +77,20 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [weatherResultsDismissed, setWeatherResultsDismissed] = useState(false);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const [notificationUpdating, setNotificationUpdating] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const [googleSyncState, setGoogleSyncState] = useState<GoogleSyncState | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [calendarAvailabilityState, setCalendarAvailabilityState] = useState<CalendarAvailabilityState | null>(null);
   const [calendarAvailabilityMessage, setCalendarAvailabilityMessage] = useState<string | null>(null);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const operationLocks = useRef(new Set<string>());
+  const beginOperation = (key: string) => {
+    if (operationLocks.current.has(key)) return false;
+    operationLocks.current.add(key);
+    return true;
+  };
+  const endOperation = (key: string) => { operationLocks.current.delete(key); };
+
   const [googleMessage, setGoogleMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
   const googleOAuthConfigured = getGoogleSyncOAuthConfig().configured;
@@ -107,6 +116,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
   const connectGoogle = async () => {
     if (googleBusy) return;
+    if (!beginOperation('google')) return;
     setGoogleBusy(true);
     setGoogleMessage(null);
     try {
@@ -139,12 +149,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         : 'Google Tasksに接続できませんでした。OAuth設定と端末の開発ビルドを確認してください。', kind: 'error' });
       await refreshGoogleState().catch(() => undefined);
     } finally {
-      setGoogleBusy(false);
+      endOperation('google'); setGoogleBusy(false);
     }
   };
 
   const toggleGoogleSync = async (enabled: boolean) => {
     if (googleBusy) return;
+    if (!beginOperation('google')) return;
     setGoogleBusy(true);
     setGoogleMessage(null);
     try {
@@ -190,12 +201,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       setGoogleMessage({ text: enabled ? '同期を有効にできませんでした。Googleとの再接続をお試しください。' : '同期を停止できませんでした。', kind: 'error' });
       await refreshGoogleState().catch(() => undefined);
     } finally {
-      setGoogleBusy(false);
+      endOperation('google'); setGoogleBusy(false);
     }
   };
 
   const syncGoogleNow = async () => {
     if (googleBusy || !googleSyncState?.enabled) return;
+    if (!beginOperation('google')) return;
     setGoogleBusy(true);
     setGoogleMessage(null);
     try {
@@ -211,12 +223,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       setGoogleMessage({ text: '同期できませんでした。Googleとの再接続をお試しください。', kind: 'error' });
       await refreshGoogleState().catch(() => undefined);
     } finally {
-      setGoogleBusy(false);
+      endOperation('google'); setGoogleBusy(false);
     }
   };
 
   const toggleCalendarAvailability = async (enabled: boolean) => {
     if (googleBusy) return;
+    if (!beginOperation('google')) return;
     setGoogleBusy(true);
     setCalendarAvailabilityMessage(null);
     try {
@@ -232,11 +245,12 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     } catch {
       setCalendarAvailabilityMessage('カレンダー設定を更新できませんでした。Google Tasksの同期状態は別に確認できます。');
       await refreshGoogleState().catch(() => undefined);
-    } finally { setGoogleBusy(false); }
+    } finally { endOperation('google'); setGoogleBusy(false); }
   };
 
   const disconnectGoogle = async () => {
     if (googleBusy) return;
+    if (!beginOperation('google')) return;
     setGoogleBusy(true);
     setGoogleMessage(null);
     try {
@@ -262,7 +276,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       await refreshGoogleState().catch(() => undefined);
       setGoogleMessage({ text: '端末内の同期設定は停止しましたが、Googleのアクセス許可を解除できませんでした。', kind: 'error' });
     } finally {
-      setGoogleBusy(false);
+      endOperation('google'); setGoogleBusy(false);
     }
   };
 
@@ -287,6 +301,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       setMessage('1日の上限は、重い家事1〜10件・普通の家事1〜20件で設定してください。');
       return;
     }
+    if (!beginOperation('planner')) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -296,11 +311,12 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : '保存できませんでした');
     } finally {
-      setSaving(false);
+      endOperation('planner'); setSaving(false);
     }
   };
 
   const saveCalendarColors = async () => {
+    if (!beginOperation('calendar')) return;
     setCalendarColorsSaving(true);
     setCalendarColorsMessage(null);
     try {
@@ -310,12 +326,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     } catch (cause) {
       setCalendarColorsMessage(cause instanceof Error ? cause.message : '色を保存できませんでした。');
     } finally {
-      setCalendarColorsSaving(false);
+      endOperation('calendar'); setCalendarColorsSaving(false);
     }
   };
 
   const selectWeatherRegion = async (candidate: WeatherRegionCandidate) => {
     if (weatherUpdating) return;
+    if (!beginOperation('weather')) return;
     setWeatherCandidate(candidate);
     setWeatherUpdating(true);
     setWeatherMessage(null);
@@ -334,11 +351,12 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       setWeatherCandidate(null);
       setWeatherMessage({ text: cause instanceof Error ? cause.message : '地域を保存できませんでした。', kind: 'error' });
     } finally {
-      setWeatherUpdating(false);
+      endOperation('weather'); setWeatherUpdating(false);
     }
   };
 
   const disableWeather = async () => {
+    if (!beginOperation('weather')) return;
     setWeatherUpdating(true);
     setWeatherMessage(null);
     try {
@@ -350,25 +368,26 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     } catch (cause) {
       setWeatherMessage({ text: cause instanceof Error ? cause.message : '天気連動を停止できませんでした。', kind: 'error' });
     } finally {
-      setWeatherUpdating(false);
+      endOperation('weather'); setWeatherUpdating(false);
     }
   };
 
   const toggleNotifications = async (enabled: boolean) => {
+    if (!beginOperation('notifications')) return;
     setNotificationUpdating(true);
-    setMessage(null);
+    setNotificationMessage(null);
     try {
       if (enabled && !(await notificationGateway.requestPermission())) {
-        setMessage('通知は有効になりませんでした。端末の設定から許可できます。');
+        setNotificationMessage({ text: '通知は有効になりませんでした。端末の設定から許可できます。', kind: 'error' });
         return;
       }
       await setNotificationsEnabled(database, enabled);
       await refresh();
-      setMessage(enabled ? '通知を有効にしました。' : '通知をオフにしました。');
+      setNotificationMessage({ text: enabled ? '通知を有効にしました。' : '通知をオフにしました。', kind: 'success' });
     } catch {
-      setMessage('通知設定を変更できませんでした。');
+      setNotificationMessage({ text: '通知設定を変更できませんでした。', kind: 'error' });
     } finally {
-      setNotificationUpdating(false);
+      endOperation('notifications'); setNotificationUpdating(false);
     }
   };
 
@@ -491,7 +510,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
                 <Text style={styles.featureTitle}>自動同期</Text>
                 <Text style={styles.hint}>{googleSyncState?.enabled ? '通常は1日経過後、失敗時は約1時間経過後に再試行できます。アプリ復帰時やOSが許可したバックグラウンド実行で確認します。' : '自動同期は一時停止中です。'}</Text>
               </View>
-              <Switch value={Boolean(googleSyncState?.enabled)} disabled={googleBusy} onValueChange={(value) => void toggleGoogleSync(value)} />
+              <Switch accessibilityLabel="Google Tasksの自動同期" value={Boolean(googleSyncState?.enabled)} disabled={googleBusy} onValueChange={(value) => void toggleGoogleSync(value)} />
             </View>
             <FeatureStatus
               title="同期状態"
@@ -582,8 +601,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
             <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
             <Text style={styles.hint}>毎朝9時に、期間の開始日・最終日・終了翌日に未完了の家事をまとめて通知します。</Text>
           </View>
-          <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
+          <Switch accessibilityLabel="家事の通知を受け取る" value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
         </View>
+        {notificationMessage ? <Text accessibilityLiveRegion="polite" style={notificationMessage.kind === 'success' ? styles.success : styles.error}>{notificationMessage.text}</Text> : null}
         <View style={styles.divider} />
         <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
       </AccordionSection>
@@ -660,8 +680,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         />
       </Card>
 
-      <Text style={styles.footer}>家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。</Text>
       <DataCredits />
+      <Text style={styles.footer}>家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。</Text>
     </Page>
   );
 }
@@ -751,11 +771,11 @@ const styles = StyleSheet.create({
   counterValue: { ...typography.label, minWidth: 18, color: palette.ink, textAlign: 'center', fontWeight: '700' },
   choreGroup: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   choreGroupHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  choreGroupTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  choreGroupTitle: { ...typography.subheading, color: palette.ink, fontWeight: '700' },
   groupCount: { ...typography.caption, color: palette.muted, fontWeight: '600' },
   choreSettingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   choreSettingCopy: { flex: 1, gap: 2 },
-  choreSettingTitle: { ...typography.body, color: palette.ink, fontWeight: '600' },
+  choreSettingTitle: { ...typography.subheading, color: palette.ink, fontWeight: '600' },
   chevron: { color: palette.accent, fontSize: 22 },
   regionInput: { ...typography.body, minHeight: 54, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
   regionResults: { gap: 7 },
@@ -768,7 +788,7 @@ const styles = StyleSheet.create({
   weatherActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   googleActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featureTop: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  featureTitle: { ...typography.label, color: palette.ink, fontWeight: '700' },
+  featureTitle: { ...typography.control, color: palette.ink, fontWeight: '700' },
   featureStatus: { ...typography.caption, color: palette.accent, fontWeight: '700', backgroundColor: palette.accentSoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: 1 },
   footer: { ...typography.caption, color: palette.muted, textAlign: 'center' },

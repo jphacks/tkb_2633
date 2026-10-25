@@ -18,8 +18,15 @@ export const CALENDAR_COUNT_COLOR_OPTIONS = [
 export function calendarCountColor(count: number, colors: CalendarCountColors): string | null {
   if (count <= 0) return null;
   if (count >= 10) return colors.high;
-  if (count >= 5) return colors.medium;
+  if (count >= 6) return colors.medium;
   return colors.low;
+}
+
+export function calendarDotCount(count: number): number {
+  if (count <= 0) return 0;
+  if (count <= 5) return count;
+  if (count <= 9) return count - 5;
+  return Math.min(count - 9, 5);
 }
 
 export function parseCalendarCountColors(value: string | null | undefined): CalendarCountColors {

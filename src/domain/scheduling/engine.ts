@@ -6,7 +6,8 @@ import type {
 } from '@/domain/chores/types';
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import type { EntityId, LocalDate, Weekday } from '@/domain/shared/types';
-import { addDays, daysBetween, localDateFromISODateTime, weekdayOf } from './local-date.ts';
+import { completionCycleDate, completionWasRecordedBeforeWindow } from './completion-matching.ts';
+import { addDays, daysBetween, weekdayOf } from './local-date.ts';
 
 interface DayLoad {
   heavy: number;
@@ -45,7 +46,20 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
   const orderedChores = topologicalOrder(enabledChores, input.dependencies);
   const stateByChore = new Map(input.states.map((state) => [state.choreId, state]));
   const assignmentByChore = new Map(input.assignments.map((assignment) => [assignment.choreId, assignment.memberIds]));
-  const lastCompletionByChore = latestCompletionDates(input.completions);
+  const lastCompletionByChore = latestCompletionDates(input.completions, input.today);
+  // A future checkmark must not consume today's pending occurrence. It takes effect on its scheduled day.
+  for (const completion of input.completions) {
+    if (completion.outcome !== 'completed' || !completionWasRecordedBeforeWindow(completion)) continue;
+    const date = completionCycleDate(completion);
+    const state = stateByChore.get(completion.choreId);
+    if (date > input.today || (state?.lastCompletedDate && date < state.lastCompletedDate)) continue;
+    stateByChore.set(completion.choreId, {
+      choreId: completion.choreId,
+      lastCompletedDate: date,
+      lastCompletedEstimated: false,
+      initialPending: false,
+    });
+  }
   const previousEntriesById = new Map((input.previousScheduleEntries ?? []).map((entry) => [entry.id, entry]));
   const simulatedCompletionByChore = new Map<EntityId, LocalDate>();
   const loadByDate = new Map<LocalDate, DayLoad>();
@@ -358,11 +372,12 @@ function effectiveCycleDays(chore: ChoreDefinition, mode: ScheduleGenerationInpu
   return days;
 }
 
-function latestCompletionDates(completions: readonly ChoreCompletion[]): Map<EntityId, LocalDate> {
+function latestCompletionDates(completions: readonly ChoreCompletion[], today: LocalDate): Map<EntityId, LocalDate> {
   const latest = new Map<EntityId, LocalDate>();
   for (const completion of completions) {
     if (completion.outcome === 'incomplete') continue;
-    const date = localDateFromISODateTime(completion.completedAt);
+    const date = completionCycleDate(completion);
+    if (date > today) continue;
     if (!latest.has(completion.choreId) || date > latest.get(completion.choreId)!) {
       latest.set(completion.choreId, date);
     }

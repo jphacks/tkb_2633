@@ -1,6 +1,7 @@
 import type { ChoreCompletion, ChoreDefinition, ChoreScheduleEntry } from '@/domain/chores/types';
 import type { LocalDate } from '@/domain/shared/types';
-import { completionIncludesDate, completionMatchesEntry } from './completion-matching.ts';
+import { calendarPendingCountsByDate } from '../calendar/day-entries.ts';
+import { completionCycleDate, completionIncludesDate, completionMatchesEntry } from './completion-matching.ts';
 import { addDays, daysBetween, localDateFromISODateTime } from './local-date.ts';
 
 export interface DateTask {
@@ -49,7 +50,7 @@ export function selectDateTasks(
 
 function compareOccurrence(left: DateTask, right: DateTask, date: LocalDate): number {
   const completedOnDate = (task: DateTask) => Boolean(task.completion
-    && localDateFromISODateTime(task.completion.completedAt) === date);
+    && completionCycleDate(task.completion) === date);
   const inWindow = (task: DateTask) => task.entry
     ? task.entry.windowStart <= date && date <= task.entry.windowEnd
     : Boolean(task.completion && completionIncludesDate(task.completion, date));
@@ -75,12 +76,9 @@ export function orderDateTasks(
     || Number(left.completed) - Number(right.completed));
 }
 
-export function recommendedChoreCounts(entries: readonly ChoreScheduleEntry[]): Map<LocalDate, number> {
-  const choresByDate = new Map<LocalDate, Set<string>>();
-  for (const entry of entries) {
-    const chores = choresByDate.get(entry.suggestedDate) ?? new Set<string>();
-    chores.add(entry.choreId);
-    choresByDate.set(entry.suggestedDate, chores);
-  }
-  return new Map([...choresByDate].map(([date, chores]) => [date, chores.size]));
+export function recommendedChoreCounts(
+  entries: readonly ChoreScheduleEntry[],
+  completions: readonly ChoreCompletion[] = [],
+): Map<LocalDate, number> {
+  return calendarPendingCountsByDate(entries, completions);
 }

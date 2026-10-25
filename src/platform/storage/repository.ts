@@ -11,6 +11,7 @@ import type {
   HouseholdPlannerSettings,
 } from '@/domain/chores/types';
 import { parseCalendarCountColors } from '@/domain/calendar/count-colors';
+import { completionCycleDate, completionWasRecordedBeforeWindow } from '@/domain/scheduling/completion-matching';
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
@@ -27,7 +28,7 @@ import { migrateLocalDatabase } from '@/platform/storage/migrations';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
-const BUILT_IN_CHORE_CATALOG_VERSION = 1;
+const BUILT_IN_CHORE_CATALOG_VERSION = 2;
 
 const initializedHouseholds = new WeakSet<SQLiteDatabase>();
 const operationTails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
@@ -223,6 +224,31 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
       }
 
       for (const definition of definitions) {
+        const existing = await database.getFirstAsync<{ enabled: number; definition_json: string }>(
+          'SELECT enabled, definition_json FROM chore_definitions WHERE id = ?', definition.id,
+        );
+        if (existing) {
+          // Refresh the supplied guide text without resetting the user's cycles, load or enabled state.
+          const updated: ChoreDefinition = {
+            ...(JSON.parse(existing.definition_json) as ChoreDefinition),
+            name: definition.name,
+            category: definition.category,
+            description: definition.description,
+            locationOrAppliance: definition.locationOrAppliance,
+            estimatedMinutes: definition.estimatedMinutes,
+            instructions: definition.instructions,
+            procedureSections: definition.procedureSections,
+            tools: definition.tools,
+            cautions: definition.cautions,
+            trivia: definition.trivia,
+            sourceNotes: definition.sourceNotes,
+            enabled: Boolean(existing.enabled),
+          };
+          await database.runAsync(
+            'UPDATE chore_definitions SET name = ?, definition_json = ? WHERE id = ?',
+            updated.name, JSON.stringify(updated), definition.id,
+          );
+        }
         await database.runAsync(
           'INSERT OR IGNORE INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, 1, ?)',
           definition.id, definition.householdId, definition.name, JSON.stringify(definition),
@@ -236,6 +262,7 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
           definition.id, LOCAL_MEMBER_ID,
         );
       }
+      await repairFutureCompletionStates(database);
       await database.runAsync(
         'UPDATE household_settings SET built_in_chore_catalog_version = ? WHERE household_id = ?',
         BUILT_IN_CHORE_CATALOG_VERSION, LOCAL_HOUSEHOLD_ID,
@@ -976,13 +1003,15 @@ async function completeChoreImpl(
         entry.id, entry.suggestedDate, entry.windowStart, entry.windowEnd, previousStateJson,
       );
     }
-    await database.runAsync(
-      `INSERT INTO chore_state (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
-       VALUES (?, ?, 0, 0, NULL)
-       ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
-       last_completed_estimated = 0, initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL`,
-      entry.choreId, completedDate,
-    );
+    if (completedDate >= entry.windowStart) {
+      await database.runAsync(
+        `INSERT INTO chore_state (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
+         VALUES (?, ?, 0, 0, NULL)
+         ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
+         last_completed_estimated = 0, initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL`,
+        entry.choreId, completedDate,
+      );
+    }
     inserted = true;
   });
   return inserted;
@@ -997,9 +1026,12 @@ async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: En
       outcome: ChoreCompletion['outcome'];
       schedule_entry_id: string | null;
       scheduled_date: string | null;
+      scheduled_window_start: string | null;
+      completed_at: string;
       previous_chore_state_json: string | null;
     }>(
-      `SELECT rowid AS sequence, chore_id, outcome, schedule_entry_id, scheduled_date, previous_chore_state_json
+      `SELECT rowid AS sequence, chore_id, outcome, schedule_entry_id, scheduled_date,
+       scheduled_window_start, completed_at, previous_chore_state_json
        FROM chore_completions WHERE id = ?`, completionId,
     );
     if (!completion || completion.outcome !== 'completed') return;
@@ -1010,30 +1042,53 @@ async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: En
        WHERE id = ?`,
       completionId,
     );
+    const today = localDateFromDate(new Date());
+    const completionDate = completionCycleDate({
+      completedAt: completion.completed_at,
+      scheduledDate: (completion.scheduled_date ?? undefined) as LocalDate | undefined,
+      scheduledWindowStart: (completion.scheduled_window_start ?? undefined) as LocalDate | undefined,
+    });
+    if (completionDate > today) {
+      undone = true;
+      return;
+    }
     const history = await database.getAllAsync<{
       sequence: number;
       outcome: ChoreCompletion['outcome'];
       completed_at: string;
+      scheduled_date: string | null;
+      scheduled_window_start: string | null;
       previous_chore_state_json: string | null;
     }>(
-      `SELECT rowid AS sequence, outcome, completed_at, previous_chore_state_json FROM chore_completions
+      `SELECT rowid AS sequence, outcome, completed_at, scheduled_date, scheduled_window_start,
+       previous_chore_state_json FROM chore_completions
        WHERE chore_id = ? ORDER BY completed_at DESC, rowid DESC`, completion.chore_id,
     );
-    const latestRemaining = history.find((row) => row.outcome === 'completed');
+    const datedHistory = history.map((row) => ({
+      ...row,
+      cycleDate: completionCycleDate({
+        completedAt: row.completed_at,
+        scheduledDate: (row.scheduled_date ?? undefined) as LocalDate | undefined,
+        scheduledWindowStart: (row.scheduled_window_start ?? undefined) as LocalDate | undefined,
+      }),
+    }));
+    const latestRemaining = datedHistory
+      .filter((row) => row.outcome === 'completed' && row.cycleDate <= today)
+      .sort((left, right) => right.cycleDate.localeCompare(left.cycleDate))[0];
     if (completion.previous_chore_state_json !== null) {
       let previousState = JSON.parse(completion.previous_chore_state_json) as ChoreState | null;
       let beforeSequence = completion.sequence;
       // A saved prior state may itself point at a completion that was undone earlier.
       while (previousState?.lastCompletedDate) {
         const previousDate = previousState.lastCompletedDate;
-        const undonePrevious = history.find((row) => row.sequence < beforeSequence
+        const undonePrevious = datedHistory.find((row) => row.sequence < beforeSequence
           && row.outcome === 'incomplete' && row.previous_chore_state_json !== null
-          && localDateFromDate(new Date(row.completed_at)) === previousDate);
+          && row.cycleDate === previousDate);
         if (!undonePrevious) break;
         previousState = JSON.parse(undonePrevious.previous_chore_state_json!) as ChoreState | null;
         beforeSequence = undonePrevious.sequence;
       }
-      const remainingDate = latestRemaining ? localDateFromDate(new Date(latestRemaining.completed_at)) : undefined;
+      const remainingDate = latestRemaining?.cycleDate;
       if (remainingDate && (!previousState?.lastCompletedDate || remainingDate >= previousState.lastCompletedDate)) {
         previousState = { choreId: completion.chore_id, lastCompletedDate: remainingDate, lastCompletedEstimated: false, initialPending: false };
       }
@@ -1041,7 +1096,7 @@ async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: En
     } else if (latestRemaining) {
       await restoreChoreState(database, completion.chore_id, {
         choreId: completion.chore_id,
-        lastCompletedDate: localDateFromDate(new Date(latestRemaining.completed_at)),
+        lastCompletedDate: latestRemaining.cycleDate,
         lastCompletedEstimated: false,
         initialPending: false,
       });
@@ -1068,6 +1123,58 @@ async function restoreChoreState(database: SQLiteDatabase, choreId: EntityId, st
     choreId, state.lastCompletedDate ?? null, state.lastCompletedEstimated ? 1 : 0,
     state.initialPending ? 1 : 0, state.initialScheduledDate ?? null, state.unknownReason ?? null,
   );
+}
+
+/** Repair the state written by older versions when a future occurrence was checked early. */
+async function repairFutureCompletionStates(database: SQLiteDatabase): Promise<void> {
+  const today = localDateFromDate(new Date());
+  const rows = await database.getAllAsync<{
+    chore_id: string;
+    completed_at: string;
+    scheduled_date: string | null;
+    scheduled_window_start: string | null;
+    previous_chore_state_json: string | null;
+  }>(
+    `SELECT chore_id, completed_at, scheduled_date, scheduled_window_start, previous_chore_state_json
+     FROM chore_completions WHERE outcome = 'completed' ORDER BY completed_at DESC, rowid DESC`,
+  );
+  const historyByChore = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const history = historyByChore.get(row.chore_id) ?? [];
+    history.push(row);
+    historyByChore.set(row.chore_id, history);
+  }
+  const isFutureRecord = (row: (typeof rows)[number]) => {
+    const timing = {
+      completedAt: row.completed_at,
+      scheduledDate: (row.scheduled_date ?? undefined) as LocalDate | undefined,
+      scheduledWindowStart: (row.scheduled_window_start ?? undefined) as LocalDate | undefined,
+    };
+    return completionWasRecordedBeforeWindow(timing) && completionCycleDate(timing) > today;
+  };
+  for (const [choreId, history] of historyByChore) {
+    const latest = history[0];
+    if (!isFutureRecord(latest) || latest.previous_chore_state_json === null) continue;
+    const state = await database.getFirstAsync<StateRow>(
+      `SELECT chore_id, last_completed_date, last_completed_estimated, initial_pending,
+       initial_scheduled_date, unknown_reason FROM chore_state WHERE chore_id = ?`, choreId,
+    );
+    if (!state || state.initial_pending || state.last_completed_estimated
+      || state.last_completed_date !== localDateFromDate(new Date(latest.completed_at))) continue;
+
+    let previousState = JSON.parse(latest.previous_chore_state_json) as ChoreState | null;
+    let beforeIndex = 1;
+    while (previousState?.lastCompletedDate) {
+      const previousDate = previousState.lastCompletedDate;
+      const index = history.findIndex((row, rowIndex) => rowIndex >= beforeIndex
+        && localDateFromDate(new Date(row.completed_at)) === previousDate);
+      const previous = history[index];
+      if (!previous || !isFutureRecord(previous) || previous.previous_chore_state_json === null) break;
+      previousState = JSON.parse(previous.previous_chore_state_json) as ChoreState | null;
+      beforeIndex = index + 1;
+    }
+    await restoreChoreState(database, choreId, previousState);
+  }
 }
 
 async function restoreLegacyChoreState(
@@ -1111,19 +1218,6 @@ async function restoreLegacyChoreState(
     }
   }
 
-  const previousCompletion = await database.getFirstAsync<{ completed_at: string }>(
-    `SELECT completed_at FROM chore_completions
-     WHERE chore_id = ? AND outcome = 'completed' ORDER BY completed_at DESC LIMIT 1`, choreId,
-  );
-  if (previousCompletion) {
-    await restoreChoreState(database, choreId, {
-      choreId,
-      lastCompletedDate: localDateFromDate(new Date(previousCompletion.completed_at)),
-      lastCompletedEstimated: false,
-      initialPending: false,
-    });
-    return;
-  }
   await restoreChoreState(database, choreId, {
     choreId,
     lastCompletedEstimated: false,

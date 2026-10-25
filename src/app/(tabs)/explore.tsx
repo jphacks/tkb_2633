@@ -32,7 +32,7 @@ export default function CalendarScreen() {
   const weekCount = Math.ceil((leadingCells + dates.length) / 7);
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const recommendedCountsByDate = recommendedChoreCounts(snapshot.scheduleEntries);
+  const recommendedCountsByDate = recommendedChoreCounts(snapshot.scheduleEntries, snapshot.completions);
   const selectedTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate), selectedDate, snapshot.chores);
   const selectedChoreIds = new Set(selectedTasks.map((task) => task.choreId));
   const overdueTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3)
@@ -126,7 +126,7 @@ export default function CalendarScreen() {
               <Pressable
                 key={date}
                 accessibilityRole="button"
-                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の家事${recommendedCount}件`}
+                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の未完了の家事${recommendedCount}件`}
                 accessibilityState={{ selected }}
                 onPress={(event) => {
                   event.stopPropagation();

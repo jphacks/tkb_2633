@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { ChoreSourceLinks } from '@/components/chore-source-links';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { localDateFromDate } from '@/domain/scheduling/local-date';
 import { selectDateTasks } from '@/domain/scheduling/date-tasks';
@@ -426,7 +427,7 @@ function ChoreGuide({ chore }: { chore: ChoreDefinition }) {
         )) : chore.instructions.length > 0 ? chore.instructions.map((step, index) => (
           <ProcedureStep key={`${index}-${step}`} step={step} index={index} />
         )) : <Text style={styles.body}>手順はまだ登録されていません。</Text>}
-        {chore.sourceNotes?.length ? <Text style={styles.sourceNotes}>参考：{chore.sourceNotes.join('・')}</Text> : null}
+        <ChoreSourceLinks key={chore.id} sources={chore.sourceNotes} />
       </Card>
       <Card>
         <SectionHeading title="必要な道具" />
@@ -499,7 +500,6 @@ const styles = StyleSheet.create({
   triviaItem: { gap: 5 },
   triviaTitle: { color: palette.ink, fontSize: 14, fontWeight: '700' },
   triviaBody: { color: palette.ink, fontSize: 13, lineHeight: 20 },
-  sourceNotes: { color: palette.muted, fontSize: 11, lineHeight: 16, paddingTop: 4 },
   body: { color: palette.muted, fontSize: 13, lineHeight: 20 },
   error: { color: palette.warning, fontSize: 13 },
 });

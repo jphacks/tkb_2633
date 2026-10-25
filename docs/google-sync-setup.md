@@ -10,7 +10,7 @@ GoogleのTasks scope (`https://www.googleapis.com/auth/tasks`) は広い範囲�
 
 ## OAuth方式とバックグラウンド制約
 
-このアプリはサーバーを持たないため、Google公式のiOS/Androidネイティブ認証SDKでユーザー認証とaccess tokenの更新を行います。アプリ独自のSecureStoreやSQLiteへOAuth tokenを保存せず、Google SDKの資格情報管理を使います。offline access / server auth codeは要求しません。
+このアプリはサーバーを持たないため、Google公式のiOS/Androidネイティブ認証SDKでユーザー認証とaccess tokenの更新を行います。アプリ独自のSecureStoreやSQLiteへOAuth tokenを保存せず、Google SDKの資格情報管理を使います。offline access / server auth codeは要求しません。iOSではアプリ再起動後にSDKのサイレント復元を試み、AndroidではSDKに保存されたセッションを使います。自動同期から対話的なログイン画面は開きません。
 
 Expo BackgroundTaskはWorkManager (Android) とBGTaskScheduler (iOS) を使います。指定値は60分の最小間隔で、実行時刻はOSが決めます。実行間隔、iOSでのオフライン更新、アプリを明示終了した後の実行は保証しません。起動時・アプリ復帰時にも期限を確認し、前面同期を試みます。
 
@@ -91,4 +91,6 @@ Google Sign-Inはネイティブmoduleを使います。Expo Goではなくdevel
 
 Android開発用クライアントは、既存のローカルdebug署名に対応しています。EASやGoogle Playの配布署名を使う場合は、その署名に対応する別のAndroidクライアント登録が必要です。
 
-実アカウントでの認可とE2Eは未実施です。次はdevelopment buildで所有者本人のGoogleログインとTasks権限許可を行います。
+2026-10-25、専用のiOS Simulatorのdevelopment buildで、所有者本人によるGoogleログインとTasks権限許可後に初回同期が成功しました。12:20 JSTの端末SQLiteを読み取り専用で確認し、同期状態 `idle`、同期有効、Task List ID保存済み、エラーなし、1種類の家事の予定180件にそれぞれ異なるGoogle Task IDが保存されていることを確認しました。対象日付は2026-10-26〜2027-04-23です。
+
+これは初回同期の確認結果です。Google Tasks / Calendarの表示、再同期時の重複なし、予定日変更、アプリ側完了、再起動後の接続維持については、操作後の結果を確認してから別途記録します。iOS SimulatorではBackgroundTaskの実動は未検証です。

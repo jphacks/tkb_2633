@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { getGoogleSyncOAuthConfig } from '@/features/google-sync/google-oauth-config';
 import { GOOGLE_TASKS_SCOPE } from './google-tasks-api';
 
@@ -23,6 +25,7 @@ export class GoogleAuthorizationCancelledError extends Error {
 }
 
 type GoogleSignInModule = typeof import('react-native-nitro-google-signin');
+type GoogleUser = ReturnType<GoogleSignInModule['GoogleOneTapSignIn']['getCurrentUser']>;
 
 function redactDiagnostic(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -55,6 +58,7 @@ async function authStep<T>(stage: string, operation: () => T | Promise<T>): Prom
 }
 
 let configuredModule: GoogleSignInModule | null = null;
+let restoringSession: Promise<GoogleUser> | null = null;
 
 async function loadGoogleSignIn(): Promise<GoogleSignInModule> {
   const { configured, webClientId, iosClientId } = getGoogleSyncOAuthConfig();
@@ -75,6 +79,20 @@ async function loadGoogleSignIn(): Promise<GoogleSignInModule> {
     configuredModule = module;
   }
   return module;
+}
+
+async function getCurrentGoogleUser(module: GoogleSignInModule): Promise<GoogleUser> {
+  const currentUser = module.GoogleOneTapSignIn.getCurrentUser();
+  if (currentUser || Platform.OS !== 'ios') return currentUser;
+
+  // iOS currentUser starts empty after a process restart. Its signIn path silently
+  // restores Keychain credentials; Android signIn may show UI, so never use it here.
+  if (!restoringSession) {
+    restoringSession = authStep('restore-session', () => module.GoogleOneTapSignIn.signIn())
+      .then((response) => module.isSuccessResponse(response) ? response.data : null)
+      .finally(() => { restoringSession = null; });
+  }
+  return restoringSession;
 }
 
 export async function authorizeGoogleTasks(): Promise<void> {
@@ -103,17 +121,17 @@ export async function authorizeGoogleTasks(): Promise<void> {
 }
 
 export async function getGoogleTasksAccessToken(): Promise<string> {
-  const { GoogleOneTapSignIn: googleSignIn } = await loadGoogleSignIn();
-  const currentUser = googleSignIn.getCurrentUser();
+  const module = await loadGoogleSignIn();
+  const currentUser = await getCurrentGoogleUser(module);
   if (!currentUser) throw new GoogleSignInRequiredError();
   if (!currentUser.scopes.includes(GOOGLE_TASKS_SCOPE)) throw new GoogleSignInRequiredError();
-  return (await googleSignIn.getTokens()).accessToken;
+  return (await authStep('get-tokens', () => module.GoogleOneTapSignIn.getTokens())).accessToken;
 }
 
 export async function hasGoogleTasksSession(): Promise<boolean> {
   try {
-    const { GoogleOneTapSignIn: googleSignIn } = await loadGoogleSignIn();
-    const currentUser = googleSignIn.getCurrentUser();
+    const module = await loadGoogleSignIn();
+    const currentUser = await getCurrentGoogleUser(module);
     return Boolean(currentUser?.scopes.includes(GOOGLE_TASKS_SCOPE));
   } catch {
     return false;
@@ -121,9 +139,10 @@ export async function hasGoogleTasksSession(): Promise<boolean> {
 }
 
 export async function disconnectGoogleTasksSession(): Promise<void> {
-  const { GoogleOneTapSignIn: googleSignIn } = await loadGoogleSignIn();
-  const currentUser = googleSignIn.getCurrentUser();
+  const module = await loadGoogleSignIn();
+  const googleSignIn = module.GoogleOneTapSignIn;
   try {
+    const currentUser = await getCurrentGoogleUser(module);
     if (currentUser) await googleSignIn.revokeAccess(currentUser.user.id);
   } finally {
     await googleSignIn.signOut();

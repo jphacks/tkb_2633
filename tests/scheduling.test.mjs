@@ -130,7 +130,7 @@ test('unknown first-run chores get recurring dates after their first planned occ
   assert.ok(new Set(entries.map((entry) => entry.id)).size === entries.length);
 });
 
-test('an incomplete first-run date stays fixed and records overdue cycles', () => {
+test('an initial chore auto-advances after its three-day overdue grace period', () => {
   const entries = generateHouseworkSchedule(input({
     from: '2026-11-02',
     today: '2026-11-02',
@@ -144,14 +144,15 @@ test('an incomplete first-run date stays fixed and records overdue cycles', () =
     }],
   }));
   const initial = entries.find((entry) => entry.id === 'vacuum:initial');
+  const overdue = entries.find((entry) => entry.status === 'overdue');
 
-  assert.ok(initial);
-  assert.ok(initial.suggestedDate >= '2026-11-02');
-  assert.equal(initial.windowStart, '2026-10-24');
-  assert.equal(initial.windowEnd, '2026-10-24');
-  assert.equal(initial.status, 'overdue');
-  assert.equal(initial.overdueDays, 9);
-  assert.equal(initial.overdueCycles, 2);
+  assert.equal(initial, undefined);
+  assert.ok(overdue);
+  assert.equal(overdue.cycleBaseDate, '2026-10-31');
+  assert.equal(overdue.windowStart, '2026-10-30');
+  assert.equal(overdue.windowEnd, '2026-11-01');
+  assert.equal(overdue.status, 'overdue');
+  assert.equal(overdue.overdueDays, 1);
   assert.ok(entries.some((entry) => entry.cycleBaseDate === '2026-11-07'));
 });
 
@@ -165,15 +166,20 @@ test('an incomplete record never becomes a new completion-cycle base date', () =
   assert.equal(entries[0].status, 'initialPending');
 });
 
-test('overdue execution windows retain their original deadline across refresh days', () => {
+test('overdue execution windows remain visible through day three and then auto-advance', () => {
   const chores = [chore('old')];
   const states = [{ choreId: 'old', lastCompletedDate: '2026-10-01', lastCompletedEstimated: false, initialPending: false }];
-  for (const date of ['2026-10-24', '2026-10-25']) {
+  for (const date of ['2026-10-24', '2026-10-25', '2026-10-26']) {
     const overdue = generateHouseworkSchedule(input({ chores, states, from: date, today: date }))
       .find((entry) => entry.status === 'overdue');
-    assert.equal(overdue.windowStart, '2026-10-07');
-    assert.equal(overdue.windowEnd, '2026-10-09');
+    assert.equal(overdue.id, 'old:2026-10-22');
+    assert.equal(overdue.windowStart, '2026-10-21');
+    assert.equal(overdue.windowEnd, '2026-10-23');
   }
+
+  const afterGrace = generateHouseworkSchedule(input({ chores, states, from: '2026-10-27', today: '2026-10-27' }));
+  assert.equal(afterGrace.some((entry) => entry.status === 'overdue'), false);
+  assert.ok(afterGrace.some((entry) => entry.id === 'old:2026-10-29' && entry.status === 'scheduled'));
 });
 
 test('fixed first-run dates reserve capacity before another unknown chore is placed', () => {

@@ -12,7 +12,7 @@ import type {
 } from '@/domain/chores/types';
 import { parseCalendarCountColors } from '@/domain/calendar/count-colors';
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
-import { generateHouseworkSchedule, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
+import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { CalendarCountColors, CalendarCountDisplayMode, EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
@@ -127,6 +127,10 @@ interface CompletionRow {
   scheduled_date: string | null;
   scheduled_window_start: string | null;
   scheduled_window_end: string | null;
+}
+
+interface ScheduleEntryRow {
+  entry_json: string;
 }
 
 interface DependencyRow {
@@ -296,7 +300,7 @@ async function loadPlannerSnapshotImpl(
   );
   if (!householdRow || !settingsRow) throw new Error('Local household could not be initialized');
 
-  const [definitionRows, stateRows, memberRows, assignmentRows, dependencyRows, completionRows, wasteRows, applianceRows, hiddenWasteRows] = await Promise.all([
+  const [definitionRows, stateRows, memberRows, assignmentRows, dependencyRows, completionRows, scheduleEntryRows, wasteRows, applianceRows, hiddenWasteRows] = await Promise.all([
     database.getAllAsync<DefinitionRow>(
       'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ? ORDER BY name', LOCAL_HOUSEHOLD_ID,
     ),
@@ -319,6 +323,9 @@ async function loadPlannerSnapshotImpl(
       `SELECT id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id,
               scheduled_date, scheduled_window_start, scheduled_window_end, outcome
        FROM chore_completions WHERE household_id = ? ORDER BY completed_at DESC`, LOCAL_HOUSEHOLD_ID,
+    ),
+    database.getAllAsync<ScheduleEntryRow>(
+      'SELECT entry_json FROM chore_schedule_entries WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
     ),
     database.getAllAsync<WasteRow>(
       'SELECT id, household_id, label, weekdays_json FROM weekly_waste_schedules WHERE household_id = ? ORDER BY label', LOCAL_HOUSEHOLD_ID,
@@ -367,7 +374,7 @@ async function loadPlannerSnapshotImpl(
     ...(JSON.parse(row.definition_json) as ChoreDefinition),
     enabled: Boolean(row.enabled),
   }));
-  const states = stateRows.map((row): ChoreState => ({
+  let states = stateRows.map((row): ChoreState => ({
     choreId: row.chore_id,
     lastCompletedDate: (row.last_completed_date ?? undefined) as LocalDate | undefined,
     lastCompletedEstimated: Boolean(row.last_completed_estimated),
@@ -404,6 +411,9 @@ async function loadPlannerSnapshotImpl(
     scheduledWindowStart: (row.scheduled_window_start ?? undefined) as LocalDate | undefined,
     scheduledWindowEnd: (row.scheduled_window_end ?? undefined) as LocalDate | undefined,
   }));
+  const previousScheduleEntries = scheduleEntryRows
+    .map((row) => parseJson<ChoreScheduleEntry | undefined>(row.entry_json, undefined))
+    .filter((entry): entry is ChoreScheduleEntry => Boolean(entry?.id && entry.choreId));
   const wasteSchedules = wasteRows.map((row): WeeklyWasteSchedule => ({
     id: row.id,
     householdId: row.household_id,
@@ -439,6 +449,7 @@ async function loadPlannerSnapshotImpl(
       assignments,
       dependencies,
       completions,
+      previousScheduleEntries,
       settings: {
         frequencyMode: settings.frequencyMode,
         restDays: settings.restDays as Weekday[],
@@ -448,8 +459,24 @@ async function loadPlannerSnapshotImpl(
         },
       },
     };
-    scheduleEntries = generateHouseworkSchedule(input);
-    await replaceGeneratedSchedule(database, household.id, scheduleEntries);
+    const scheduleResult = generateHouseworkScheduleResult(input);
+    scheduleEntries = scheduleResult.entries;
+    await replaceGeneratedSchedule(database, household.id, scheduleEntries, scheduleResult.simulatedCompletions);
+    if (scheduleResult.simulatedCompletions.length > 0) {
+      const simulatedDateByChore = new Map(scheduleResult.simulatedCompletions.map(({ choreId, date }) => [choreId, date]));
+      states = states.map((state) => {
+        const date = simulatedDateByChore.get(state.choreId);
+        if (!date || (state.lastCompletedDate && date <= state.lastCompletedDate)) return state;
+        return {
+          ...state,
+          lastCompletedDate: date,
+          lastCompletedEstimated: true,
+          initialPending: false,
+          initialScheduledDate: undefined,
+          unknownReason: undefined,
+        };
+      });
+    }
   }
 
   const generatedWasteDates = wasteSchedules.flatMap((schedule) =>
@@ -530,6 +557,7 @@ async function replaceGeneratedSchedule(
   database: SQLiteDatabase,
   householdId: EntityId,
   entries: readonly ChoreScheduleEntry[],
+  simulatedCompletions: readonly { choreId: EntityId; date: LocalDate }[] = [],
 ): Promise<void> {
   const previous = await database.getAllAsync<{ id: string; entry_json: string }>(
     'SELECT id, entry_json FROM chore_schedule_entries WHERE household_id = ?', householdId,
@@ -538,7 +566,7 @@ async function replaceGeneratedSchedule(
   const nextById = new Map(entries.map((entry) => [entry.id, JSON.stringify(entry)]));
   const removed = previous.filter((row) => !nextById.has(row.id));
   const changed = entries.filter((entry) => previousById.get(entry.id) !== nextById.get(entry.id));
-  if (removed.length === 0 && changed.length === 0) return;
+  if (removed.length === 0 && changed.length === 0 && simulatedCompletions.length === 0) return;
 
   await database.withTransactionAsync(async () => {
     for (const row of removed) {
@@ -562,6 +590,14 @@ async function replaceGeneratedSchedule(
           entry.suggestedDate, entry.choreId,
         );
       }
+    }
+    for (const { choreId, date } of simulatedCompletions) {
+      await database.runAsync(
+        `UPDATE chore_state SET last_completed_date = ?, last_completed_estimated = 1,
+         initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL
+         WHERE chore_id = ? AND (last_completed_date IS NULL OR last_completed_date < ?)`,
+        date, choreId, date,
+      );
     }
   });
 }

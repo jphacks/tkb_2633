@@ -29,6 +29,8 @@ export interface ScheduleGenerationInput {
   assignments: readonly { choreId: EntityId; memberIds: readonly EntityId[] }[];
   dependencies: readonly ChoreDependency[];
   completions: readonly ChoreCompletion[];
+  /** Previously generated entries preserve a cycle's selected recommendation across refreshes. */
+  previousScheduleEntries?: readonly ChoreScheduleEntry[];
   settings: ScheduleSettings;
 }
 

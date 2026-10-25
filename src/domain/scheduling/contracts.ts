@@ -19,6 +19,9 @@ export interface ScheduleSettings {
   loadLimits: ScheduleLoadLimits;
 }
 
+export interface ExternalDayAvailability { busyMinutes: number }
+export type ExternalAvailabilityByDate = Readonly<Partial<Record<LocalDate, ExternalDayAvailability>>>;
+
 export interface ScheduleGenerationInput {
   householdId: EntityId;
   from: LocalDate;
@@ -31,6 +34,7 @@ export interface ScheduleGenerationInput {
   completions: readonly ChoreCompletion[];
   /** Previously generated entries preserve a cycle's selected recommendation across refreshes. */
   previousScheduleEntries?: readonly ChoreScheduleEntry[];
+  externalAvailabilityByDate?: ExternalAvailabilityByDate;
   settings: ScheduleSettings;
 }
 

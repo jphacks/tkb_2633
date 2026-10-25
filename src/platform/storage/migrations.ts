@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 14;
+const CURRENT_SCHEMA_VERSION = 15;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -277,6 +277,35 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
       PRAGMA user_version = 14;
     `);
     version = 14;
+  }
+  if (version < 15) {
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS calendar_availability_state (
+          household_id TEXT PRIMARY KEY NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+          enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+          status TEXT NOT NULL DEFAULT 'idle',
+          retry_count INTEGER NOT NULL DEFAULT 0,
+          last_attempt_at TEXT,
+          last_successful_sync_at TEXT,
+          next_retry_at TEXT,
+          last_error_code TEXT,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS calendar_availability_days (
+          household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+          local_date TEXT NOT NULL,
+          busy_minutes INTEGER NOT NULL CHECK(busy_minutes >= 0),
+          time_zone TEXT NOT NULL,
+          fetched_at TEXT NOT NULL,
+          PRIMARY KEY(household_id, local_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_calendar_availability_freshness
+          ON calendar_availability_days(household_id, time_zone, fetched_at);
+        PRAGMA user_version = 15;
+      `);
+    });
+    version = 15;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

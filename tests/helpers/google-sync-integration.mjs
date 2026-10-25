@@ -9,7 +9,7 @@ export const now = new Date('2026-10-25T03:00:00.000Z');
 export const today = '2026-10-25';
 export const listId = 'planner-list';
 
-export async function createIntegration({ cycleDays = 1, previousDate = today, databasePath } = {}) {
+export async function createIntegration({ cycleDays = 1, previousDate = today, databasePath, choreOverrides = {} } = {}) {
   const store = createDatabase(databasePath);
   const { database, connection } = store;
   await repository.initializeLocalDatabase(database);
@@ -17,7 +17,7 @@ export async function createIntegration({ cycleDays = 1, previousDate = today, d
   let chore = snapshot.chores.find((item) => item.name === '食器を洗う');
   assert.ok(chore);
   chore = { ...chore, load: 'light', windowRadiusDays: 0, maxShiftDays: 0, holidayPriority: false, recommendedCycleDays: cycleDays,
-    frequencyDaysByMode: { frequent: cycleDays, balanced: cycleDays, relaxed: cycleDays } };
+    frequencyDaysByMode: { frequent: cycleDays, balanced: cycleDays, relaxed: cycleDays }, ...choreOverrides };
   await repository.updateChoreDefinition(database, chore);
   await repository.completeFirstSetup(database, {
     frequencyMode: 'balanced', restDays: [], enabledChoreIds: [chore.id],
@@ -83,12 +83,12 @@ export async function createIntegration({ cycleDays = 1, previousDate = today, d
     listGoogleTaskLinks: (householdId) => repository.listGoogleTaskLinks(database, householdId),
     upsertGoogleTaskLink: (link) => repository.upsertGoogleTaskLink(database, link),
     deleteGoogleTaskLink: (id) => repository.deleteGoogleTaskLink(database, id),
-    importGoogleTaskCompletions: (completions, date) => { events.push('IMPORT'); return repository.importGoogleTaskCompletions(database, completions, date); },
+    importGoogleTaskCompletions: (completions, date) => { events.push('IMPORT'); return repository.importGoogleTaskCompletions(database, completions, date, now); },
   };
   return {
     ...store, ...fixture, fixture, chore, entries, dependencies,
     sync: () => syncGoogleTasksWithDependencies(dependencies, { force: true, now, recoverInterruptedAttempt: true }),
-    snapshot: () => repository.loadPlannerSnapshot(database, today),
+    snapshot: () => repository.loadPlannerSnapshot(database, today, now),
     history: () => connection.prepare('SELECT * FROM chore_completions ORDER BY completed_at').all(),
     state: () => connection.prepare('SELECT * FROM chore_state WHERE chore_id = ?').get(chore.id),
   };

@@ -16,6 +16,7 @@ import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-
 import {
   clearWeatherLocation,
   loadGoogleSyncState,
+  loadCalendarAvailabilityState,
   LOCAL_HOUSEHOLD_ID,
   saveGoogleSyncState,
   saveWeatherLocation,
@@ -29,7 +30,9 @@ import { getGoogleSyncOAuthConfig } from '@/features/google-sync/google-oauth-co
 import type { GoogleSyncState } from '@/features/google-sync/contracts';
 import { syncGoogleTasks } from '@/features/google-sync/coordinator';
 import { registerGoogleSyncBackgroundTask, unregisterGoogleSyncBackgroundTask } from '@/features/google-sync/background-task';
-import { authorizeGoogleTasks, disconnectGoogleTasksSession, getGoogleTasksAccessToken, hasGoogleTasksSession } from '@/platform/google-tasks/google-sign-in-gateway';
+import { authorizeGoogleCalendarAvailability, authorizeGoogleTasks, disconnectGoogleTasksSession, getGoogleTasksAccessToken, hasGoogleTasksSession } from '@/platform/google-tasks/google-sign-in-gateway';
+import type { CalendarAvailabilityState } from '@/features/google-sync/calendar-availability';
+import { configureGoogleCalendarAvailability } from '@/features/google-sync/calendar-settings';
 
 const modeOptions: { id: FrequencyMode; label: string; detail: string }[] = [
   { id: 'frequent', label: 'こまめ', detail: '短めの周期' },
@@ -75,18 +78,22 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [notificationUpdating, setNotificationUpdating] = useState(false);
   const [googleSyncState, setGoogleSyncState] = useState<GoogleSyncState | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [calendarAvailabilityState, setCalendarAvailabilityState] = useState<CalendarAvailabilityState | null>(null);
+  const [calendarAvailabilityMessage, setCalendarAvailabilityMessage] = useState<string | null>(null);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleMessage, setGoogleMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
   const googleOAuthConfigured = getGoogleSyncOAuthConfig().configured;
 
   const refreshGoogleState = useCallback(async () => {
-    const [state, connected] = await Promise.all([
+    const [state, connected, calendarState] = await Promise.all([
       loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID),
       hasGoogleTasksSession(),
+      loadCalendarAvailabilityState(database),
     ]);
     setGoogleSyncState(state);
     setGoogleConnected(connected);
+    setCalendarAvailabilityState(calendarState);
   }, [database]);
 
   useEffect(() => {
@@ -207,11 +214,32 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     }
   };
 
+  const toggleCalendarAvailability = async (enabled: boolean) => {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    setCalendarAvailabilityMessage(null);
+    try {
+      const granted = await configureGoogleCalendarAvailability(database, enabled, authorizeGoogleCalendarAvailability);
+      // OFF also regenerates without Calendar input before pushing any changed due dates.
+      const result = await syncGoogleTasks(database, { force: true });
+      await refreshGoogleState();
+      setCalendarAvailabilityMessage(enabled && !granted
+        ? 'カレンダー権限が許可されませんでした。Google Tasksの同期は引き続き利用できます。'
+        : result.kind !== 'success'
+          ? 'カレンダー設定を保存しました。Google Tasksの同期状態も確認してください。'
+          : enabled ? 'カレンダー連携を有効にしました。取得状態を確認してください。' : 'カレンダーによる家事日調整を停止しました。');
+    } catch {
+      setCalendarAvailabilityMessage('カレンダー設定を更新できませんでした。Google Tasksの同期状態は別に確認できます。');
+      await refreshGoogleState().catch(() => undefined);
+    } finally { setGoogleBusy(false); }
+  };
+
   const disconnectGoogle = async () => {
     if (googleBusy) return;
     setGoogleBusy(true);
     setGoogleMessage(null);
     try {
+      await configureGoogleCalendarAvailability(database, false, authorizeGoogleCalendarAvailability);
       const current = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
       if (current) {
         await saveGoogleSyncState(database, {
@@ -472,6 +500,30 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
                 status={googleSyncState?.enabled ? googleSyncStatusLabel(googleSyncState.status) : '一時停止'}
                 detail={`最終成功同期：${formatSyncTimestamp(googleSyncState?.lastSuccessfulSyncAt)}。iOS・Androidのバックグラウンド実行はOSの判断で遅れることがあります。`}
               />
+              <View style={styles.notificationRow}>
+                <View style={styles.limitCopy}>
+                  <Text style={styles.featureTitle}>Googleカレンダーの予定を家事日調整に使う</Text>
+                  <Text style={styles.hint}>予定のタイトルや内容は取得せず、予定が入っている時間帯だけを使って家事日を調整します。</Text>
+                  <Text style={styles.hint}>現在はGoogleアカウントのメインカレンダーを対象にします。</Text>
+                </View>
+                <Switch accessibilityLabel="Googleカレンダーの予定を家事日調整に使う"
+                  value={Boolean(calendarAvailabilityState?.enabled)} disabled={googleBusy || !googleSyncState?.enabled}
+                  onValueChange={(value) => void toggleCalendarAvailability(value)} />
+              </View>
+              <FeatureStatus title="カレンダー連携"
+                status={calendarAvailabilityState?.status === 'permissionRequired' ? '追加の許可が必要'
+                  : !calendarAvailabilityState?.enabled ? '無効'
+                    : calendarAvailabilityState.status === 'retryPending' ? '取得失敗・再試行待ち'
+                      : calendarAvailabilityState.status === 'syncing' ? '取得中'
+                        : calendarAvailabilityState.status === 'error' ? '取得エラー' : '有効'}
+                detail={`最終取得：${formatSyncTimestamp(calendarAvailabilityState?.lastSuccessfulSyncAt)}。36時間を超えた情報は使いません。`} />
+              {calendarAvailabilityState?.status === 'permissionRequired' ? (
+                <AppButton title="カレンダーの許可を確認" onPress={() => void toggleCalendarAvailability(true)} disabled={googleBusy || !googleSyncState?.enabled} />
+              ) : null}
+              {calendarAvailabilityState?.lastErrorCode === 'calendar_api_not_enabled' ? (
+                <Text style={styles.error}>Google Calendar APIが無効です。Google Cloudのプロジェクト設定で有効にしてください。</Text>
+              ) : null}
+              {calendarAvailabilityMessage ? <Text style={styles.hint}>{calendarAvailabilityMessage}</Text> : null}
               <View style={styles.googleActions}>
                 <AppButton title={googleBusy ? '同期中…' : googleSyncState?.status === 'authRequired' ? '再接続して同期' : '今すぐ同期'} onPress={() => void syncGoogleNow()} disabled={googleBusy || !googleSyncState?.enabled} />
                 <AppButton title="接続解除" onPress={() => void disconnectGoogle()} disabled={googleBusy} variant="danger" />

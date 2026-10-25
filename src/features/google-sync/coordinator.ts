@@ -19,6 +19,7 @@ import type { GoogleSyncState } from './contracts';
 import { reconcileGoogleTasks } from './reconcile-google-tasks';
 import type { GoogleSyncRepositoryPort } from './reconcile-google-tasks';
 import { notifyGooglePlannerChanges } from './planner-change-events';
+import { withGoogleSyncOperation } from './operation-lock';
 
 export type GoogleSyncRunResult =
   | { kind: 'success'; skipped?: boolean; created?: number; updated?: number; removed?: number; imported?: number; remoteTasksRead?: number; hiddenCompletionsRead?: number; invalidCompletions?: number }
@@ -31,6 +32,7 @@ export interface GoogleSyncCoordinatorDependencies extends GoogleSyncRepositoryP
   saveState(state: GoogleSyncState): Promise<void>;
   getAccessToken(): Promise<string>;
   api: GoogleTasksApi;
+  refreshCalendar?(options: { now: Date; today: LocalDate; force: boolean }): Promise<{ plannerChanged: boolean }>;
 }
 
 let runningSync: Promise<GoogleSyncRunResult> | null = null;
@@ -52,12 +54,16 @@ export async function syncGoogleTasks(
       const { getGoogleTasksAccessToken } = await import('@/platform/google-tasks/google-sign-in-gateway');
       return getGoogleTasksAccessToken();
     },
+    refreshCalendar: async (calendarOptions) => {
+      const { refreshGoogleCalendarAvailability } = await import('./calendar-coordinator');
+      return refreshGoogleCalendarAvailability(database, calendarOptions);
+    },
     api: createGoogleTasksApi(fetch, (method) => {
       if (method === 'GET') readRequests += 1;
       else writeRequests += 1;
     }),
     importGoogleTaskCompletions: async (completions, today) => {
-      const imported = await importGoogleTaskCompletions(database, completions, today as LocalDate);
+      const imported = await importGoogleTaskCompletions(database, completions, today as LocalDate, now);
       if (imported > 0) {
         notifyGooglePlannerChanges();
         try {
@@ -104,11 +110,11 @@ export async function syncGoogleTasksWithDependencies(
   options: { force?: boolean; now: Date; recoverInterruptedAttempt?: boolean },
 ): Promise<GoogleSyncRunResult> {
   if (runningSync) return runningSync;
-  const run = runSync(dependencies, {
+  const run = withGoogleSyncOperation(() => runSync(dependencies, {
     force: options.force ?? false,
     now: options.now,
     recoverInterruptedAttempt: options.recoverInterruptedAttempt ?? false,
-  });
+  }));
   runningSync = run;
   try {
     return await run;
@@ -135,7 +141,11 @@ async function runSync(
   if (state.status === 'syncing' && !staleAttempt && !options.recoverInterruptedAttempt) {
     return { kind: 'success', skipped: true };
   }
-  if (!force && !staleAttempt && !shouldSyncGoogleTasks(state, now)) return { kind: 'success', skipped: true };
+  let calendarChanged = false;
+  try {
+    calendarChanged = (await dependencies.refreshCalendar?.({ now, today: localDateFromDate(now), force }))?.plannerChanged ?? false;
+  } catch { /* Calendar failure is isolated; Tasks completion and retry policy continue. */ }
+  if (!force && !calendarChanged && !staleAttempt && !shouldSyncGoogleTasks(state, now)) return { kind: 'success', skipped: true };
 
   const attemptAt = now.toISOString();
   state = {

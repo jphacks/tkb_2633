@@ -13,6 +13,11 @@ function sqliteAdapter() {
       async runAsync(sql, ...params) { return connection.prepare(sql).run(...params); },
       async getFirstAsync(sql, ...params) { return connection.prepare(sql).get(...params) ?? null; },
       async getAllAsync(sql, ...params) { return connection.prepare(sql).all(...params); },
+      async withTransactionAsync(callback) {
+        connection.exec('BEGIN');
+        try { await callback(); connection.exec('COMMIT'); }
+        catch (error) { connection.exec('ROLLBACK'); throw error; }
+      },
     },
   };
 }
@@ -21,7 +26,7 @@ test('schema migration creates the latest local planner and Google sync schema',
   const { connection, database } = sqliteAdapter();
   try {
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 14);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 15);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all().map((column) => column.name);
     assert.equal(settingsColumns.includes('notifications_enabled'), true);
     assert.equal(settingsColumns.includes('built_in_chore_catalog_version'), true);
@@ -69,7 +74,7 @@ test('version 6 migration tolerates a notification preference column already pre
 
     await migrateLocalDatabase(database);
 
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 14);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 15);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all();
     assert.equal(settingsColumns.filter((column) => column.name === 'notifications_enabled').length, 1);
     assert.equal(connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'appliances'").get().name, 'appliances');

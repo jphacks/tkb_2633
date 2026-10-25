@@ -27,10 +27,16 @@ import { buildReviewedApplianceChore, hasExactChoreNameDuplicate, retireApplianc
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
+import type { CalendarAvailabilityDay, CalendarAvailabilityState } from '@/features/google-sync/calendar-availability';
+import { freshCalendarAvailability, getDeviceTimeZone } from '@/features/google-sync/calendar-availability';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
 const BUILT_IN_CHORE_CATALOG_VERSION = 1;
+
+export function plannerGenerationRange(today: LocalDate) {
+  return { from: today, through: addDays(today, 180) };
+}
 
 const initializedHouseholds = new WeakSet<SQLiteDatabase>();
 const operationTails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
@@ -79,6 +85,7 @@ export interface PlannerSnapshot {
   hiddenWasteDates: ReturnType<typeof generateWeeklyCollectionDates>;
   weatherOutcome: WeatherScheduleOutcome;
   weatherAdjustmentCount: number;
+  externalAvailabilityByDate?: ScheduleGenerationInput['externalAvailabilityByDate'];
 }
 
 export interface ApplianceCareReviewContext {
@@ -296,6 +303,8 @@ async function loadApplianceCareReviewContextImpl(
 async function loadPlannerSnapshotImpl(
   database: SQLiteDatabase,
   today = localDateFromDate(new Date()),
+  calendarNow = new Date(),
+  timeZone = getDeviceTimeZone(),
 ): Promise<PlannerSnapshot> {
   await ensureLocalHouseholdImpl(database);
   const householdRow = await database.getFirstAsync<HouseholdRow>(
@@ -448,11 +457,13 @@ async function loadPlannerSnapshotImpl(
   let scheduleEntries: ChoreScheduleEntry[] = [];
   const weatherOutcome: WeatherScheduleOutcome = settings.weatherLocation ? 'current' : 'disabled';
   const weatherAdjustmentCount = 0;
+  // Availability is optional: corrupt/unavailable cache never prevents normal planning or completion.
+  const externalAvailabilityByDate = await getFreshCalendarAvailabilityDaysImpl(database, calendarNow, timeZone)
+    .catch(() => undefined);
   if (settings.setupCompleted) {
     const input: ScheduleGenerationInput = {
       householdId: household.id,
-      from: today,
-      through: addDays(today, 180),
+      ...plannerGenerationRange(today),
       today,
       chores,
       states,
@@ -460,6 +471,7 @@ async function loadPlannerSnapshotImpl(
       dependencies,
       completions,
       previousScheduleEntries,
+      externalAvailabilityByDate,
       settings: {
         frequencyMode: settings.frequencyMode,
         restDays: settings.restDays as Weekday[],
@@ -511,6 +523,7 @@ async function loadPlannerSnapshotImpl(
     hiddenWasteDates,
     weatherOutcome,
     weatherAdjustmentCount,
+    externalAvailabilityByDate,
   };
   snapshotVersions.set(snapshot, plannerVersions.get(database) ?? 0);
   return snapshot;
@@ -1018,6 +1031,7 @@ async function importGoogleTaskCompletionsImpl(
   database: SQLiteDatabase,
   completions: readonly GoogleTaskCompletion[],
   today: LocalDate = localDateFromDate(new Date()),
+  calendarNow = new Date(),
 ): Promise<number> {
   const links = await listGoogleTaskLinksImpl(database, LOCAL_HOUSEHOLD_ID);
   const linksByTask = new Map(links.map((link) => [JSON.stringify([link.googleTaskListId, link.googleTaskId]), link]));
@@ -1051,7 +1065,7 @@ async function importGoogleTaskCompletionsImpl(
     }
   });
   // Also run after a duplicate-only retry: an earlier process may have stopped after commit.
-  await loadPlannerSnapshotImpl(database, today);
+  await loadPlannerSnapshotImpl(database, today, calendarNow);
   return imported;
 }
 
@@ -1565,6 +1579,101 @@ function parseJson<T>(value: string, fallback: T): T {
     return fallback;
   }
 }
+
+async function loadCalendarAvailabilityStateImpl(
+  database: SQLiteDatabase, householdId = LOCAL_HOUSEHOLD_ID,
+): Promise<CalendarAvailabilityState | null> {
+  const row = await database.getFirstAsync<{
+    household_id: string; enabled: number; status: CalendarAvailabilityState['status']; retry_count: number;
+    last_attempt_at: string | null; last_successful_sync_at: string | null; next_retry_at: string | null;
+    last_error_code: string | null; updated_at: string;
+  }>('SELECT * FROM calendar_availability_state WHERE household_id = ?', householdId);
+  return row ? { householdId: row.household_id, enabled: Boolean(row.enabled), status: row.status,
+    retryCount: row.retry_count, lastAttemptAt: row.last_attempt_at ?? undefined,
+    lastSuccessfulSyncAt: row.last_successful_sync_at ?? undefined, nextRetryAt: row.next_retry_at ?? undefined,
+    lastErrorCode: row.last_error_code ?? undefined, updatedAt: row.updated_at } : null;
+}
+
+async function saveCalendarAvailabilityStateImpl(database: SQLiteDatabase, state: CalendarAvailabilityState): Promise<void> {
+  await database.runAsync(
+    `INSERT INTO calendar_availability_state
+     (household_id, enabled, status, retry_count, last_attempt_at, last_successful_sync_at, next_retry_at, last_error_code, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(household_id) DO UPDATE SET enabled=excluded.enabled, status=excluded.status,
+     retry_count=excluded.retry_count, last_attempt_at=excluded.last_attempt_at,
+     last_successful_sync_at=excluded.last_successful_sync_at, next_retry_at=excluded.next_retry_at,
+     last_error_code=excluded.last_error_code, updated_at=excluded.updated_at`,
+    state.householdId, state.enabled ? 1 : 0, state.status, state.retryCount, state.lastAttemptAt ?? null,
+    state.lastSuccessfulSyncAt ?? null, state.nextRetryAt ?? null, state.lastErrorCode ?? null, state.updatedAt,
+  );
+}
+
+async function setCalendarAvailabilityEnabledImpl(database: SQLiteDatabase, enabled: boolean, now = new Date()): Promise<void> {
+  const previous = await loadCalendarAvailabilityStateImpl(database);
+  await database.withTransactionAsync(async () => {
+    await saveCalendarAvailabilityStateImpl(database, {
+      ...previous, householdId: LOCAL_HOUSEHOLD_ID, enabled, status: 'idle', retryCount: 0,
+      nextRetryAt: undefined, lastErrorCode: undefined, updatedAt: now.toISOString(),
+    });
+    if (!enabled) await database.runAsync('DELETE FROM calendar_availability_days WHERE household_id = ?', LOCAL_HOUSEHOLD_ID);
+  });
+}
+
+async function listCalendarAvailabilityDaysImpl(database: SQLiteDatabase, householdId = LOCAL_HOUSEHOLD_ID): Promise<CalendarAvailabilityDay[]> {
+  const rows = await database.getAllAsync<{ local_date: LocalDate; busy_minutes: number; time_zone: string; fetched_at: string }>(
+    'SELECT local_date, busy_minutes, time_zone, fetched_at FROM calendar_availability_days WHERE household_id = ? ORDER BY local_date', householdId,
+  );
+  return rows.map((row) => ({ localDate: row.local_date, busyMinutes: row.busy_minutes, timeZone: row.time_zone, fetchedAt: row.fetched_at }));
+}
+
+async function getFreshCalendarAvailabilityDaysImpl(database: SQLiteDatabase, now = new Date(), timeZone = getDeviceTimeZone()) {
+  const state = await loadCalendarAvailabilityStateImpl(database);
+  if (!state?.enabled) return undefined;
+  return freshCalendarAvailability(state, await listCalendarAvailabilityDaysImpl(database), now, timeZone);
+}
+
+async function replaceCalendarAvailabilityRows(
+  database: SQLiteDatabase, days: readonly CalendarAvailabilityDay[], householdId: string,
+): Promise<void> {
+  if (!days.length) throw new Error('Calendar coverage must include every queried day');
+  const first = days[0];
+  for (const [index, day] of days.entries()) {
+    if (day.localDate !== addDays(first.localDate, index) || day.timeZone !== first.timeZone || day.fetchedAt !== first.fetchedAt
+      || !Number.isInteger(day.busyMinutes) || day.busyMinutes < 0 || !parseGoogleCompletedAt(day.fetchedAt)) {
+      throw new Error('Invalid calendar aggregate coverage');
+    }
+  }
+  await database.runAsync('DELETE FROM calendar_availability_days WHERE household_id = ?', householdId);
+  for (const day of days) {
+    await database.runAsync(
+      'INSERT INTO calendar_availability_days (household_id, local_date, busy_minutes, time_zone, fetched_at) VALUES (?, ?, ?, ?, ?)',
+      householdId, day.localDate, day.busyMinutes, day.timeZone, day.fetchedAt,
+    );
+  }
+}
+
+async function replaceCalendarAvailabilityDaysImpl(
+  database: SQLiteDatabase, days: readonly CalendarAvailabilityDay[], householdId = LOCAL_HOUSEHOLD_ID,
+): Promise<void> {
+  await database.withTransactionAsync(() => replaceCalendarAvailabilityRows(database, days, householdId));
+}
+
+async function commitCalendarAvailabilitySuccessImpl(
+  database: SQLiteDatabase, days: readonly CalendarAvailabilityDay[], state: CalendarAvailabilityState,
+): Promise<void> {
+  await database.withTransactionAsync(async () => {
+    await replaceCalendarAvailabilityRows(database, days, state.householdId);
+    await saveCalendarAvailabilityStateImpl(database, state);
+  });
+}
+
+export const loadCalendarAvailabilityState = serializeDatabaseOperation(loadCalendarAvailabilityStateImpl);
+export const saveCalendarAvailabilityState = serializeDatabaseOperation(saveCalendarAvailabilityStateImpl);
+export const setCalendarAvailabilityEnabled = serializePlannerOperation(setCalendarAvailabilityEnabledImpl);
+export const listCalendarAvailabilityDays = serializeDatabaseOperation(listCalendarAvailabilityDaysImpl);
+export const getFreshCalendarAvailabilityDays = serializeDatabaseOperation(getFreshCalendarAvailabilityDaysImpl);
+export const replaceCalendarAvailabilityDays = serializePlannerOperation(replaceCalendarAvailabilityDaysImpl);
+export const commitCalendarAvailabilitySuccess = serializePlannerOperation(commitCalendarAvailabilitySuccessImpl);
 
 // Serialize reads and writes across screens and widget callbacks on this connection.
 export const initializeLocalDatabase = serializePlannerOperation(initializeLocalDatabaseImpl);

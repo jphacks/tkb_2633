@@ -1,7 +1,9 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { getGoogleSyncOAuthConfig } from '@/features/google-sync/google-oauth-config';
 import { GOOGLE_TASKS_SCOPE } from './google-tasks-api';
+import { CalendarPermissionRequiredError, GOOGLE_CALENDAR_FREEBUSY_SCOPE } from '@/features/google-sync/calendar-availability';
+import { authorizeCalendarAvailability } from '@/features/google-sync/calendar-authorization';
 
 export class GoogleOAuthConfigurationError extends Error {
   constructor() {
@@ -136,6 +138,31 @@ export async function hasGoogleTasksSession(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Incremental consent is only invoked by the settings ON/retry button. */
+export async function authorizeGoogleCalendarAvailability(): Promise<void> {
+  if (AppState.currentState !== 'active') throw new CalendarPermissionRequiredError();
+  const module = await loadGoogleSignIn();
+  const current = await getCurrentGoogleUser(module);
+  if (!current?.scopes.includes(GOOGLE_TASKS_SCOPE)) throw new CalendarPermissionRequiredError();
+  await authorizeCalendarAvailability({
+    grantedScopes: async () => (await getCurrentGoogleUser(module))?.scopes ?? [],
+    requestScopes: (scopes) => authStep('request-calendar-scope', () => module.GoogleOneTapSignIn.requestScopes(scopes)),
+  });
+}
+
+/** Non-interactive: no requestScopes/createAccount/presentExplicitSignIn fallback. */
+export async function getGoogleCalendarAccessToken(): Promise<string> {
+  const module = await loadGoogleSignIn();
+  const user = await getCurrentGoogleUser(module);
+  if (!user?.scopes.includes(GOOGLE_CALENDAR_FREEBUSY_SCOPE)) throw new CalendarPermissionRequiredError();
+  const tokens = await authStep('get-calendar-token', () => module.GoogleOneTapSignIn.getTokens());
+  // Android can silently fall back to the still-granted Tasks scope after Calendar revocation.
+  if (!(await getCurrentGoogleUser(module))?.scopes.includes(GOOGLE_CALENDAR_FREEBUSY_SCOPE)) {
+    throw new CalendarPermissionRequiredError();
+  }
+  return tokens.accessToken;
 }
 
 export async function disconnectGoogleTasksSession(): Promise<void> {

@@ -7,6 +7,7 @@ import type {
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import type { EntityId, LocalDate, Weekday } from '@/domain/shared/types';
 import { addDays, daysBetween, localDateFromISODateTime, weekdayOf } from './local-date.ts';
+import { calendarPenaltyForChore } from './calendar-penalty.ts';
 
 interface DayLoad {
   heavy: number;
@@ -136,6 +137,8 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
         restDays: input.settings.restDays,
         loadByDate,
         limits: input.settings.loadLimits,
+        today: input.today,
+        externalAvailabilityByDate: input.externalAvailabilityByDate,
       });
       if (candidate) {
         reserveLoad(chore, candidate.suggestedDate, loadByDate);
@@ -322,6 +325,8 @@ function appendRecurringEntries(options: {
       restDays: options.input.settings.restDays,
       loadByDate: options.loadByDate,
       limits: options.input.settings.loadLimits,
+      today: options.input.today,
+      externalAvailabilityByDate: options.input.externalAvailabilityByDate,
     });
     if (candidate) {
       reserveLoad(options.chore, candidate.suggestedDate, options.loadByDate);
@@ -381,6 +386,8 @@ function findCandidate(input: {
   restDays: readonly Weekday[];
   loadByDate: Map<LocalDate, DayLoad>;
   limits: ScheduleGenerationInput['settings']['loadLimits'];
+  today: LocalDate;
+  externalAvailabilityByDate?: ScheduleGenerationInput['externalAvailabilityByDate'];
 }): Candidate | undefined {
   const restDaySet = new Set(input.restDays);
   let best: Candidate | undefined;
@@ -404,7 +411,8 @@ function findCandidate(input: {
       const score = [
         capacityOverflow(input.chore.load, load, input.limits),
         restPenalty,
-        Math.abs(offset),
+        Math.abs(offset) + (date >= input.today
+          ? calendarPenaltyForChore(input.chore.load, input.externalAvailabilityByDate?.[date]?.busyMinutes) : 0),
         load.total,
         Math.abs(daysBetween(input.baseDate, date)),
       ];

@@ -1,90 +1,90 @@
-import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useRef, useState } from 'react';
+import type { SQLiteDatabase } from 'expo-sqlite';
+import { createContext, createElement, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { millisecondsUntilNextLocalDay } from '@/domain/scheduling/local-date';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
-import { applyWeatherToPlannerSnapshot } from '@/platform/storage/repository';
+import { applyWeatherToPlannerSnapshot, loadGoogleSyncState, LOCAL_HOUSEHOLD_ID } from '@/platform/storage/repository';
 import { refreshPlannerFromWidget } from '@/platform/widgets/refresh-planner-from-widget';
 import { publishTodayWidgetSnapshot } from '@/features/widgets/publish-today-widget-snapshot';
 import { syncDailyHouseworkDigest } from '@/features/notifications/daily-housework-digest';
 import { expoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
 import { subscribeToGooglePlannerChanges } from '@/features/google-sync/planner-change-events';
+import { registerGoogleSyncBackgroundTask } from '@/features/google-sync/background-task';
+import { syncGoogleTasks } from '@/features/google-sync/coordinator';
+import { createPlannerRefreshController } from '@/features/planner/refresh-controller';
 
-export function usePlannerData() {
+type PlannerController = ReturnType<typeof createPlannerRefreshController<PlannerSnapshot>>;
+const PlannerContext = createContext<{ database: SQLiteDatabase; controller: PlannerController } | null>(null);
+
+/** The only foreground owner of planner reads, lifecycle subscriptions and snapshot side effects. */
+export function PlannerDataProvider({ children }: { children: ReactNode }) {
   const database = useSQLiteContext();
-  const [snapshot, setSnapshot] = useState<PlannerSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const refreshRevision = useRef(0);
+  const controller = useMemo(() => createPlannerRefreshController<PlannerSnapshot>({
+    load: (ids, force) => refreshPlannerFromWidget(database, ids, { publish: false, preferCached: !force }),
+    weather: (snapshot, canCommit) => snapshot.settings.weatherLocation
+      ? applyWeatherToPlannerSnapshot(database, snapshot, canCommit) : Promise.resolve(null),
+    publish: (snapshot, canPublishWidget) => {
+      if (Platform.OS === 'web') return;
+      if (canPublishWidget) publishTodayWidgetSnapshot(snapshot);
+      return syncDailyHouseworkDigest(expoLocalNotificationGateway, snapshot).then(() => undefined);
+    },
+  }), [database]);
 
-  const refresh = useCallback(async (options: { waitForWeather?: boolean } = {}) => {
-    const revision = ++refreshRevision.current;
-    try {
-      const { snapshot: data, canPublishWidget } = await refreshPlannerFromWidget(database);
-      if (revision !== refreshRevision.current) return;
-      setSnapshot(data);
-      if (Platform.OS !== 'web') void syncDailyHouseworkDigest(expoLocalNotificationGateway, data).catch(() => {});
-      setError(null);
-
-      if (data.settings.weatherLocation) {
-        const weatherRefresh = applyWeatherToPlannerSnapshot(
-          database,
-          data,
-          () => revision === refreshRevision.current,
-        ).then((weatherData) => {
-          if (!weatherData || revision !== refreshRevision.current) return;
-          setSnapshot(weatherData);
-          if (canPublishWidget) publishTodayWidgetSnapshot(weatherData);
-          if (Platform.OS !== 'web') void syncDailyHouseworkDigest(expoLocalNotificationGateway, weatherData).catch(() => {});
-        }).catch((cause) => {
-          if (revision === refreshRevision.current) {
-            setError(cause instanceof Error ? cause.message : '天気に合わせて予定を保存できませんでした');
-          }
-        });
-        if (options.waitForWeather) await weatherRefresh;
-        else void weatherRefresh;
-      }
-    } catch (cause) {
-      if (revision === refreshRevision.current) {
-        setError(cause instanceof Error ? cause.message : 'データを読み込めませんでした');
-      }
-    } finally {
-      if (revision === refreshRevision.current) setLoading(false);
-    }
-  }, [database]);
-
-  useFocusEffect(useCallback(() => {
-    const unsubscribeGoogleChanges = subscribeToGooglePlannerChanges(() => { void refresh(); });
-    void refresh();
+  useEffect(() => {
     let appState = AppState.currentState;
     let midnightTimer: ReturnType<typeof setTimeout> | undefined;
-    const scheduleMidnightRefresh = () => {
+    const syncGoogleIfDue = async () => {
+      if (Platform.OS === 'web') return;
+      const state = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
+      if (!state?.enabled) return;
+      await registerGoogleSyncBackgroundTask().catch(() => false);
+      await syncGoogleTasks(database);
+    };
+    const scheduleMidnight = () => {
       clearTimeout(midnightTimer);
       midnightTimer = setTimeout(() => {
-        void refresh();
-        scheduleMidnightRefresh();
+        void controller.refresh({ force: true });
+        scheduleMidnight();
       }, millisecondsUntilNextLocalDay(new Date()) + 100);
     };
-    scheduleMidnightRefresh();
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && appState !== 'active') {
-        void refresh();
-        scheduleMidnightRefresh();
-      } else if (state !== 'active') {
+    const resume = () => {
+      // Native/background work can use another SQLite connection, so bypass the JS cache on resume.
+      void controller.refresh({ force: true });
+      void syncGoogleIfDue().catch(() => undefined);
+      scheduleMidnight();
+    };
+    if (appState !== 'background' && appState !== 'inactive') resume();
+    const unsubscribe = subscribeToGooglePlannerChanges(() => {
+      if (appState === 'background' || appState === 'inactive') return false;
+      void controller.refresh();
+      return true;
+    });
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && appState !== 'active') resume();
+      else if (next !== 'active') {
         clearTimeout(midnightTimer);
-        refreshRevision.current += 1;
+        controller.invalidate();
       }
-      appState = state;
+      appState = next;
     });
     return () => {
-      unsubscribeGoogleChanges();
-      refreshRevision.current += 1;
-      clearTimeout(midnightTimer);
+      unsubscribe();
       subscription.remove();
+      clearTimeout(midnightTimer);
+      controller.invalidate();
     };
-  }, [refresh]));
+  }, [controller, database]);
 
-  return { snapshot, loading, error, refresh, database };
+  const value = useMemo(() => ({ database, controller }), [database, controller]);
+  return createElement(PlannerContext.Provider, { value }, children);
+}
+
+export function usePlannerData() {
+  const context = useContext(PlannerContext);
+  if (!context) throw new Error('usePlannerData must be used within PlannerDataProvider');
+  const state = useSyncExternalStore(context.controller.subscribe, context.controller.getSnapshot, context.controller.getSnapshot);
+  return { ...state, database: context.database, refresh: context.controller.refresh };
 }

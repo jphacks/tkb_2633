@@ -83,7 +83,7 @@ export default function HomeScreen() {
     setCompletingIds((current) => new Set(current).add(completionId));
     setActionError(null);
     try {
-      await undoCompletedChore(database, completionId);
+      if (await undoCompletedChore(database, completionId)) syncGoogleTasksAfterLocalCompletion(database);
       await refresh();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : '完了を取り消せませんでした。');

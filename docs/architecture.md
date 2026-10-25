@@ -25,13 +25,21 @@
 - `src/features/google-sync/`: Google Tasksの双方向同期・BackgroundTask、Calendarの追加許可・日別集計・独立した取得状態と共通の操作キュー
 - `src/platform/google-tasks/`: Google Sign-In SDK、Google Tasks API、Calendar FreeBusy APIのadapter
 - `src/platform/storage/repository.ts`: 初期マスター投入、SQLite読み書き、初回設定、完了・未完了の記録と予定再生成
-- `src/domain/chores/catalog.ts`: 18件の家事名、初期手順・道具・注意点・負荷、3つの頻度モードの暫定周期
+- `src/domain/chores/catalog.ts`: 組み込み20件の家事名、手順・道具・注意点・豆知識・負荷、各家事の3つの頻度モードの周期と期間幅
 - `src/domain/chores/types.ts`: 家事、実施状態、完了・未完了記録、世帯設定の型
 - `src/features/appliance-care/contracts.ts`: 安定IDを持つ家電親データと、最新のユーザー確認済み公式解析スナップショット
 
 家事一覧と周期案は企画書で未確定です。現在のマスターは動作確認用の初期案で、家事単位の周期は設定画面から編集できます。初期設定で「今日／1週間前／1か月前」を選んだ日付は概算の印を保持します。「不明」とスキップは初回分散に入り、履歴は削除しません。
 
 SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。予定は同じエンジンから再生成し、履歴は独立テーブルに残します。同じ予定の未完了記録は後から完了へ更新でき、`schedule_entry_id` の一意制約で二重記録を防ぎます。
+
+### 共有Snapshotと更新
+
+`SQLiteProvider` 直下の `PlannerDataProvider` が、前景のSnapshot・AppState購読・日付タイマー・Widget完了の読込を管理します。画面は `usePlannerData` から同じSnapshotを購読し、保存・完了・取り消し後に共有refreshを要求します。家電解析結果の保存もこの経路を使います。
+
+`createPlannerRefreshController` は連続要求をまとめ、変更中に得た古い結果を公開しません。`readCachedPlannerSnapshot` はDBを書かないメモリ参照で、変更・日付・timezone・Calendar期限切れで無効になります。復帰時とWidget操作時は別接続の変更を考慮して読み直します。`loadPlannerSnapshot` は引き続き必要な再生成と保存を含む明示的な更新APIです。
+
+通常の画面更新に伴うWidget・通知の公開はProviderへ集約します。Google取り込みも前景の購読者が処理し、バックグラウンドでは従来の出力adapterを使います。SQLite移行は未適用分全体を1トランザクションで確定し、schema v16にGoogle同期状態とCalendarの反映済み署名を保持します。
 
 ## スケジューラ
 
@@ -71,6 +79,8 @@ Calendar連携がONで36時間以内・同じtimezoneの日別cacheがある場�
 ### Google Tasks・Calendar
 
 Tasksは専用リストの対応表にある家事だけを送信・完了取込します。任意のCalendar連携は、設定でONにしたときだけ`calendar.freebusy`を追加許可し、primary calendarのFreeBusyを取得します。Event一覧や予定内容は取得せず、raw busy intervalも保存しません。schema v15の日別cacheは日付・分数・IANA timezone・取得時刻を保持し、Calendar設定・retry状態はTasksと別テーブルです。
+
+完了と完了取り消しは同期時に双方向へ反映します。同じTaskと履歴行を使い、未送信のローカル状態とrevisionをSQLiteに保存します。送信の失敗や送信中の新しい操作で取り消しが消えないようにし、未送信のローカル操作を古いGoogle情報で上書きしません。Task自体の削除は履歴の取り消しと区別します。Calendarの取得時刻や同じbusy区分内の変化だけではPlannerを再生成せず、日付・busy区分・利用可否が変わった場合に再計算します。
 
 同じGoogle同期キューでCalendar更新・Scheduler再生成・Tasks同期を順に実行します。CalendarのHTTP失敗や追加許可不足でもTasksは継続します。Plannerの180日先までの全期間を最大90日ずつのHTTP要求に分け、すべて成功してから日別cacheと成功状態を1つのtransactionで置換します。OFF時はcacheを削除しAPIを呼びません。認証は既存のGoogle native SDKと`offlineAccess=false`を維持します。セットアップは[Google連携](./google-sync-setup.md)を参照してください。
 
@@ -115,6 +125,7 @@ APIは特定クラウドに依存しないNode.jsモジュールです。ロー�
 - `tests/google-calendar-*.test.mjs`: FreeBusy、IANA timezone・DST、集計・cache・migration、追加許可、Calendar障害とTasksの分離、候補日scoreと天気の回帰
 - `npm run check`: lint、TypeScript型チェック、単体テスト
 - `.github/workflows/ci.yml`: Pull Requestと `main` pushで `npm ci` と `npm run check`
+- `.github/workflows/native-check.yml`: Native関連変更時にExpo Doctor・Android Prebuild。手動実行の `compileAndroid` 指定でAndroid debugのコンパイルも実施
 
 ## ネイティブ開発
 

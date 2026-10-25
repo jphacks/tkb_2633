@@ -70,7 +70,7 @@ export default function CalendarScreen() {
     setActionError(null);
     try {
       const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
-      if (completion) await undoCompletedChore(database, completion.id);
+      if (completion) { if (await undoCompletedChore(database, completion.id)) syncGoogleTasksAfterLocalCompletion(database); }
       else if (await completeChore(database, entry)) syncGoogleTasksAfterLocalCompletion(database);
       await refresh();
     } catch (cause) {
@@ -89,7 +89,7 @@ export default function CalendarScreen() {
     setCompletingIds((current) => new Set(current).add(completionId));
     setActionError(null);
     try {
-      await undoCompletedChore(database, completionId);
+      if (await undoCompletedChore(database, completionId)) syncGoogleTasksAfterLocalCompletion(database);
       await refresh();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : '完了を取り消せませんでした。');

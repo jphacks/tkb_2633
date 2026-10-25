@@ -24,14 +24,28 @@ export interface GoogleTaskLink {
   googleTaskId: string;
   lastSyncedTitle?: string;
   lastSyncedDueDate?: LocalDate;
+  /** The last acknowledged state of this exact mapped task. */
+  lastSyncedStatus?: GoogleTaskStatus;
+  /** Durable local intent; it is cleared only after this revision reaches Google. */
+  pendingStatus?: GoogleTaskStatus;
+  pendingStatusRevision?: string;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
+
+export type GoogleTaskStatus = 'needsAction' | 'completed';
+
+export type GoogleTaskStatusChange = Pick<GoogleTaskLink, 'googleTaskListId' | 'googleTaskId' | 'scheduleEntryId'> & (
+  | { status: 'completed'; completedAt: ISODateTime }
+  | { status: 'needsAction' }
+);
 
 export interface GoogleSyncEntry {
   entry: ChoreScheduleEntry;
   choreName: string;
   completedAt?: ISODateTime;
+  /** A legacy/local incomplete record, needed when no status baseline has been acknowledged yet. */
+  locallyIncomplete?: boolean;
 }
 
 export interface GoogleTaskCompletion {

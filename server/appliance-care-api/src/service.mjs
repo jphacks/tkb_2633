@@ -76,6 +76,7 @@ export function createDefaultDependencies({ ai, fetchImpl = fetch, now } = {}) {
 export function validateApplianceCareRequest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const fields = ['manufacturer', 'productName', 'modelNumber'];
+  if (value.forceReanalysis !== undefined && typeof value.forceReanalysis !== 'boolean') return false;
   for (const field of fields) {
     if (typeof value[field] !== 'string') return false;
     const normalized = value[field].trim();

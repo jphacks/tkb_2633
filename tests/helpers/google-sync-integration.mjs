@@ -83,7 +83,8 @@ export async function createIntegration({ cycleDays = 1, previousDate = today, d
     listGoogleTaskLinks: (householdId) => repository.listGoogleTaskLinks(database, householdId),
     upsertGoogleTaskLink: (link) => repository.upsertGoogleTaskLink(database, link),
     deleteGoogleTaskLink: (id) => repository.deleteGoogleTaskLink(database, id),
-    importGoogleTaskCompletions: (completions, date) => { events.push('IMPORT'); return repository.importGoogleTaskCompletions(database, completions, date, now); },
+    importGoogleTaskChanges: (changes, date) => { events.push('IMPORT'); return repository.importGoogleTaskChanges(database, changes, date, now); },
+    acknowledgeGoogleTaskStatus: (link, status) => repository.acknowledgeGoogleTaskStatus(database, link, status),
   };
   return {
     ...store, ...fixture, fixture, chore, entries, dependencies,

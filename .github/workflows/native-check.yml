@@ -1,0 +1,44 @@
+name: Native configuration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-configuration-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+    paths: ['package.json', 'package-lock.json', 'app.json', 'app.config.*', 'plugins/**', 'scripts/patch-*', '.github/workflows/native-check.yml']
+  pull_request:
+    paths: ['package.json', 'package-lock.json', 'app.json', 'app.config.*', 'plugins/**', 'scripts/patch-*', '.github/workflows/native-check.yml']
+  workflow_dispatch:
+    inputs:
+      compileAndroid:
+        description: Also compile the Android debug app (requires additional runner time)
+        type: boolean
+        default: false
+
+jobs:
+  native-configuration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx --yes expo-doctor
+      - run: npx expo prebuild --platform android --no-install
+      - uses: actions/setup-java@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.compileAndroid
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Compile Android debug app
+        if: github.event_name == 'workflow_dispatch' && inputs.compileAndroid
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --no-daemon

@@ -26,7 +26,7 @@ test('schema migration creates the latest local planner and Google sync schema',
   const { connection, database } = sqliteAdapter();
   try {
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 15);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all().map((column) => column.name);
     assert.equal(settingsColumns.includes('notifications_enabled'), true);
     assert.equal(settingsColumns.includes('built_in_chore_catalog_version'), true);
@@ -51,6 +51,7 @@ test('schema migration creates the latest local planner and Google sync schema',
     assert.deepEqual(taskLinkColumns, [
       'schedule_entry_id', 'household_id', 'chore_id', 'google_task_list_id', 'google_task_id',
       'last_synced_title', 'last_synced_due_date', 'created_at', 'updated_at',
+      'last_synced_status', 'pending_status', 'pending_status_revision',
     ]);
   } finally {
     connection.close();
@@ -74,7 +75,7 @@ test('version 6 migration tolerates a notification preference column already pre
 
     await migrateLocalDatabase(database);
 
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 15);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all();
     assert.equal(settingsColumns.filter((column) => column.name === 'notifications_enabled').length, 1);
     assert.equal(connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'appliances'").get().name, 'appliances');
@@ -109,4 +110,66 @@ test('Google task mappings survive local schedule and chore deletion for remote 
   } finally {
     connection.close();
   }
+});
+
+test('failure during an old schema upgrade rolls back its DDL and version and can be retried', async () => {
+  const { connection, database } = sqliteAdapter();
+  try {
+    const exec = database.execAsync;
+    database.execAsync = async (sql) => {
+      if (sql.includes('CREATE INDEX IF NOT EXISTS idx_completions_household_completed')) throw new Error('interrupted migration');
+      return exec(sql);
+    };
+    await assert.rejects(migrateLocalDatabase(database), /interrupted migration/);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 0);
+    assert.equal(connection.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table'").get().n, 0);
+    database.execAsync = exec;
+    await migrateLocalDatabase(database);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+  } finally { connection.close(); }
+});
+
+test('concurrent migrations on one connection join the same transaction', async () => {
+  const { connection, database } = sqliteAdapter();
+  try {
+    await Promise.all([migrateLocalDatabase(database), migrateLocalDatabase(database), migrateLocalDatabase(database)]);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+  } finally { connection.close(); }
+});
+
+test('a failed v16 status-column migration leaves no partially added columns', async () => {
+  const { connection, database } = sqliteAdapter();
+  try {
+    await migrateLocalDatabase(database);
+    connection.exec(`ALTER TABLE google_task_links DROP COLUMN last_synced_status;
+      ALTER TABLE google_task_links DROP COLUMN pending_status;
+      ALTER TABLE google_task_links DROP COLUMN pending_status_revision;
+      ALTER TABLE household_settings DROP COLUMN planner_calendar_signature;
+      PRAGMA user_version = 15;`);
+    const exec = database.execAsync;
+    database.execAsync = async (sql) => {
+      if (sql.includes('ADD COLUMN pending_status ')) throw new Error('interrupted status migration');
+      return exec(sql);
+    };
+    await assert.rejects(migrateLocalDatabase(database), /interrupted status migration/);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 15);
+    assert.ok(!connection.prepare('PRAGMA table_info(google_task_links)').all().some((column) => column.name === 'last_synced_status'));
+    database.execAsync = exec;
+    await migrateLocalDatabase(database);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+  } finally { connection.close(); }
+});
+
+test('a transient SQLite busy error retries the complete migration', async () => {
+  const { connection, database } = sqliteAdapter();
+  try {
+    const exec = database.execAsync; let failures = 0;
+    database.execAsync = async (sql) => {
+      if (sql.includes('PRAGMA busy_timeout') && failures++ === 0) throw new Error('SQLITE_BUSY: database is locked');
+      return exec(sql);
+    };
+    await migrateLocalDatabase(database);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(failures, 2);
+  } finally { connection.close(); }
 });

@@ -15,14 +15,16 @@ const { syncGoogleTasksWithDependencies }=await import('../src/features/google-s
 const { configureGoogleCalendarAvailability }=await import('../src/features/google-sync/calendar-settings.ts');
 const range=()=>{const {from,through}=repository.plannerGenerationRange(today);return createCalendarQueryRange(from,through,getDeviceTimeZone());};
 function calendarPort(h,busy=[]){
- let calls=0;
+ let calls=0;let regenerations=0;
  const port={
   loadState:()=>repository.loadCalendarAvailabilityState(h.database),
   saveState:(s)=>repository.saveCalendarAvailabilityState(h.database,s),
   commitSuccess:(days,s)=>repository.commitCalendarAvailabilitySuccess(h.database,days,s),
   getAccessToken:async()=> 'fixture-token',
   client:{query:async()=>{calls++;return busy;}},
+  readPlanningSignatures:()=>repository.readCalendarPlanningSignatures(h.database,now,range().timeZone),
   regeneratePlanner:async()=>{
+   regenerations++;
    const before=await repository.listEntriesForGoogleSync(h.database,today);
    await repository.loadPlannerSnapshot(h.database,today,now);
    const after=await repository.listEntriesForGoogleSync(h.database,today);
@@ -30,8 +32,41 @@ function calendarPort(h,busy=[]){
   },
  };
  h.dependencies.refreshCalendar=(options)=>refreshCalendarWithDependencies(port,{...options,range:range()});
- return {port,calls:()=>calls,refresh:(force=false)=>refreshCalendarWithDependencies(port,{now,range:range(),force})};
+ return {port,calls:()=>calls,regenerations:()=>regenerations,refresh:(force=false)=>refreshCalendarWithDependencies(port,{now,range:range(),force})};
 }
+test('fresh, unchanged and same-bucket Calendar data do not regenerate the Planner', async () => {
+ const h=await createIntegration({cycleDays:7,previousDate:'2026-10-20'});
+ try {
+  await repository.setCalendarAvailabilityEnabled(h.database,true,now);
+  const oneDay=createCalendarQueryRange('2026-10-27','2026-10-27',range().timeZone);
+  const intervals=[{start:oneDay.timeMin,end:new Date(Date.parse(oneDay.timeMin)+270*60_000).toISOString()}];
+  const calendar=calendarPort(h,intervals);
+  await calendar.refresh(true);
+  assert.equal(calendar.regenerations(),1);
+  await calendar.refresh();
+  assert.equal(calendar.calls(),1);
+  assert.equal(calendar.regenerations(),1);
+  intervals[0].end=new Date(Date.parse(oneDay.timeMin)+280*60_000).toISOString();
+  await calendar.refresh(true);
+  assert.equal(calendar.calls(),2);
+  assert.equal(calendar.regenerations(),1);
+ } finally {h.connection.close();}
+});
+
+test('expiry removes Calendar influence once even when refreshing requires permission', async () => {
+ const h=await createIntegration({cycleDays:7,previousDate:'2026-10-20'});
+ try {
+  await repository.setCalendarAvailabilityEnabled(h.database,true,now);
+  const oneDay=createCalendarQueryRange('2026-10-27','2026-10-27',range().timeZone);
+  const calendar=calendarPort(h,[{start:oneDay.timeMin,end:new Date(Date.parse(oneDay.timeMin)+270*60_000).toISOString()}]);
+  await calendar.refresh(true);
+  h.connection.exec("UPDATE calendar_availability_days SET fetched_at='2026-10-20T00:00:00.000Z'");
+  await repository.saveCalendarAvailabilityState(h.database,{...(await repository.loadCalendarAvailabilityState(h.database)),status:'permissionRequired'});
+  await calendar.refresh();await calendar.refresh();
+  assert.equal(calendar.calls(),1);
+  assert.equal(calendar.regenerations(),2);
+ } finally {h.connection.close();}
+});
 test('v14 upgrade and repeated migration preserve mappings and Google completion history',async()=>{
  const h=await createIntegration();
  try{
@@ -39,7 +74,7 @@ test('v14 upgrade and repeated migration preserve mappings and Google completion
   await h.sync();const history=h.history();const links=await repository.listGoogleTaskLinks(h.database);
   h.connection.exec('DROP TABLE calendar_availability_days; DROP TABLE calendar_availability_state; PRAGMA user_version=14;');
   await migrateLocalDatabase(h.database);await migrateLocalDatabase(h.database);
-  assert.equal(h.connection.prepare('PRAGMA user_version').get().user_version,15);
+  assert.equal(h.connection.prepare('PRAGMA user_version').get().user_version,16);
   assert.deepEqual(h.history(),history);assert.deepEqual(await repository.listGoogleTaskLinks(h.database),links);
   assert.equal(h.history().filter((c)=>c.schedule_entry_id===entry.id).length,1);
   assert.equal(h.connection.prepare('PRAGMA foreign_key_check').all().length,0);

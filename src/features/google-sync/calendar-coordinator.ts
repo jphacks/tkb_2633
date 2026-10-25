@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { LocalDate } from '@/domain/shared/types';
 import {
   commitCalendarAvailabilitySuccess, listEntriesForGoogleSync, listGoogleTaskLinks,
-  loadCalendarAvailabilityState, loadPlannerSnapshot, plannerGenerationRange, saveCalendarAvailabilityState,
+  loadCalendarAvailabilityState, loadPlannerSnapshot, plannerGenerationRange, saveCalendarAvailabilityState, readCalendarPlanningSignatures,
 } from '@/platform/storage/repository';
 import { createCalendarFreeBusyClient, CalendarFreeBusyError } from '@/platform/google-tasks/google-calendar-freebusy-client';
 import type { CalendarFreeBusyClient } from '@/platform/google-tasks/google-calendar-freebusy-client';
@@ -20,6 +20,7 @@ export interface CalendarCoordinatorPort {
   client: CalendarFreeBusyClient;
   commitSuccess(days: readonly CalendarAvailabilityDay[], state: CalendarAvailabilityState): Promise<void>;
   regeneratePlanner(): Promise<boolean>;
+  readPlanningSignatures(): Promise<{ current: string; applied: string | null }>;
 }
 
 export async function refreshCalendarWithDependencies(
@@ -64,7 +65,8 @@ export async function refreshCalendarWithDependencies(
     }
   }
   // Fresh cache may survive a failure; stale/missing cache is omitted by the repository.
-  const plannerChanged = await port.regeneratePlanner();
+  const signatures = await port.readPlanningSignatures();
+  const plannerChanged = signatures.current === signatures.applied ? false : await port.regeneratePlanner();
   return { kind, plannerChanged, ...(days ? { days: days.length, busyDays: days.filter((day) => day.busyMinutes > 0).length } : {}) };
 }
 
@@ -85,20 +87,23 @@ export async function refreshGoogleCalendarAvailability(
     },
     client,
     commitSuccess: (days, state) => commitCalendarAvailabilitySuccess(database, days, state),
+    readPlanningSignatures: () => readCalendarPlanningSignatures(database, options.now, range.timeZone),
     regeneratePlanner: async () => {
       const before = await listEntriesForGoogleSync(database, options.today);
-      await loadPlannerSnapshot(database, options.today, options.now, range.timeZone);
-      const after = await listEntriesForGoogleSync(database, options.today);
-      const beforeDates = new Map(before.map(({ entry }) => [entry.id, entry.suggestedDate]));
+      const snapshot = await loadPlannerSnapshot(database, options.today, options.now, range.timeZone);
+      const completedIds = new Set(snapshot.completions.filter((completion) => completion.outcome === 'completed')
+        .map((completion) => completion.scheduleEntryId));
+      const after = snapshot.scheduleEntries.filter((entry) => entry.status !== 'initialPending' && !completedIds.has(entry.id));
+      const beforeDates = new Map(before.filter((item) => !item.completedAt).map(({ entry }) => [entry.id, entry.suggestedDate]));
       const links = new Map((await listGoogleTaskLinks(database)).map((link) => [link.scheduleEntryId, link]));
-      const changed = after.some(({ entry, completedAt }) => !completedAt &&
+      const changed = beforeDates.size !== after.length || after.some((entry) =>
         (beforeDates.get(entry.id) !== entry.suggestedDate ||
           (links.has(entry.id) && links.get(entry.id)?.lastSyncedDueDate !== entry.suggestedDate)));
       if (changed) {
-        notifyGooglePlannerChanges();
-        try {
+        const handled = notifyGooglePlannerChanges();
+        if (!handled) try {
           const { refreshPlannerAfterGoogleImport } = await import('@/platform/google-tasks/refresh-planner-after-google-import');
-          await refreshPlannerAfterGoogleImport(database, options.today);
+          await refreshPlannerAfterGoogleImport(database, options.today, snapshot);
         } catch { /* Calendar optimization never requires native widget/notification availability. */ }
       }
       return changed;

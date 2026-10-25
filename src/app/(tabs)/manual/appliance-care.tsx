@@ -1,5 +1,4 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -8,6 +7,7 @@ import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnaly
 import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-client';
 import type { ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
 import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
+import { usePlannerData } from '@/hooks/use-planner-data';
 import { loadApplianceCareReviewContext, saveReviewedApplianceCare } from '@/platform/storage/repository';
 import type { ApplianceCareReviewContext } from '@/platform/storage/repository';
 
@@ -17,7 +17,7 @@ export default function ApplianceCareScreen() {
   const requestedProductName = Array.isArray(params.productName) ? params.productName[0] : params.productName;
   const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const returnTo = returnToParam === '/chores' ? '/chores' : returnToParam === '/manual' ? '/manual' : undefined;
-  const database = useSQLiteContext();
+  const { database, refresh } = usePlannerData();
   const [manufacturer, setManufacturer] = useState('');
   const [productName, setProductName] = useState(requestedProductName ?? '');
   const [modelNumber, setModelNumber] = useState('');
@@ -58,7 +58,7 @@ export default function ApplianceCareScreen() {
       setMessage('Web版ではAIと通信しません。入力した製品情報は送信されていません。メーカー公式サイトから手動で確認してください。');
       return;
     }
-    const request = { manufacturer, productName, modelNumber, category };
+    const request = { manufacturer, productName, modelNumber, category, ...(savedContext ? { forceReanalysis: true } : {}) };
     if (!request.modelNumber.trim()) {
       setMessage('型番を確認してください。型番を確認してから解析できます。');
       return;
@@ -128,6 +128,7 @@ export default function ApplianceCareScreen() {
         officialProductUrl: verified.officialSources.productUrl,
         manualUrl: verified.officialSources.manualUrl,
       }, verified.analysis, approvedTasks);
+      await refresh();
       setMessage(`${saved.scheduledTaskCount}件を予定へ登録しました。${saved.noCycleTaskCount ? ` 周期なしの項目${saved.noCycleTaskCount}件は家電詳細に保存しました。` : ''}${saved.duplicateTaskCount ? ` 同名の家事${saved.duplicateTaskCount}件は重複登録しませんでした。` : ''}`);
       router.replace({ pathname: '/manual/appliances/[id]', params: { id: saved.applianceId, ...(returnTo ? { returnTo } : {}) } });
     } catch (cause) {

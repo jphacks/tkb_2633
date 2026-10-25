@@ -26,7 +26,12 @@ function setup(state = {}) {
     async listGoogleTaskLinks() { return []; },
     async upsertGoogleTaskLink() {},
     async deleteGoogleTaskLink() {},
-    async importGoogleTaskCompletions() { return 0; },
+    async importGoogleTaskChanges() { return 0; },
+    async acknowledgeGoogleTaskStatus(link, status) {
+      if (!this.links) return;
+      this.links = this.links.map((item) => item.scheduleEntryId === link.scheduleEntryId
+        ? { ...item, lastSyncedStatus: status, pendingStatus: undefined, pendingStatusRevision: undefined } : item);
+    },
     api: {
       async listTaskLists() { counters.api += 1; return [{ id: 'list-1', title: '家事Planner' }]; },
       async listTasks() { counters.api += 1; return []; },

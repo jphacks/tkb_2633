@@ -39,7 +39,12 @@ function createHarness({ entries = [], links = [], tasks = [], taskLists = [{ id
     async deleteGoogleTaskLink(scheduleEntryId) {
       this.links = this.links.filter((item) => item.scheduleEntryId !== scheduleEntryId);
     },
-    async importGoogleTaskCompletions() { return 0; },
+    async importGoogleTaskChanges() { return 0; },
+    async acknowledgeGoogleTaskStatus(link, status) {
+      if (!this.links) return;
+      this.links = this.links.map((item) => item.scheduleEntryId === link.scheduleEntryId
+        ? { ...item, lastSyncedStatus: status, pendingStatus: undefined, pendingStatusRevision: undefined } : item);
+    },
   };
   const state = { householdId, enabled: true, taskListId, status: 'idle', retryCount: 0, updatedAt: now.toISOString() };
   const api = {
@@ -147,7 +152,7 @@ test('reconciliation creates once, then updates the same Google Task for title, 
   });
 });
 
-test('remote completion is never reverted, while obsolete open tasks are deleted and completed history is preserved', async () => {
+test('unvalidated remote completion is not reverted; obsolete open tasks are deleted and completed history is preserved', async () => {
   const harness = createHarness({
     links: [link('obsolete-open', 'task-open'), link('obsolete-done', 'task-done')],
     tasks: [

@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { analyzeApplianceCare, validateApplianceCareRequest } from './service.mjs';
+import { validateApplianceCareRequest } from './service.mjs';
+import { analysisRequestKey, createAnalysisRunner } from './analysis-runner.mjs';
 
 const MAX_BODY_BYTES = 8 * 1024;
 const RATE_WINDOW_MS = 60_000;
@@ -16,11 +17,14 @@ const STATUS_BY_ERROR = {
   PRODUCT_NOT_FOUND: 404,
   ANALYSIS_FAILED: 502,
   TEMPORARY_NETWORK_ERROR: 503,
+  RATE_LIMITED: 429,
 };
 
-export function createApplianceCareHttpServer({ dependencies, aiConfigured = true, allowedOrigins = [] }) {
+export function createApplianceCareHttpServer({ dependencies, aiConfigured = true, allowedOrigins = [], analysisLimits = {} }) {
   const requestsByAddress = new Map();
   const jobsById = new Map();
+  const jobsByRequest = new Map();
+  const runner = createAnalysisRunner({ dependencies, ...analysisLimits });
   return createServer(async (request, response) => {
     setSecurityHeaders(response);
     const origin = request.headers.origin;
@@ -58,6 +62,7 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       sendJson(response, 200, {
         stage: job.stage,
         done: job.done,
+        ...(!job.done ? { pollAfterMs: 2000 } : {}),
         ...(job.done && job.result ? { result: job.result } : {}),
       });
       return;
@@ -108,10 +113,19 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
     };
     if (isJobRequest) {
       pruneJobs(jobsById);
+      const key = analysisRequestKey(analysisRequest);
+      const existingId = jobsByRequest.get(key);
+      const existingJob = existingId ? jobsById.get(existingId) : undefined;
+      if (existingJob && (!existingJob.done || (body.forceReanalysis !== true && existingJob.result?.status === 'verified'))) {
+        sendJson(response, 202, { jobId: existingId });
+        return;
+      }
       const jobId = randomUUID();
       const job = { stage: 'product_verification', done: false, result: undefined, expiresAt: Date.now() + JOB_RETENTION_MS };
       jobsById.set(jobId, job);
-      void analyzeApplianceCare(analysisRequest, dependencies, (stage) => { job.stage = stage; })
+      jobsByRequest.set(key, jobId);
+      for (const [requestKey, id] of jobsByRequest) { if (!jobsById.has(id)) jobsByRequest.delete(requestKey); }
+      void runner.run(analysisRequest, (stage) => { job.stage = stage; }, { bypassCache: body.forceReanalysis === true })
         .then((result) => { job.result = result; job.done = true; job.expiresAt = Date.now() + JOB_RETENTION_MS; })
         .catch(() => {
           job.result = { status: 'error', code: 'ANALYSIS_FAILED', message: '解析を完了できませんでした。時間をおいて再試行してください。' };
@@ -123,7 +137,7 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
     }
 
     try {
-      const result = await analyzeApplianceCare(analysisRequest, dependencies);
+      const result = await runner.run(analysisRequest, undefined, { bypassCache: body.forceReanalysis === true });
       const status = result.status === 'error' ? (STATUS_BY_ERROR[result.code] ?? 502) : 200;
       sendJson(response, status, result);
     } catch {
@@ -134,9 +148,12 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
 
 function pruneJobs(jobsById, now = Date.now()) {
   for (const [id, job] of jobsById) {
-    if (job.expiresAt <= now) jobsById.delete(id);
+    if (job.done && job.expiresAt <= now) jobsById.delete(id);
   }
-  while (jobsById.size > 100) jobsById.delete(jobsById.keys().next().value);
+  for (const [id, job] of jobsById) {
+    if (jobsById.size < 100) break;
+    if (job.done) jobsById.delete(id);
+  }
 }
 
 export function startApplianceCareHttpServer({
@@ -146,8 +163,12 @@ export function startApplianceCareHttpServer({
   port = Number(process.env.PORT ?? 8787),
   allowedOrigins = (process.env.APPLIANCE_CARE_ALLOWED_ORIGINS ?? 'http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006')
     .split(',').map((origin) => origin.trim()).filter(Boolean),
+  analysisLimits = {
+    maxConcurrent: serverLimit(process.env.APPLIANCE_CARE_MAX_CONCURRENT, 3, 10),
+    maxPerHour: serverLimit(process.env.APPLIANCE_CARE_MAX_PER_HOUR, 20, 1000),
+  },
 } = {}) {
-  const server = createApplianceCareHttpServer({ dependencies, aiConfigured, allowedOrigins });
+  const server = createApplianceCareHttpServer({ dependencies, aiConfigured, allowedOrigins, analysisLimits });
   server.listen(port, host);
   return server;
 }
@@ -184,14 +205,24 @@ async function readJsonBody(request) {
 }
 
 function consumeRateLimit(address, requestsByAddress, now = Date.now()) {
+  const oldest = requestsByAddress.values().next().value;
+  if (oldest && now - oldest.startedAt >= RATE_WINDOW_MS) {
+    for (const [key, value] of requestsByAddress) { if (now - value.startedAt >= RATE_WINDOW_MS) requestsByAddress.delete(key); }
+  }
   const existing = requestsByAddress.get(address);
   if (!existing || now - existing.startedAt >= RATE_WINDOW_MS) {
+    if (!existing && requestsByAddress.size >= 10_000) return false;
     requestsByAddress.set(address, { startedAt: now, count: 1 });
     return true;
   }
   if (existing.count >= RATE_LIMIT) return false;
   existing.count += 1;
   return true;
+}
+
+function serverLimit(value, fallback, maximum) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : fallback;
 }
 
 function setSecurityHeaders(response) {

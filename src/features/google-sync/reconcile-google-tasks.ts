@@ -1,14 +1,15 @@
-import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink } from './contracts';
+import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskStatusChange, GoogleTaskLink, GoogleTaskStatus } from './contracts';
 import { parseGoogleCompletedAt } from './google-completion-policy';
 import { GOOGLE_TASKS_LIST_TITLE, GoogleTaskNotFoundError } from '@/platform/google-tasks/google-tasks-api';
-import type { GoogleTask, GoogleTasksApi } from '@/platform/google-tasks/google-tasks-api';
+import type { GoogleTask, GoogleTaskPatch, GoogleTasksApi } from '@/platform/google-tasks/google-tasks-api';
 
 export interface GoogleSyncRepositoryPort {
   listEntriesForGoogleSync(today: string, householdId: string): Promise<GoogleSyncEntry[]>;
   listGoogleTaskLinks(householdId: string): Promise<GoogleTaskLink[]>;
   upsertGoogleTaskLink(link: GoogleTaskLink): Promise<void>;
   deleteGoogleTaskLink(scheduleEntryId: string): Promise<void>;
-  importGoogleTaskCompletions(completions: readonly GoogleTaskCompletion[], today: string): Promise<number>;
+  importGoogleTaskChanges(changes: readonly GoogleTaskStatusChange[], today: string): Promise<number>;
+  acknowledgeGoogleTaskStatus(link: GoogleTaskLink, status: GoogleTaskStatus): Promise<void>;
 }
 
 export interface GoogleReconciliationResult {
@@ -39,30 +40,47 @@ export async function reconcileGoogleTasks(options: {
   if (!taskList.id) throw new Error('Google Tasks did not return a task list ID');
 
   const links = await repository.listGoogleTaskLinks(state.householdId);
-  const linksById = new Map(links.map((link) => [link.scheduleEntryId, link]));
   const remoteTasks = await api.listTasks(accessToken, taskList.id);
   const tasksById = new Map(remoteTasks.map((task) => [task.id, task]));
-  const completions: GoogleTaskCompletion[] = [];
+  const beforeEntries = new Map((await repository.listEntriesForGoogleSync(today, state.householdId))
+    .map((item) => [item.entry.id, item]));
+  const changes: GoogleTaskStatusChange[] = [];
   let invalidCompletions = 0;
   for (const link of links) {
     if (link.googleTaskListId !== taskList.id) continue;
     const task = tasksById.get(link.googleTaskId);
-    if (!task || task.deleted || task.status !== 'completed') continue;
+    if (!task || task.deleted || (task.status !== 'completed' && task.status !== 'needsAction')) continue;
+    const local = beforeEntries.get(link.scheduleEntryId);
+    const localStatus = local?.completedAt ? 'completed' : 'needsAction';
+    const locallyChanged = link.pendingStatus
+      || (local && link.lastSyncedStatus && localStatus !== link.lastSyncedStatus)
+      || (local?.locallyIncomplete && !link.lastSyncedStatus);
+    if (locallyChanged) continue;
+    if (task.status === 'needsAction') {
+      if (link.lastSyncedStatus === 'completed' && local?.completedAt) {
+        changes.push({ googleTaskListId: taskList.id, googleTaskId: task.id,
+          scheduleEntryId: link.scheduleEntryId, status: 'needsAction' });
+      }
+      continue;
+    }
+    if (link.lastSyncedStatus === 'completed' && local?.completedAt) continue;
     const completedAt = parseGoogleCompletedAt(task.completed);
     if (!completedAt) {
       invalidCompletions += 1;
       continue;
     }
-    completions.push({
+    changes.push({
       googleTaskListId: taskList.id,
       googleTaskId: task.id,
       scheduleEntryId: link.scheduleEntryId,
       completedAt,
+      status: 'completed',
     });
   }
-  // Pull every mapped completion before refreshing schedules or writing to Google.
-  const imported = completions.length ? await repository.importGoogleTaskCompletions(completions, today) : 0;
+  // Pull actual remote state changes in one transaction before writing to Google.
+  const imported = changes.length ? await repository.importGoogleTaskChanges(changes, today) : 0;
   const entries = await repository.listEntriesForGoogleSync(today, state.householdId);
+  const linksById = new Map((await repository.listGoogleTaskLinks(state.householdId)).map((link) => [link.scheduleEntryId, link]));
   const entriesById = new Map(entries.map(({ entry }) => [entry.id, entry]));
   let created = 0;
   let updated = 0;
@@ -106,12 +124,22 @@ export async function reconcileGoogleTasks(options: {
       created += 1;
     }
 
-    const patch: { title?: string; due?: string; status?: 'completed'; completed?: string } = {};
+    if (task.status !== 'completed' && task.status !== 'needsAction') continue;
+    const localStatus = item.completedAt ? 'completed' : 'needsAction';
+    const desiredStatus = link.pendingStatus ?? localStatus;
+    const pushLocalStatus = Boolean(link.pendingStatus || (link.lastSyncedStatus && localStatus !== link.lastSyncedStatus)
+      || (!link.lastSyncedStatus && item.locallyIncomplete));
+    // A completion may have committed just after the entry read. Its queued follow-up has the exact timestamp.
+    if (desiredStatus === 'completed' && !item.completedAt) continue;
+    const patch: GoogleTaskPatch = {};
     if (task.title !== item.choreName) patch.title = item.choreName;
     if (googleDueLocalDate(task.due) !== entry.suggestedDate) patch.due = googleDueDate(entry.suggestedDate);
-    if (item.completedAt && task.status !== 'completed') {
+    if (desiredStatus === 'completed' && task.status !== 'completed') {
       patch.status = 'completed';
       patch.completed = item.completedAt;
+    } else if (desiredStatus === 'needsAction' && task.status === 'completed' && pushLocalStatus) {
+      patch.status = 'needsAction';
+      patch.completed = null;
     }
     if (Object.keys(patch).length > 0) {
       await api.patchTask(accessToken, taskList.id, task.id, patch);
@@ -121,6 +149,11 @@ export async function reconcileGoogleTasks(options: {
       link = { ...link, lastSyncedTitle: item.choreName, lastSyncedDueDate: entry.suggestedDate, updatedAt: now.toISOString() };
       await repository.upsertGoogleTaskLink(link);
       linksById.set(entry.id, link);
+    }
+    const acknowledgedStatus = patch.status ?? task.status;
+    if ((acknowledgedStatus !== 'completed' || item.completedAt)
+      && (link.lastSyncedStatus !== acknowledgedStatus || link.pendingStatus)) {
+      await repository.acknowledgeGoogleTaskStatus(link, acknowledgedStatus);
     }
   }
 

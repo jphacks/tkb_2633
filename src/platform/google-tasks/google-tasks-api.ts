@@ -24,8 +24,8 @@ export interface GoogleTaskDraft {
 export interface GoogleTaskPatch {
   title?: string;
   due?: string;
-  status?: 'completed';
-  completed?: string;
+  status?: 'needsAction' | 'completed';
+  completed?: string | null;
 }
 
 export class GoogleTasksApiError extends Error {

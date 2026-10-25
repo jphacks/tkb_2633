@@ -4,7 +4,8 @@ import { GoogleTasksApiError, createGoogleTasksApi } from '@/platform/google-tas
 import type { GoogleTasksApi } from '@/platform/google-tasks/google-tasks-api';
 import {
   deleteGoogleTaskLink,
-  importGoogleTaskCompletions,
+  importGoogleTaskChanges,
+  acknowledgeGoogleTaskStatus,
   listEntriesForGoogleSync,
   listGoogleTaskLinks,
   loadGoogleSyncState,
@@ -62,11 +63,11 @@ export async function syncGoogleTasks(
       if (method === 'GET') readRequests += 1;
       else writeRequests += 1;
     }),
-    importGoogleTaskCompletions: async (completions, today) => {
-      const imported = await importGoogleTaskCompletions(database, completions, today as LocalDate, now);
+    importGoogleTaskChanges: async (changes, today) => {
+      const imported = await importGoogleTaskChanges(database, changes, today as LocalDate, now);
       if (imported > 0) {
-        notifyGooglePlannerChanges();
-        try {
+        const handled = notifyGooglePlannerChanges();
+        if (!handled) try {
           const { refreshPlannerAfterGoogleImport } = await import('@/platform/google-tasks/refresh-planner-after-google-import');
           await refreshPlannerAfterGoogleImport(database, today as LocalDate);
         } catch { /* Saved planner data remains valid if a native widget/digest is unavailable. */ }
@@ -76,6 +77,7 @@ export async function syncGoogleTasks(
     listEntriesForGoogleSync: (today, id) => listEntriesForGoogleSync(database, today as LocalDate, id),
     listGoogleTaskLinks: (id) => listGoogleTaskLinks(database, id),
     upsertGoogleTaskLink: (link) => upsertGoogleTaskLink(database, link),
+    acknowledgeGoogleTaskStatus: (link, status) => acknowledgeGoogleTaskStatus(database, link, status),
     deleteGoogleTaskLink: (id) => deleteGoogleTaskLink(database, id),
   }, {
     force: options.force ?? false,

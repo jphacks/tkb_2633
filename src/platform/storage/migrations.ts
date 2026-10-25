@@ -1,14 +1,45 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 15;
+const CURRENT_SCHEMA_VERSION = 16;
+
+const runningMigrations = new WeakMap<SQLiteDatabase, Promise<void>>();
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
+  const existing = runningMigrations.get(database);
+  if (existing) return existing;
+  const migration = runMigration(database);
+  runningMigrations.set(database, migration);
+  try { await migration; }
+  finally { if (runningMigrations.get(database) === migration) runningMigrations.delete(database); }
+}
+
+async function runMigration(database: SQLiteDatabase): Promise<void> {
+  // Connection PRAGMAs must be outside the transaction. All schema changes and version writes commit together.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await database.execAsync('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+      await database.withTransactionAsync(() => migrateSchema(database));
+      return;
+    } catch (error) {
+      if (attempt >= 2 || !(error instanceof Error) || !/SQLITE_BUSY|SQLITE_LOCKED|database (?:table )?is locked/iu.test(error.message)) throw error;
+      // Only retry the rolled-back migration, never a partially committed user operation.
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+}
+
+async function addColumnIfMissing(database: SQLiteDatabase, table: string, column: string, declaration: string): Promise<void> {
+  const columns = await database.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!columns.some((item) => item.name === column)) {
+    await database.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`);
+  }
+}
+
+async function migrateSchema(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let version = versionRow?.user_version ?? 0;
   const startingVersion = version;
-
-  await database.execAsync(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`);
 
   if (version < INITIAL_SCHEMA_VERSION) {
     await database.execAsync(`
@@ -87,9 +118,8 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
   }
 
   if (version < 2) {
+    await addColumnIfMissing(database, 'chore_completions', 'schedule_entry_id', 'TEXT');
     await database.execAsync(`
-      ALTER TABLE chore_completions ADD COLUMN schedule_entry_id TEXT;
-
       CREATE TABLE IF NOT EXISTS household_settings (
         household_id TEXT PRIMARY KEY NOT NULL REFERENCES households(id) ON DELETE CASCADE,
         frequency_mode TEXT NOT NULL DEFAULT 'balanced',
@@ -124,18 +154,14 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
   }
 
   if (version < 3) {
-    await database.execAsync(`
-      ALTER TABLE chore_state ADD COLUMN initial_scheduled_date TEXT;
-      PRAGMA user_version = 3;
-    `);
+    await addColumnIfMissing(database, 'chore_state', 'initial_scheduled_date', 'TEXT');
+    await database.execAsync('PRAGMA user_version = 3');
     version = 3;
   }
 
   if (version < 4) {
-    await database.execAsync(`
-      ALTER TABLE chore_completions ADD COLUMN outcome TEXT NOT NULL DEFAULT 'completed';
-      PRAGMA user_version = 4;
-    `);
+    await addColumnIfMissing(database, 'chore_completions', 'outcome', "TEXT NOT NULL DEFAULT 'completed'");
+    await database.execAsync('PRAGMA user_version = 4');
     version = 4;
   }
 
@@ -191,8 +217,8 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     version = 7;
   }
   if (version < 8) {
+    await addColumnIfMissing(database, 'chore_completions', 'scheduled_date', 'TEXT');
     await database.execAsync(`
-      ALTER TABLE chore_completions ADD COLUMN scheduled_date TEXT;
       CREATE INDEX IF NOT EXISTS idx_completions_household_scheduled
         ON chore_completions(household_id, scheduled_date);
       PRAGMA user_version = 8;
@@ -200,18 +226,14 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     version = 8;
   }
   if (version < 9) {
-    await database.execAsync(`
-      ALTER TABLE chore_completions ADD COLUMN scheduled_window_start TEXT;
-      ALTER TABLE chore_completions ADD COLUMN scheduled_window_end TEXT;
-      PRAGMA user_version = 9;
-    `);
+    await addColumnIfMissing(database, 'chore_completions', 'scheduled_window_start', 'TEXT');
+    await addColumnIfMissing(database, 'chore_completions', 'scheduled_window_end', 'TEXT');
+    await database.execAsync('PRAGMA user_version = 9');
     version = 9;
   }
   if (version < 10) {
-    await database.execAsync(`
-      ALTER TABLE chore_completions ADD COLUMN previous_chore_state_json TEXT;
-      PRAGMA user_version = 10;
-    `);
+    await addColumnIfMissing(database, 'chore_completions', 'previous_chore_state_json', 'TEXT');
+    await database.execAsync('PRAGMA user_version = 10');
     version = 10;
   }
   if (version < 11) {
@@ -279,33 +301,39 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     version = 14;
   }
   if (version < 15) {
-    await database.withTransactionAsync(async () => {
-      await database.execAsync(`
-        CREATE TABLE IF NOT EXISTS calendar_availability_state (
-          household_id TEXT PRIMARY KEY NOT NULL REFERENCES households(id) ON DELETE CASCADE,
-          enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
-          status TEXT NOT NULL DEFAULT 'idle',
-          retry_count INTEGER NOT NULL DEFAULT 0,
-          last_attempt_at TEXT,
-          last_successful_sync_at TEXT,
-          next_retry_at TEXT,
-          last_error_code TEXT,
-          updated_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS calendar_availability_days (
-          household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
-          local_date TEXT NOT NULL,
-          busy_minutes INTEGER NOT NULL CHECK(busy_minutes >= 0),
-          time_zone TEXT NOT NULL,
-          fetched_at TEXT NOT NULL,
-          PRIMARY KEY(household_id, local_date)
-        );
-        CREATE INDEX IF NOT EXISTS idx_calendar_availability_freshness
-          ON calendar_availability_days(household_id, time_zone, fetched_at);
-        PRAGMA user_version = 15;
-      `);
-    });
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS calendar_availability_state (
+        household_id TEXT PRIMARY KEY NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+        status TEXT NOT NULL DEFAULT 'idle',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at TEXT,
+        last_successful_sync_at TEXT,
+        next_retry_at TEXT,
+        last_error_code TEXT,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS calendar_availability_days (
+        household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        local_date TEXT NOT NULL,
+        busy_minutes INTEGER NOT NULL CHECK(busy_minutes >= 0),
+        time_zone TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(household_id, local_date)
+      );
+      CREATE INDEX IF NOT EXISTS idx_calendar_availability_freshness
+        ON calendar_availability_days(household_id, time_zone, fetched_at);
+      PRAGMA user_version = 15;
+    `);
     version = 15;
+  }
+  if (version < 16) {
+    await addColumnIfMissing(database, 'google_task_links', 'last_synced_status', 'TEXT');
+    await addColumnIfMissing(database, 'google_task_links', 'pending_status', 'TEXT');
+    await addColumnIfMissing(database, 'google_task_links', 'pending_status_revision', 'TEXT');
+    await addColumnIfMissing(database, 'household_settings', 'planner_calendar_signature', 'TEXT');
+    await database.execAsync('PRAGMA user_version = 16');
+    version = 16;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

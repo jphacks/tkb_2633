@@ -33,7 +33,7 @@ test('180 tasks use all pages and import the final first-party hidden completion
     assert.equal((await h.sync()).imported, 0);
     assert.equal(h.history().length, 1);
     assert.equal(h.state().last_completed_estimated, 0);
-    assert.equal(h.connection.prepare('PRAGMA user_version').get().user_version, 15);
+    assert.equal(h.connection.prepare('PRAGMA user_version').get().user_version, 16);
   } finally { h.connection.close(); }
 });
 
@@ -95,7 +95,7 @@ test('missing or invalid completed timestamps are skipped while valid completion
   } finally { h.connection.close(); }
 });
 
-test('a locally completed occurrence is not duplicated or relabeled by the pull or by remote undo', async () => {
+test('remote undo reopens a locally completed occurrence without duplicating its history', async () => {
   const h = await createIntegration();
   try {
     assert.equal(await repository.completeChore(h.database, h.entries[0], undefined, 'widget'), true);
@@ -107,9 +107,9 @@ test('a locally completed occurrence is not duplicated or relabeled by the pull 
     await h.sync();
     assert.equal(h.history().length, 1);
     assert.equal(h.history()[0].id, original.id);
-    assert.equal(h.history()[0].source, 'widget');
+    assert.equal(h.history()[0].source, 'googleTasks');
     assert.equal(h.history()[0].completed_at, original.completed_at);
-    assert.equal(h.history()[0].outcome, 'completed');
+    assert.equal(h.history()[0].outcome, 'incomplete');
   } finally { h.connection.close(); }
 });
 
@@ -123,6 +123,9 @@ test('remote undo and remote deletion preserve imported history and the chore de
     Object.assign(task, { status: 'needsAction', completed: undefined });
     await h.sync();
     assert.equal(h.history().length, 1);
+    assert.equal(h.history()[0].outcome, 'incomplete');
+    Object.assign(task, { status: 'completed', completed: now.toISOString() });
+    assert.equal((await h.sync()).imported, 1);
     assert.equal(h.history()[0].outcome, 'completed');
     task.deleted = true;
     h.calls.length = 0;

@@ -1,32 +1,222 @@
 # 家事お知らせアプリ
 
-> **家事の「何を・いつ頃・どうやって」を、できるだけ自分で管理しなくてよくするアプリ。**
+> **家事を記録するだけではなく、家事を「いつ・何を・どうやるか考える負担」まで減らす。**
 
-生活スタイル、休日、家事の負荷、天気などを考慮して家事の予定を自動で組み立てます。
+周期・家事の負荷・休日・天気・Google Calendarの忙しさをもとに、家事を行う日を自動で調整する家事Plannerです。
 
-さらに、掃除機などの家電については、メーカー名・製品名・型番から**メーカー公式情報と公式説明書を確認し、AIでお手入れ方法を構造化**します。
+Google Tasksとも連携し、Plannerが決めた予定を普段使うGoogle側で確認・完了できます。Google側で完了した結果はPlannerへ戻り、実際の完了日を基準に次回予定を再計算します。
 
-通常の家事管理は端末内で完結し、インターネット接続がなくても利用できます。
+掃除機などの家電については、メーカー名・製品名・型番から**メーカー公式情報と公式説明書だけを確認し、AIでお手入れ方法を構造化**します。
+
+通常の家事管理・Scheduler・履歴はExpo SQLite上で動作し、外部APIが利用できない場合でも基本的な家事管理を継続できます。
 
 ---
 
-## 解決したい課題
+<!--
+============================================================
+画像置き場 0: デモ動画
+============================================================
 
-家事には、単に「やる・やらない」だけではなく、
+ファイル:
+docs/readme/00-demo-thumbnail.png
+
+内容:
+・ホーム画面を中心にした見栄えのいい画像
+・可能ならGoogle Calendar / Tasks連携が分かる要素も入れる
+・YouTube等へ動画をアップロードした後、下のURLを書き換える
+
+推奨動画:
+30〜90秒
+
+動画内容:
+1. Calendar上の忙しい日を用意
+2. Plannerが重い家事を別日へ移動
+3. 同じGoogle Taskのdueが更新
+4. Google側で完了
+5. Plannerへ完了反映
+6. 次回予定が再計算
+
+撮影後、このコメント内の次の2行をコメント外へ移動:
+
+## 🎬 デモ動画
+
+[![デモ動画](docs/readme/00-demo-thumbnail.png)](ここを動画URLへ変更)
+
+============================================================
+-->
+
+<!--
+============================================================
+画像置き場 1: アプリ全体
+============================================================
+
+ファイル:
+docs/readme/01-home.png
+
+撮影する画面:
+ホーム画面
+
+入っていてほしい要素:
+・今日または近日中の家事
+・実施期間
+・完了操作
+・家事が複数日に分散していることが分かる状態
+
+注意:
+・テスト用の自然な家事データにする
+・デバッグ表示は入れない
+・個人情報は映さない
+
+撮影後、下の行をコメント外へ移動:
+
+![ホーム画面](docs/readme/01-home.png)
+
+============================================================
+-->
+
+<!--
+============================================================
+画像置き場 2: Calendar
+============================================================
+
+ファイル:
+docs/readme/02-calendar.png
+
+撮影する画面:
+Plannerの月間カレンダー
+
+入っていてほしい要素:
+・複数日に家事が配置されている
+・実施可能期間が視覚的に分かる
+・可能ならCalendar連携で移動した家事が確認できる
+
+撮影後、下の行をコメント外へ移動:
+
+![家事カレンダー](docs/readme/02-calendar.png)
+
+============================================================
+-->
+
+<!--
+============================================================
+画像置き場 3: Google連携
+============================================================
+
+ファイル:
+docs/readme/03-google-sync.png
+
+最もおすすめ:
+1枚の画像内で左右または上下に並べる
+
+左:
+・Planner側のGoogle連携設定
+または
+・Planner上の家事予定
+
+右:
+・Google Calendar / Google Tasks上の同じ家事
+
+見せたいこと:
+・Plannerの予定がGoogleへ出ている
+・同じTaskを使い続けている
+・Calendarを利用して日付を調整できる
+
+重要:
+実際の個人予定名は映さず、
+デモ用予定だけで撮影すること。
+
+撮影後、下の行をコメント外へ移動:
+
+![Google Calendar・Tasks連携](docs/readme/03-google-sync.png)
+
+============================================================
+-->
+
+<!--
+============================================================
+画像置き場 4: 家電AI
+============================================================
+
+ファイル:
+docs/readme/04-appliance-ai.png
+
+撮影する画面:
+家電の解析結果画面
+
+入っていてほしい要素:
+・製品名 / 型番
+・お手入れ項目
+・手順
+・注意事項
+・メーカー公式出典
+・可能なら「定期予定なし」の項目
+
+AIチャット画面ではなく、
+「公式情報を構造化した製品機能」であることが分かる画面が最適。
+
+撮影後、下の行をコメント外へ移動:
+
+![家電公式説明書AI](docs/readme/04-appliance-ai.png)
+
+============================================================
+-->
+
+## 製品概要
+
+### 解決したい課題
+
+家事には、単に「やる / やらない」だけではなく、
 
 - 何をやればいいのか分からない
-- どのくらいの頻度でやればいいのか分からない
-- 今日やるべきなのか、数日ずらしてもいいのか分からない
+- どのくらいの頻度で行えばいいのか分からない
+- 今日やるべきか、数日ずらしていいのか判断が必要
 - 休日にまとめたい
-- 家事が同じ日に集中すると負担が大きい
+- 重い家事が同じ日に集中すると負担が大きい
 - 洗濯は天気によって予定を変えたい
-- 家電のお手入れ方法や周期を説明書から探すのが面倒
+- 忙しい日は重い家事を避けたい
+- 家電のお手入れ方法を説明書から探すのが面倒
+- 家事を完了した後、次にいつやるか再び考える必要がある
 
 といった問題があります。
 
-一般的なToDoアプリでは、ユーザー自身が予定を考え、期限を設定し、管理し続ける必要があります。
+一般的なToDoアプリでは、ユーザー自身が
 
-このアプリでは、**家事そのものだけでなく「家事を管理する負担」も減らすこと**を目指しています。
+```text
+何をする？
+↓
+いつする？
+↓
+期限は？
+↓
+終わった？
+↓
+次はいつ？
+```
+
+を継続して管理する必要があります。
+
+このアプリでは、**家事そのものではなく「家事を管理するための判断」まで減らすこと**を目指しています。
+
+---
+
+## このアプリが考えること
+
+```text
+何を？
+→ 家事カタログ / 家電AI
+
+いつ？
+→ Scheduler / 休日 / 負荷 / 天気 / Google Calendar
+
+どうやって？
+→ 家事ガイド / メーカー公式説明書AI
+
+終わった？
+→ App / Widget / Google Tasks
+
+次は？
+→ 実際の完了日からSchedulerが再計算
+```
 
 ---
 
@@ -42,28 +232,135 @@
 - 休日優先
 - 前回の実施日
 - 家事同士の依存関係
+- 日付をどこまで移動してよいか
 
 を持ち、共通のSchedulerが予定を生成します。
 
 例えば、
 
 - 重い家事が1日に集中しない
-- 休日に向いている家事を休日付近へ配置する
+- 休日向きの家事を休日付近へ配置する
 - 前回いつ行ったか分からない家事を初回から分散する
 - 期限を過ぎた家事も消さず、現在の負荷に合わせて再提案する
 - 実際に完了した日を次回周期の基準にする
+- 家事同士の順序関係を守る
 
 といった処理を自動で行います。
 
-予定日は固定された「締切」ではなく、**ある程度動かせる実施期間**として扱います。
+予定日は単純な「締切」ではなく、**ある程度動かせる実施可能期間**として扱います。
 
 ---
 
-## 2. 天気に合わせて洗濯予定を調整
+## 2. Google Calendarの忙しさを見て家事日を調整
+
+例えば、
+
+> **「明日は予定が多いから、重い掃除を今日へずらす」**
+
+という判断をPlannerが行います。
+
+Google Calendar連携を有効にすると、Calendarの忙しさを日ごとの時間量へ変換し、Schedulerの候補選択へ反映します。
+
+ただし、予定がある日を禁止するわけではありません。
+
+Calendarはあくまで**soft penalty**として扱い、
+
+- 家事の実施期間
+- 最大移動日数
+- 休日設定
+- 1日の家事負荷
+- 家事同士の依存関係
+- 期限超過
+
+などの既存ルールを維持します。
+
+また、重い家事ほど忙しい日を避けやすく、軽い家事は多少予定があっても近い日を維持しやすくしています。
+
+### Calendarの予定内容は読みません
+
+Calendar連携で取得するのは、
+
+```text
+「何時から何時まで予定が入っているか」
+```
+
+だけです。
+
+取得しないもの：
+
+- 予定タイトル
+- 説明
+- 場所
+- 参加者
+- 主催者
+- Event本文
+
+Google Calendar Events一覧ではなく、**FreeBusy APIだけを使用**しています。
+
+取得したbusy intervalもそのまま保存せず、
+
+```text
+日付
+busyMinutes
+timezone
+取得時刻
+```
+
+だけを日単位で保存します。
+
+---
+
+## 3. Google Tasksとの双方向連携
+
+Plannerが生成した家事予定を、専用のGoogle Tasksリストへ同期します。
+
+```text
+Planner
+↓
+家事予定を生成
+↓
+Google Tasksへ反映
+↓
+Google Calendar上でも確認可能
+```
+
+Planner側で予定日が変わった場合も、Google Taskを削除・再作成せず、
+
+```text
+同じGoogle Task ID
++
+dueだけ更新
+```
+
+します。
+
+Google側で家事を完了した場合は、
+
+```text
+Google Taskを完了
+↓
+Plannerへ完了を取り込む
+↓
+完了履歴へ保存
+↓
+ChoreState更新
+↓
+Scheduler再計算
+↓
+次回予定生成
+```
+
+までつながります。
+
+同じ完了を何度同期しても、完了履歴を重複生成しません。
+
+---
+
+## 4. 天気に合わせて洗濯予定を調整
 
 ユーザーが設定した市区町村を使ってOpen-Meteoから天気予報を取得し、今後7日以内の洗濯予定を調整します。
 
-外干し可能な候補日は、
+候補日は、
 
 - 降水確率
 - 降水量
@@ -72,7 +369,7 @@
 - 1日の家事負荷
 - 家事の依存関係
 
-を確認したうえで選択します。
+を確認して決定します。
 
 天気APIが利用できない場合でも、通常のSchedulerによる予定はそのまま利用できます。
 
@@ -80,11 +377,9 @@
 
 ---
 
-## 3. 型番からメーカー公式説明書をAI解析
+## 5. 型番からメーカー公式説明書をAI解析
 
-家電のお手入れは、一般的なAI知識だけで回答させません。
-
-次の流れで処理します。
+家電のお手入れでは、一般的なAI知識だけを使って回答させません。
 
 ```text
 メーカー名・製品名・型番
@@ -95,32 +390,39 @@
         ↓
 公式PDF / 公式資料をAIで解析
         ↓
-お手入れ項目・手順・注意事項・周期・出典を構造化
+お手入れ項目
+手順
+注意事項
+周期
+出典
+を構造化
         ↓
 ユーザーが内容を確認
         ↓
-アプリへ保存
+保存
         ↓
 周期がある項目だけSchedulerへ登録
 ```
 
-製品同定と説明書検索では、メーカー公式ドメインだけを採用します。
+製品同定と説明書検索では、メーカー公式情報を優先します。
 
-AIには、メーカー資料に書かれていない周期を推測させません。
+### AIに存在しない周期を作らせない
 
-例えば説明書に、
+メーカー資料に、
 
 ```text
-「定期的に確認する」
+定期的に確認する
 ```
 
-としか書かれていない場合、
+とだけ書かれている場合、
 
 ```text
 30日に1回
 ```
 
-のような数値周期を勝手に生成せず、
+のような数値周期をAIに推測させません。
+
+この場合は、
 
 ```text
 定期予定なし
@@ -128,15 +430,146 @@ AIには、メーカー資料に書かれていない周期を推測させませ
 
 として保存します。
 
-公式資料のURLやページ情報も保持し、ユーザーが元資料を確認できます。
+公式資料のURLやページ情報も保持し、ユーザーが元資料を確認できる設計です。
+
+---
+
+# メインデモ
+
+このアプリの中心は、各機能を別々に使うことではなく、**家事管理の判断を一周して自動化すること**です。
+
+```text
+① 家事を登録
+   ↓
+② Schedulerが周期・負荷・休日から予定を生成
+   ↓
+③ 洗濯なら天気を考慮
+   ↓
+④ Google Calendarの忙しさを考慮
+   ↓
+⑤ Google Tasksへ同期
+   ↓
+⑥ Google側またはアプリ側で完了
+   ↓
+⑦ Plannerへ完了履歴を保存
+   ↓
+⑧ 実際の完了日を基準に次回予定を自動計算
+```
+
+家電については別の導線で、
+
+```text
+型番を入力
+↓
+公式製品を特定
+↓
+公式説明書を解析
+↓
+「どう手入れするか」を構造化
+↓
+周期があるものだけSchedulerへ追加
+```
+
+します。
+
+---
+
+# 実GoogleアカウントでのE2E検証
+
+Google連携はmockだけでなく、**実Googleアカウントを利用したE2E検証**も行いました。
+
+Phase 3検証では、例えば次のケースを確認しています。
+
+```text
+2026-11-24
+busyMinutes = 270分
+
+2026-11-23
+busyMinutes = 90分
+
+↓
+heavy家事の候補日を比較
+
+2026-11-24
+↓
+2026-11-23へ移動
+
+↓
+同じGoogle Task IDを維持
+dueだけ更新
+
+↓
+Google側でTaskを完了
+
+↓
+Plannerへ完了を1件だけ取り込み
+
+↓
+次回予定を再計算
+
+↓
+アプリ再起動
+
+↓
+完了履歴・次回予定を保持
+```
+
+Google Calendarで予定変更を検知するだけではなく、
+
+**Calendar → Scheduler → Tasks → Completion → Scheduler**
+
+まで一連の流れを確認しています。
+
+詳細：
+
+- [`docs/google-sync-phase1-report.md`](./docs/google-sync-phase1-report.md)
+- [`docs/google-sync-phase2-report.md`](./docs/google-sync-phase2-report.md)
+- [`docs/google-sync-phase3-report.md`](./docs/google-sync-phase3-report.md)
+
+---
+
+# 品質保証
+
+予定・完了・同期は、少しの不整合でも
+
+- 同じ家事が二重に出る
+- 完了が消える
+- 次回予定がずれる
+- GoogleとPlannerが無限に上書きし合う
+
+といった問題が起きやすい部分です。
+
+そのため、自動テストで状態遷移を固定しています。
+
+Phase 3完成時点：
+
+| 検証 | 結果 |
+|---|---:|
+| 全自動テスト | **202 / 202 PASS** |
+| Google関連テスト | **105 / 105 PASS** |
+| Phase 3関連テスト | **56 / 56 PASS** |
+| lint | PASS |
+| TypeScript typecheck | PASS |
+| `npm run check` | PASS |
+| Expo Doctor | PASS |
+| `git diff --check` | PASS |
+| 実Google E2E | PASS |
+
+GitHub ActionsでもCIを実行しています。
 
 ---
 
 # 家電AIの実API検証
 
-AI機能については、単に「それっぽい回答が出るか」ではなく、実際の公式説明書に対する人力の正解データと比較しました。
+家電AIについても、
 
-対象：
+> 「AIがそれっぽい回答をした」
+
+だけでは評価していません。
+
+メーカー公式説明書から人力で正解データを作成し、実際のアプリと同じAPI経路で比較しました。
+
+検証対象：
 
 ```text
 Dyson V12 Detect Slim
@@ -144,7 +577,7 @@ Dyson V12 Detect Slim
 公式日本語取扱説明書
 ```
 
-GPT-5.5を使用し、実際のアプリと同じAPI経路で3回E2E検証しています。
+GPT-5.5を使った3回のE2E検証：
 
 | 指標 | 結果 |
 |---|---:|
@@ -157,566 +590,543 @@ GPT-5.5を使用し、実際のアプリと同じAPI経路で3回E2E検証して
 | 主要手順 | 38 / 38 × 3 |
 | 安全情報 | 33 / 33 × 3 |
 | 出典 | 10 / 10 × 3 |
-| 根拠のない生成 | 0 |
+| 根拠のない生成 | **0** |
 
-数値周期がメーカー資料に存在したのはフィルター洗浄の「約1か月」のみで、他のお手入れ項目には根拠のない周期を生成しませんでした。
+数値周期がメーカー資料に存在したのは、フィルター洗浄の「約1か月」のみでした。
 
-より低コストなモデルも比較しましたが、手順や安全情報の欠落が確認されたため、現在は精度を優先してGPT-5.5を採用しています。
-
----
-
-# デモで確認できる流れ
-
-```text
-1. 初回設定
-   ↓
-2. 生活スタイル・休日・管理する家事を設定
-   ↓
-3. Schedulerが家事予定を自動生成
-   ↓
-4. ホーム / カレンダーで予定を確認
-   ↓
-5. 家事を完了
-   ↓
-6. 実際の完了日から次回予定を再計算
-```
-
-洗濯では、
-
-```text
-地域設定
-↓
-天気予報取得
-↓
-条件を満たす日に洗濯予定を調整
-```
-
-家電では、
-
-```text
-メーカー・製品名・型番入力
-↓
-製品確認
-↓
-公式説明書解析
-↓
-お手入れ方法を確認
-↓
-家電へ保存
-↓
-周期あり項目だけ予定へ追加
-```
-
-という流れを確認できます。
+その他の項目については、根拠のない数値周期を生成しませんでした。
 
 ---
 
-# 実装状況
+# Hack Dayで開発した部分
 
-## 実装済み
+このRepositoryはJPHACKS公式テンプレートから開始しました。
 
-- 初回セットアップ
-- 家事頻度モード
-- 休日設定
-- 管理する家事のON / OFF
-- 前回実施時期の入力
-- 共通Scheduler
-- 家事負荷の分散
-- 休日優先
+Hack Day開始前の基準commit：
+
+```text
+ecf5ec752e9dfd0b938c219662d7dbf3d6d1b603
+```
+
+Hack Dayでは主に以下を実装しました。
+
+- 家事Planner UI
+- SQLiteデータモデル
+- 家事Scheduler
 - 実施期間
-- 未完了家事の再提案
-- 完了日起点の次周期計算
+- 家事負荷分散
+- 休日優先
+- 依存関係
+- 期限超過家事の再提案
+- 完了履歴
 - 月間カレンダー
-- 家事説明
-- 家事検索
-- 家事別設定
-- 完了・未完了履歴
-- ゴミ収集曜日
-- 洗濯の干し方設定
-- Open-Meteoによる天気連動
-- SQLiteによるローカル保存
-- iOS / Android向けウィジェット
-- 家電親データ
-- 家電AI API
-- メーカー公式製品確認
-- 公式説明書検索
-- OpenAI Responses APIによる説明書解析
-- AI結果のユーザー確認
-- 周期あり / 周期なし項目の分離
-- 家電詳細
-- 家電再解析
-- GitHub ActionsによるCI
+- 家事ガイド
+- ゴミ収集日
+- 通知
+- iOS / Android Widget
+- Open-Meteo天気連動
+- 家電公式説明書AI
+- Google Tasks同期
+- Google側完了のPlanner取込
+- Google Calendar FreeBusy連携
+- Calendar busyを使ったScheduler調整
+- 自動テスト / CI
+
+Google Calendar Phase 3完成commit：
+
+```text
+f35b6753e98138e24e92adb85c7a1a04f2f19ca4
+```
+
+特に、Hack Day開始前commitから現在の`main`までの差分が、本イベントでの主な開発範囲です。
 
 ---
 
-## 部分実装
+# 独自技術・特に注力した部分
 
-### 通知
+## Scheduler
 
-初回設定と設定画面に通知ON / OFFを実装しています。
+全家事を同じ固定期限ルールで扱うのではなく、
 
-OSの通知許可は、ユーザーが通知を有効にした場合だけ要求します。
+```text
+周期
++
+実施可能期間
++
+負荷
++
+休日
++
+依存関係
++
+期限超過
++
+外部条件
+```
 
-毎朝9時に、その日に家事の実施期間へ入る家事・期間最終日の家事・期間終了翌日の家事をまとめて通知します。未完了の家事だけが対象です。期間終了翌日を過ぎた家事には通知しません。
+を組み合わせて日単位で予定を生成します。
 
-ホーム画面ウィジェットには今日の実施期間内の家事と、期間終了翌日の家事を最大3件表示します。ウィジェットの丸を押すと完了を記録し、完了した項目はその日の表示にチェック付きで残ります。
-
-### ゴミ収集日の例外
-
-通常の曜日ルールは利用できます。
-
-祝日や自治体ごとの臨時変更などの例外ルールは未実装です。
+- [`src/domain/scheduling/engine.ts`](./src/domain/scheduling/engine.ts)
+- [`src/domain/scheduling/contracts.ts`](./src/domain/scheduling/contracts.ts)
+- [`src/domain/scheduling/calendar-penalty.ts`](./src/domain/scheduling/calendar-penalty.ts)
 
 ---
 
-## MVP対象外
+## Google Calendar FreeBusy → Scheduler
 
-- アカウント
-- 家族間同期
-- 複数端末同期
-- クラウド上の家事データ保存
+予定本文を取得せず、busy時間だけを取得してSchedulerへsoft penaltyとして渡します。
 
-通常の家事データは端末内SQLiteに保存します。
+- [`src/platform/google-tasks/google-calendar-freebusy-client.ts`](./src/platform/google-tasks/google-calendar-freebusy-client.ts)
+- [`src/features/google-sync/calendar-availability.ts`](./src/features/google-sync/calendar-availability.ts)
+- [`src/features/google-sync/calendar-coordinator.ts`](./src/features/google-sync/calendar-coordinator.ts)
 
 ---
 
-# 画面構成
+## Google Tasks双方向同期
 
-主な画面は4つのタブで構成されています。
+Plannerの予定とGoogle Tasksを安定IDで対応付け、日付変更時もTaskを作り直しません。
 
-### ホーム
+Google側の完了はPlannerの通常の完了処理へ統合し、別Schedulerを作らない設計にしています。
 
-今日・近いうちに行う家事、ゴミ収集日、完了操作などを表示します。
+- [`src/features/google-sync/coordinator.ts`](./src/features/google-sync/coordinator.ts)
+- [`src/features/google-sync/reconcile-google-tasks.ts`](./src/features/google-sync/reconcile-google-tasks.ts)
+- [`src/platform/google-tasks/google-tasks-api.ts`](./src/platform/google-tasks/google-tasks-api.ts)
 
-### カレンダー
+---
 
-月間予定と、複数日にまたがる家事の実施可能期間を確認できます。
+## 天気連動
 
-### 家事の説明
+天気をSchedulerそのものへ密結合せず、通常予定を生成した後の最適化境界として実装しています。
 
-選択した家事について、
+天気取得に失敗した場合は通常Schedulerへfallbackします。
 
-- 手順
-- 必要な道具
-- 注意事項
-- 履歴
+- [`src/features/weather/laundry-policy.ts`](./src/features/weather/laundry-policy.ts)
+- [`src/features/weather/optimize-laundry-schedule.ts`](./src/features/weather/optimize-laundry-schedule.ts)
+- [`src/features/weather/open-meteo-provider.ts`](./src/features/weather/open-meteo-provider.ts)
 
-を確認できます。
+---
 
-### 家電の説明
+## メーカー公式説明書AI
 
-登録した家電ごとの、
+製品同定、公式説明書特定、AI解析を分離しています。
 
-- お手入れ項目
-- メーカー指定周期
-- 定期予定なし項目
-- 手順
-- 注意事項
-- 公式出典
-- 再解析
-
-を確認できます。
+- [`server/appliance-care-api/src/product-resolver.mjs`](./server/appliance-care-api/src/product-resolver.mjs)
+- [`server/appliance-care-api/src/manual-resolver.mjs`](./server/appliance-care-api/src/manual-resolver.mjs)
+- [`server/appliance-care-api/src/manual-analyzer.mjs`](./server/appliance-care-api/src/manual-analyzer.mjs)
+- [`server/appliance-care-api/src/official-domains.mjs`](./server/appliance-care-api/src/official-domains.mjs)
 
 ---
 
 # アーキテクチャ
 
-通常の家事機能を、外部サービスなしでも動作できるようにしています。
+通常の家事管理は端末内で完結します。
 
-```text
-┌─────────────────────┐
-│     React Native UI  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   Domain / Scheduler │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│    Expo SQLite       │
-└─────────────────────┘
+外部サービスは補助機能として接続し、外部APIの障害によって基本Schedulerまで停止しない構成です。
+
+```mermaid
+flowchart TD
+    UI["React Native / Expo UI"]
+
+    Scheduler["Domain Scheduler"]
+    SQLite["Expo SQLite"]
+
+    Weather["Open-Meteo"]
+    Calendar["Google Calendar FreeBusy"]
+    Tasks["Google Tasks"]
+
+    Appliance["Appliance Care API"]
+    Official["メーカー公式製品情報 / 公式説明書"]
+    OpenAI["OpenAI Responses API"]
+
+    UI --> Scheduler
+    Scheduler <--> SQLite
+
+    Weather --> Scheduler
+    Calendar --> Scheduler
+
+    Scheduler --> Tasks
+    Tasks --> Scheduler
+
+    UI --> Appliance
+    Official --> Appliance
+    Appliance --> OpenAI
+    Appliance --> UI
 ```
 
-外部機能は別レイヤーとして接続します。
+より詳細な構成：
 
-```text
-                 ┌───────────────┐
-                 │   Open-Meteo  │
-                 └───────▲───────┘
-                         │
-UI → Domain → Feature Ports
-                         │
-                 ┌───────▼───────┐
-                 │ Appliance API │
-                 │    OpenAI     │
-                 └───────────────┘
-```
-
-外部APIが失敗しても、基本的な家事Schedulerと保存機能は動作します。
+- [`docs/architecture.md`](./docs/architecture.md)
 
 ---
 
-# 家電AIの構成
+# Google連携とデータの正本
+
+Planner本体の家事データは**端末内SQLiteが正本**です。
+
+Google Tasksを、
 
 ```text
-App
- │
- ▼
-Appliance Care API
- │
- ├─ Product Resolver
- │    └─ メーカー公式情報だけから型番確認
- │
- ├─ Manual Resolver
- │    └─ 対象製品の公式説明書を特定
- │
- └─ Manual Analyzer
-      └─ OpenAI Responses API
-          ├─ PDF input
-          ├─ Structured Outputs
-          └─ Evidence validation
+クラウド上の家事DB
 ```
 
-解析結果はそのまま自動登録せず、
+として利用しているわけではありません。
 
-```text
-AI解析
-↓
-draft
-↓
-ユーザー確認
-↓
-保存
-```
+Google Tasksは、
 
-の流れを取ります。
+- Plannerが決めた予定を普段のGoogle環境で確認する
+- Google側から家事完了を入力する
 
----
+ための外部インターフェースとして扱います。
 
-# 保存方針
+そのため、
 
-通常データはExpo SQLiteへ保存します。
+- アカウントベースのPlanner DB同期
+- 家族間データ共有
+- 複数端末間のPlanner DB同期
 
-主な保存対象：
-
-- 家事
-- 家事設定
-- 予定
-- 完了・未完了履歴
-- ゴミ曜日
-- 地域設定
-- 天気関連情報
-- 家電
-- 家電のお手入れ項目
-- メーカー周期
-- ユーザー周期
-- 公式資料URL
-- AI解析情報
-
-予定を再生成しても、履歴は別テーブルに保持します。
+は別機能です。
 
 ---
 
-# プライバシーと外部通信
+# プライバシー設計
 
-## 通常の家事管理
+外部サービスへ必要以上の情報を送らないようにしています。
 
-端末内だけで動作します。
+### 天気
 
-アカウントは不要です。
+端末GPSは利用しません。
 
-## 天気
+ユーザーが入力・選択した市区町村を利用します。
 
-ユーザーが選択した市区町村名と地点情報をOpen-Meteoへ送信します。
+### Google Calendar
 
-端末の位置情報APIは使用しません。
+取得するのはFreeBusyのみです。
 
-## 家電AI
+取得しないもの：
 
-ユーザーが明示的に家電検索を実行した場合だけAPIサーバーへ接続します。
+- Event title
+- description
+- location
+- attendees
+- organizer
 
-OpenAI APIキーはモバイルアプリへ埋め込まず、APIサーバー側だけで保持します。
+### 家電AI
+
+家電解析ではメーカー公式情報を優先し、出典を保持します。
+
+### Planner
+
+通常の家事データは端末内SQLiteへ保存します。
 
 ---
 
-# 技術スタック
+# 実装済み機能
 
-## App
+### Planner
 
-- Expo SDK 58
-- React Native
-- React
+- 初回セットアップ
+- 家事頻度モード
+- 家事ごとの周期設定
+- 休日設定
+- 家事ON / OFF
+- 前回実施時期
+- 家事負荷
+- 実施可能期間
+- 最大移動日数
+- 家事依存関係
+- 期限超過再提案
+- 完了 / 未完了履歴
+- 月間カレンダー
+- 家事検索
+- 家事説明
+
+### 外部条件
+
+- Open-Meteo天気連動
+- Google Calendar FreeBusy連動
+- Google Tasks連携
+- Google Tasks完了取込
+
+### 補助機能
+
+- 毎朝の家事通知
+- iOS Widget
+- Android Widget
+- Widgetからの完了
+- ゴミ収集曜日
+
+### 家電
+
+- 家電登録
+- メーカー / 製品 / 型番確認
+- 公式製品情報確認
+- 公式説明書検索
+- OpenAI Responses API解析
+- お手入れ項目
+- 手順
+- 注意事項
+- 周期
+- 公式出典
+- AI結果のユーザー確認
+- 再解析
+- 周期あり項目のScheduler登録
+
+---
+
+# 現在の未検証・制限
+
+実装済みと実機検証済みを混同しないため、未確認部分も明記します。
+
+### Android Google連携
+
+Google Calendar Phase 3追加後のAndroid native再ビルドと、Android実アカウントでのGoogle E2Eは未実施です。
+
+自動テストではGoogle関連を含めて検証しています。
+
+### BackgroundTask
+
+OSによる物理端末上のBackgroundTask実行は未検証です。
+
+foreground復帰・アプリ起動・手動同期でも再確認を行います。
+
+### ゴミ収集日の例外
+
+通常の曜日ルールには対応しています。
+
+祝日・自治体固有の臨時変更などは未実装です。
+
+### Plannerクラウド同期
+
+MVPでは、
+
+- Plannerアカウント
+- 家族間同期
+- 複数端末同期
+- Planner DBのクラウド保存
+
+は対象外です。
+
+---
+
+# 技術構成
+
+## Mobile
+
 - TypeScript
+- React 19
+- React Native 0.88
+- Expo SDK 58
 - Expo Router
-
-## Storage
-
 - Expo SQLite
-
-## Native
-
 - Expo Notifications
+- Expo Background Task
 - Expo Widgets
-- iOS SwiftUI Widget
-- Android Jetpack Compose Widget
 
-## Web
+## Google
 
-ブラウザ版は `npm run web` で起動できます。データはブラウザ内のSQLiteに保存され、iOS・Androidの端末データとは自動同期されません。
+- Google Sign-In native SDK
+- Google Tasks API
+- Google Calendar FreeBusy API
+- `react-native-nitro-google-signin`
 
-ブラウザ版では端末通知とホーム画面ウィジェットを表示・実行しません。家電AIの検索・解析APIへも接続せず、入力した製品情報は送信されません。AI向けの指示文はサーバーの解析ソースに残しています。登録済み家電の閲覧や、その他のローカル家事管理は利用できます。
+## Weather
 
-## External API
+- Open-Meteo Forecast API
+- Open-Meteo Geocoding API
 
-- Open-Meteo
+## AI
+
 - OpenAI Responses API
+- Structured Outputs
+- PDF input
+- 公式Web / 公式説明書の解析
 
-## Development
+## Quality
 
-- Node.js
+- Node Test Runner
+- ESLint
+- TypeScript
+- Expo Doctor
 - GitHub Actions
 
 ---
 
-# ローカルで起動する
+# 起動方法
 
-## 必要環境
+## まず基本機能を確認する
 
-- Node.js 22.13以上
-- npm
-- iOSの場合
-  - macOS
-  - Xcode
-  - iOS Simulator
-- Androidの場合
-  - Android Studio
-  - Android SDK
-  - Android Emulator
-
----
-
-## セットアップ
-
-```sh
-npm ci
+```bash
+npm install
+npm run web
 ```
 
-iOS：
+またはdevelopment buildを利用します。
 
-```sh
+```bash
 npm run ios
 ```
 
-Android：
-
-```sh
+```bash
 npm run android
 ```
 
-SQLiteやウィジェットなどのNative機能を利用するため、Expo GoではなくDevelopment Buildを使用します。
+外部APIを設定していなくても、通常のScheduler・家事管理・履歴などの基本機能は動作します。
 
 ---
 
-## 2回目以降
+## 家電AIを利用する
 
-```sh
-npm start
-```
+環境変数の例は以下を参照してください。
 
-起動後、
-
-```text
-i
-```
-
-でiOS、
-
-```text
-a
-```
-
-でAndroidを起動できます。
-
----
-
-# ローカルチェック
-
-```sh
-npm test
-npm run lint
-npm run typecheck
-npm run check
-```
-
-`npm run check`では、lint、TypeScript型チェック、主要な単体テストを確認します。
-
-GitHub Actionsでもmainへのpush時などにCIを実行します。
-
----
-
-# 家電AI APIを起動する
-
-OpenAI APIキーはアプリ側へ保存しません。
-
-`.env.server`を作成します。
-
-```sh
-cp .env.server.example .env.server
-```
-
-その後、
-
-```text
-OPENAI_API_KEY
-```
-
-をサーバー側の環境変数として設定します。
+- [`.env.example`](./.env.example)
+- [`.env.server.example`](./.env.server.example)
 
 APIサーバー：
 
-```sh
+```bash
 npm run api:dev
 ```
 
-デフォルト：
+OpenAI API keyをクライアントアプリへ直接埋め込まない構成です。
 
-```text
-http://localhost:8787
+---
+
+## Google Tasks / Calendar連携を利用する
+
+Google Cloud側の設定とdevelopment buildが必要です。
+
+詳細：
+
+- [`docs/google-sync-setup.md`](./docs/google-sync-setup.md)
+
+Calendar連携ではGoogle Tasks scopeとは別に、ユーザーが機能をONにした時だけFreeBusy用の追加権限を要求します。
+
+---
+
+# テスト
+
+全テスト：
+
+```bash
+npm test
 ```
 
-health check：
+lint：
 
-```text
-http://localhost:8787/health
+```bash
+npm run lint
+```
+
+typecheck：
+
+```bash
+npm run typecheck
+```
+
+まとめて確認：
+
+```bash
+npm run check
+```
+
+Expo Doctor：
+
+```bash
+npm run doctor
 ```
 
 ---
 
-## Simulator / Emulator
-
-iOS Simulator：
+# Repository構成
 
 ```text
-http://localhost:8787
+src/
+├── app/                 # 画面 / Expo Router
+├── components/          # UI部品
+├── domain/
+│   ├── chores/          # 家事定義
+│   └── scheduling/      # Scheduler
+├── features/
+│   ├── appliance-care/  # 家電AIクライアント
+│   ├── google-sync/     # Google Tasks / Calendar連携
+│   ├── notifications/   # 通知
+│   ├── weather/         # 天気
+│   ├── waste/           # ゴミ収集日
+│   └── widgets/         # Widget
+└── platform/
+    ├── google-tasks/     # Google API adapters
+    ├── notifications/
+    ├── storage/          # SQLite
+    └── widgets/
+
+server/
+└── appliance-care-api/
+    └── src/
+        ├── product-resolver.mjs
+        ├── manual-resolver.mjs
+        └── manual-analyzer.mjs
+
+tests/
+└── *.test.mjs
+
+docs/
+├── architecture.md
+├── google-sync-phase1-report.md
+├── google-sync-phase2-report.md
+├── google-sync-phase3-report.md
+└── google-sync-setup.md
 ```
-
-Android Emulator：
-
-```text
-http://10.0.2.2:8787
-```
-
-実機の場合は、開発Macと同じネットワークからアクセス可能なURLを指定します。
-
-例：
-
-```sh
-EXPO_PUBLIC_APPLIANCE_CARE_API_URL=http://<開発MacのIP>:8787
-```
-
-公開環境ではHTTPSを使用し、OpenAI APIキーはホスティング環境側のsecret / environment variableとして管理してください。
 
 ---
 
-# 家電AIを試す
+# 今後の展望
 
-テスト対象として、
+今後は、
 
-```text
-メーカー:
-Dyson
+- 実利用者による継続利用テスト
+- Schedulerの調整
+- 家事・家電データの拡充
+- Android実機でのGoogle連携検証
+- BackgroundTask実機検証
+- Plannerの複数端末同期
+- 家族単位での共有
+- ゴミ収集日の自治体別例外対応
 
-製品:
-V12 Detect Slim
+などを検討しています。
 
-型番:
-SV20
-```
-
-を利用できます。
-
-アプリから検索すると、
+特に、家電AIについては同じ製品・同じ公式説明書を何度も解析せず、
 
 ```text
-製品を確認しています
+製品型番
 ↓
-公式説明書を解析しています
+公式説明書
+↓
+検証済み解析結果
 ```
 
-の順で処理します。
-
-解析にはインターネット接続とOpenAI APIが必要です。
+を再利用できる仕組みへ発展させることで、解析コストを抑えながら対応製品を増やせます。
 
 ---
 
-# Native Projectについて
+# このアプリが目指すもの
 
-生成される、
+家事を行うこと自体は自動化できなくても、
 
 ```text
-ios/
-android/
+何をやる？
+いつやる？
+どうやる？
+前回いつやった？
+今日やるべき？
+忙しいからずらす？
+天気は大丈夫？
+次はいつ？
 ```
 
-はGit管理対象外です。
+を毎回人間が考える必要はありません。
 
-Native設定は可能な限り、
+このアプリでは、
 
-```text
-app.json
-ソースコード
-```
+> **家事をする人ではなく、家事を管理する人の負担を減らす**
 
-側で管理します。
-
-Native依存や設定を変更した場合：
-
-```sh
-npx expo prebuild --clean
-npm run ios
-```
-
-または、
-
-```sh
-npx expo prebuild --clean
-npm run android
-```
-
-を実行してください。
-
----
-
-# 現在の制約
-
-- ゴミ収集日の祝日・臨時変更には未対応
-- 家族間同期には未対応
-- 家電AIにはインターネット接続が必要
-- 家電AI APIの公開利用にはHTTPSでのサーバー配置が必要
-- 初期家事一覧の周期は調整用の初期値であり、メーカーや研究に基づく正式推奨値ではない
-
----
-
-# 今後の改善候補
-
-- ゴミ収集日の例外対応
-- 家電AI解析結果のキャッシュ
-- AI処理のモデル別コスト最適化
-- PDF解析コストの削減
-- 家電対応範囲の拡大
-- UI / UXの最終調整
-- デモ・実機E2Eの安定化
-
----
-
-# 設計資料
-
-詳細なアーキテクチャについては、
-
-```text
-docs/architecture.md
-```
-
-を参照してください。
+ことを目指しています。

@@ -481,7 +481,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <FeatureStatus
             title="Google Tasks"
             status={googleConnected ? '接続済み' : googleSyncState?.enabled ? '再認証が必要' : googleOAuthConfigured ? '未接続' : 'OAuth設定待ち'}
-            detail="家事Plannerの名前と予定日をGoogle Tasksへ反映し、完了状態は双方へ同期します。Googleで完了を取り消しても、アプリの完了履歴は残ります。"
+            detail="家事Plannerの名前と予定日をGoogle Tasksへ反映し、完了・完了の取り消しを双方へ同期します。取り消した家事は未完了に戻り、次回予定も再計算します。"
           />
           {!googleOAuthConfigured ? (
             <Text style={styles.hint}>OAuth client IDが未設定です。docs/google-sync-setup.mdの手順後、ネイティブ開発ビルドを作り直してください。</Text>
@@ -491,7 +491,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
               <View style={styles.notificationRow}>
                 <View style={styles.limitCopy}>
                   <Text style={styles.featureTitle}>自動同期</Text>
-                  <Text style={styles.hint}>{googleSyncState?.enabled ? '1日1回、失敗時は約1時間ごとに再試行します。' : '自動同期は一時停止中です。'}</Text>
+                  <Text style={styles.hint}>{googleSyncState?.enabled ? '通常は1日経過後、失敗時は約1時間経過後に再試行できます。アプリ復帰時やOSが許可したバックグラウンド実行で確認します。' : '自動同期は一時停止中です。'}</Text>
                 </View>
                 <Switch value={Boolean(googleSyncState?.enabled)} disabled={googleBusy} onValueChange={(value) => void toggleGoogleSync(value)} />
               </View>

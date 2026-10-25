@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
+import { applianceCarePollDelay, waitForAppliancePoll } from './polling';
 
 import type {
   ApplianceCareAnalysisStage,
@@ -8,7 +9,6 @@ import type {
 } from '@/features/appliance-care/api-contracts';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const POLL_INTERVAL_MS = 600;
 
 export function applianceCareApiBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_APPLIANCE_CARE_API_URL?.trim();
@@ -27,6 +27,7 @@ export async function analyzeApplianceCareRequest(
     productName: request.productName.trim(),
     modelNumber: request.modelNumber.trim(),
     ...(request.category?.trim() ? { category: request.category.trim() } : {}),
+    ...(request.forceReanalysis ? { forceReanalysis: true } : {}),
   };
   if ([normalized.manufacturer, normalized.productName, normalized.modelNumber]
     .some((value) => value.length === 0 || value.length > 120)) {
@@ -53,6 +54,7 @@ export async function analyzeApplianceCareRequest(
     }
 
     let lastStage: ApplianceCareAnalysisStage | undefined;
+    let pollAttempt = 0;
     while (!controller.signal.aborted) {
       const statusResponse = await fetch(`${baseUrl}/api/appliance-care/jobs/${encodeURIComponent(startPayload.jobId)}`, {
         method: 'GET',
@@ -64,6 +66,7 @@ export async function analyzeApplianceCareRequest(
         return temporaryError('解析状況を確認できません。通信状態を確認して再試行してください。');
       }
       if (statusPayload.stage !== lastStage) {
+        pollAttempt = 0;
         lastStage = statusPayload.stage;
         onStage?.(lastStage);
       }
@@ -72,7 +75,7 @@ export async function analyzeApplianceCareRequest(
           ? statusPayload.result
           : temporaryError('解析結果を読み取れませんでした。もう一度検索してください。');
       }
-      await delay(POLL_INTERVAL_MS);
+      await waitForAppliancePoll(applianceCarePollDelay(pollAttempt++, statusPayload.pollAfterMs), controller.signal);
     }
     return temporaryError('解析がタイムアウトしました。時間をおいて再試行してください。');
   } catch {
@@ -151,12 +154,9 @@ function isJobStatus(value: unknown): value is {
   stage: ApplianceCareAnalysisStage;
   done: boolean;
   result?: unknown;
+  pollAfterMs?: unknown;
 } {
   if (!value || typeof value !== 'object' || !('stage' in value) || !('done' in value)) return false;
   return (value.stage === 'product_verification' || value.stage === 'official_manual_analysis')
     && typeof value.done === 'boolean';
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

@@ -5,6 +5,7 @@ export interface ApplianceCareApiRequest {
   productName: string;
   modelNumber: string;
   category?: string;
+  forceReanalysis?: boolean;
 }
 
 export interface ProductCandidate {

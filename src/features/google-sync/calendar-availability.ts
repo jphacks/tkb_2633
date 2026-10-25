@@ -2,6 +2,15 @@ import type { LocalDate } from '@/domain/shared/types';
 import type { ExternalAvailabilityByDate } from '@/domain/scheduling/contracts';
 import { addDays } from '@/domain/scheduling/local-date';
 import { parseGoogleCompletedAt } from './google-completion-policy';
+import { busyMinutesToBucket } from '@/domain/scheduling/calendar-penalty';
+
+/** Only changes that alter the Scheduler penalty require a new plan; freshness metadata is excluded. */
+export function calendarAvailabilitySignature(availability: ExternalAvailabilityByDate | undefined): string {
+  return JSON.stringify(Object.entries(availability ?? {})
+    .map(([date, day]) => [date, busyMinutesToBucket(day?.busyMinutes)] as const)
+    .filter(([, bucket]) => bucket > 0)
+    .sort(([left], [right]) => left.localeCompare(right)));
+}
 
 export const GOOGLE_CALENDAR_FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.freebusy';
 export const CALENDAR_AVAILABILITY_MAX_AGE_MS = 36 * 60 * 60 * 1000;

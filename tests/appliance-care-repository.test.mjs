@@ -27,6 +27,7 @@ registerHooks({
 });
 
 const repository = await import('../src/platform/storage/repository.ts');
+const { createPlannerRefreshController } = await import('../src/features/planner/refresh-controller.ts');
 
 function createDatabase() {
   const connection = new DatabaseSync(':memory:');
@@ -90,6 +91,34 @@ function product(productName, modelNumber) {
     manualUrl: `https://www.dyson.co.jp/support/journey/${modelNumber}`,
   };
 }
+
+test('saving appliance care refreshes the shared snapshot; reading its detail preserves the cache', async () => {
+  const { connection, database } = createDatabase();
+  try {
+    await repository.initializeLocalDatabase(database);
+    const controller = createPlannerRefreshController({
+      load: async () => ({
+        snapshot: repository.readCachedPlannerSnapshot(database) ?? await repository.loadPlannerSnapshot(database),
+        canPublishWidget: true,
+      }),
+      weather: async () => null,
+      publish: () => {},
+    });
+    await controller.refresh();
+    const before = controller.getSnapshot().snapshot;
+    const careTask = task('フィルター清掃', 30, 'https://www.dyson.co.jp/support/journey/SV20#filter', '清掃手順');
+    const saved = await repository.saveReviewedApplianceCare(database, product('V12 Detect Slim', 'SV20'),
+      analysis('SV20', [careTask], new Date().toISOString()), [{ task: careTask }]);
+    assert.equal(repository.readCachedPlannerSnapshot(database), null);
+    await controller.refresh();
+    const after = controller.getSnapshot().snapshot;
+    assert.notEqual(after, before);
+    assert.equal(after.appliances.some((item) => item.id === saved.applianceId), true);
+    assert.equal(after.chores.some((item) => item.applianceId === saved.applianceId), true);
+    await repository.loadApplianceCareReviewContext(database, saved.applianceId);
+    assert.equal(repository.readCachedPlannerSnapshot(database), after);
+  } finally { connection.close(); }
+});
 
 test('repository saves and retrieves appliance snapshots, separates no-cycle tasks, distinguishes same-category appliances, and preserves overrides and history on reanalysis', async () => {
   const { connection, database } = createDatabase();

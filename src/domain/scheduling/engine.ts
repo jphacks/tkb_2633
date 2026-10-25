@@ -66,7 +66,9 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
     const lastCompleted = stateDate ?? completionDate;
     const assignment = [...(assignmentByChore.get(chore.id) ?? [])];
     const cycleDays = effectiveCycleDays(chore, input.settings.frequencyMode);
-    const radius = Math.max(0, chore.windowRadiusDays ?? (cycleDays < 30 ? 1 : 2));
+    const radius = chore.load === 'light'
+      ? 0
+      : Math.max(0, chore.windowRadiusDays ?? (cycleDays < 30 ? 1 : 2));
     const maxShift = Math.max(0, chore.maxShiftDays ?? (cycleDays < 30 ? 4 : 7));
     const choreEntries: ChoreScheduleEntry[] = [];
     const recordSimulatedCompletion = (date: LocalDate) => {
@@ -260,11 +262,15 @@ function appendRecurringEntries(options: {
 
     const entryId = `${options.chore.id}:${baseDate}`;
     const previous = options.previousEntriesById.get(entryId);
-    const windowStart = previous?.windowStart ?? addDays(baseDate, -options.radius);
-    const windowEnd = previous?.windowEnd ?? addDays(baseDate, options.radius);
     const suggestedDate = previous && previous.suggestedDate >= previous.windowStart && previous.suggestedDate <= previous.windowEnd
       ? previous.suggestedDate
       : baseDate;
+    const windowStart = options.chore.load === 'light'
+      ? suggestedDate
+      : previous?.windowStart ?? addDays(baseDate, -options.radius);
+    const windowEnd = options.chore.load === 'light'
+      ? suggestedDate
+      : previous?.windowEnd ?? addDays(baseDate, options.radius);
 
     if (options.input.today > addDays(windowEnd, OVERDUE_GRACE_DAYS)) {
       overdueCycles += 1;

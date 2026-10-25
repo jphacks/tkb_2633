@@ -13,7 +13,7 @@ const cyclesByLoad: Record<ChoreLoad, ChoreDefinition['frequencyDaysByMode']> = 
 function chore(seed: ChoreSeed): CatalogEntry {
   return {
     frequencyDaysByMode: cyclesByLoad[seed.load],
-    windowRadiusDays: seed.load === 'heavy' ? 2 : 1,
+    windowRadiusDays: seed.load === 'heavy' ? 2 : seed.load === 'light' ? 0 : 1,
     maxShiftDays: seed.load === 'heavy' ? 7 : 4,
     holidayPriority: seed.load === 'heavy',
     everyday: false,

@@ -91,7 +91,7 @@ export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
       const chore = choresById.get(current.choreId);
       if (!chore || isSuitableLaundryDay(forecastByDate.get(current.suggestedDate))) continue;
 
-      const radius = Math.max(0, Math.trunc(chore.windowRadiusDays));
+      const radius = chore.load === 'light' ? 0 : Math.max(0, Math.trunc(chore.windowRadiusDays));
       const maxShift = Math.max(0, Math.trunc(chore.maxShiftDays));
       const originalDate = current.suggestedDate;
 

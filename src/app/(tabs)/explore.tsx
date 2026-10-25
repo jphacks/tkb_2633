@@ -8,6 +8,7 @@ import { PlannerLoadState } from '@/components/planner-load-state';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
+import type { ChoreLoad } from '@/domain/chores/types';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
@@ -33,12 +34,17 @@ export default function CalendarScreen() {
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
   const entriesOnDate = (date: LocalDate) => calendarEntriesOnDate(snapshot.scheduleEntries, date);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
+  const recommendedCountsByDate = new Map<LocalDate, number>();
+  for (const entry of snapshot.scheduleEntries) {
+    recommendedCountsByDate.set(entry.suggestedDate, (recommendedCountsByDate.get(entry.suggestedDate) ?? 0) + 1);
+  }
   const completedOnSelectedDate = snapshot.completions.filter((completion) => completionIncludesDate(completion, selectedDate));
   const isEntryCompleted = (entry: (typeof snapshot.scheduleEntries)[number]) =>
     snapshot.completions.some((completion) => completionMatchesEntry(completion, entry));
   const selectedEntries = entriesOnDate(selectedDate).sort((left, right) =>
-    Number(isEntryCompleted(left)) - Number(isEntryCompleted(right))
-    || left.suggestedDate.localeCompare(right.suggestedDate),
+    Number(left.suggestedDate !== selectedDate) - Number(right.suggestedDate !== selectedDate)
+    || choreLoadPriority(choresById.get(left.choreId)?.load) - choreLoadPriority(choresById.get(right.choreId)?.load)
+    || Number(isEntryCompleted(left)) - Number(isEntryCompleted(right)),
   );
   const completedOnlyCompletions = completedOnSelectedDate
     .filter((completion) => !selectedEntries.some((entry) => completionMatchesEntry(completion, entry)))
@@ -133,7 +139,7 @@ export default function CalendarScreen() {
         </View>
         <View style={styles.grid}>
           {cells.map((date) => {
-            const dayEntries = entriesOnDate(date);
+            const recommendedCount = recommendedCountsByDate.get(date) ?? 0;
             const selected = date === selectedDate;
             const isToday = date === today;
             const inMonth = date.slice(0, 7) === `${month.year}-${String(month.monthIndex + 1).padStart(2, '0')}`;
@@ -142,7 +148,7 @@ export default function CalendarScreen() {
               <Pressable
                 key={date}
                 accessibilityRole="button"
-                accessibilityLabel={`${formatJapaneseDate(date)}、家事${dayEntries.length}件`}
+                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の家事${recommendedCount}件`}
                 accessibilityState={{ selected }}
                 onPress={(event) => {
                   event.stopPropagation();
@@ -154,7 +160,7 @@ export default function CalendarScreen() {
                 }}
                 style={[styles.dayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay]}>
                 <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber, selected && styles.selectedDayNumber]}>{Number(date.slice(-2))}</Text>
-                <CalendarTaskCountIndicator count={dayEntries.length} colors={snapshot.settings.calendarCountColors} mode={snapshot.settings.calendarCountDisplayMode} selected={selected} />
+                <CalendarTaskCountIndicator count={recommendedCount} colors={snapshot.settings.calendarCountColors} mode={snapshot.settings.calendarCountDisplayMode} selected={selected} />
               </Pressable>
             );
           })}
@@ -208,6 +214,7 @@ export default function CalendarScreen() {
             key={entry.id}
             chore={chore}
             completed={isEntryCompleted(entry)}
+            deemphasized={entry.suggestedDate !== selectedDate}
             onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
             onToggle={!completingIds.has(entry.id) ? () => void toggleEntry(entry.id) : undefined}
           />
@@ -227,13 +234,16 @@ export default function CalendarScreen() {
       {snapshot.scheduleEntries.some((entry) => entry.status === 'overdue') ? (
         <>
           <SectionHeading title="期間を過ぎた家事" />
-          {snapshot.scheduleEntries.filter((entry) => entry.status === 'overdue').slice(0, 3).map((entry) => {
+          {snapshot.scheduleEntries.filter((entry) => entry.status === 'overdue')
+            .sort((left, right) => choreLoadPriority(choresById.get(left.choreId)?.load) - choreLoadPriority(choresById.get(right.choreId)?.load))
+            .slice(0, 3).map((entry) => {
             const chore = choresById.get(entry.choreId);
             if (!chore) return null;
             return (
               <TaskCheckboxRow
                 key={`overdue-${entry.id}`}
                 chore={chore}
+                deemphasized
                 onToggle={!completingIds.has(entry.id) ? () => void toggleEntry(entry.id) : undefined}
                 onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
               />
@@ -244,6 +254,10 @@ export default function CalendarScreen() {
       <AppButton title="家事一覧へ" onPress={() => router.push('/chores')} variant="secondary" />
     </Page>
   );
+}
+
+function choreLoadPriority(load: ChoreLoad | undefined): number {
+  return load === 'heavy' ? 0 : load === 'normal' ? 1 : load === 'light' ? 2 : 3;
 }
 
 const styles = StyleSheet.create({

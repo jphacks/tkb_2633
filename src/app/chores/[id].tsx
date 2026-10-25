@@ -59,7 +59,8 @@ function ChoreSettingsContent({
 
   const save = async () => {
     const cycleDays = cycleText.trim() ? Number(cycleText) : undefined;
-    const windowRadiusDays = Number(radiusText);
+    const requestedWindowRadiusDays = Number(radiusText);
+    const windowRadiusDays = load === 'light' ? 0 : requestedWindowRadiusDays;
     if (cycleDays !== undefined && (!Number.isInteger(cycleDays) || cycleDays < 1 || cycleDays > 3650)) {
       setMessage('周期は1〜3650日の整数で入力してください。');
       return;
@@ -68,7 +69,7 @@ function ChoreSettingsContent({
       setMessage('メーカー指定の周期がありません。家事を有効にする前に周期を入力してください。');
       return;
     }
-    if (!Number.isInteger(windowRadiusDays) || windowRadiusDays < 0 || windowRadiusDays > 7) {
+    if (load !== 'light' && (!Number.isInteger(requestedWindowRadiusDays) || requestedWindowRadiusDays < 0 || requestedWindowRadiusDays > 7)) {
       setMessage('期間幅は±0〜±7日の整数で入力してください。');
       return;
     }
@@ -152,12 +153,18 @@ function ChoreSettingsContent({
 
         <SectionHeading title="実施スケジュール" />
         <View style={styles.fieldRow}>
-          <View style={styles.settingCopy}><Text style={styles.settingTitle}>実施期間の幅</Text><Text style={styles.body}>基準日から前後に何日広げるか</Text></View>
-          <View style={styles.numberField}><Text style={styles.unit}>±</Text><TextInput value={radiusText} onChangeText={setRadiusText} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="実施期間の日数幅" /><Text style={styles.unit}>日</Text></View>
+          <View style={styles.settingCopy}><Text style={styles.settingTitle}>実施期間の幅</Text><Text style={styles.body}>{load === 'light' ? '軽い家事は推奨日のみです。' : '基準日から前後に何日広げるか'}</Text></View>
+          {load === 'light'
+            ? <Text style={styles.fixedPeriod}>推奨日のみ</Text>
+            : <View style={styles.numberField}><Text style={styles.unit}>±</Text><TextInput value={radiusText} onChangeText={setRadiusText} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="実施期間の日数幅" /><Text style={styles.unit}>日</Text></View>}
         </View>
         <View style={styles.settingBlock}>
           <Text style={styles.settingTitle}>負荷</Text>
-          <View style={styles.chipRow}>{loadOptions.map((option) => <ChoiceChip key={option.id} label={option.label} selected={load === option.id} onPress={() => setLoad(option.id)} />)}</View>
+          <View style={styles.chipRow}>{loadOptions.map((option) => <ChoiceChip key={option.id} label={option.label} selected={load === option.id} onPress={() => {
+            if (option.id === 'light') setRadiusText('0');
+            else if (load === 'light') setRadiusText('1');
+            setLoad(option.id);
+          }} />)}</View>
         </View>
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>休日を優先</Text><Text style={styles.body}>実施期間に設定した休日を含めます。</Text></View>
@@ -198,6 +205,7 @@ const styles = StyleSheet.create({
   numberField: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border, borderRadius: 11, paddingHorizontal: 8, backgroundColor: palette.background },
   numberInput: { width: 44, paddingVertical: 7, textAlign: 'center', color: palette.ink, fontSize: 15, fontWeight: '700' },
   unit: { color: palette.muted, fontSize: 12 },
+  fixedPeriod: { color: palette.accent, fontSize: 13, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 8 },
   settingBlock: { gap: 8, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   error: { color: palette.warning, fontSize: 13 },

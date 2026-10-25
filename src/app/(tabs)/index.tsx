@@ -7,7 +7,7 @@ import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
-import type { ChoreScheduleEntry } from '@/domain/chores/types';
+import type { ChoreLoad, ChoreScheduleEntry } from '@/domain/chores/types';
 import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
 import { addDays, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
@@ -34,6 +34,7 @@ export default function HomeScreen() {
     const groups = new Map<LocalDate, UpcomingTaskRow[]>();
     const entries = snapshot?.scheduleEntries ?? [];
     const completions = snapshot?.completions ?? [];
+    const choresById = new Map((snapshot?.chores ?? []).map((chore) => [chore.id, chore]));
     const addRow = (date: LocalDate, row: UpcomingTaskRow) => {
       const group = groups.get(date) ?? [];
       group.push(row);
@@ -52,7 +53,7 @@ export default function HomeScreen() {
           id: `${entry.id}:${date}`,
           choreId: entry.choreId,
           completed,
-          deemphasized: !completed && date < entry.suggestedDate,
+          deemphasized: date !== entry.suggestedDate,
           entry,
         });
       }
@@ -69,8 +70,9 @@ export default function HomeScreen() {
       }
     }
     for (const group of groups.values()) {
-      group.sort((left, right) => Number(left.completed) - Number(right.completed)
-        || Number(left.deemphasized) - Number(right.deemphasized));
+      group.sort((left, right) => Number(left.deemphasized) - Number(right.deemphasized)
+        || choreLoadPriority(choresById.get(left.choreId)?.load) - choreLoadPriority(choresById.get(right.choreId)?.load)
+        || Number(left.completed) - Number(right.completed));
     }
     return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
   }, [periodEnd, periodStart, snapshot, today]);
@@ -90,12 +92,13 @@ export default function HomeScreen() {
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const dueToday = snapshot.scheduleEntries
-    .filter((entry) => entry.status === 'overdue' || (entry.windowStart <= today && today <= entry.windowEnd))
-    .sort((left, right) => Number(today < left.suggestedDate) - Number(today < right.suggestedDate)
-      || urgency(left.status) - urgency(right.status));
+    .filter((entry) => entry.status === 'overdue' || (entry.windowStart <= today && today <= entry.windowEnd));
   const completedEntriesToday = dueToday.filter((entry) => snapshot.completions.some((completion) => completionMatchesEntry(completion, entry)));
   const completedEntryIdsToday = new Set(completedEntriesToday.map((entry) => entry.id));
-  const pendingToday = dueToday.filter((entry) => !completedEntryIdsToday.has(entry.id));
+  const orderedDueToday = [...dueToday].sort((left, right) => Number(left.suggestedDate !== today) - Number(right.suggestedDate !== today)
+    || choreLoadPriority(choresById.get(left.choreId)?.load) - choreLoadPriority(choresById.get(right.choreId)?.load)
+    || urgency(left.status) - urgency(right.status)
+    || Number(completedEntryIdsToday.has(left.id)) - Number(completedEntryIdsToday.has(right.id)));
   const completedTodayOnly = snapshot.completions.filter((completion) => completion.outcome === 'completed'
     && (completionIncludesDate(completion, today) || localDateFromISODateTime(completion.completedAt) === today)
     && !dueToday.some((entry) => completionMatchesEntry(completion, entry)));
@@ -220,34 +223,25 @@ export default function HomeScreen() {
       {wasteMessage ? <Text style={styles.noticeBody}>{wasteMessage}</Text> : null}
 
       <SectionHeading title="今日の家事" trailing={<Text style={styles.smallCount}>{todayTotal}件・{todayDone}件完了</Text>} />
-      {pendingToday.map((entry) => {
+      {orderedDueToday.map((entry) => {
         const chore = choresById.get(entry.choreId);
         if (!chore) return null;
-        return (
-          <Animated.View key={entry.id} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
-            <TaskCheckboxRow
-              chore={chore}
-              deemphasized={today < entry.suggestedDate}
-              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-              onToggle={completingIds.has(entry.id) ? undefined : () => void finish(entry.id)}
-            />
-          </Animated.View>
-        );
-      })}
-      {completedEntriesToday.map((entry) => {
-        const chore = choresById.get(entry.choreId);
-        if (!chore) return null;
-        const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
+        const completed = completedEntryIdsToday.has(entry.id);
+        const completion = completed ? snapshot.completions.find((item) => completionMatchesEntry(item, entry)) : undefined;
         return (
           <Animated.View
-            key={`completed-${entry.id}`}
-            entering={animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
+            key={completed ? `completed-${entry.id}` : entry.id}
+            entering={completed && animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
+            exiting={SlideOutRight.duration(280)}
             layout={LinearTransition.duration(240)}>
             <TaskCheckboxRow
               chore={chore}
-              completed
+              completed={completed}
+              deemphasized={today !== entry.suggestedDate}
               onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-              onToggle={completion && !completingIds.has(completion.id) ? () => void undo(completion.id) : undefined}
+              onToggle={completed
+                ? completion && !completingIds.has(completion.id) ? () => void undo(completion.id) : undefined
+                : !completingIds.has(entry.id) ? () => void finish(entry.id) : undefined}
             />
           </Animated.View>
         );
@@ -325,6 +319,10 @@ export default function HomeScreen() {
       </Page>
     </>
   );
+}
+
+function choreLoadPriority(load: ChoreLoad | undefined): number {
+  return load === 'heavy' ? 0 : load === 'normal' ? 1 : load === 'light' ? 2 : 3;
 }
 
 function urgency(status: string): number {

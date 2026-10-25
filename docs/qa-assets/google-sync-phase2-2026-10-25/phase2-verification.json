@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-25",
+  "timezone": "Asia/Tokyo",
+  "startSha": "e2bb58a04a4432a533d0c7c39e5f7f4d68873ade",
+  "originMainSha": "e14e085288adab85a3df591d6c587c80f5f6e2d0",
+  "phase1StartCommit": "1feb38084837c166347b7cdbfc01785daba5dfc5",
+  "phase1CloseoutCommit": "b105675d501a9d8ed5dcfb6915731b1f5f670e44",
+  "implementationSha": "8123046ac4c9ea13d43b79dc00a0c6b17ad6899e",
+  "branch": "codex/google-tasks-sync-phase2",
+  "checks": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "tests": 145,
+      "passed": 145,
+      "failed": 0
+    },
+    {
+      "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/google-*.test.mjs tests/storage-migrations.test.mjs",
+      "exitCode": 0,
+      "tests": 48,
+      "passed": 48,
+      "failed": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run check",
+      "exitCode": 0,
+      "tests": 145,
+      "passed": 145,
+      "failed": 0
+    },
+    {
+      "command": "npm run doctor",
+      "exitCode": 0,
+      "checks": 20,
+      "passed": 20
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "finalHeadReceipt": "Final completion response gives the exact document commit SHA; commands are rerun on that HEAD.",
+  "live": {
+    "platform": "iOS Simulator development build; real Google account",
+    "operation": "User operated Google Calendar and Planner; database inspected read-only",
+    "baseline": {
+      "historyCount": 2,
+      "googleHistoryCount": 0,
+      "targetDate": "2026-10-28",
+      "taskFingerprint": "4f4e4bc85d6e666f6af9b39e97d565f60cbc9eda43638a9119eb3311f65edd1a"
+    },
+    "target": {
+      "date": "2026-10-28",
+      "source": "googleTasks",
+      "completedAt": "2026-10-25T04:31:24.272Z",
+      "scheduledDate": "2026-10-28",
+      "scheduledWindowStart": "2026-10-28",
+      "scheduledWindowEnd": "2026-10-28",
+      "outcome": "completed",
+      "historyCount": 1,
+      "googleTaskIdSha256": "4f4e4bc85d6e666f6af9b39e97d565f60cbc9eda43638a9119eb3311f65edd1a"
+    },
+    "otherImportedOccurrenceDate": "2026-10-30",
+    "afterImport": {
+      "historyCount": 4,
+      "googleHistoryCount": 2,
+      "targetHistoryCount": 1,
+      "lastCompletedDate": "2026-10-25",
+      "lastCompletedEstimated": false,
+      "initialPending": false,
+      "nextPendingDate": "2026-10-29",
+      "schema": 14,
+      "status": "idle",
+      "retryCount": 0,
+      "lastErrorCode": null
+    },
+    "repeatSync": "PASS_USER_OPERATED_AND_ZERO_IMPORT_RUNTIME_LOG",
+    "restartPersistence": "PASS_USER_OPERATED_AND_READ_ONLY_DATABASE",
+    "remoteUncomplete": "PASS_USER_OPERATED_AND_READ_ONLY_DATABASE",
+    "historyAfterRepeatRestartAndRemoteUncomplete": {
+      "all": 4,
+      "google": 2,
+      "target": 1
+    },
+    "unchangedTaskId": "PASS_SHA256_MATCH_BEFORE_AND_AFTER",
+    "runtimeMetrics": [
+      {
+        "durationMs": 9857,
+        "hiddenCompletionsRead": 2,
+        "imported": 2,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "durationMs": 1119,
+        "hiddenCompletionsRead": 2,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "durationMs": 2784,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 1
+      },
+      {
+        "durationMs": 1659,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 1
+      }
+    ]
+  },
+  "notExecuted": {
+    "physicalDeviceBackground": "NOT_EXECUTED_NO_PHYSICAL_DEVICE",
+    "liveDuePatch": "NOT_EXECUTED_NO_DIRECT_EDITOR",
+    "liveTitlePatch": "NOT_EXECUTED_NO_DIRECT_EDITOR",
+    "androidRealAccount": "NOT_EXECUTED"
+  },
+  "credentials": {
+    "literalPatternFindings": 0,
+    "privateEnvTracked": false,
+    "localEnvIgnored": true,
+    "localEnvMode": "0600",
+    "runtimeLogs": "allowlisted metrics only; no token or Authorization header values"
+  },
+  "pushExecuted": false,
+  "mainModified": false
+}

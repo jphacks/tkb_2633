@@ -1,0 +1,189 @@
+[
+  {
+    "feature": "waste-recurrence",
+    "tests": [
+      {
+        "file": "tests/restored-waste-features.test.mjs",
+        "name": "restored waste capability: weekly, biweekly and monthly calculation"
+      },
+      {
+        "file": "tests/storage-migrations.test.mjs",
+        "name": "former waste v13 schema retains biweekly/monthly data"
+      }
+    ]
+  },
+  {
+    "feature": "waste-onboarding",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "feature screen contract: onboarding can register weekly, biweekly and monthly waste then reach home"
+      },
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "feature screen contract: waste onboarding can be skipped"
+      }
+    ]
+  },
+  {
+    "feature": "waste-search-and-settings",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "feature screen contract: waste settings keep live kana suggestions, recurrence controls and collapsed upcoming list"
+      },
+      {
+        "file": "tests/waste-search-and-storage.test.mjs",
+        "name": "waste creation, edit, one-time hiding, restore and deletion"
+      }
+    ]
+  },
+  {
+    "feature": "calendar-waste-labels",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "feature screen contract: calendar renders weekly labels in headers and monthly labels on dates without resetting selected date"
+      },
+      {
+        "file": "tests/restored-waste-features.test.mjs",
+        "name": "weekday headers, date labels, month-end and hidden exceptions stay distinct"
+      }
+    ]
+  },
+  {
+    "feature": "unknown-disabled-chore-activation",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "individual settings enable unknown chores and home completion/undo/disable stay consistent"
+      },
+      {
+        "file": "tests/chore-activation.test.mjs",
+        "name": "all 20 built-in chores can be enabled and have their cycle edited"
+      },
+      {
+        "file": "tests/chore-activation.test.mjs",
+        "name": "complete, disable, re-enable, edit, and undo keep history and exactly one active card"
+      }
+    ]
+  },
+  {
+    "feature": "appliance-auto-save-and-japanese-categories",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "verified appliance analysis auto-saves maker intervals and Japanese category ids"
+      },
+      {
+        "file": "tests/appliance-care-persistence.test.mjs",
+        "name": "reanalysis replaces manufacturer evidence while retaining exact-task user settings"
+      }
+    ]
+  },
+  {
+    "feature": "web-ai-disabled",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "feature screen contract: Web never sends appliance input to AI"
+      }
+    ]
+  },
+  {
+    "feature": "overdue-expiry-and-single-card",
+    "tests": [
+      {
+        "file": "tests/scheduling.test.mjs",
+        "name": "overdue execution windows remain visible through day three and then auto-advance"
+      },
+      {
+        "file": "tests/planner-repository.test.mjs",
+        "name": "daily completion, repeated taps, undo, and refresh retain one visible card"
+      }
+    ]
+  },
+  {
+    "feature": "google-bidirectional-undo",
+    "tests": [
+      {
+        "file": "tests/google-task-undo.test.mjs",
+        "name": "app complete → Google complete → app undo → Google open uses the same mapped task"
+      },
+      {
+        "file": "tests/google-task-undo.test.mjs",
+        "name": "Google complete → Google undo → Google recomplete updates one occurrence"
+      }
+    ]
+  },
+  {
+    "feature": "notification-window-policy",
+    "tests": [
+      {
+        "file": "tests/daily-housework-digest.test.mjs",
+        "name": "only the start, last, and following day notify, and completed chores never notify"
+      }
+    ]
+  },
+  {
+    "feature": "native-widget-resolution-and-completion",
+    "tests": [
+      {
+        "file": "tests/widget-platform-resolution.test.mjs",
+        "name": "Metro resolves the"
+      },
+      {
+        "file": "tests/widget-layout.test.mjs",
+        "name": "widget completion updates the row and preserves pending actions"
+      }
+    ]
+  },
+  {
+    "feature": "chore-guide-and-navigation",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "chore categories, kana heading search and trivia collection remain usable"
+      },
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "guide detail returns to"
+      }
+    ]
+  },
+  {
+    "feature": "per-chore-defaults-and-user-overrides",
+    "tests": [
+      {
+        "file": "tests/chore-catalog-upgrade.test.mjs",
+        "name": "all 20 catalog schedules match the supplied table and exactly four defaults are daily"
+      },
+      {
+        "file": "tests/chore-catalog-upgrade.test.mjs",
+        "name": "catalog upgrade replaces only matching defaults and retains explicit intervals and independent edits"
+      }
+    ]
+  },
+  {
+    "feature": "calendar-markers-and-future-completion",
+    "tests": [
+      {
+        "file": "tests/calendar-marker-contracts.test.mjs",
+        "name": "zero hides the marker; bands are 1-5, 6-9, 10+ with at most five dots"
+      },
+      {
+        "file": "tests/calendar-marker-contracts.test.mjs",
+        "name": "completing a future occurrence changes only that date and retains periods"
+      }
+    ]
+  },
+  {
+    "feature": "settings-accordion",
+    "tests": [
+      {
+        "file": "tests/feature-screen-contracts.test.mjs",
+        "name": "accordion clips an anchored body and hides collapsed controls"
+      }
+    ]
+  }
+]

@@ -1,0 +1,128 @@
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { resolve, dirname, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runInThisContext } from 'node:vm';
+import ts from 'typescript';
+
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const require = createRequire(import.meta.url);
+
+/** Runs the real TSX screen and event handlers with deterministic hooks and Native host controls.
+ * Native layout/animation still needs simulator checks; persistence and screen wiring run in CI.
+ */
+export function screenHarness(filename, options = {}) {
+  const slots = new Map();
+  const modules = new Map();
+  let current;
+  let tree = [];
+  const jsx = (type, props, key) => ({ type, props: props ?? {}, key });
+  const hook = (initial) => {
+    const index = current.index++;
+    const values = current.values;
+    if (!(index in values)) values[index] = typeof initial === 'function' ? initial() : initial;
+    return [values[index], (value) => { values[index] = typeof value === 'function' ? value(values[index]) : value; }];
+  };
+  const react = {
+    useState: hook,
+    useRef: (value) => hook(() => ({ current: value }))[0],
+    useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: () => {},
+    createElement: (type, props, ...children) => jsx(type, { ...props, children }),
+  };
+  const transition = { duration: () => transition, springify: () => transition };
+  const mocks = {
+    react,
+    'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
+    'react-native': {
+      ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
+      Platform: { OS: options.platform ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
+      Linking: { openURL: async () => {} },
+    },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    'react-native-reanimated': {
+      __esModule: true, default: { View: 'AnimatedView' }, LinearTransition: transition,
+      useSharedValue: (value) => hook(() => ({ value }))[0], useAnimatedStyle: (fn) => fn(), withTiming: (value) => value,
+    },
+    'expo-router': {
+      useLocalSearchParams: () => options.params ?? {},
+      useNavigation: () => ({ addListener: () => () => {}, setParams: (value) => { options.params = { ...options.params, ...value }; } }),
+      router: { ...Object.fromEntries(['push', 'navigate', 'replace', 'back'].map((name) => [name, (...args) => options.navigate?.(name, ...args)])),
+        setParams: (value) => { options.params = { ...options.params, ...value }; } },
+      Tabs: { Screen: 'TabsScreen' }, useFocusEffect: () => {},
+    },
+    'expo-sqlite': { useSQLiteContext: () => options.database },
+    'expo-linking': { openURL: async (url) => options.openURL?.(url) },
+    '@/hooks/use-planner-data': { usePlannerData: () => ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.() }) },
+    '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
+    '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },
+    '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: () => {} },
+    ...options.mocks,
+  };
+
+  const load = (path) => {
+    if (modules.has(path)) return modules.get(path).exports;
+    const mod = { exports: {} };
+    modules.set(path, mod);
+    let source = readFileSync(path, 'utf8');
+    source = options.transformSource?.(path, source) ?? source;
+    const { outputText } = ts.transpileModule(source, { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
+    }, fileName: path });
+    const localRequire = (specifier) => {
+      if (specifier in mocks) return mocks[specifier];
+      let target = specifier.startsWith('@/') ? resolve(root, 'src', specifier.slice(2))
+        : specifier.startsWith('.') ? resolve(dirname(path), specifier) : undefined;
+      if (!target) return require(specifier);
+      if (!extname(target)) target = ['.ts', '.tsx', '.mjs', '.js'].map((ext) => target + ext).find(existsSync) ?? target;
+      return target.endsWith('.tsx') ? load(target) : require(target);
+    };
+    runInThisContext(`(function(require,module,exports){${outputText}\n})`, { filename: path })(localRequire, mod, mod.exports);
+    return mod.exports;
+  };
+
+  const expand = (element, path) => {
+    if (element === null || element === undefined || typeof element === 'boolean') return [];
+    if (Array.isArray(element)) return element.flatMap((child, index) => expand(child, `${path}/${child?.key ?? index}`));
+    if (typeof element !== 'object') return [String(element)];
+    if (typeof element.type === 'function') {
+      const identity = `${path}:${element.type.name}:${element.key ?? ''}`;
+      if (!slots.has(identity)) slots.set(identity, []);
+      const parent = current;
+      current = { values: slots.get(identity), index: 0 };
+      const output = element.type(element.props);
+      current = parent;
+      return expand(output, identity);
+    }
+    const children = expand(element.props.children, path + '/children');
+    return [{ ...element, children }];
+  };
+  const component = load(resolve(root, filename))[options.exportName ?? 'default'];
+  assert.equal(typeof component, 'function', `${filename} must export a usable screen`);
+  const text = (node) => typeof node === 'string' ? node : (node.children ?? []).map(text).join('');
+  const nodes = (items = tree) => items.flatMap((item) => typeof item === 'string' ? [] : item.props.accessibilityElementsHidden
+    ? [item] : [item, ...nodes(item.children)]);
+  const render = () => { tree = expand(jsx(component, options.props ?? {}), 'root'); return tree; };
+  const flush = async () => { await new Promise(setImmediate); await new Promise(setImmediate); render(); };
+  const button = (name) => {
+    const found = nodes().find((node) => node.props.accessibilityRole === 'button'
+      && (node.props.accessibilityLabel === name || text(node) === name));
+    assert.ok(found, `missing button: ${name}`);
+    return found;
+  };
+  render();
+  return {
+    render, nodes, text: () => tree.map(text).join(''), button, flush,
+    async press(name) {
+      const node = button(name);
+      assert.ok(!node.props.disabled && !node.props.accessibilityState?.disabled, `disabled button: ${name}`);
+      await node.props.onPress({ stopPropagation() {} }); await flush();
+    },
+    async change(label, value) {
+      const node = nodes().find((item) => item.type === 'TextInput' && item.props.accessibilityLabel === label);
+      assert.ok(node, `missing input: ${label}`);
+      assert.notEqual(node.props.editable, false, `read-only input: ${label}`);
+      node.props.onChangeText(value); await flush();
+    },
+  };
+}

@@ -26,10 +26,12 @@ test('schema migration creates the latest local planner and Google sync schema',
   const { connection, database } = sqliteAdapter();
   try {
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 17);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all().map((column) => column.name);
     assert.equal(settingsColumns.includes('notifications_enabled'), true);
     assert.equal(settingsColumns.includes('built_in_chore_catalog_version'), true);
+    const wasteColumns = connection.prepare('PRAGMA table_info(weekly_waste_schedules)').all().map((column) => column.name);
+    for (const column of ['recurrence', 'anchor_date', 'monthly_day']) assert.ok(wasteColumns.includes(column));
     const applianceColumns = connection.prepare('PRAGMA table_info(appliances)').all().map((column) => column.name);
     assert.deepEqual(applianceColumns, [
       'id', 'household_id', 'manufacturer', 'product_name', 'model_number', 'category', 'display_name',
@@ -58,6 +60,50 @@ test('schema migration creates the latest local planner and Google sync schema',
   }
 });
 
+test('restored recurrence migrates current v16 weekly data without erasing labels or exceptions', async () => {
+  const { connection, database } = sqliteAdapter();
+  try {
+    await migrateLocalDatabase(database);
+    connection.exec(`
+      INSERT INTO households VALUES ('home', 'Home', '2026-10-26T00:00:00.000Z');
+      INSERT INTO weekly_waste_schedules (id, household_id, label, weekdays_json) VALUES ('waste', 'home', '可燃ごみ', '[2,5]');
+      INSERT INTO hidden_waste_occurrences VALUES ('waste', '2026-10-27');
+      ALTER TABLE weekly_waste_schedules DROP COLUMN recurrence;
+      ALTER TABLE weekly_waste_schedules DROP COLUMN anchor_date;
+      ALTER TABLE weekly_waste_schedules DROP COLUMN monthly_day;
+      PRAGMA user_version = 16;
+    `);
+    await migrateLocalDatabase(database);
+    const row = connection.prepare('SELECT * FROM weekly_waste_schedules').get();
+    assert.equal(row.recurrence, 'weekly');
+    assert.equal(row.label, '可燃ごみ');
+    assert.equal(row.weekdays_json, '[2,5]');
+    assert.equal(connection.prepare('SELECT occurrence_date FROM hidden_waste_occurrences').get().occurrence_date, '2026-10-27');
+    await migrateLocalDatabase(database);
+    assert.equal(connection.prepare('SELECT COUNT(*) AS n FROM weekly_waste_schedules').get().n, 1);
+  } finally { connection.close(); }
+});
+
+test('former waste v13 schema retains biweekly/monthly data and gains the main catalog columns', async () => {
+  const { connection, database } = sqliteAdapter();
+  try {
+    await migrateLocalDatabase(database);
+    connection.exec(`
+      INSERT INTO households VALUES ('home', 'Home', '2026-10-26T00:00:00.000Z');
+      INSERT INTO weekly_waste_schedules (id, household_id, label, weekdays_json, recurrence, anchor_date)
+      VALUES ('biweekly', 'home', 'びん', '[4]', 'biweekly', '2026-10-29');
+      INSERT INTO weekly_waste_schedules (id, household_id, label, weekdays_json, recurrence, monthly_day)
+      VALUES ('monthly', 'home', '粗大ごみ', '[]', 'monthly', 31);
+      ALTER TABLE household_settings DROP COLUMN built_in_chore_catalog_version;
+      PRAGMA user_version = 13;
+    `);
+    await migrateLocalDatabase(database);
+    assert.equal(connection.prepare('SELECT anchor_date FROM weekly_waste_schedules WHERE id = ?').get('biweekly').anchor_date, '2026-10-29');
+    assert.equal(connection.prepare('SELECT monthly_day FROM weekly_waste_schedules WHERE id = ?').get('monthly').monthly_day, 31);
+    assert.ok(connection.prepare('PRAGMA table_info(household_settings)').all().some((column) => column.name === 'built_in_chore_catalog_version'));
+  } finally { connection.close(); }
+});
+
 test('version 6 migration tolerates a notification preference column already present in an existing database', async () => {
   const { connection, database } = sqliteAdapter();
   try {
@@ -75,7 +121,7 @@ test('version 6 migration tolerates a notification preference column already pre
 
     await migrateLocalDatabase(database);
 
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 17);
     const settingsColumns = connection.prepare('PRAGMA table_info(household_settings)').all();
     assert.equal(settingsColumns.filter((column) => column.name === 'notifications_enabled').length, 1);
     assert.equal(connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'appliances'").get().name, 'appliances');
@@ -125,7 +171,7 @@ test('failure during an old schema upgrade rolls back its DDL and version and ca
     assert.equal(connection.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table'").get().n, 0);
     database.execAsync = exec;
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 17);
   } finally { connection.close(); }
 });
 
@@ -133,7 +179,7 @@ test('concurrent migrations on one connection join the same transaction', async 
   const { connection, database } = sqliteAdapter();
   try {
     await Promise.all([migrateLocalDatabase(database), migrateLocalDatabase(database), migrateLocalDatabase(database)]);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 17);
   } finally { connection.close(); }
 });
 
@@ -156,7 +202,7 @@ test('a failed v16 status-column migration leaves no partially added columns', a
     assert.ok(!connection.prepare('PRAGMA table_info(google_task_links)').all().some((column) => column.name === 'last_synced_status'));
     database.execAsync = exec;
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 17);
   } finally { connection.close(); }
 });
 
@@ -169,7 +215,7 @@ test('a transient SQLite busy error retries the complete migration', async () =>
       return exec(sql);
     };
     await migrateLocalDatabase(database);
-    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(connection.prepare('PRAGMA user_version').get().user_version, 17);
     assert.equal(failures, 2);
   } finally { connection.close(); }
 });

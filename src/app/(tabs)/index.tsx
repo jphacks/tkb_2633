@@ -33,7 +33,7 @@ export default function HomeScreen() {
     if (!snapshot) return groups;
     const firstVisibleDate = periodStart > today ? periodStart : addDays(today, 1);
     for (let date = firstVisibleDate; date <= periodEnd; date = addDays(date, 1)) {
-      const tasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date), date, snapshot.chores);
+      const tasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date, 0, snapshot.chores), date, snapshot.chores);
       if (tasks.length) groups.push([date, tasks]);
     }
     return groups;
@@ -53,7 +53,7 @@ export default function HomeScreen() {
   }
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const orderedDueToday = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3), today, snapshot.chores);
+  const orderedDueToday = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores), today, snapshot.chores);
   const todayTotal = orderedDueToday.length;
   const todayDone = orderedDueToday.filter((task) => task.completed).length;
   const progress = todayTotal ? Math.round((todayDone / todayTotal) * 100) : 0;

@@ -36,7 +36,7 @@ export function buildReviewedApplianceChore(options: {
   existing?: ChoreDefinition;
 }): { definition: ChoreDefinition; hasCycle: boolean } {
   const existing = options.existing;
-  const userIntervalDays = options.approved.userIntervalDays
+  const userIntervalDays = options.approved.resetUserInterval ? undefined : options.approved.userIntervalDays
     ?? existing?.userIntervalDays
     ?? existing?.recommendedCycleDays;
   const definition = toApplianceCareChore(
@@ -53,7 +53,7 @@ export function buildReviewedApplianceChore(options: {
     hasCycle,
     definition: {
       ...definition,
-      enabled: hasCycle && existing.enabled,
+      enabled: hasCycle && (existing.enabled || Boolean(existing.requiresCycleSelection)),
       load: existing.load,
       windowRadiusDays: existing.windowRadiusDays,
       maxShiftDays: existing.maxShiftDays,

@@ -1,17 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { AppButton, ChoiceChip, palette } from '@/components/planner-ui';
+import { AppButton, Card, ChoiceChip, SectionHeading, palette } from '@/components/planner-ui';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
-import { localDateFromDate } from '@/domain/scheduling/local-date';
+import { addDays, formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { Weekday, WeatherLocation } from '@/domain/shared/types';
 import { completeFirstSetup, nextInitialDateChoice } from '@/platform/storage/repository';
 import { ExpoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
 import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
+import type { WasteScheduleInput } from '@/features/waste/contracts';
+import { WasteScheduleEditor } from '@/features/waste/waste-schedule-editor';
+import { wasteScheduleDescription } from '@/features/waste/schedule-policy';
+import { generateWasteCollectionDates } from '@/features/waste/weekly-scheduler';
 
 const modeOptions: { id: FrequencyMode; title: string }[] = [
   { id: 'frequent', title: 'こまめ' },
@@ -24,7 +28,7 @@ const weekdayOptions: { id: Weekday; label: string }[] = [
   { id: 5, label: '金' }, { id: 6, label: '土' }, { id: 7, label: '日' },
 ];
 const notificationGateway = new ExpoLocalNotificationGateway();
-const setupStepCount = 5;
+const setupStepCount = 6;
 
 type PreviousChoice = 'today' | 'week' | 'month' | 'unknown';
 
@@ -49,6 +53,9 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wasteSchedules, setWasteSchedules] = useState<WasteScheduleInput[]>(() => [...snapshot.wasteSchedules]);
+  const [editingWaste, setEditingWaste] = useState<WasteScheduleInput | undefined>();
+  const wasteSequence = useRef(0);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -89,18 +96,14 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
     setWeatherMessage({ text: `「${candidate.label}」を天気に使う地域として選択しました。`, kind: 'success' });
   };
 
-  const saveSetup = async (skipPreviousDates: boolean) => {
+  const saveSetup = async (skipWasteSetup: boolean) => {
     setSaving(true);
     setError(null);
     try {
       const today = localDateFromDate(new Date());
       const previousDates: Record<string, { date?: `${number}-${number}-${number}`; estimated?: boolean; unknownReason?: 'unknown' | 'skipped' }> = {};
-      for (const choreId of enabledChoreIds) {
-        const choice = skipPreviousDates ? 'unknown' : previousChoices[choreId] ?? 'unknown';
-        const result = nextInitialDateChoice(today, choice);
-        previousDates[choreId] = choice === 'unknown' && skipPreviousDates
-          ? { unknownReason: 'skipped' }
-          : result;
+      for (const chore of availableChores) {
+        previousDates[chore.id] = nextInitialDateChoice(today, previousChoices[chore.id] ?? 'unknown');
       }
       await completeFirstSetup(database, {
         frequencyMode: mode,
@@ -109,6 +112,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
         previousDates,
         notificationsEnabled,
         weatherLocation,
+        wasteSchedules: skipWasteSetup ? [] : wasteSchedules,
       });
       await onComplete();
     } catch (cause) {
@@ -142,7 +146,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
                 ? '家事を選んでください。'
                 : step === 3
                   ? '前回の実施時期を設定'
-                  : '天気に使う地域を設定'}
+                  : step === 4 ? '天気に使う地域を設定' : 'ゴミ収集日を設定'}
         </Text>
 
         {step === 0 ? (
@@ -277,6 +281,38 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
           </>
         ) : null}
 
+        {step === 5 ? (
+          <>
+            <Text style={styles.body}>ゴミの種類と収集周期を登録できます。設定せずに始めて、あとから追加することもできます。</Text>
+            <WasteScheduleEditor key={editingWaste?.id ?? 'new'} initial={editingWaste} disabled={saving}
+              onCancel={editingWaste ? () => setEditingWaste(undefined) : undefined}
+              onSubmit={async (schedule) => {
+                const draft = { ...schedule, id: schedule.id ?? `setup-waste-${Date.now()}-${wasteSequence.current++}` };
+                setWasteSchedules((current) => current.some((item) => item.id === draft.id)
+                  ? current.map((item) => item.id === draft.id ? draft : item) : [...current, draft]);
+                setEditingWaste(undefined);
+              }} />
+            <SectionHeading title="登録済み" trailing={<Text style={styles.hint}>{wasteSchedules.length}種類</Text>} />
+            {!wasteSchedules.length ? <Text style={styles.hint}>収集日はまだ登録されていません。</Text> : wasteSchedules.map((schedule) => (
+              <Card key={schedule.id}>
+                <Text style={styles.choreName}>{schedule.label}</Text>
+                <Text style={styles.hint}>{wasteScheduleDescription(schedule)}</Text>
+                <View style={styles.chipRow}>
+                  <AppButton title={`${schedule.label}を編集`} onPress={() => setEditingWaste(schedule)} variant="secondary" compact />
+                  <AppButton title={`${schedule.label}を削除`} onPress={() => {
+                    setWasteSchedules((current) => current.filter((item) => item.id !== schedule.id));
+                    if (editingWaste?.id === schedule.id) setEditingWaste(undefined);
+                  }} variant="danger" compact />
+                </View>
+              </Card>
+            ))}
+            <SectionHeading title="次の収集日" />
+            {wasteSchedules.flatMap((schedule) => generateWasteCollectionDates({ ...schedule, id: schedule.id!, householdId: snapshot.household.id }, localDateFromDate(new Date()), addDays(localDateFromDate(new Date()), 35)))
+              .sort((left, right) => left.date.localeCompare(right.date)).slice(0, 4)
+              .map((occurrence) => <Text key={`${occurrence.scheduleId}-${occurrence.date}`} style={styles.hint}>{formatJapaneseDate(occurrence.date, { weekday: true })}　{occurrence.label}</Text>)}
+          </>
+        ) : null}
+
         <Text style={styles.disclaimer}>周期の初期値は調整用のたたき台です。家事ごとに変更できます。</Text>
       </ScrollView>
 
@@ -285,12 +321,13 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
         {step < setupStepCount - 1 ? (
           <>
             <AppButton title="次へ" onPress={() => setStep((current) => current + 1)} disabled={saving} />
+            {step === 3 ? <AppButton title="前回の時期はスキップ" onPress={() => { setPreviousChoices({}); setStep(4); }} variant="secondary" disabled={saving} /> : null}
             {step > 0 ? <AppButton title="戻る" onPress={() => setStep((current) => current - 1)} variant="quiet" disabled={saving} /> : null}
           </>
         ) : (
           <>
             <AppButton title={saving ? '設定中…' : '設定して始める'} onPress={() => void saveSetup(false)} disabled={saving} />
-            <AppButton title="前回の時期はスキップ" onPress={() => void saveSetup(true)} variant="secondary" disabled={saving} />
+            <AppButton title="ゴミ収集日はスキップして始める" onPress={() => void saveSetup(true)} variant="secondary" disabled={saving} />
             <AppButton title="戻る" onPress={() => setStep((current) => current - 1)} variant="quiet" disabled={saving} />
           </>
         )}

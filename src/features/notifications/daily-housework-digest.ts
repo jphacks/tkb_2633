@@ -9,7 +9,7 @@ const SCHEDULE_HORIZON_DAYS = 30;
 
 export interface DailyDigestSnapshot {
   scheduleEntries: readonly ChoreScheduleEntry[];
-  chores: readonly Pick<ChoreDefinition, 'id' | 'name'>[];
+  chores: readonly (Pick<ChoreDefinition, 'id' | 'name'> & Partial<Pick<ChoreDefinition, 'enabled' | 'archived'>>)[];
   completions: readonly ChoreCompletion[];
   settings: Pick<HouseholdPlannerSettings, 'notificationHour' | 'notificationMinute' | 'notificationsEnabled' | 'setupCompleted'>;
 }
@@ -26,7 +26,7 @@ export function createDailyHouseworkDigestRequests(
     const fireAt = localDateAtTime(date, snapshot.settings.notificationHour, snapshot.settings.notificationMinute);
     if (fireAt <= now) continue;
 
-    const dueEntries = selectDateTasks(snapshot.scheduleEntries.filter((entry) => isNotificationDay(entry, date)), snapshot.completions, date, 1)
+    const dueEntries = selectDateTasks(snapshot.scheduleEntries.filter((entry) => isNotificationDay(entry, date)), snapshot.completions, date, 1, snapshot.chores)
       .filter((task) => !task.completed)
       .sort((left, right) => urgency(left.entry!.status) - urgency(right.entry!.status)
         || left.suggestedDate.localeCompare(right.suggestedDate));

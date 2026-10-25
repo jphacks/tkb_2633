@@ -1,3 +1,4 @@
+import { applianceCategoryLabel } from '@/features/appliance-care/categories';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -41,7 +42,7 @@ export default function ManualScreen() {
           <View style={styles.applianceIcon}><Text style={styles.applianceIconText}>{appliance.category?.includes('洗濯') ? '▤' : '⌂'}</Text></View>
           <View style={styles.applianceCopy}>
             <Text style={styles.applianceName}>{appliance.displayName}</Text>
-            <Text style={styles.applianceMeta}>{appliance.category ?? appliance.manufacturer} · {appliance.modelNumber}</Text>
+            <Text style={styles.applianceMeta}>{applianceCategoryLabel(appliance.category) ?? appliance.manufacturer} · {appliance.modelNumber}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </Pressable>

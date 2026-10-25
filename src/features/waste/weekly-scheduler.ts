@@ -1,9 +1,10 @@
-import type { LocalDate, Weekday } from '@/domain/shared/types';
+import { daysBetween, parseLocalDate, weekdayOf } from '../../domain/scheduling/local-date.ts';
+import type { LocalDate } from '@/domain/shared/types';
 import type { WasteCollectionOccurrence, WeeklyWasteSchedule } from '@/features/waste/contracts';
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
 
-export function generateWeeklyCollectionDates(
+export function generateWasteCollectionDates(
   schedule: WeeklyWasteSchedule,
   from: LocalDate,
   through: LocalDate,
@@ -16,18 +17,28 @@ export function generateWeeklyCollectionDates(
   }
 
   const weekdays = new Set(schedule.collectionWeekdays);
+  const recurrence = schedule.recurrence ?? 'weekly';
+  if (schedule.anchorDate) parseLocalDate(schedule.anchorDate);
   const occurrences: WasteCollectionOccurrence[] = [];
 
   for (let timestamp = start.getTime(); timestamp <= end.getTime(); timestamp += DAY_IN_MILLISECONDS) {
     const date = new Date(timestamp);
-    const weekday = (date.getUTCDay() || 7) as Weekday;
+    const localDate = date.toISOString().slice(0, 10) as LocalDate;
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    const matches = recurrence === 'weekly'
+      ? weekdays.has(weekdayOf(localDate))
+      : recurrence === 'biweekly'
+        ? Boolean(schedule.anchorDate && localDate >= schedule.anchorDate && daysBetween(schedule.anchorDate, localDate) % 14 === 0)
+        : recurrence === 'monthly' && Number.isInteger(schedule.monthlyDay) && schedule.monthlyDay! >= 1 && schedule.monthlyDay! <= 31
+          && (!schedule.anchorDate || localDate >= schedule.anchorDate)
+          && date.getUTCDate() === Math.min(schedule.monthlyDay!, lastDay);
 
-    if (weekdays.has(weekday)) {
+    if (matches) {
       occurrences.push({
         scheduleId: schedule.id,
         householdId: schedule.householdId,
         label: schedule.label,
-        date: date.toISOString().slice(0, 10) as LocalDate,
+        date: localDate,
       });
     }
   }
@@ -35,16 +46,5 @@ export function generateWeeklyCollectionDates(
   return occurrences;
 }
 
-function parseLocalDate(value: LocalDate): Date {
-  const parts = value.split('-').map(Number);
-  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part))) {
-    throw new RangeError(`Invalid local date: ${value}`);
-  }
-
-  const [year, month, day] = parts;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.toISOString().slice(0, 10) !== value) {
-    throw new RangeError(`Invalid local date: ${value}`);
-  }
-  return date;
-}
+/** Compatibility for older callers; all modes use the same calculation. */
+export const generateWeeklyCollectionDates = generateWasteCollectionDates;

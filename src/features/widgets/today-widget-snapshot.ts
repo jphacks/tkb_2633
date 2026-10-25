@@ -5,12 +5,12 @@ import type { NextChoreWidgetSnapshot, TodayWidgetChore } from '@/features/widge
 
 export function createTodayWidgetSnapshot(
   entries: readonly ChoreScheduleEntry[],
-  chores: readonly Pick<ChoreDefinition, 'id' | 'name'>[],
+  chores: readonly (Pick<ChoreDefinition, 'id' | 'name'> & Partial<Pick<ChoreDefinition, 'enabled' | 'archived'>>)[],
   completions: readonly ChoreCompletion[],
   today: LocalDate,
   updatedAt: string,
 ): NextChoreWidgetSnapshot {
-  const tasks = selectDateTasks(entries, completions, today, 1)
+  const tasks = selectDateTasks(entries, completions, today, 1, chores)
     .sort((left, right) => Number(left.completed) - Number(right.completed)
       || urgency(left.entry?.status ?? 'scheduled') - urgency(right.entry?.status ?? 'scheduled')
       || left.suggestedDate.localeCompare(right.suggestedDate));

@@ -39,3 +39,10 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Preserve existing features
+
+- Read `docs/feature-contracts.json` before changing an existing feature. These are acceptance requirements, including waste recurrence/onboarding/calendar labels and unknown-date chore activation.
+- Keep the required behavior tests and screen wiring tests. Do not delete or relax a feature contract just to make a failing change pass. Change a contract only when the user's requested behavior changes, and explain it in the change report.
+- `npm test` checks that required tests still exist and then executes them. CI independently checks the registry too. Restored or newly added behavior needs a regression test that fails when the behavior is removed.
+- Compare the current main with the relevant feature branch before integration. A successful test suite without coverage for a missing feature is not proof that the integration preserved it.

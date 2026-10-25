@@ -5,7 +5,16 @@ export interface WeeklyWasteSchedule {
   householdId: EntityId;
   label: string;
   collectionWeekdays: readonly Weekday[];
+  /** Older records without a recurrence continue to mean every week. */
+  recurrence?: WasteRecurrence;
+  anchorDate?: LocalDate;
+  /** If the month is shorter, collection is on the last day of that month. */
+  monthlyDay?: number;
 }
+
+export type WasteRecurrence = 'weekly' | 'biweekly' | 'monthly';
+
+export type WasteScheduleInput = Omit<WeeklyWasteSchedule, 'id' | 'householdId'> & { id?: EntityId };
 
 export interface WasteCollectionOccurrence {
   scheduleId: EntityId;

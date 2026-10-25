@@ -13,6 +13,7 @@ import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
 import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
+import { wasteCalendarLabels } from '@/features/waste/calendar-labels';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -32,11 +33,12 @@ export default function CalendarScreen() {
   const gridStart = addDays(dates[0], -leadingCells);
   const weekCount = Math.ceil((leadingCells + dates.length) / 7);
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
+  const { weeklyByColumn, byDate: wasteByDate } = wasteCalendarLabels(snapshot.wasteSchedules, gridStart, cells[cells.length - 1], snapshot.hiddenWasteOccurrenceKeys);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const recommendedCountsByDate = recommendedChoreCounts(snapshot.scheduleEntries, snapshot.completions);
-  const selectedTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate), selectedDate, snapshot.chores);
+  const selectedTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate, 0, snapshot.chores), selectedDate, snapshot.chores);
   const selectedChoreIds = new Set(selectedTasks.map((task) => task.choreId));
-  const overdueTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3)
+  const overdueTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores)
     .filter((task) => task.entry?.status === 'overdue' && !task.completed && !selectedChoreIds.has(task.choreId)), today, snapshot.chores);
   const completedCount = selectedTasks.filter((task) => task.completed).length;
   const periodRows = selectedTasks.flatMap((task) => {
@@ -113,21 +115,33 @@ export default function CalendarScreen() {
           <Text style={styles.monthTitle}>{month.year}年{month.monthIndex + 1}月</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="次の月" onPress={(event) => { event.stopPropagation(); moveMonth(1); }} style={styles.monthArrow}><Text style={styles.arrowText}>›</Text></Pressable>
         </View>
+        {!cells.includes(selectedDate) ? <View style={styles.retainedSelectionRow}>
+          <View style={styles.retainedSelectionChip}><Text style={styles.retainedSelectionDay}>{Number(selectedDate.slice(-2))}</Text></View>
+          <Text style={styles.retainedSelectionText}>{formatJapaneseDate(selectedDate, { weekday: true })}の予定を表示中</Text>
+        </View> : null}
         <View style={styles.weekRow}>
-          {weekdayLabels.map((label, index) => <Text key={label} style={[styles.weekday, (index === 0 || index === 6) && styles.weekend]}>{label}</Text>)}
+          {weekdayLabels.map((label, index) => <View key={label} style={styles.weekdaySlot}>
+            <View accessibilityLabel={`${label}曜日${weeklyByColumn[index].length ? `、${weeklyByColumn[index].join('・')}` : ''}`}
+              style={[styles.weekdayPill, weeklyByColumn[index].length > 0 && styles.wasteOutline]}>
+              <Text style={[styles.weekday, (index === 0 || index === 6) && styles.weekend]}>{label}</Text>
+              {weeklyByColumn[index].length ? <Text numberOfLines={2} style={styles.wasteLabel}>{weeklyByColumn[index].join('・')}</Text> : null}
+            </View>
+          </View>)}
         </View>
         <View style={styles.grid}>
-          {cells.map((date) => {
+          {Array.from({ length: weekCount }, (_, week) => <View key={cells[week * 7]} style={styles.calendarWeek}>
+          {cells.slice(week * 7, week * 7 + 7).map((date) => {
             const recommendedCount = recommendedCountsByDate.get(date) ?? 0;
+            const wasteLabels = wasteByDate.get(date) ?? [];
             const selected = date === selectedDate;
             const isToday = date === today;
             const inMonth = date.slice(0, 7) === `${month.year}-${String(month.monthIndex + 1).padStart(2, '0')}`;
             const weekDay = weekdayOf(date);
             return (
+              <View key={date} style={styles.daySlot}>
               <Pressable
-                key={date}
                 accessibilityRole="button"
-                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の未完了の家事${recommendedCount}件`}
+                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の未完了の家事${recommendedCount}件${wasteLabels.length ? `、${wasteLabels.join('・')}` : ''}`}
                 accessibilityState={{ selected }}
                 onPress={(event) => {
                   event.stopPropagation();
@@ -137,12 +151,15 @@ export default function CalendarScreen() {
                     setMonth({ year: tapped.getUTCFullYear(), monthIndex: tapped.getUTCMonth() });
                   }
                 }}
-                style={[styles.dayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay]}>
-                <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber, selected && styles.selectedDayNumber]}>{Number(date.slice(-2))}</Text>
+                style={[styles.dayCell, wasteLabels.length > 0 && styles.tallDayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay, wasteLabels.length > 0 && styles.wasteOutline, selected && wasteLabels.length > 0 && styles.selectedWasteDay]}>
+                <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber, selected && styles.selectedDayNumber, selected && wasteLabels.length > 0 && styles.wasteDayNumber]}>{Number(date.slice(-2))}</Text>
+                {wasteLabels.length ? <Text numberOfLines={2} style={styles.wasteLabel}>{wasteLabels.join('・')}</Text> : null}
                 <CalendarTaskCountIndicator count={recommendedCount} colors={snapshot.settings.calendarCountColors} mode={snapshot.settings.calendarCountDisplayMode} selected={selected} />
               </Pressable>
+              </View>
             );
           })}
+          </View>)}
         </View>
         {periodsExpanded ? (
           <View style={styles.periodPanel}>
@@ -234,10 +251,23 @@ const styles = StyleSheet.create({
   arrowText: { color: palette.accent, fontSize: 30, lineHeight: 33, fontWeight: '500' },
   monthTitle: { color: palette.ink, fontSize: 18, fontWeight: '700' },
   weekRow: { flexDirection: 'row' },
-  weekday: { flex: 1, textAlign: 'center', color: palette.muted, fontSize: 11, fontWeight: '700', paddingVertical: 4 },
+  weekday: { textAlign: 'center', color: palette.muted, fontSize: 11, fontWeight: '700' },
+  weekdaySlot: { flex: 1, paddingHorizontal: 2 },
+  weekdayPill: { minHeight: 46, justifyContent: 'flex-start', alignItems: 'center', borderRadius: 10, paddingHorizontal: 1, paddingTop: 5, paddingBottom: 3, gap: 2 },
+  wasteOutline: { borderWidth: 1.5, borderColor: '#E99B2F', backgroundColor: '#FFFFFF' },
+  wasteLabel: { maxWidth: '100%', color: '#A85A08', fontSize: 8, lineHeight: 10, fontWeight: '700', textAlign: 'center' },
+  selectedWasteDay: { borderColor: '#C97813', backgroundColor: '#FFFBF2', borderWidth: 2 },
+  wasteDayNumber: { color: '#A85A08' },
+  tallDayCell: { height: 62 },
+  retainedSelectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  retainedSelectionChip: { minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: palette.accent },
+  retainedSelectionDay: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  retainedSelectionText: { color: palette.accent, fontSize: 11, fontWeight: '700' },
   weekend: { color: palette.warning },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.2857%', height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 3, gap: 3 },
+  grid: { gap: 5 },
+  calendarWeek: { flexDirection: 'row', alignItems: 'flex-start' },
+  daySlot: { flex: 1, paddingHorizontal: 2 },
+  dayCell: { width: '100%', height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 3, gap: 3 },
   selectedDay: { backgroundColor: palette.accent },
   todayDay: { backgroundColor: palette.accentSoft },
   dayNumber: { color: palette.ink, fontSize: 13, fontWeight: '600' },

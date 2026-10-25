@@ -1,3 +1,4 @@
+import { applianceCategoryLabel } from '@/features/appliance-care/categories';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -44,7 +45,7 @@ export default function ApplianceDetailScreen() {
       <ScreenHeading eyebrow={appliance.manufacturer} title="お手入れ方法" description={`${appliance.displayName}の公式資料から確認した内容です。`} />
       <Card style={styles.productCard}>
         <Text style={styles.productMeta}>メーカー {appliance.manufacturer} · 型番 {appliance.modelNumber}</Text>
-        {appliance.category ? <Text style={styles.body}>カテゴリ：{appliance.category}</Text> : null}
+        {appliance.category ? <Text style={styles.body}>カテゴリ：{applianceCategoryLabel(appliance.category)}</Text> : null}
         {appliance.officialProductUrl ? <OfficialLink manufacturer={appliance.manufacturer} title="公式製品情報を見る ↗" url={appliance.officialProductUrl} /> : null}
         <OfficialLink manufacturer={appliance.manufacturer} title="公式取扱説明書を見る ↗" url={appliance.officialManualUrl} />
         <Text style={styles.note}>最終解析：{appliance.analysis.analyzedAt}</Text>

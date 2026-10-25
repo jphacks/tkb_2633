@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 16;
+const CURRENT_SCHEMA_VERSION = 17;
 
 const runningMigrations = new WeakMap<SQLiteDatabase, Promise<void>>();
 
@@ -334,6 +334,15 @@ async function migrateSchema(database: SQLiteDatabase): Promise<void> {
     await addColumnIfMissing(database, 'household_settings', 'planner_calendar_signature', 'TEXT');
     await database.execAsync('PRAGMA user_version = 16');
     version = 16;
+  }
+  if (version < 17) {
+    // The former waste branch used version 13 for different columns. Tolerate either lineage.
+    await addColumnIfMissing(database, 'weekly_waste_schedules', 'recurrence', "TEXT NOT NULL DEFAULT 'weekly'");
+    await addColumnIfMissing(database, 'weekly_waste_schedules', 'anchor_date', 'TEXT');
+    await addColumnIfMissing(database, 'weekly_waste_schedules', 'monthly_day', 'INTEGER');
+    await addColumnIfMissing(database, 'household_settings', 'built_in_chore_catalog_version', 'INTEGER NOT NULL DEFAULT 0');
+    await database.execAsync('PRAGMA user_version = 17');
+    version = 17;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

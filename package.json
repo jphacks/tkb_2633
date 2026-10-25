@@ -51,6 +51,7 @@
     "api:dev": "node --env-file-if-exists=.env.server server/appliance-care-api/src/index.mjs",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/check-feature-contracts.mjs",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.mjs",
     "check": "npm run lint && npm run typecheck && npm test",
     "doctor": "npx expo-doctor"

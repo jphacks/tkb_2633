@@ -576,8 +576,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
       <Card>
         <SectionHeading title="ゴミ収集日" />
-        <Text style={styles.hint}>収集区分と曜日を入力すると、次の収集日を表示します。</Text>
-        <AppButton title="ゴミの曜日を管理" onPress={() => router.push('/waste')} variant="secondary" />
+        <Text style={styles.hint}>ゴミの種類と毎週・隔週・毎月の収集日を登録できます。</Text>
+        <AppButton title="ゴミ収集日を管理" onPress={() => router.push('/waste')} variant="secondary" />
       </Card>
 
       {Platform.OS !== 'web' ? (

@@ -19,13 +19,17 @@ export function selectDateTasks(
   completions: readonly ChoreCompletion[],
   date: LocalDate,
   graceDays = 0,
+  chores?: readonly (Pick<ChoreDefinition, 'id'> & Partial<Pick<ChoreDefinition, 'enabled' | 'archived'>>)[],
 ): DateTask[] {
-  const relevantCompletions = completions.filter((completion) => completionIncludesDate(completion, date));
+  const activeIds = chores ? new Set(chores.filter((chore) => chore.enabled !== false && !chore.archived).map((chore) => chore.id)) : undefined;
+  const visibleCompletions = activeIds ? completions.filter((completion) => activeIds.has(completion.choreId)) : completions;
+  const relevantCompletions = visibleCompletions.filter((completion) => completionIncludesDate(completion, date));
   const byChore = new Map<string, DateTask>();
 
   for (const entry of entries) {
+    if (activeIds && !activeIds.has(entry.choreId)) continue;
     if (entry.windowStart > date || date > addDays(entry.windowEnd, graceDays)) continue;
-    const completion = completions.find((candidate) => completionMatchesEntry(candidate, entry));
+    const completion = visibleCompletions.find((candidate) => completionMatchesEntry(candidate, entry));
     const task: DateTask = {
       id: entry.id, choreId: entry.choreId, suggestedDate: entry.suggestedDate,
       completed: Boolean(completion), entry, completion,

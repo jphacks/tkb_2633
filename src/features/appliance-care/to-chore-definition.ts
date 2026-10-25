@@ -1,6 +1,7 @@
 import type { ApplianceCareAnalysisDraft, ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import type { EntityId } from '@/domain/shared/types';
+import { applianceCategoryLabel } from './categories.ts';
 
 export interface ApplianceCareProductIdentity {
   applianceId: EntityId;
@@ -15,6 +16,8 @@ export interface ApplianceCareProductIdentity {
 export interface ApprovedApplianceCareTask {
   task: ApplianceCareTaskDraft;
   userIntervalDays?: number;
+  /** Explicit user reset; omission alone means retain an existing override during reanalysis. */
+  resetUserInterval?: boolean;
 }
 
 export function toApplianceCareChore(
@@ -36,7 +39,7 @@ export function toApplianceCareChore(
   const choreCategory = product.category?.trim() || '家電';
   const chorePrefix = choreCategory === '家電'
     ? product.productName
-    : choreCategory === 'vacuum_cleaner' ? '掃除機' : choreCategory;
+    : applianceCategoryLabel(choreCategory) ?? choreCategory;
   const choreName = approved.task.name.startsWith(`${chorePrefix}の`)
     ? approved.task.name
     : `${chorePrefix}の${approved.task.name}`;

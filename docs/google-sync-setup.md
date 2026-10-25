@@ -29,23 +29,23 @@ GoogleのモバイルSDKとExpoのバックグラウンド制約を確認する�
 3. OAuth consent screenを設定し、開発中はアプリをTestingにして利用するGoogleアカウントをtest usersに加えます。公開・検証要件はGoogle Cloud Consoleの表示に従ってください。
 4. Web application OAuth client IDを作成します。ネイティブSDKの `webClientId` として使います。
 5. iOS OAuth client IDを作成します。Bundle IDは `jp.jphacks.tkb2633` です。iOS clientのReversed client IDも控えます。
-6. Android OAuth clientを作成し、package name `jp.jphacks.tkb2633` と、実際に使う開発・配布署名鍵のSHA-1 fingerprintを登録します。EAS credentialsを使う場合は `eas credentials -p android` で署名情報を確認してください。
+6. Android OAuth clientを作成し、package name `jp.jphacks.tkb2633` と、実際に使う開発・配布署名鍵のSHA-1 fingerprintを登録します。EAS credentialsを使う場合は `npx eas-cli@latest credentials -p android` で署名情報を確認してください。
 
 OAuth client IDは公開識別子であり、アプリへ設定できます。client secret、access token、refresh tokenはこのアプリへ追加しないでください。値はGoogleのコンソールが発行したものだけを使い、推測・仮生成しません。
 
 ## ローカル開発
 
-`.env.example` を `.env.local` にコピーし、Google Cloud Consoleで発行された3つの値を入れます。`.env.local` はGitに含めないでください。
+`.env.example` を `.env.local` にコピーし、Google Cloud Consoleで発行されたWebとiOSのclient IDを入れます。`.env.local` はGitに含めないでください。
 
 ```text
-GOOGLE_WEB_CLIENT_ID=<Web client ID>
-GOOGLE_IOS_CLIENT_ID=<iOS client ID>
-GOOGLE_IOS_REVERSED_CLIENT_ID=<iOS Reversed client ID>
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<Web client ID>
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=<iOS client ID>
 ```
 
-`app.config.js` は3項目が揃った場合にだけGoogle Sign-In config pluginを有効にします。値が未設定でもアプリ設定とテストは読み込めますが、設定画面の「Googleと接続」は無効のままです。
+`app.config.js` はiOS client IDからReversed client IDを生成し、両方のclient IDが揃った場合にだけGoogle Sign-In config pluginを有効にします。既存のOAuth画面と同じ環境変数名なので同一の `.env.local` を利用できます。以前の `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_IOS_CLIENT_ID` / `GOOGLE_IOS_REVERSED_CLIENT_ID` も互換入力として利用できます。値が未設定でもアプリ設定とテストは読み込めますが、設定画面の「Googleと接続」は無効のままです。
 
 値を設定した後はネイティブ開発ビルドを再生成します。`ios/` と `android/` は生成物なので直接編集しません。
+Googleからアプリへ戻るiOS URLは、config pluginでGoogle Sign-In SDKへ転送します。Expo SDK 58のscene lifecycleからAppDelegateへの転送を利用します。
 
 ```bash
 npx expo run:ios
@@ -87,4 +87,8 @@ Google Sign-Inはネイティブmoduleを使います。Expo Goではなくdevel
 5. Google側だけでTaskを完了し、アプリへ完了が取り込まれず、Taskが未完了へ戻らないことを確認します。
 6. 接続解除し、ローカルbackground taskが停止し、Google上の既存Taskが残ることを確認します。
 
-現在はGoogle OAuth clientが未作成のため、実アカウントでのE2Eは未実施です。credentialやE2E結果を捏造していません。
+2026-10-25にGoogle Cloud project `housework-planner-tkb2633` でTasks APIを有効化し、外部・テスト中のOAuth同意画面、Web・iOS・Android開発用の各クライアント、所有者アカウントのテストユーザー登録、Tasks scopeを設定しました。Web・iOSの公開client IDは、この端末のGit管理外の `.env.local` に設定済みです。
+
+Android開発用クライアントは、既存のローカルdebug署名に対応しています。EASやGoogle Playの配布署名を使う場合は、その署名に対応する別のAndroidクライアント登録が必要です。
+
+実アカウントでの認可とE2Eは未実施です。次はdevelopment buildで所有者本人のGoogleログインとTasks権限許可を行います。

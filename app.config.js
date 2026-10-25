@@ -1,7 +1,14 @@
 module.exports = ({ config }) => {
-  const webClientId = process.env.GOOGLE_WEB_CLIENT_ID?.trim() || null;
-  const iosClientId = process.env.GOOGLE_IOS_CLIENT_ID?.trim() || null;
-  const iosUrlScheme = process.env.GOOGLE_IOS_REVERSED_CLIENT_ID?.trim() || null;
+  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim()
+    || process.env.GOOGLE_WEB_CLIENT_ID?.trim() || null;
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim()
+    || process.env.GOOGLE_IOS_CLIENT_ID?.trim() || null;
+  const iosClientIdSuffix = '.apps.googleusercontent.com';
+  if (iosClientId && !iosClientId.endsWith(iosClientIdSuffix)) {
+    throw new Error('EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID must be a Google OAuth client ID.');
+  }
+  const iosUrlScheme = process.env.GOOGLE_IOS_REVERSED_CLIENT_ID?.trim()
+    || (iosClientId ? `com.googleusercontent.apps.${iosClientId.slice(0, -iosClientIdSuffix.length)}` : null);
   const hasNativeGoogleConfiguration = Boolean(webClientId && iosClientId && iosUrlScheme);
   const plugins = (config.plugins ?? []).filter((plugin) => {
     const name = typeof plugin === 'string' ? plugin : plugin[0];
@@ -10,6 +17,7 @@ module.exports = ({ config }) => {
 
   if (hasNativeGoogleConfiguration) {
     plugins.push(['react-native-nitro-google-signin', { iosUrlScheme }]);
+    plugins.push('./plugins/with-google-sign-in-redirect');
   }
 
   return {

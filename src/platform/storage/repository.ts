@@ -16,6 +16,8 @@ import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/d
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { CalendarCountColors, CalendarCountDisplayMode, EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
+import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskLink } from '@/features/google-sync/contracts';
+import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
 import type { Appliance, ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
@@ -52,6 +54,12 @@ function serializePlannerOperation<Args extends unknown[], Result>(
     plannerVersions.set(database, (plannerVersions.get(database) ?? 0) + 1);
     return operation(database, ...args);
   });
+}
+
+function serializeDatabaseOperation<Args extends unknown[], Result>(
+  operation: (database: SQLiteDatabase, ...args: Args) => Promise<Result>,
+): (database: SQLiteDatabase, ...args: Args) => Promise<Result> {
+  return (database, ...args) => runDatabaseOperation(database, () => operation(database, ...args));
 }
 
 export interface PlannerSnapshot {
@@ -1278,6 +1286,206 @@ async function deleteWeeklyWasteScheduleImpl(database: SQLiteDatabase, scheduleI
   );
 }
 
+async function loadGoogleSyncStateImpl(
+  database: SQLiteDatabase,
+  householdId: EntityId = LOCAL_HOUSEHOLD_ID,
+): Promise<GoogleSyncState | null> {
+  const row = await database.getFirstAsync<{
+    household_id: string;
+    enabled: number;
+    task_list_id: string | null;
+    last_attempt_at: string | null;
+    last_successful_sync_at: string | null;
+    status: string;
+    retry_count: number;
+    next_retry_at: string | null;
+    last_error_code: string | null;
+    last_error_at: string | null;
+    updated_at: string;
+  }>(
+    `SELECT household_id, enabled, task_list_id, last_attempt_at, last_successful_sync_at,
+     status, retry_count, next_retry_at, last_error_code, last_error_at, updated_at
+     FROM google_sync_state WHERE household_id = ?`,
+    householdId,
+  );
+  if (!row) return null;
+  return {
+    householdId: row.household_id,
+    enabled: Boolean(row.enabled),
+    ...(row.task_list_id ? { taskListId: row.task_list_id } : {}),
+    ...(row.last_attempt_at ? { lastAttemptAt: row.last_attempt_at } : {}),
+    ...(row.last_successful_sync_at ? { lastSuccessfulSyncAt: row.last_successful_sync_at } : {}),
+    status: normalizeGoogleSyncStatus(row.status),
+    retryCount: row.retry_count,
+    ...(row.next_retry_at ? { nextRetryAt: row.next_retry_at } : {}),
+    ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
+    ...(row.last_error_at ? { lastErrorAt: row.last_error_at } : {}),
+    updatedAt: row.updated_at,
+  };
+}
+
+async function saveGoogleSyncStateImpl(database: SQLiteDatabase, state: GoogleSyncState): Promise<void> {
+  await database.runAsync(
+    `INSERT INTO google_sync_state
+     (household_id, enabled, task_list_id, last_attempt_at, last_successful_sync_at, status,
+      retry_count, next_retry_at, last_error_code, last_error_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(household_id) DO UPDATE SET enabled = excluded.enabled,
+     task_list_id = excluded.task_list_id, last_attempt_at = excluded.last_attempt_at,
+     last_successful_sync_at = excluded.last_successful_sync_at, status = excluded.status,
+     retry_count = excluded.retry_count, next_retry_at = excluded.next_retry_at,
+     last_error_code = excluded.last_error_code, last_error_at = excluded.last_error_at,
+     updated_at = excluded.updated_at`,
+    state.householdId,
+    state.enabled ? 1 : 0,
+    state.taskListId ?? null,
+    state.lastAttemptAt ?? null,
+    state.lastSuccessfulSyncAt ?? null,
+    state.status,
+    state.retryCount,
+    state.nextRetryAt ?? null,
+    state.lastErrorCode ?? null,
+    state.lastErrorAt ?? null,
+    state.updatedAt,
+  );
+}
+
+async function listEntriesForGoogleSyncImpl(
+  database: SQLiteDatabase,
+  today: LocalDate,
+  householdId: EntityId = LOCAL_HOUSEHOLD_ID,
+): Promise<GoogleSyncEntry[]> {
+  const rows = await database.getAllAsync<{
+    entry_json: string;
+    definition_json: string;
+    completed_at: string | null;
+  }>(
+    `SELECT s.entry_json, d.definition_json,
+       (SELECT c.completed_at FROM chore_completions c
+        WHERE c.schedule_entry_id = s.id AND c.outcome = 'completed'
+        ORDER BY c.completed_at DESC LIMIT 1) AS completed_at
+     FROM chore_schedule_entries s
+     JOIN chore_definitions d ON d.id = s.chore_id
+     WHERE s.household_id = ? AND d.enabled = 1`,
+    householdId,
+  );
+  const entries = rows.flatMap((row) => {
+    const entry = parseJson<ChoreScheduleEntry | null>(row.entry_json, null);
+    const chore = parseJson<ChoreDefinition | null>(row.definition_json, null);
+    if (!entry || !chore || entry.status === 'initialPending') return [];
+    if (entry.suggestedDate < today && entry.status !== 'overdue' && !row.completed_at) return [];
+    return [{ entry, choreName: chore.name, ...(row.completed_at ? { completedAt: row.completed_at } : {}) }];
+  });
+
+  // Completed occurrences can disappear when the planner regenerates its schedule.
+  // Keep linked completion records in the sync input so app-side completion reaches
+  // Google before obsolete-link cleanup can remove the mapping.
+  const linkedCompletions = await database.getAllAsync<{
+    schedule_entry_id: string;
+    household_id: string;
+    chore_id: string;
+    chore_name: string;
+    completed_at: string;
+    scheduled_date: string | null;
+    scheduled_window_start: string | null;
+    scheduled_window_end: string | null;
+  }>(
+    `SELECT c.schedule_entry_id, c.household_id, c.chore_id, d.name AS chore_name,
+       c.completed_at, c.scheduled_date, c.scheduled_window_start, c.scheduled_window_end
+     FROM chore_completions c
+     JOIN google_task_links l ON l.schedule_entry_id = c.schedule_entry_id
+     JOIN chore_definitions d ON d.id = c.chore_id
+     WHERE c.household_id = ? AND c.outcome = 'completed'
+       AND c.schedule_entry_id IS NOT NULL
+     GROUP BY c.schedule_entry_id
+     ORDER BY MAX(c.completed_at) DESC`,
+    householdId,
+  );
+  const knownEntryIds = new Set(entries.map(({ entry }) => entry.id));
+  for (const row of linkedCompletions) {
+    if (knownEntryIds.has(row.schedule_entry_id)) continue;
+    const scheduledDate = (row.scheduled_date ?? localDateFromDate(new Date(row.completed_at))) as LocalDate;
+    const entry: ChoreScheduleEntry = {
+      id: row.schedule_entry_id,
+      householdId: row.household_id,
+      choreId: row.chore_id,
+      cycleBaseDate: scheduledDate,
+      windowStart: (row.scheduled_window_start ?? scheduledDate) as LocalDate,
+      windowEnd: (row.scheduled_window_end ?? scheduledDate) as LocalDate,
+      suggestedDate: scheduledDate,
+      status: 'scheduled',
+      assignedMemberIds: [],
+    };
+    entries.push({ entry, choreName: row.chore_name, completedAt: row.completed_at });
+  }
+  return entries;
+}
+
+async function listGoogleTaskLinksImpl(
+  database: SQLiteDatabase,
+  householdId: EntityId = LOCAL_HOUSEHOLD_ID,
+): Promise<GoogleTaskLink[]> {
+  const rows = await database.getAllAsync<{
+    schedule_entry_id: string;
+    household_id: string;
+    chore_id: string;
+    google_task_list_id: string;
+    google_task_id: string;
+    last_synced_title: string | null;
+    last_synced_due_date: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `SELECT schedule_entry_id, household_id, chore_id, google_task_list_id, google_task_id,
+     last_synced_title, last_synced_due_date, created_at, updated_at
+     FROM google_task_links WHERE household_id = ?`,
+    householdId,
+  );
+  return rows.map((row) => ({
+    scheduleEntryId: row.schedule_entry_id,
+    householdId: row.household_id,
+    choreId: row.chore_id,
+    googleTaskListId: row.google_task_list_id,
+    googleTaskId: row.google_task_id,
+    ...(row.last_synced_title ? { lastSyncedTitle: row.last_synced_title } : {}),
+    ...(row.last_synced_due_date ? { lastSyncedDueDate: row.last_synced_due_date as LocalDate } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+async function upsertGoogleTaskLinkImpl(database: SQLiteDatabase, link: GoogleTaskLink): Promise<void> {
+  await database.runAsync(
+    `INSERT INTO google_task_links
+     (schedule_entry_id, household_id, chore_id, google_task_list_id, google_task_id,
+      last_synced_title, last_synced_due_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(schedule_entry_id) DO UPDATE SET household_id = excluded.household_id,
+     chore_id = excluded.chore_id, google_task_list_id = excluded.google_task_list_id,
+     google_task_id = excluded.google_task_id, last_synced_title = excluded.last_synced_title,
+     last_synced_due_date = excluded.last_synced_due_date, updated_at = excluded.updated_at`,
+    link.scheduleEntryId,
+    link.householdId,
+    link.choreId,
+    link.googleTaskListId,
+    link.googleTaskId,
+    link.lastSyncedTitle ?? null,
+    link.lastSyncedDueDate ?? null,
+    link.createdAt,
+    link.updatedAt,
+  );
+}
+
+async function deleteGoogleTaskLinkImpl(database: SQLiteDatabase, scheduleEntryId: EntityId): Promise<void> {
+  await database.runAsync('DELETE FROM google_task_links WHERE schedule_entry_id = ?', scheduleEntryId);
+}
+
+function normalizeGoogleSyncStatus(status: string): GoogleSyncStatus {
+  return status === 'syncing' || status === 'retryPending' || status === 'authRequired' || status === 'error'
+    ? status
+    : 'idle';
+}
+
 export function nextInitialDateChoice(today: LocalDate, choice: 'today' | 'week' | 'month' | 'unknown'):
   { date?: LocalDate; estimated?: boolean; unknownReason?: 'unknown' | 'skipped' } {
   if (choice === 'today') return { date: today };
@@ -1322,3 +1530,9 @@ export const replaceChoreDependencies = serializePlannerOperation(replaceChoreDe
 export const saveWeeklyWasteSchedule = serializePlannerOperation(saveWeeklyWasteScheduleImpl);
 export const setWasteOccurrenceHidden = serializePlannerOperation(setWasteOccurrenceHiddenImpl);
 export const deleteWeeklyWasteSchedule = serializePlannerOperation(deleteWeeklyWasteScheduleImpl);
+export const loadGoogleSyncState = serializeDatabaseOperation(loadGoogleSyncStateImpl);
+export const saveGoogleSyncState = serializeDatabaseOperation(saveGoogleSyncStateImpl);
+export const listEntriesForGoogleSync = serializeDatabaseOperation(listEntriesForGoogleSyncImpl);
+export const listGoogleTaskLinks = serializeDatabaseOperation(listGoogleTaskLinksImpl);
+export const upsertGoogleTaskLink = serializeDatabaseOperation(upsertGoogleTaskLinkImpl);
+export const deleteGoogleTaskLink = serializeDatabaseOperation(deleteGoogleTaskLinkImpl);

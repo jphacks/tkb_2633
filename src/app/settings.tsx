@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
@@ -15,6 +15,9 @@ import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geoco
 import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
 import {
   clearWeatherLocation,
+  loadGoogleSyncState,
+  LOCAL_HOUSEHOLD_ID,
+  saveGoogleSyncState,
   saveWeatherLocation,
   setNotificationsEnabled,
   updateCalendarCountDisplay,
@@ -22,6 +25,11 @@ import {
 } from '@/platform/storage/repository';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
 import { ExpoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
+import { getGoogleSyncOAuthConfig } from '@/features/google-sync/google-oauth-config';
+import type { GoogleSyncState } from '@/features/google-sync/contracts';
+import { syncGoogleTasks } from '@/features/google-sync/coordinator';
+import { registerGoogleSyncBackgroundTask, unregisterGoogleSyncBackgroundTask } from '@/features/google-sync/background-task';
+import { authorizeGoogleTasks, disconnectGoogleTasksSession, getGoogleTasksAccessToken, hasGoogleTasksSession } from '@/platform/google-tasks/google-sign-in-gateway';
 
 const modeOptions: { id: FrequencyMode; label: string; detail: string }[] = [
   { id: 'frequent', label: 'こまめ', detail: '短めの周期' },
@@ -65,7 +73,163 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [weatherResultsDismissed, setWeatherResultsDismissed] = useState(false);
   const [weatherMessage, setWeatherMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const [notificationUpdating, setNotificationUpdating] = useState(false);
+  const [googleSyncState, setGoogleSyncState] = useState<GoogleSyncState | null>(null);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleMessage, setGoogleMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
   const weatherSuggestions = useMunicipalitySuggestions(weatherRegion, weatherSearchEnabled);
+  const googleOAuthConfigured = getGoogleSyncOAuthConfig().configured;
+
+  const refreshGoogleState = useCallback(async () => {
+    const [state, connected] = await Promise.all([
+      loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID),
+      hasGoogleTasksSession(),
+    ]);
+    setGoogleSyncState(state);
+    setGoogleConnected(connected);
+  }, [database]);
+
+  useEffect(() => {
+    // SQLite state is external persisted state; hydrate the screen after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshGoogleState().catch(() => {
+      setGoogleMessage({ text: 'Google同期の設定を読み込めませんでした。', kind: 'error' });
+    });
+  }, [refreshGoogleState]);
+
+  const connectGoogle = async () => {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    setGoogleMessage(null);
+    try {
+      await authorizeGoogleTasks();
+      const current = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
+      const now = new Date().toISOString();
+      await saveGoogleSyncState(database, {
+        householdId: LOCAL_HOUSEHOLD_ID,
+        enabled: true,
+        taskListId: current?.taskListId,
+        lastAttemptAt: current?.lastAttemptAt,
+        lastSuccessfulSyncAt: current?.lastSuccessfulSyncAt,
+        status: 'idle',
+        retryCount: 0,
+        updatedAt: now,
+      });
+      setGoogleConnected(true);
+      await refreshGoogleState();
+      try { await registerGoogleSyncBackgroundTask(); } catch { /* Foreground sync remains available. */ }
+      const result = await syncGoogleTasks(database, { force: true });
+      await refreshGoogleState();
+      setGoogleMessage(result.kind === 'success'
+        ? { text: 'Google Tasksに接続し、同期しました。', kind: 'success' }
+        : { text: syncFailureMessage(result.kind), kind: 'error' });
+    } catch (cause) {
+      setGoogleMessage({ text: cause instanceof Error && cause.name === 'GoogleAuthorizationCancelledError'
+        ? 'Googleとの接続をキャンセルしました。'
+        : 'Google Tasksに接続できませんでした。OAuth設定と端末の開発ビルドを確認してください。', kind: 'error' });
+      await refreshGoogleState().catch(() => undefined);
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const toggleGoogleSync = async (enabled: boolean) => {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    setGoogleMessage(null);
+    try {
+      const current = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
+      const now = new Date().toISOString();
+      const previous: GoogleSyncState = current ?? {
+        householdId: LOCAL_HOUSEHOLD_ID,
+        enabled: false,
+        status: 'idle',
+        retryCount: 0,
+        updatedAt: now,
+      };
+      if (enabled) {
+        if (previous.status === 'authRequired' || !await hasGoogleTasksSession()) await authorizeGoogleTasks();
+        else await getGoogleTasksAccessToken();
+      }
+      await saveGoogleSyncState(database, {
+        ...previous,
+        enabled,
+        status: 'idle',
+        retryCount: enabled ? previous.retryCount : 0,
+        nextRetryAt: undefined,
+        lastErrorCode: undefined,
+        lastErrorAt: undefined,
+        updatedAt: now,
+      });
+      setGoogleSyncState({ ...previous, enabled, status: 'idle', retryCount: enabled ? previous.retryCount : 0, nextRetryAt: undefined, lastErrorCode: undefined, lastErrorAt: undefined, updatedAt: now });
+      if (enabled) {
+        try { await registerGoogleSyncBackgroundTask(); } catch { /* Foreground sync remains available. */ }
+        const result = await syncGoogleTasks(database, { force: true });
+        await refreshGoogleState();
+        setGoogleMessage(result.kind === 'success'
+          ? { text: 'Google Tasksとの同期を有効にしました。', kind: 'success' }
+          : { text: syncFailureMessage(result.kind), kind: 'error' });
+      } else {
+        await unregisterGoogleSyncBackgroundTask().catch(() => undefined);
+        await refreshGoogleState();
+        setGoogleMessage({ text: 'Google Tasksとの自動同期を一時停止しました。', kind: 'success' });
+      }
+    } catch {
+      setGoogleMessage({ text: enabled ? '同期を有効にできませんでした。Googleとの再接続をお試しください。' : '同期を停止できませんでした。', kind: 'error' });
+      await refreshGoogleState().catch(() => undefined);
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const syncGoogleNow = async () => {
+    if (googleBusy || !googleSyncState?.enabled) return;
+    setGoogleBusy(true);
+    setGoogleMessage(null);
+    try {
+      if (googleSyncState.status === 'authRequired' || !await hasGoogleTasksSession()) await authorizeGoogleTasks();
+      const result = await syncGoogleTasks(database, { force: true });
+      await refreshGoogleState();
+      setGoogleMessage(result.kind === 'success'
+        ? { text: `同期しました（新規 ${result.created ?? 0}件・更新 ${result.updated ?? 0}件）。`, kind: 'success' }
+        : { text: syncFailureMessage(result.kind), kind: 'error' });
+    } catch {
+      setGoogleMessage({ text: '同期できませんでした。Googleとの再接続をお試しください。', kind: 'error' });
+      await refreshGoogleState().catch(() => undefined);
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const disconnectGoogle = async () => {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    setGoogleMessage(null);
+    try {
+      const current = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
+      if (current) {
+        await saveGoogleSyncState(database, {
+          ...current,
+          enabled: false,
+          status: 'idle',
+          retryCount: 0,
+          nextRetryAt: undefined,
+          lastErrorCode: undefined,
+          lastErrorAt: undefined,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      await unregisterGoogleSyncBackgroundTask().catch(() => undefined);
+      await disconnectGoogleTasksSession();
+      await refreshGoogleState();
+      setGoogleMessage({ text: 'Googleとの接続を解除しました。Google Tasks上の家事は残しています。', kind: 'success' });
+    } catch {
+      await refreshGoogleState().catch(() => undefined);
+      setGoogleMessage({ text: '端末内の同期設定は停止しましたが、Googleのアクセス許可を解除できませんでした。', kind: 'error' });
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
 
   const toggleRestDay = (day: Weekday) => {
     setRestDays((current) => current.includes(day)
@@ -278,6 +442,43 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <AppButton title={calendarColorsSaving ? '保存中…' : '表示設定を保存'} onPress={() => void saveCalendarColors()} disabled={calendarColorsSaving} />
       </AccordionSection>
 
+      {Platform.OS !== 'web' ? (
+        <AccordionSection title="Google Tasks同期" expanded={expandedSections.has('google-sync')} onToggle={() => toggleSection('google-sync')}>
+          <FeatureStatus
+            title="Google Tasks"
+            status={googleConnected ? '接続済み' : googleSyncState?.enabled ? '再認証が必要' : googleOAuthConfigured ? '未接続' : 'OAuth設定待ち'}
+            detail="家事Plannerの名前と予定日をGoogle Tasksへ反映します。アプリで完了した家事はGoogle側も完了にし、Google側の完了はアプリへ取り込みません。"
+          />
+          {!googleOAuthConfigured ? (
+            <Text style={styles.hint}>OAuth client IDが未設定です。docs/google-sync-setup.mdの手順後、ネイティブ開発ビルドを作り直してください。</Text>
+          ) : null}
+          {googleConnected || googleSyncState?.enabled ? (
+            <>
+              <View style={styles.notificationRow}>
+                <View style={styles.limitCopy}>
+                  <Text style={styles.featureTitle}>自動同期</Text>
+                  <Text style={styles.hint}>{googleSyncState?.enabled ? '1日1回、失敗時は約1時間ごとに再試行します。' : '自動同期は一時停止中です。'}</Text>
+                </View>
+                <Switch value={Boolean(googleSyncState?.enabled)} disabled={googleBusy} onValueChange={(value) => void toggleGoogleSync(value)} />
+              </View>
+              <FeatureStatus
+                title="同期状態"
+                status={googleSyncState?.enabled ? googleSyncStatusLabel(googleSyncState.status) : '一時停止'}
+                detail={`最終成功同期：${formatSyncTimestamp(googleSyncState?.lastSuccessfulSyncAt)}。iOS・Androidのバックグラウンド実行はOSの判断で遅れることがあります。`}
+              />
+              <View style={styles.googleActions}>
+                <AppButton title={googleBusy ? '同期中…' : googleSyncState?.status === 'authRequired' ? '再接続して同期' : '今すぐ同期'} onPress={() => void syncGoogleNow()} disabled={googleBusy || !googleSyncState?.enabled} />
+                <AppButton title="接続解除" onPress={() => void disconnectGoogle()} disabled={googleBusy} variant="danger" />
+              </View>
+            </>
+          ) : (
+            <AppButton title={googleBusy ? '接続中…' : 'Googleと接続'} onPress={() => void connectGoogle()} disabled={googleBusy || !googleOAuthConfigured} />
+          )}
+          <Text style={styles.hint}>同期する家事名と予定日をGoogleへ送信します。接続解除時もGoogle Tasks上の既存家事は削除しません。Google Tasks権限は広い範囲に適用されるため、信頼できるGoogleアカウントで接続してください。</Text>
+          {googleMessage ? <Text style={googleMessage.kind === 'success' ? styles.success : styles.error}>{googleMessage.text}</Text> : null}
+        </AccordionSection>
+      ) : null}
+
       <AccordionSection title="家事ごとの設定" expanded={expandedSections.has('chore-settings')} onToggle={() => toggleSection('chore-settings')}>
         <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
         {groupChoresByCategory(snapshot.chores.filter((chore) => !chore.archived)).map(([category, chores]) => {
@@ -439,6 +640,26 @@ function FeatureStatus({ title, status, detail }: { title: string; status: strin
   );
 }
 
+function googleSyncStatusLabel(status: GoogleSyncState['status']): string {
+  if (status === 'syncing') return '同期中';
+  if (status === 'retryPending') return '再試行待ち';
+  if (status === 'authRequired') return '再認証が必要';
+  if (status === 'error') return 'エラー';
+  return '同期済み';
+}
+
+function formatSyncTimestamp(value: string | undefined): string {
+  if (!value) return 'まだありません';
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString('ja-JP') : 'まだありません';
+}
+
+function syncFailureMessage(kind: 'retry' | 'authRequired' | 'error'): string {
+  if (kind === 'retry') return '一時的な通信エラーです。約1時間後に再試行します。';
+  if (kind === 'authRequired') return 'Googleへの再認証が必要です。Googleと再接続してください。';
+  return '同期できませんでした。同期状態を確認し、OAuth設定を見直してください。';
+}
+
 function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, ChoreDefinition[]][] {
   const groups = new Map<string, ChoreDefinition[]>();
   for (const chore of chores) groups.set(chore.category, [...(groups.get(chore.category) ?? []), chore]);
@@ -493,6 +714,7 @@ const styles = StyleSheet.create({
   feature: { gap: 5, paddingVertical: 2 },
   notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   weatherActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  googleActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featureTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   featureTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
   featureStatus: { color: palette.accent, fontSize: 10, fontWeight: '700', backgroundColor: palette.accentSoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },

@@ -12,6 +12,7 @@ import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
+import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -70,7 +71,7 @@ export default function CalendarScreen() {
     try {
       const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
       if (completion) await undoCompletedChore(database, completion.id);
-      else await completeChore(database, entry);
+      else if (await completeChore(database, entry)) syncGoogleTasksAfterLocalCompletion(database);
       await refresh();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');

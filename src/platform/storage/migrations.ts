@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 13;
+const CURRENT_SCHEMA_VERSION = 14;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -241,6 +241,42 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     }
     await database.execAsync('PRAGMA user_version = 13');
     version = 13;
+  }
+  if (version < 14) {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS google_sync_state (
+        household_id TEXT PRIMARY KEY NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        task_list_id TEXT,
+        last_attempt_at TEXT,
+        last_successful_sync_at TEXT,
+        status TEXT NOT NULL DEFAULT 'idle',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        next_retry_at TEXT,
+        last_error_code TEXT,
+        last_error_at TEXT,
+        updated_at TEXT NOT NULL
+      );
+
+      -- Keep remote task IDs after local schedule/chore rows are pruned so the coordinator
+      -- can clean up obsolete Google Tasks on its next run instead of losing their mapping.
+      CREATE TABLE IF NOT EXISTS google_task_links (
+        schedule_entry_id TEXT PRIMARY KEY NOT NULL,
+        household_id TEXT NOT NULL,
+        chore_id TEXT NOT NULL,
+        google_task_list_id TEXT NOT NULL,
+        google_task_id TEXT NOT NULL,
+        last_synced_title TEXT,
+        last_synced_due_date TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (google_task_list_id, google_task_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_google_task_links_household
+        ON google_task_links(household_id);
+      PRAGMA user_version = 14;
+    `);
+    version = 14;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

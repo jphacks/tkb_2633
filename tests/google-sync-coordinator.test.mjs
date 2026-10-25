@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import './helpers/typescript-loader.mjs';
+
+const { syncGoogleTasksWithDependencies } = await import('../src/features/google-sync/coordinator.ts');
+const { GoogleTasksApiError } = await import('../src/platform/google-tasks/google-tasks-api.ts');
+
+const now = new Date('2026-10-25T12:00:00.000Z');
+
+function setup(state = {}) {
+  const currentState = {
+    householdId: 'local-household',
+    enabled: true,
+    taskListId: 'list-1',
+    status: 'idle',
+    retryCount: 0,
+    updatedAt: now.toISOString(),
+    ...state,
+  };
+  const counters = { api: 0, entries: 0 };
+  const dependencies = {
+    async loadState() { return { ...currentState }; },
+    async saveState(next) { Object.assign(currentState, next); },
+    async getAccessToken() { return 'access-token'; },
+    async listEntriesForGoogleSync() { counters.entries += 1; return []; },
+    async listGoogleTaskLinks() { return []; },
+    async upsertGoogleTaskLink() {},
+    async deleteGoogleTaskLink() {},
+    api: {
+      async listTaskLists() { counters.api += 1; return [{ id: 'list-1', title: '家事Planner' }]; },
+      async createTaskList() { throw new Error('unexpected createTaskList'); },
+      async getTask() { throw new Error('unexpected getTask'); },
+      async createTask() { throw new Error('unexpected createTask'); },
+      async patchTask() { throw new Error('unexpected patchTask'); },
+      async deleteTask() { throw new Error('unexpected deleteTask'); },
+    },
+  };
+  return { currentState, dependencies, counters };
+}
+
+test('disabled, not-due, and retry-not-due syncs make no API calls', async () => {
+  const disabled = setup({ enabled: false });
+  assert.deepEqual(await syncGoogleTasksWithDependencies(disabled.dependencies, { now, force: true }), { kind: 'success', skipped: true });
+
+  const notDue = setup({ lastSuccessfulSyncAt: new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString() });
+  assert.deepEqual(await syncGoogleTasksWithDependencies(notDue.dependencies, { now }), { kind: 'success', skipped: true });
+
+  const retryNotDue = setup({ status: 'retryPending', nextRetryAt: new Date(now.getTime() + 60_000).toISOString() });
+  assert.deepEqual(await syncGoogleTasksWithDependencies(retryNotDue.dependencies, { now }), { kind: 'success', skipped: true });
+  assert.equal(disabled.counters.api + notDue.counters.api + retryNotDue.counters.api, 0);
+});
+
+test('successful manual sync bypasses the 24-hour interval and clears retry state', async () => {
+  const harness = setup({
+    lastSuccessfulSyncAt: new Date(now.getTime() - 60_000).toISOString(),
+    status: 'retryPending',
+    nextRetryAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+    retryCount: 3,
+  });
+  const result = await syncGoogleTasksWithDependencies(harness.dependencies, { now, force: true });
+  assert.equal(result.kind, 'success');
+  assert.equal(harness.counters.api, 1);
+  assert.equal(harness.currentState.status, 'idle');
+  assert.equal(harness.currentState.retryCount, 0);
+  assert.equal(harness.currentState.nextRetryAt, undefined);
+  assert.equal(harness.currentState.lastSuccessfulSyncAt, now.toISOString());
+});
+
+test('transient API failures persist an hourly retry and 401 asks for reconnection', async () => {
+  const transient = setup();
+  transient.dependencies.api.listTaskLists = async () => { throw new GoogleTasksApiError(503, 'backend_error', null); };
+  const transientResult = await syncGoogleTasksWithDependencies(transient.dependencies, { now });
+  assert.deepEqual(transientResult, { kind: 'retry', code: 'backend_error' });
+  assert.equal(transient.currentState.status, 'retryPending');
+  assert.equal(transient.currentState.nextRetryAt, new Date(now.getTime() + 60 * 60 * 1000).toISOString());
+  assert.equal(transient.currentState.retryCount, 1);
+
+  const unauthorized = setup();
+  unauthorized.dependencies.getAccessToken = async () => {
+    const error = new Error('Google sign-in required');
+    error.name = 'GoogleSignInRequiredError';
+    throw error;
+  };
+  const unauthorizedResult = await syncGoogleTasksWithDependencies(unauthorized.dependencies, { now });
+  assert.deepEqual(unauthorizedResult, { kind: 'authRequired', code: 'sign_in_required' });
+  assert.equal(unauthorized.currentState.status, 'authRequired');
+});
+
+test('the coordinator does not start an overlapping attempt while the saved state is fresh-syncing', async () => {
+  const active = setup({ status: 'syncing', lastAttemptAt: now.toISOString() });
+  const result = await syncGoogleTasksWithDependencies(active.dependencies, { now, force: true });
+  assert.deepEqual(result, { kind: 'success', skipped: true });
+  assert.equal(active.counters.api, 0);
+});
+
+test('a syncing state older than the stale threshold is recovered on the next due check', async () => {
+  const stale = setup({ status: 'syncing', lastAttemptAt: new Date(now.getTime() - 11 * 60 * 1000).toISOString() });
+  const result = await syncGoogleTasksWithDependencies(stale.dependencies, { now });
+  assert.equal(result.kind, 'success');
+  assert.equal(stale.counters.api, 1);
+  assert.equal(stale.currentState.status, 'idle');
+});

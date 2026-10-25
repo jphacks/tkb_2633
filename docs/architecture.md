@@ -22,6 +22,8 @@
 ## 保存と初期データ
 
 - `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更、天気、家電スナップショット、通知許可、非表示ゴミ予定のスキーマ
+- `src/features/google-sync/`: Google Tasksの同期頻度・状態遷移・一方向reconciliation・BackgroundTask
+- `src/platform/google-tasks/`: Google Sign-In SDKとGoogle Tasks APIのadapter
 - `src/platform/storage/repository.ts`: 初期マスター投入、SQLite読み書き、初回設定、完了・未完了の記録と予定再生成
 - `src/domain/chores/catalog.ts`: 18件の家事名、初期手順・道具・注意点・負荷、3つの頻度モードの暫定周期
 - `src/domain/chores/types.ts`: 家事、実施状態、完了・未完了記録、世帯設定の型

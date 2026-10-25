@@ -12,6 +12,7 @@ import { addDays, formatJapaneseDate, localDateFromDate, weekdayOf } from '@/dom
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, setWasteOccurrenceHidden, undoCompletedChore } from '@/platform/storage/repository';
+import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 
 type WeekScope = 'current' | 'next';
 
@@ -64,7 +65,7 @@ export default function HomeScreen() {
     setCompletingIds((current) => new Set(current).add(entryId));
     setActionError(null);
     try {
-      await completeChore(database, entry);
+      if (await completeChore(database, entry)) syncGoogleTasksAfterLocalCompletion(database);
       await refresh();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');

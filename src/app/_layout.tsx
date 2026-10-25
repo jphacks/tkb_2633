@@ -1,9 +1,11 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, useColorScheme } from 'react-native';
 
-import { initializeLocalDatabase } from '@/platform/storage/repository';
+import { initializeLocalDatabase, loadGoogleSyncState, LOCAL_HOUSEHOLD_ID } from '@/platform/storage/repository';
+import { registerGoogleSyncBackgroundTask } from '@/features/google-sync/background-task';
+import { syncGoogleTasks, syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 import { syncDailyHouseworkDigest } from '@/features/notifications/daily-housework-digest';
 import { refreshPlannerFromWidget } from '@/platform/widgets/refresh-planner-from-widget';
 import { addWidgetUserInteractionListener } from '../platform/widgets/widget-interaction-listener';
@@ -13,10 +15,25 @@ import '@/platform/notifications/configure-foreground-notifications';
 function WidgetInteractionBridge() {
   const database = useSQLiteContext();
 
+  useEffect(() => {
+    const syncIfDue = async () => {
+      const state = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
+      if (!state?.enabled) return;
+      await registerGoogleSyncBackgroundTask().catch(() => false);
+      await syncGoogleTasks(database);
+    };
+    void syncIfDue().catch(() => undefined);
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncIfDue().catch(() => undefined);
+    });
+    return () => appStateSubscription.remove();
+  }, [database]);
+
   const processCompletion = useCallback(async (scheduleEntryId: string) => {
     try {
       const { snapshot } = await refreshPlannerFromWidget(database, [scheduleEntryId]);
       await syncDailyHouseworkDigest(expoLocalNotificationGateway, snapshot);
+      syncGoogleTasksAfterLocalCompletion(database);
     } catch {
       // Widget actions should not interrupt the app if local data cannot be refreshed.
     }

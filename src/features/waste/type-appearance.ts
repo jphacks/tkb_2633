@@ -34,5 +34,6 @@ export function calendarWasteLabel(label: string): string {
     'プラスチック資源': 'プラ資源', '容器包装プラスチック': '容器プラ', '製品プラスチック': '製品プラ',
     '陶磁器・ガラス': '陶器・ガラス', '発泡スチロール': '発泡材', '使用済み食用油': '食用油',
   };
-  return compact[canonical] ?? canonical;
+  // Only calendar captions are shortened. Stored names, settings and colors remain canonical.
+  return (compact[canonical] ?? canonical).replace(/[ごゴ][みミ]/gu, '').trim();
 }

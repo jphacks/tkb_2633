@@ -190,7 +190,8 @@ test('feature screen contract: chore categories, kana heading search and trivia 
     const screen = screenHarness('src/app/(tabs)/guide.tsx', { database: h.database, snapshot: () => h.snapshot });
     const count = h.snapshot.chores.filter((chore) => !chore.archived && chore.category === 'キッチン').length;
     await screen.press(`キッチン、${count}件`);
-    assert.ok(screen.text().includes('キッチンに分類されている家事です。'));
+    assert.ok(!screen.text().includes('に分類されている家事です。'), 'redundant category copy stays removed');
+    assert.equal(screen.nodes().filter((node) => node.props.accessibilityLabel?.endsWith('、キッチン')).length, count, 'category selection still filters the chore headings');
     await screen.press('分類一覧に戻る');
     await screen.change('家事名を検索', 'こんろ');
     const first = screen.nodes().find((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel?.includes('、キッチン'));

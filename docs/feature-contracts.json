@@ -219,5 +219,52 @@
         "name": "mobile tab bar reserves space for labels on phones with and without a home indicator"
       }
     ]
+  },
+  {
+    "feature": "waste-occurrence-checkboxes",
+    "tests": [
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "calendar waste names omit every kana variant without changing registered names"
+      },
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "waste check hides only one occurrence on home and calendar can restore all recurrence modes"
+      },
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "compact waste checkbox has the same trailing center as chore checkbox and smaller readable text"
+      },
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "waste checks reject duplicate taps and remain visible after a failed save"
+      }
+    ]
+  },
+  {
+    "feature": "help-and-weather-attribution",
+    "tests": [
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "help starts with headings only and every section opens and closes independently"
+      },
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "settings end with working weather and location attribution and omit redundant chore copy"
+      }
+    ]
+  },
+  {
+    "feature": "appliance-navigation-performance",
+    "tests": [
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "appliance details virtualize long instructions and return by popping to their originating list"
+      },
+      {
+        "file": "tests/waste-help-navigation.test.mjs",
+        "name": "appliance focus reads ignore stale results and retain mounted content on refresh failure"
+      }
+    ]
   }
 ]

@@ -133,7 +133,7 @@ export default function ApplianceCareScreen() {
 
   return (
     <Page>
-      <BackButton onPress={() => returnTo ? router.replace(returnTo) : router.back()} />
+      <BackButton onPress={() => returnTo ? router.dismissTo(returnTo) : router.back()} />
       <ScreenHeading
         eyebrow="OFFICIAL MANUAL"
         title={applianceId ? '公式資料を再解析' : '家電を追加'}

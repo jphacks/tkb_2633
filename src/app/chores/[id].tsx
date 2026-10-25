@@ -108,7 +108,7 @@ function ChoreSettingsContent({
   return (
     <Page>
       <BackButton onPress={() => router.back()} />
-      <ScreenHeading eyebrow={chore.category.toUpperCase()} title={`${chore.name}の設定`} description="この家事の頻度や実施条件を調整できます。" />
+      <ScreenHeading eyebrow={chore.category.toUpperCase()} title={`${chore.name}の設定`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
 
       <Card>

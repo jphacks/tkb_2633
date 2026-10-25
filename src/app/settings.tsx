@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { AccordionSection } from '@/components/accordion-section';
+import { DataCredits, LocationAttribution, WeatherAttribution } from '@/components/data-credits';
 import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { CalendarCountDisplayMode, Weekday } from '@/domain/shared/types';
@@ -560,7 +561,6 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
                   style={styles.choreSettingRow}>
                   <View style={styles.choreSettingCopy}>
                     <Text style={styles.choreSettingTitle}>{chore.name}</Text>
-                    <Text style={styles.hint}>{chore.enabled ? '有効' : '無効'} · 周期や負荷を調整</Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
                 </Pressable>
@@ -650,6 +650,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         {weatherMessage ? (
           <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text>
         ) : null}
+        <WeatherAttribution />
+        <LocationAttribution />
         <View style={styles.divider} />
         <FeatureStatus
           title="家電お手入れ AI"
@@ -659,6 +661,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       </Card>
 
       <Text style={styles.footer}>家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。</Text>
+      <DataCredits />
     </Page>
   );
 }

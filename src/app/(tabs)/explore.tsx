@@ -6,6 +6,7 @@ import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette, typograp
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
+import { WasteOccurrenceCard } from '@/components/waste-occurrence-card';
 import { completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
 import { orderDateTasks, recommendedChoreCounts, selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
@@ -15,6 +16,8 @@ import { completeChore, undoCompletedChore } from '@/platform/storage/repository
 import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 import { wasteCalendarLabels } from '@/features/waste/calendar-labels';
 import { calendarWasteLabel, wasteTypeColor } from '@/features/waste/type-appearance';
+import { generateWasteCollectionDates } from '@/features/waste/weekly-scheduler';
+import { useWasteOccurrenceToggle } from '@/features/waste/use-waste-occurrence-toggle';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -26,6 +29,7 @@ export default function CalendarScreen() {
   const [periodsExpanded, setPeriodsExpanded] = useState(false);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
+  const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
 
   if (loading || !snapshot) return <PlannerLoadState title="カレンダー" message="予定を読み込んでいます。" error={error} retry={refresh} />;
 
@@ -42,6 +46,9 @@ export default function CalendarScreen() {
   const overdueTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores)
     .filter((task) => task.entry?.status === 'overdue' && !task.completed && !selectedChoreIds.has(task.choreId)), today, snapshot.chores);
   const completedCount = selectedTasks.filter((task) => task.completed).length;
+  // Include checked occurrences here so hiding from home can always be undone on its date.
+  const selectedWaste = snapshot.wasteSchedules.flatMap((schedule) => generateWasteCollectionDates(schedule, selectedDate, selectedDate));
+  const hiddenWasteKeys = new Set(snapshot.hiddenWasteOccurrenceKeys);
   const periodRows = selectedTasks.flatMap((task) => {
     const chore = choresById.get(task.choreId);
     const period = task.entry
@@ -108,7 +115,7 @@ export default function CalendarScreen() {
   return (
     <Page contentStyle={styles.calendarPage}>
       <ScreenHeading title="カレンダー" />
-      {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text></Card> : null}
+      {error || actionError || wasteVisibility.error ? <Card><Text style={styles.error}>{wasteVisibility.error ?? actionError ?? error}</Text></Card> : null}
       <Pressable accessible={false} onPress={() => setPeriodsExpanded((expanded) => !expanded)}>
       <Card style={styles.calendarCard}>
         <View style={styles.monthHeader}>
@@ -210,7 +217,13 @@ export default function CalendarScreen() {
       </Pressable>
 
       <SectionHeading title={formatJapaneseDate(selectedDate, { weekday: true })} trailing={<Text style={styles.smallCount}>{selectedTasks.length}件・{completedCount}件完了</Text>} />
-      {selectedTasks.length === 0 ? (
+      {selectedWaste.map((item) => {
+        const key = `${item.scheduleId}:${item.date}`;
+        const hidden = hiddenWasteKeys.has(key);
+        return <WasteOccurrenceCard key={key} occurrence={item} compact hidden={hidden}
+          busy={wasteVisibility.busyKeys.has(key)} onToggle={() => void wasteVisibility.toggle(item, hidden)} />;
+      })}
+      {selectedTasks.length === 0 && selectedWaste.length === 0 ? (
         <Card><Text style={styles.emptyTitle}>この日の予定はありません</Text><Text style={styles.emptyText}>別の日を選ぶか、家事一覧で予定を確認できます。</Text></Card>
       ) : selectedTasks.map((task) => {
         const chore = choresById.get(task.choreId);
@@ -255,9 +268,7 @@ export default function CalendarScreen() {
 }
 
 function WasteCalendarName({ name }: { name: string }) {
-  // Keep the suffix together instead of leaving a lone 「み」 on the second line.
-  const label = calendarWasteLabel(name);
-  return <Text numberOfLines={2} style={[styles.wasteLabel, /^.{2}ごみ$/.test(label) && styles.balancedWasteLabel, { color: wasteTypeColor(name) }]}>{label}</Text>;
+  return <Text numberOfLines={2} style={[styles.wasteLabel, { color: wasteTypeColor(name) }]}>{calendarWasteLabel(name)}</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -273,7 +284,6 @@ const styles = StyleSheet.create({
   weekdayPill: { minHeight: 32, justifyContent: 'flex-start', alignItems: 'center', borderRadius: 10, paddingHorizontal: 0, paddingVertical: 2, gap: 1, borderWidth: 1.5, borderColor: 'transparent' },
   wasteOutline: { borderWidth: 1.5, backgroundColor: '#FFFFFF' },
   wasteLabel: { width: '100%', fontSize: 16, lineHeight: 20, fontWeight: '700', textAlign: 'center' },
-  balancedWasteLabel: { maxWidth: 36, alignSelf: 'center' },
   hiddenWeeklyDay: { borderColor: '#929BAA', backgroundColor: '#F3F4F6', borderWidth: 1.5 },
   selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5 },
   outlinedDayNumber: { color: '#205B79' },

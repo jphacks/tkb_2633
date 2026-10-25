@@ -47,7 +47,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="help" options={{ headerShown: false }} />
-              <Stack.Screen name="chores" options={{ headerShown: false }} />
+              <Stack.Screen name="chores" options={{ headerShown: false, animationTypeForReplace: 'pop' }} />
               <Stack.Screen name="settings" />
               <Stack.Screen name="settings/chore/[id]" options={{ headerShown: false }} />
               <Stack.Screen name="history" />

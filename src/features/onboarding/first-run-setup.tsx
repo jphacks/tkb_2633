@@ -10,6 +10,7 @@ import type { Weekday, WeatherLocation } from '@/domain/shared/types';
 import { completeFirstSetup, nextInitialDateChoice } from '@/platform/storage/repository';
 import { ExpoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
+import { LocationAttribution, WeatherAttribution } from '@/components/data-credits';
 import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
 import type { WasteScheduleInput } from '@/features/waste/contracts';
@@ -276,6 +277,8 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
               ? <Text style={styles.hint}>市区町村を検索しています…</Text>
               : null}
             {weatherLocation ? <Text style={styles.selectedRegion}>天気に使う地域：{weatherLocation.displayName}</Text> : null}
+            <WeatherAttribution />
+            <LocationAttribution />
             {weatherMessage ? <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text> : null}
             <Text style={styles.hint}>入力すると候補を検索します。候補は「市区町村、都道府県」で表示します。天気連動は候補を確定した場合だけ動作します。</Text>
           </>

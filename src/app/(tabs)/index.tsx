@@ -7,14 +7,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, Page, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { plannerTabBarLayout } from '@/components/planner-tab-bar';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
+import { WasteOccurrenceCard } from '@/components/waste-occurrence-card';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
 import { orderDateTasks, selectDateTasks, type DateTask } from '@/domain/scheduling/date-tasks';
 import { addDays, formatJapaneseDate, localDateFromDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { wasteTypeColor } from '@/features/waste/type-appearance';
-import { completeChore, setWasteOccurrenceHidden, undoCompletedChore } from '@/platform/storage/repository';
+import { useWasteOccurrenceToggle } from '@/features/waste/use-waste-occurrence-toggle';
+import { WeatherAttribution } from '@/components/data-credits';
+import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
 import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 
 type WeekScope = 'current' | 'next';
@@ -23,7 +25,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
-  const [wasteMessage, setWasteMessage] = useState<string | null>(null);
+  const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
   const [actionError, setActionError] = useState<string | null>(null);
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
   const today = localDateFromDate(new Date());
@@ -100,16 +102,6 @@ export default function HomeScreen() {
     }
   };
 
-  const hideWasteOccurrence = async (scheduleId: string, date: LocalDate) => {
-    try {
-      await setWasteOccurrenceHidden(database, scheduleId, date, true);
-      setWasteMessage('この日のゴミ予定だけを非表示にしました。ゴミ曜日から再表示できます。');
-      await refresh();
-    } catch {
-      setWasteMessage('ゴミ予定を非表示にできませんでした。');
-    }
-  };
-
   return (
     <>
       <Tabs.Screen options={{ tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
@@ -146,6 +138,7 @@ export default function HomeScreen() {
         <Card style={styles.weatherNotice}>
           <Text style={styles.noticeTitle}>天気に合わせて洗濯予定を調整しました</Text>
           <Text style={styles.noticeBody}>{snapshot.weatherAdjustmentCount}件の予定を見直しています。</Text>
+          <WeatherAttribution />
         </Card>
       ) : snapshot.weatherOutcome === 'unavailable' ? (
         <Card style={styles.weatherNotice}>
@@ -154,25 +147,12 @@ export default function HomeScreen() {
         </Card>
       ) : null}
 
-      {todayWaste.length ? (
-        <Card style={styles.wasteCard}>
-          <View style={styles.wasteCopy}>
-            <Text style={styles.wasteEyebrow}>今日のゴミ収集</Text>
-            {todayWaste.map((item) => (
-              <View key={`${item.scheduleId}-${item.date}`} style={styles.wasteRow}>
-                <Text style={[styles.wasteName, { color: wasteTypeColor(item.label) }]}>{item.label}</Text>
-                <Pressable accessibilityRole="button" onPress={() => void hideWasteOccurrence(item.scheduleId, item.date)}>
-                  <Text style={styles.hideWaste}>今回だけ非表示</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-          <Pressable accessibilityRole="button" onPress={() => router.push('/waste')} style={styles.wasteButton}>
-            <Text style={styles.wasteButtonText}>曜日</Text>
-          </Pressable>
-        </Card>
-      ) : null}
-      {wasteMessage ? <Text style={styles.noticeBody}>{wasteMessage}</Text> : null}
+      {todayWaste.map((item) => (
+        <WasteOccurrenceCard key={`${item.scheduleId}:${item.date}`} occurrence={item}
+          busy={wasteVisibility.busyKeys.has(`${item.scheduleId}:${item.date}`)}
+          onToggle={() => void wasteVisibility.toggle(item, false)} />
+      ))}
+      {wasteVisibility.error ? <Text style={styles.error}>{wasteVisibility.error}</Text> : null}
 
       <SectionHeading title="今日の家事" trailing={<Text style={styles.smallCount}>{todayTotal}件・{todayDone}件完了</Text>} />
       {orderedDueToday.map((task) => {
@@ -272,14 +252,6 @@ const styles = StyleSheet.create({
   weatherNotice: { backgroundColor: palette.accentSoft, borderColor: palette.accentSoft, gap: 4 },
   noticeTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   noticeBody: { ...typography.body, color: palette.muted },
-  wasteCard: { flexDirection: 'row', alignItems: 'center', padding: 13, gap: 12, backgroundColor: '#F0FAFD', borderColor: '#D9F0F8' },
-  wasteCopy: { flex: 1, gap: 4 },
-  wasteEyebrow: { ...typography.label, color: palette.accent, fontWeight: '800' },
-  wasteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 7 },
-  wasteName: { ...typography.body, color: palette.ink, fontWeight: '700', flex: 1 },
-  hideWaste: { ...typography.caption, color: palette.accent, fontWeight: '700', textDecorationLine: 'underline' },
-  wasteButton: { borderRadius: 11, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 9 },
-  wasteButtonText: { ...typography.label, color: palette.accent, fontWeight: '700' },
   smallCount: { ...typography.caption, color: palette.muted },
   emptyCard: { paddingVertical: 18 },
   emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },

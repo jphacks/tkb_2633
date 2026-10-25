@@ -36,6 +36,8 @@ export function screenHarness(filename, options = {}) {
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': {
       ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
+      FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
+        ...(props.data ?? []).slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index }))] }),
       Platform: { OS: options.platform ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
       Linking: { openURL: async () => {} },
     },
@@ -47,9 +49,9 @@ export function screenHarness(filename, options = {}) {
     'expo-router': {
       useLocalSearchParams: () => options.params ?? {},
       useNavigation: () => ({ addListener: () => () => {}, setParams: (value) => { options.params = { ...options.params, ...value }; } }),
-      router: { ...Object.fromEntries(['push', 'navigate', 'replace', 'back'].map((name) => [name, (...args) => options.navigate?.(name, ...args)])),
+      router: { ...Object.fromEntries(['push', 'navigate', 'replace', 'back', 'dismissTo'].map((name) => [name, (...args) => options.navigate?.(name, ...args)])),
         setParams: (value) => { options.params = { ...options.params, ...value }; } },
-      Tabs: { Screen: 'TabsScreen' }, useFocusEffect: () => {},
+      Tabs: { Screen: 'TabsScreen' }, useFocusEffect: (callback) => options.focusEffect?.(callback),
     },
     'expo-sqlite': { useSQLiteContext: () => options.database },
     'expo-linking': { openURL: async (url) => options.openURL?.(url) },

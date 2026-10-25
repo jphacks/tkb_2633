@@ -160,7 +160,7 @@ export default function ChoreGuideScreen() {
         <ScreenHeading
           title="家事の説明"
           description={selectedCategory
-            ? `${selectedCategory}に分類されている家事です。`
+            ? undefined
             : '分類を選ぶか、見出しから家事を検索してください。'}
         />
         {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}

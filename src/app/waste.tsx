@@ -126,7 +126,7 @@ export default function WasteScreen() {
           <View style={styles.suggestions}>
             <Text style={styles.label}>候補を選択</Text>
             {candidates.map((candidate) => <Pressable key={candidate.label} accessibilityRole="button" accessibilityLabel={`${candidate.label}を選択`} onPress={() => { setLabel(candidate.label); setSelectedLabel(candidate.label); }} style={styles.candidate}><Text style={styles.candidateText}>{candidate.label}</Text><Text style={styles.candidateArrow}>›</Text></Pressable>)}
-            {!candidates.some((candidate) => candidate.label === label.trim()) ? <Pressable accessibilityRole="button" onPress={() => { setLabel(label.trim()); setSelectedLabel(label.trim()); }} style={styles.candidate}><Text style={styles.candidateText}>「{label.trim()}」を使う</Text><Text style={styles.candidateArrow}>›</Text></Pressable> : null}
+            {candidates.length === 0 ? <Pressable accessibilityRole="button" onPress={() => { setLabel(label.trim()); setSelectedLabel(label.trim()); }} style={styles.candidate}><Text style={styles.candidateText}>「{label.trim()}」を使う</Text><Text style={styles.candidateArrow}>›</Text></Pressable> : null}
           </View>
         ) : null}
         <Text style={styles.body}>ひらがな・カタカナでも検索できます。収集区分は自治体の案内に合わせて選んでください。</Text>

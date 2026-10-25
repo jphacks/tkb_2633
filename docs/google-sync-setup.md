@@ -2,7 +2,7 @@
 
 ## 実装範囲
 
-Phase 0〜1として、家事PlannerからGoogle Tasksへの一方向同期を実装しています。Google Tasks上の完了状態はアプリに取り込まず、アプリで完了した家事は対応するGoogle Taskを完了状態にします。Calendar API、Calendar同期、家族間・複数端末同期は対象外です。
+Phase 0〜2として、家事PlannerからGoogle Tasksへ名前と予定日を同期し、完了状態を双方へ同期します。Google側の完了は、専用Task Listの対応表にあるTaskだけを既存の完了履歴・家事状態・Schedulerへ取り込みます。Googleで完了を取り消してもアプリの履歴は戻しません。Calendar API、家族間・複数端末同期は対象外です。
 
 同期対象は有効な家事の今日以降の予定と期限超過予定です。Google Tasksに `家事Planner` というTask Listを使い、schedule entry IDとGoogle Task IDを端末内SQLiteで対応づけます。アプリから消えた未完了Taskは次回同期で削除し、完了済みTaskは履歴として残します。
 
@@ -77,6 +77,9 @@ Google Sign-Inはネイティブmoduleを使います。Expo Goではなくdevel
 - Google Tasksへのリクエストに期限20秒を設定します。
 - 同期状態とTask ID対応表はSQLiteに保存します。Google tokenはSQLiteへ保存しません。
 - BackgroundTaskが登録できない場合も、接続直後・起動時・アプリ復帰時・手動操作の前面同期は利用できます。
+- Google側の完了を全ページ取得して取り込んだ後、アプリ側完了・名前・予定日を反映し、不要な未完了Taskを整理します。
+- 完了の取得では`showCompleted=true`・`showHidden=true`を必ず指定します。対応表にないTaskは名前が一致しても無視します。
+- Googleの明示的な完了日時がないTaskは履歴へ取り込まず、診断件数を記録します。
 
 ## 実機テスト
 
@@ -84,7 +87,7 @@ Google Sign-Inはネイティブmoduleを使います。Expo Goではなくdevel
 2. Google Tasksを使うtest userでアプリから接続し、Google Tasks scopeを許可します。
 3. 設定画面から「今すぐ同期」を実行し、Google Tasksの `家事Planner` listに今日以降の予定が作られることを確認します。
 4. 家事名・予定日変更、アプリ側完了、ローカル家事無効化・削除、Google側Task削除をそれぞれ試し、同じTaskの更新・完了・cleanup・再作成を確認します。
-5. Google側だけでTaskを完了し、アプリへ完了が取り込まれず、Taskが未完了へ戻らないことを確認します。
+5. Google側のUIで対応Taskを完了し、アプリで手動同期します。Googleの完了日時で履歴が1件追加され、次回予定が更新され、再同期・再起動でも履歴が増えないことを確認します。Googleで完了を取り消した場合もアプリの履歴は残ります。
 6. 接続解除し、ローカルbackground taskが停止し、Google上の既存Taskが残ることを確認します。
 
 2026-10-25にGoogle Cloud project `housework-planner-tkb2633` でTasks APIを有効化し、外部・テスト中のOAuth同意画面、Web・iOS・Android開発用の各クライアント、所有者アカウントのテストユーザー登録、Tasks scopeを設定しました。Web・iOSの公開client IDは、この端末のGit管理外の `.env.local` に設定済みです。

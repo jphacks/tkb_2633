@@ -16,7 +16,8 @@ import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/d
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { CalendarCountColors, CalendarCountDisplayMode, EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
-import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskLink } from '@/features/google-sync/contracts';
+import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink } from '@/features/google-sync/contracts';
+import { parseGoogleCompletedAt } from '@/features/google-sync/google-completion-policy';
 import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
@@ -418,6 +419,7 @@ async function loadPlannerSnapshotImpl(
     scheduledDate: (row.scheduled_date ?? undefined) as LocalDate | undefined,
     scheduledWindowStart: (row.scheduled_window_start ?? undefined) as LocalDate | undefined,
     scheduledWindowEnd: (row.scheduled_window_end ?? undefined) as LocalDate | undefined,
+    ...(row.source === 'googleTasks' ? { estimatedDate: false } : {}),
   }));
   const previousScheduleEntries = scheduleEntryRows
     .map((row) => parseJson<ChoreScheduleEntry | undefined>(row.entry_json, undefined))
@@ -946,44 +948,61 @@ async function completeChoreImpl(
 ): Promise<boolean> {
   if (entry.status === 'initialPending' && !entry.id.endsWith(':initial')) return false;
   let inserted = false;
-  const completedAt = new Date();
-  const completedDate = localDateFromDate(completedAt);
   await database.withTransactionAsync(async () => {
-    const previousStateRow = await database.getFirstAsync<StateRow>(
-      `SELECT chore_id, last_completed_date, last_completed_estimated, initial_pending,
-       initial_scheduled_date, unknown_reason FROM chore_state WHERE chore_id = ?`, entry.choreId,
+    inserted = await persistChoreCompletion(database, entry, new Date().toISOString(), source, memberId);
+  });
+  return inserted;
+}
+
+type CompletionTarget = Pick<ChoreScheduleEntry, 'id' | 'householdId' | 'choreId'>
+  & Partial<Pick<ChoreScheduleEntry, 'suggestedDate' | 'windowStart' | 'windowEnd'>>;
+
+/** Shared by app/widget completion and Google import, inside the caller's transaction. */
+async function persistChoreCompletion(
+  database: SQLiteDatabase,
+  entry: CompletionTarget,
+  completedAt: string,
+  source: NonNullable<ChoreCompletion['source']>,
+  memberId?: EntityId,
+): Promise<boolean> {
+  const completedDate = localDateFromDate(new Date(completedAt));
+  const previousStateRow = await database.getFirstAsync<StateRow>(
+    `SELECT chore_id, last_completed_date, last_completed_estimated, initial_pending,
+     initial_scheduled_date, unknown_reason FROM chore_state WHERE chore_id = ?`, entry.choreId,
+  );
+  const previousState: ChoreState | null = previousStateRow ? {
+    choreId: previousStateRow.chore_id,
+    lastCompletedDate: (previousStateRow.last_completed_date ?? undefined) as LocalDate | undefined,
+    lastCompletedEstimated: Boolean(previousStateRow.last_completed_estimated),
+    initialPending: Boolean(previousStateRow.initial_pending),
+    initialScheduledDate: (previousStateRow.initial_scheduled_date ?? undefined) as LocalDate | undefined,
+    unknownReason: previousStateRow.unknown_reason ?? undefined,
+  } : null;
+  const previousStateJson = JSON.stringify(previousState);
+  const existing = await database.getFirstAsync<{ id: string; outcome: ChoreCompletion['outcome'] }>(
+    'SELECT id, outcome FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
+  );
+  if (existing?.outcome === 'completed' || (existing && source === 'googleTasks')) return false;
+  if (existing) {
+    await database.runAsync(
+      `UPDATE chore_completions SET outcome = 'completed', completed_at = ?,
+       completed_by_member_id = ?, source = ?, scheduled_date = ?,
+       scheduled_window_start = ?, scheduled_window_end = ?, previous_chore_state_json = ? WHERE id = ?`,
+      completedAt, memberId ?? null, source, entry.suggestedDate ?? null, entry.windowStart ?? null, entry.windowEnd ?? null,
+      previousStateJson, existing.id,
     );
-    const previousState: ChoreState | null = previousStateRow ? {
-      choreId: previousStateRow.chore_id,
-      lastCompletedDate: (previousStateRow.last_completed_date ?? undefined) as LocalDate | undefined,
-      lastCompletedEstimated: Boolean(previousStateRow.last_completed_estimated),
-      initialPending: Boolean(previousStateRow.initial_pending),
-      initialScheduledDate: (previousStateRow.initial_scheduled_date ?? undefined) as LocalDate | undefined,
-      unknownReason: previousStateRow.unknown_reason ?? undefined,
-    } : null;
-    const previousStateJson = JSON.stringify(previousState);
-    const existing = await database.getFirstAsync<{ id: string; outcome: ChoreCompletion['outcome'] }>(
-      'SELECT id, outcome FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
+  } else {
+    await database.runAsync(
+      `INSERT INTO chore_completions
+       (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id,
+        scheduled_date, scheduled_window_start, scheduled_window_end, outcome, previous_chore_state_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
+      createId('completion'), entry.householdId, entry.choreId, completedAt, memberId ?? null, source,
+      entry.id, entry.suggestedDate ?? null, entry.windowStart ?? null, entry.windowEnd ?? null, previousStateJson,
     );
-    if (existing?.outcome === 'completed') return;
-    if (existing) {
-      await database.runAsync(
-        `UPDATE chore_completions SET outcome = 'completed', completed_at = ?,
-         completed_by_member_id = ?, source = ?, scheduled_date = ?,
-         scheduled_window_start = ?, scheduled_window_end = ?, previous_chore_state_json = ? WHERE id = ?`,
-        completedAt.toISOString(), memberId ?? null, source, entry.suggestedDate, entry.windowStart, entry.windowEnd,
-        previousStateJson, existing.id,
-      );
-    } else {
-      await database.runAsync(
-        `INSERT INTO chore_completions
-         (id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id,
-          scheduled_date, scheduled_window_start, scheduled_window_end, outcome, previous_chore_state_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
-        createId('completion'), entry.householdId, entry.choreId, completedAt.toISOString(), memberId ?? null, source,
-        entry.id, entry.suggestedDate, entry.windowStart, entry.windowEnd, previousStateJson,
-      );
-    }
+  }
+  // Historical Google completions must not move a newer local completion backwards.
+  if (!previousState?.lastCompletedDate || completedDate >= previousState.lastCompletedDate) {
     await database.runAsync(
       `INSERT INTO chore_state (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
        VALUES (?, ?, 0, 0, NULL)
@@ -991,9 +1010,49 @@ async function completeChoreImpl(
        last_completed_estimated = 0, initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL`,
       entry.choreId, completedDate,
     );
-    inserted = true;
+  }
+  return true;
+}
+
+async function importGoogleTaskCompletionsImpl(
+  database: SQLiteDatabase,
+  completions: readonly GoogleTaskCompletion[],
+  today: LocalDate = localDateFromDate(new Date()),
+): Promise<number> {
+  const links = await listGoogleTaskLinksImpl(database, LOCAL_HOUSEHOLD_ID);
+  const linksByTask = new Map(links.map((link) => [JSON.stringify([link.googleTaskListId, link.googleTaskId]), link]));
+  const targets: { entry: CompletionTarget; completedAt: string }[] = [];
+  const seenEntries = new Set<string>();
+  // Capture every mapped occurrence before saving any completion or regenerating schedules.
+  for (const completion of completions) {
+    const completedAt = parseGoogleCompletedAt(completion.completedAt);
+    const link = linksByTask.get(JSON.stringify([completion.googleTaskListId, completion.googleTaskId]));
+    if (!completedAt || !link || link.scheduleEntryId !== completion.scheduleEntryId || seenEntries.has(link.scheduleEntryId)) continue;
+    const row = await database.getFirstAsync<{ entry_json: string | null }>(
+      `SELECT s.entry_json FROM chore_definitions d
+       LEFT JOIN chore_schedule_entries s ON s.id = ? AND s.chore_id = d.id AND s.household_id = d.household_id
+       WHERE d.id = ? AND d.household_id = ?`,
+      link.scheduleEntryId, link.choreId, LOCAL_HOUSEHOLD_ID,
+    );
+    if (!row) continue;
+    const saved = row.entry_json ? parseJson<ChoreScheduleEntry | null>(row.entry_json, null) : null;
+    const entry: CompletionTarget = saved?.id === link.scheduleEntryId && saved.choreId === link.choreId && saved.householdId === link.householdId
+      ? saved
+      : { id: link.scheduleEntryId, householdId: link.householdId, choreId: link.choreId, suggestedDate: link.lastSyncedDueDate };
+    targets.push({ entry, completedAt });
+    seenEntries.add(link.scheduleEntryId);
+  }
+  if (!targets.length) return 0;
+  targets.sort((left, right) => Date.parse(left.completedAt) - Date.parse(right.completedAt));
+  let imported = 0;
+  await database.withTransactionAsync(async () => {
+    for (const { entry, completedAt } of targets) {
+      if (await persistChoreCompletion(database, entry, completedAt, 'googleTasks')) imported += 1;
+    }
   });
-  return inserted;
+  // Also run after a duplicate-only retry: an earlier process may have stopped after commit.
+  await loadPlannerSnapshotImpl(database, today);
+  return imported;
 }
 
 async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
@@ -1522,6 +1581,7 @@ export const updateChoreDefinition = serializePlannerOperation(updateChoreDefini
 export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl);
 export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl);
 export const completeChore = serializePlannerOperation(completeChoreImpl);
+export const importGoogleTaskCompletions = serializePlannerOperation(importGoogleTaskCompletionsImpl);
 export const undoCompletedChore = serializePlannerOperation(undoCompletedChoreImpl);
 export const recordIncompleteChore = serializePlannerOperation(recordIncompleteChoreImpl);
 export const setChoreAssignments = serializePlannerOperation(setChoreAssignmentsImpl);

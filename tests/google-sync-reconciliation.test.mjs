@@ -39,13 +39,18 @@ function createHarness({ entries = [], links = [], tasks = [], taskLists = [{ id
     async deleteGoogleTaskLink(scheduleEntryId) {
       this.links = this.links.filter((item) => item.scheduleEntryId !== scheduleEntryId);
     },
+    async importGoogleTaskCompletions() { return 0; },
   };
   const state = { householdId, enabled: true, taskListId, status: 'idle', retryCount: 0, updatedAt: now.toISOString() };
   const api = {
     taskLists: [...taskLists],
     tasks: new Map(tasks.map((task) => [`${task.taskListId}/${task.id}`, { ...task }])),
-    calls: { createList: 0, create: 0, patch: [], deleted: [], get: 0 },
+    calls: { createList: 0, create: 0, patch: [], deleted: [], get: 0, list: 0 },
     async listTaskLists() { return [...this.taskLists]; },
+    async listTasks(_token, listId) {
+      this.calls.list += 1;
+      return [...this.tasks.values()].filter((task) => task.taskListId === listId).map((task) => ({ ...task }));
+    },
     async createTaskList(_token, title) {
       this.calls.createList += 1;
       const created = { id: `new-list-${this.calls.createList}`, title };
@@ -175,4 +180,16 @@ test('missing dedicated task list is created once and persisted by the coordinat
   const result = await reconcile(harness);
   assert.equal(harness.api.calls.createList, 1);
   assert.equal(result.taskListId, 'new-list-1');
+});
+
+test('moving an active entry to the current list cleans the old task without deleting the new mapping', async () => {
+  const harness = createHarness({ entries: [entry('entry-1')],
+    links: [link('entry-1', 'old-task', { googleTaskListId: 'old-list' })],
+    tasks: [{ id: 'old-task', taskListId: 'old-list', title: '家事 entry-1', status: 'needsAction' }],
+  });
+  await reconcile(harness);
+  assert.equal(harness.repository.links.length, 1);
+  assert.equal(harness.repository.links[0].googleTaskListId, taskListId);
+  assert.notEqual(harness.repository.links[0].googleTaskId, 'old-task');
+  assert.deepEqual(harness.api.calls.deleted, ['old-task']);
 });

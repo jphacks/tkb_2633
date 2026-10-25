@@ -13,6 +13,7 @@ export interface GoogleTask {
   status: 'needsAction' | 'completed';
   completed?: string;
   deleted?: boolean;
+  hidden?: boolean;
 }
 
 export interface GoogleTaskDraft {
@@ -51,6 +52,7 @@ export class GoogleTaskNotFoundError extends Error {
 export interface GoogleTasksApi {
   listTaskLists(accessToken: string): Promise<GoogleTaskList[]>;
   createTaskList(accessToken: string, title: string): Promise<GoogleTaskList>;
+  listTasks(accessToken: string, taskListId: string): Promise<GoogleTask[]>;
   getTask(accessToken: string, taskListId: string, taskId: string): Promise<GoogleTask>;
   createTask(accessToken: string, taskListId: string, draft: GoogleTaskDraft): Promise<GoogleTask>;
   patchTask(accessToken: string, taskListId: string, taskId: string, patch: GoogleTaskPatch): Promise<GoogleTask>;
@@ -60,7 +62,14 @@ export interface GoogleTasksApi {
 const API_ROOT = 'https://tasks.googleapis.com/tasks/v1';
 const REQUEST_TIMEOUT_MS = 20_000;
 
-export function createGoogleTasksApi(fetcher: typeof fetch = fetch): GoogleTasksApi {
+export function createGoogleTasksApi(
+  fetcher: typeof fetch = fetch,
+  observeRequest?: (method: 'GET' | 'POST' | 'PATCH' | 'DELETE') => void,
+): GoogleTasksApi {
+  const send = <T>(accessToken: string, path: string, init: RequestInit = {}) => {
+    observeRequest?.((init.method ?? 'GET') as 'GET' | 'POST' | 'PATCH' | 'DELETE');
+    return request<T>(fetcher, accessToken, path, init);
+  };
   return {
     async listTaskLists(accessToken) {
       const items: GoogleTaskList[] = [];
@@ -68,8 +77,8 @@ export function createGoogleTasksApi(fetcher: typeof fetch = fetch): GoogleTasks
       do {
         const params = new URLSearchParams({ maxResults: '100' });
         if (pageToken) params.set('pageToken', pageToken);
-        const page = await request<{ items?: GoogleTaskList[]; nextPageToken?: string }>(
-          fetcher, accessToken, `/users/@me/lists?${params.toString()}`,
+        const page = await send<{ items?: GoogleTaskList[]; nextPageToken?: string }>(
+          accessToken, `/users/@me/lists?${params.toString()}`,
         );
         items.push(...(page.items ?? []));
         pageToken = page.nextPageToken;
@@ -78,32 +87,50 @@ export function createGoogleTasksApi(fetcher: typeof fetch = fetch): GoogleTasks
     },
 
     createTaskList(accessToken, title) {
-      return request(fetcher, accessToken, '/users/@me/lists', {
+      return send(accessToken, '/users/@me/lists', {
         method: 'POST',
         body: JSON.stringify({ title }),
       });
     },
 
+    async listTasks(accessToken, taskListId) {
+      const items: GoogleTask[] = [];
+      const visitedTokens = new Set<string>();
+      let pageToken: string | undefined;
+      do {
+        const params = new URLSearchParams({ maxResults: '100', showCompleted: 'true', showHidden: 'true', showDeleted: 'true' });
+        if (pageToken) params.set('pageToken', pageToken);
+        const page = await send<{ items?: GoogleTask[]; nextPageToken?: string }>(
+          accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks?${params.toString()}`,
+        );
+        items.push(...(page.items ?? []));
+        pageToken = page.nextPageToken;
+        if (pageToken && visitedTokens.has(pageToken)) throw new Error('Google Tasks returned a repeated page token');
+        if (pageToken) visitedTokens.add(pageToken);
+      } while (pageToken);
+      return items;
+    },
+
     getTask(accessToken, taskListId, taskId) {
-      return request(fetcher, accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`);
+      return send(accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`);
     },
 
     createTask(accessToken, taskListId, draft) {
-      return request(fetcher, accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks`, {
+      return send(accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks`, {
         method: 'POST',
         body: JSON.stringify(draft),
       });
     },
 
     patchTask(accessToken, taskListId, taskId, patch) {
-      return request(fetcher, accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`, {
+      return send(accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`, {
         method: 'PATCH',
         body: JSON.stringify(patch),
       });
     },
 
     async deleteTask(accessToken, taskListId, taskId) {
-      await request<void>(fetcher, accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`, {
+      await send<void>(accessToken, `/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`, {
         method: 'DELETE',
       });
     },

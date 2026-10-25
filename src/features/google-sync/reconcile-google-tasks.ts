@@ -1,4 +1,5 @@
-import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskLink } from './contracts';
+import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink } from './contracts';
+import { parseGoogleCompletedAt } from './google-completion-policy';
 import { GOOGLE_TASKS_LIST_TITLE, GoogleTaskNotFoundError } from '@/platform/google-tasks/google-tasks-api';
 import type { GoogleTask, GoogleTasksApi } from '@/platform/google-tasks/google-tasks-api';
 
@@ -7,6 +8,18 @@ export interface GoogleSyncRepositoryPort {
   listGoogleTaskLinks(householdId: string): Promise<GoogleTaskLink[]>;
   upsertGoogleTaskLink(link: GoogleTaskLink): Promise<void>;
   deleteGoogleTaskLink(scheduleEntryId: string): Promise<void>;
+  importGoogleTaskCompletions(completions: readonly GoogleTaskCompletion[], today: string): Promise<number>;
+}
+
+export interface GoogleReconciliationResult {
+  taskListId: string;
+  created: number;
+  updated: number;
+  removed: number;
+  imported: number;
+  remoteTasksRead: number;
+  hiddenCompletionsRead: number;
+  invalidCompletions: number;
 }
 
 export async function reconcileGoogleTasks(options: {
@@ -16,7 +29,7 @@ export async function reconcileGoogleTasks(options: {
   api: GoogleTasksApi;
   now: Date;
   today: string;
-}): Promise<{ taskListId: string; created: number; updated: number; removed: number }> {
+}): Promise<GoogleReconciliationResult> {
   const { accessToken, repository, api, now, today } = options;
   const { state } = options;
   const taskLists = await api.listTaskLists(accessToken);
@@ -25,38 +38,49 @@ export async function reconcileGoogleTasks(options: {
     ?? await api.createTaskList(accessToken, GOOGLE_TASKS_LIST_TITLE);
   if (!taskList.id) throw new Error('Google Tasks did not return a task list ID');
 
-  const entries = await repository.listEntriesForGoogleSync(today, state.householdId);
-  const entriesById = new Map(entries.map(({ entry }) => [entry.id, entry]));
   const links = await repository.listGoogleTaskLinks(state.householdId);
   const linksById = new Map(links.map((link) => [link.scheduleEntryId, link]));
+  const remoteTasks = await api.listTasks(accessToken, taskList.id);
+  const tasksById = new Map(remoteTasks.map((task) => [task.id, task]));
+  const completions: GoogleTaskCompletion[] = [];
+  let invalidCompletions = 0;
+  for (const link of links) {
+    if (link.googleTaskListId !== taskList.id) continue;
+    const task = tasksById.get(link.googleTaskId);
+    if (!task || task.deleted || task.status !== 'completed') continue;
+    const completedAt = parseGoogleCompletedAt(task.completed);
+    if (!completedAt) {
+      invalidCompletions += 1;
+      continue;
+    }
+    completions.push({
+      googleTaskListId: taskList.id,
+      googleTaskId: task.id,
+      scheduleEntryId: link.scheduleEntryId,
+      completedAt,
+    });
+  }
+  // Pull every mapped completion before refreshing schedules or writing to Google.
+  const imported = completions.length ? await repository.importGoogleTaskCompletions(completions, today) : 0;
+  const entries = await repository.listEntriesForGoogleSync(today, state.householdId);
+  const entriesById = new Map(entries.map(({ entry }) => [entry.id, entry]));
   let created = 0;
   let updated = 0;
   let removed = 0;
-
-  for (const link of links) {
-    const entryIsCurrent = entriesById.has(link.scheduleEntryId);
-    if (entryIsCurrent && link.googleTaskListId === taskList.id) continue;
-    await removeObsoleteLink(accessToken, link, api);
-    await repository.deleteGoogleTaskLink(link.scheduleEntryId);
-    linksById.delete(link.scheduleEntryId);
-    removed += 1;
-  }
 
   for (const item of entries) {
     const entry = item.entry;
     let link = linksById.get(entry.id);
     let task: GoogleTask | null = null;
     if (link) {
-      try {
-        task = await api.getTask(accessToken, link.googleTaskListId, link.googleTaskId);
-      } catch (error) {
-        if (!(error instanceof GoogleTaskNotFoundError)) throw error;
-      }
+      task = link.googleTaskListId === taskList.id ? tasksById.get(link.googleTaskId) ?? null : null;
       if (!task || task.deleted) {
         await repository.deleteGoogleTaskLink(link.scheduleEntryId);
         linksById.delete(link.scheduleEntryId);
         link = undefined;
         task = null;
+        // A remote deletion never removes local history or recreates deleted history.
+        if (item.completedAt) continue;
       }
     }
 
@@ -92,31 +116,47 @@ export async function reconcileGoogleTasks(options: {
     if (Object.keys(patch).length > 0) {
       await api.patchTask(accessToken, taskList.id, task.id, patch);
       updated += 1;
-      if (link.lastSyncedTitle !== item.choreName || link.lastSyncedDueDate !== entry.suggestedDate) {
-        link = {
-          ...link,
-          lastSyncedTitle: item.choreName,
-          lastSyncedDueDate: entry.suggestedDate,
-          updatedAt: now.toISOString(),
-        };
-        await repository.upsertGoogleTaskLink(link);
-        linksById.set(entry.id, link);
-      }
+    }
+    if (link.lastSyncedTitle !== item.choreName || link.lastSyncedDueDate !== entry.suggestedDate) {
+      link = { ...link, lastSyncedTitle: item.choreName, lastSyncedDueDate: entry.suggestedDate, updatedAt: now.toISOString() };
+      await repository.upsertGoogleTaskLink(link);
+      linksById.set(entry.id, link);
     }
   }
 
-  return { taskListId: taskList.id, created, updated, removed };
+  // Cleanup runs last, after imported completions have been preserved by the repository.
+  for (const link of links) {
+    if (!linksById.has(link.scheduleEntryId)) continue;
+    if (entriesById.has(link.scheduleEntryId) && link.googleTaskListId === taskList.id) continue;
+    const task = link.googleTaskListId === taskList.id ? tasksById.get(link.googleTaskId) ?? null : undefined;
+    await removeObsoleteLink(accessToken, link, api, task);
+    const currentLink = linksById.get(link.scheduleEntryId);
+    if (currentLink?.googleTaskListId === link.googleTaskListId && currentLink.googleTaskId === link.googleTaskId) {
+      await repository.deleteGoogleTaskLink(link.scheduleEntryId);
+      linksById.delete(link.scheduleEntryId);
+    }
+    removed += 1;
+  }
+
+  return {
+    taskListId: taskList.id, created, updated, removed, imported,
+    remoteTasksRead: remoteTasks.length,
+    hiddenCompletionsRead: remoteTasks.filter((task) => task.hidden && !task.deleted && task.status === 'completed').length,
+    invalidCompletions,
+  };
 }
 
-async function removeObsoleteLink(accessToken: string, link: GoogleTaskLink, api: GoogleTasksApi): Promise<void> {
-  let task: GoogleTask;
-  try {
-    task = await api.getTask(accessToken, link.googleTaskListId, link.googleTaskId);
-  } catch (error) {
-    if (error instanceof GoogleTaskNotFoundError) return;
-    throw error;
+async function removeObsoleteLink(accessToken: string, link: GoogleTaskLink, api: GoogleTasksApi, knownTask?: GoogleTask | null): Promise<void> {
+  let task = knownTask;
+  if (task === undefined) {
+    try {
+      task = await api.getTask(accessToken, link.googleTaskListId, link.googleTaskId);
+    } catch (error) {
+      if (error instanceof GoogleTaskNotFoundError) return;
+      throw error;
+    }
   }
-  if (!task.deleted && task.status !== 'completed') {
+  if (task && !task.deleted && task.status !== 'completed') {
     try {
       await api.deleteTask(accessToken, link.googleTaskListId, link.googleTaskId);
     } catch (error) {

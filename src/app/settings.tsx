@@ -197,7 +197,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       setGoogleMessage(result.kind === 'success'
         ? result.skipped
           ? { text: '同期は実行されていません。同期状態を確認してから再試行してください。', kind: 'error' }
-          : { text: `同期しました（新規 ${result.created ?? 0}件・更新 ${result.updated ?? 0}件）。`, kind: 'success' }
+          : { text: `同期しました（新規 ${result.created ?? 0}件・更新 ${result.updated ?? 0}件${result.imported ? `・Googleから完了 ${result.imported}件` : ''}）。`, kind: 'success' }
         : { text: syncFailureMessage(result.kind), kind: 'error' });
     } catch {
       setGoogleMessage({ text: '同期できませんでした。Googleとの再接続をお試しください。', kind: 'error' });
@@ -453,7 +453,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <FeatureStatus
             title="Google Tasks"
             status={googleConnected ? '接続済み' : googleSyncState?.enabled ? '再認証が必要' : googleOAuthConfigured ? '未接続' : 'OAuth設定待ち'}
-            detail="家事Plannerの名前と予定日をGoogle Tasksへ反映します。アプリで完了した家事はGoogle側も完了にし、Google側の完了はアプリへ取り込みません。"
+            detail="家事Plannerの名前と予定日をGoogle Tasksへ反映し、完了状態は双方へ同期します。Googleで完了を取り消しても、アプリの完了履歴は残ります。"
           />
           {!googleOAuthConfigured ? (
             <Text style={styles.hint}>OAuth client IDが未設定です。docs/google-sync-setup.mdの手順後、ネイティブ開発ビルドを作り直してください。</Text>

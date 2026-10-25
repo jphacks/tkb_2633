@@ -10,6 +10,7 @@ import { refreshPlannerFromWidget } from '@/platform/widgets/refresh-planner-fro
 import { publishTodayWidgetSnapshot } from '@/features/widgets/publish-today-widget-snapshot';
 import { syncDailyHouseworkDigest } from '@/features/notifications/daily-housework-digest';
 import { expoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
+import { subscribeToGooglePlannerChanges } from '@/features/google-sync/planner-change-events';
 
 export function usePlannerData() {
   const database = useSQLiteContext();
@@ -55,6 +56,7 @@ export function usePlannerData() {
   }, [database]);
 
   useFocusEffect(useCallback(() => {
+    const unsubscribeGoogleChanges = subscribeToGooglePlannerChanges(() => { void refresh(); });
     void refresh();
     let appState = AppState.currentState;
     let midnightTimer: ReturnType<typeof setTimeout> | undefined;
@@ -77,6 +79,7 @@ export function usePlannerData() {
       appState = state;
     });
     return () => {
+      unsubscribeGoogleChanges();
       refreshRevision.current += 1;
       clearTimeout(midnightTimer);
       subscription.remove();

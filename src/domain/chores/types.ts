@@ -110,7 +110,7 @@ export interface ChoreCompletion {
   completedAt: ISODateTime;
   completedByMemberId?: EntityId;
   outcome: 'completed' | 'incomplete';
-  source?: 'inApp' | 'notification' | 'widget';
+  source?: 'inApp' | 'notification' | 'widget' | 'googleTasks';
   scheduleEntryId?: EntityId;
   /** The date this occurrence was scheduled for, kept even if completion regenerates the schedule. */
   scheduledDate?: LocalDate;

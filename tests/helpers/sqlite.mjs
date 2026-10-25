@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 
-export function createDatabase() {
-  const connection = new DatabaseSync(':memory:');
+export function createDatabase(path = ':memory:') {
+  const connection = new DatabaseSync(path);
   const writes = [];
   return {
     connection,

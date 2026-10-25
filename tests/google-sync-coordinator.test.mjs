@@ -26,8 +26,10 @@ function setup(state = {}) {
     async listGoogleTaskLinks() { return []; },
     async upsertGoogleTaskLink() {},
     async deleteGoogleTaskLink() {},
+    async importGoogleTaskCompletions() { return 0; },
     api: {
       async listTaskLists() { counters.api += 1; return [{ id: 'list-1', title: '家事Planner' }]; },
+      async listTasks() { counters.api += 1; return []; },
       async createTaskList() { throw new Error('unexpected createTaskList'); },
       async getTask() { throw new Error('unexpected getTask'); },
       async createTask() { throw new Error('unexpected createTask'); },
@@ -59,7 +61,7 @@ test('successful manual sync bypasses the 24-hour interval and clears retry stat
   });
   const result = await syncGoogleTasksWithDependencies(harness.dependencies, { now, force: true });
   assert.equal(result.kind, 'success');
-  assert.equal(harness.counters.api, 1);
+  assert.equal(harness.counters.api, 2);
   assert.equal(harness.currentState.status, 'idle');
   assert.equal(harness.currentState.retryCount, 0);
   assert.equal(harness.currentState.nextRetryAt, undefined);
@@ -97,6 +99,20 @@ test('a syncing state older than the stale threshold is recovered on the next du
   const stale = setup({ status: 'syncing', lastAttemptAt: new Date(now.getTime() - 11 * 60 * 1000).toISOString() });
   const result = await syncGoogleTasksWithDependencies(stale.dependencies, { now });
   assert.equal(result.kind, 'success');
-  assert.equal(stale.counters.api, 1);
+  assert.equal(stale.counters.api, 2);
   assert.equal(stale.currentState.status, 'idle');
+});
+
+test('manual recovery resumes an interrupted attempt while a live promise is still shared', async () => {
+  const interrupted = setup({ status: 'syncing', lastAttemptAt: now.toISOString() });
+  let release;
+  const paused = new Promise((resolve) => { release = resolve; });
+  interrupted.dependencies.api.listTasks = async () => { interrupted.counters.api += 1; await paused; return []; };
+  const first = syncGoogleTasksWithDependencies(interrupted.dependencies, { now, force: true, recoverInterruptedAttempt: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = syncGoogleTasksWithDependencies(interrupted.dependencies, { now, force: true, recoverInterruptedAttempt: true });
+  release();
+  assert.deepEqual(await first, await second);
+  assert.equal(interrupted.counters.api, 2);
+  assert.equal(interrupted.currentState.status, 'idle');
 });

@@ -33,3 +33,10 @@ export interface GoogleSyncEntry {
   choreName: string;
   completedAt?: ISODateTime;
 }
+
+export interface GoogleTaskCompletion {
+  googleTaskListId: string;
+  googleTaskId: string;
+  scheduleEntryId: EntityId;
+  completedAt: ISODateTime;
+}

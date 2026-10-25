@@ -52,3 +52,37 @@ test('Google Tasks API maps 404 to a not-found error', async () => {
   const api = createGoogleTasksApi(async () => new Response('', { status: 404 }));
   await assert.rejects(api.getTask('token', 'list', 'task'), GoogleTaskNotFoundError);
 });
+
+test('tasks.list reads 100 + 80 tasks, including a hidden completion on the final page', async () => {
+  const calls = [];
+  const tasks = Array.from({ length: 180 }, (_, index) => ({ id: `task-${index}`, title: '家事', status: 'needsAction' }));
+  tasks[179] = { ...tasks[179], status: 'completed', hidden: true, completed: '2026-10-25T03:00:00Z' };
+  const methods = [];
+  const api = createGoogleTasksApi(async (url) => {
+    const parsed = new URL(url);
+    calls.push(parsed);
+    return Response.json(parsed.searchParams.has('pageToken')
+      ? { items: tasks.slice(100) }
+      : { items: tasks.slice(0, 100), nextPageToken: 'page-two' });
+  }, (method) => methods.push(method));
+  const result = await api.listTasks('test-token', 'family/list');
+  assert.equal(result.length, 180);
+  assert.equal(result.at(-1).completed, tasks[179].completed);
+  for (const url of calls) {
+    assert.match(url.pathname, /family%2Flist\/tasks$/u);
+    assert.equal(url.searchParams.get('maxResults'), '100');
+    assert.equal(url.searchParams.get('showCompleted'), 'true');
+    assert.equal(url.searchParams.get('showHidden'), 'true');
+    assert.equal(url.searchParams.get('showDeleted'), 'true');
+    assert.equal(url.searchParams.has('updatedMin'), false);
+  }
+  assert.equal(calls[1].searchParams.get('pageToken'), 'page-two');
+  assert.deepEqual(methods, ['GET', 'GET']);
+});
+
+test('tasks.list rejects repeated page tokens instead of looping forever', async () => {
+  let calls = 0;
+  const api = createGoogleTasksApi(async () => { calls += 1; return Response.json({ nextPageToken: 'same' }); });
+  await assert.rejects(api.listTasks('test-token', 'list'), /repeated page token/u);
+  assert.equal(calls, 2);
+});

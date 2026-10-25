@@ -4,6 +4,7 @@ import { GoogleTasksApiError, createGoogleTasksApi } from '@/platform/google-tas
 import type { GoogleTasksApi } from '@/platform/google-tasks/google-tasks-api';
 import {
   deleteGoogleTaskLink,
+  importGoogleTaskCompletions,
   listEntriesForGoogleSync,
   listGoogleTaskLinks,
   loadGoogleSyncState,
@@ -17,9 +18,10 @@ import { isGoogleSyncAttemptStale, shouldSyncGoogleTasks } from './sync-policy';
 import type { GoogleSyncState } from './contracts';
 import { reconcileGoogleTasks } from './reconcile-google-tasks';
 import type { GoogleSyncRepositoryPort } from './reconcile-google-tasks';
+import { notifyGooglePlannerChanges } from './planner-change-events';
 
 export type GoogleSyncRunResult =
-  | { kind: 'success'; skipped?: boolean; created?: number; updated?: number; removed?: number }
+  | { kind: 'success'; skipped?: boolean; created?: number; updated?: number; removed?: number; imported?: number; remoteTasksRead?: number; hiddenCompletionsRead?: number; invalidCompletions?: number }
   | { kind: 'retry'; code: string }
   | { kind: 'authRequired'; code: string }
   | { kind: 'error'; code: string };
@@ -40,14 +42,31 @@ export async function syncGoogleTasks(
 ): Promise<GoogleSyncRunResult> {
   const now = options.now ?? new Date();
   const householdId = 'local-household';
-  return syncGoogleTasksWithDependencies({
+  const startedAt = Date.now();
+  let readRequests = 0;
+  let writeRequests = 0;
+  const result = await syncGoogleTasksWithDependencies({
     loadState: () => loadGoogleSyncState(database, householdId),
     saveState: (state) => saveGoogleSyncState(database, state),
     getAccessToken: async () => {
       const { getGoogleTasksAccessToken } = await import('@/platform/google-tasks/google-sign-in-gateway');
       return getGoogleTasksAccessToken();
     },
-    api: createGoogleTasksApi(),
+    api: createGoogleTasksApi(fetch, (method) => {
+      if (method === 'GET') readRequests += 1;
+      else writeRequests += 1;
+    }),
+    importGoogleTaskCompletions: async (completions, today) => {
+      const imported = await importGoogleTaskCompletions(database, completions, today as LocalDate);
+      if (imported > 0) {
+        notifyGooglePlannerChanges();
+        try {
+          const { refreshPlannerAfterGoogleImport } = await import('@/platform/google-tasks/refresh-planner-after-google-import');
+          await refreshPlannerAfterGoogleImport(database, today as LocalDate);
+        } catch { /* Saved planner data remains valid if a native widget/digest is unavailable. */ }
+      }
+      return imported;
+    },
     listEntriesForGoogleSync: (today, id) => listEntriesForGoogleSync(database, today as LocalDate, id),
     listGoogleTaskLinks: (id) => listGoogleTaskLinks(database, id),
     upsertGoogleTaskLink: (link) => upsertGoogleTaskLink(database, link),
@@ -59,6 +78,16 @@ export async function syncGoogleTasks(
     // The shared runningSync promise still joins a live attempt in this process.
     recoverInterruptedAttempt: options.force === true,
   });
+  if (readRequests + writeRequests > 0 && typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.info('[google-sync]', {
+      result: result.kind,
+      durationMs: Date.now() - startedAt,
+      readRequests,
+      writeRequests,
+      ...(result.kind === 'success' ? { remoteTasksRead: result.remoteTasksRead, hiddenCompletionsRead: result.hiddenCompletionsRead, imported: result.imported } : {}),
+    });
+  }
+  return result;
 }
 
 /** Best-effort immediate propagation for in-app and widget completion actions. */
@@ -128,6 +157,9 @@ async function runSync(
       now,
       today: localDateFromDate(now),
     });
+    if (result.invalidCompletions > 0) {
+      console.warn('[google-sync]', { code: 'invalid_remote_completion_timestamp', count: result.invalidCompletions });
+    }
     await dependencies.saveState({
       ...state,
       taskListId: result.taskListId,

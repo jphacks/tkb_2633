@@ -54,7 +54,7 @@ export default function HistoryScreen() {
                 {isCompleted ? '完了' : '未完了'} · {formatJapaneseDate(date, { year: true, weekday: true })}
               </Text>
             </View>
-            <Text style={styles.source}>{completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : 'アプリ'}</Text>
+            <Text style={styles.source}>{completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : completion.source === 'googleTasks' ? 'Google Tasks' : 'アプリ'}</Text>
           </Card>
         );
       })}

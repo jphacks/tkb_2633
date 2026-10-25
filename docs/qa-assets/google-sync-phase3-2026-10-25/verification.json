@@ -1,0 +1,534 @@
+{
+  "date": "2026-10-25",
+  "timeZone": "Asia/Tokyo",
+  "startSha": "42479dbf9bfc343cffceb4b7368f8bf96dafebd4",
+  "phase2BaseSha": "42479dbf9bfc343cffceb4b7368f8bf96dafebd4",
+  "originMainAtStart": "e14e085288adab85a3df591d6c587c80f5f6e2d0",
+  "integratedOriginMainSha": "31fdf35125166416f476f7e3f9bcfe7a982a1316",
+  "implementationSha": "b0065221f4bdd6b2d3a79aec7ef728d94d85e95d",
+  "integratedCodeSha": "eb0673846c56bd0da8ab22a259cc657c21b0ee34",
+  "branch": "codex/google-calendar-phase3",
+  "finalHeadReceipt": "Exact final document commit SHA and command exit codes are recorded in the completion reply and /private/tmp/google-phase3-final-head-verification.json.",
+  "oauth": {
+    "tasksScope": "https://www.googleapis.com/auth/tasks",
+    "calendarScope": "https://www.googleapis.com/auth/calendar.freebusy",
+    "incremental": true,
+    "broadCalendarScopesAdded": false,
+    "primaryOnly": true,
+    "offlineAccess": false,
+    "backendAdded": false
+  },
+  "privacy": {
+    "eventMetadataRequested": false,
+    "calendarListRequested": false,
+    "rawBusyIntervalsPersisted": false,
+    "busyIntervalLogs": false,
+    "persistedCalendarFields": [
+      "local_date",
+      "busy_minutes",
+      "time_zone",
+      "fetched_at"
+    ],
+    "credentialsInGit": false
+  },
+  "freeBusy": {
+    "live": "PASS",
+    "range": {
+      "from": "2026-10-25",
+      "through": "2027-04-23",
+      "timeMin": "2026-10-24T15:00:00.000Z",
+      "timeMax": "2027-04-23T15:00:00.000Z",
+      "timeZone": "Asia/Tokyo"
+    },
+    "coverageDays": 181,
+    "postCountPerRefresh": 3,
+    "transportChunkLimitHours": 2160,
+    "reasonForChunking": "Live 181-day single POST returned HTTP 400 calendar_time_range_too_long; planner horizon remains unchanged.",
+    "overlap": "PASS",
+    "crossDay": "PASS",
+    "dst23And25HourDays": "PASS",
+    "allDay": "PASS"
+  },
+  "cache": {
+    "schema": 15,
+    "maxAgeHours": 36,
+    "refreshHours": 24,
+    "retryMinimumHours": 1,
+    "rateLimitRetryAfter": true,
+    "offClearsCache": true,
+    "offRequests": 0,
+    "atomicReplacement": true
+  },
+  "scheduler": {
+    "busyBucketUpperMinutes": [
+      120,
+      300,
+      480
+    ],
+    "shiftEquivalent": {
+      "light": 1,
+      "normal": 2,
+      "heavy": 3
+    },
+    "noCalendarRegression": "PASS",
+    "constraintsAndWeather": "PASS",
+    "futureCompletionRule": "Integrated main 31fdf35; early checkmarks keep actual timestamps and affect cycles on their scheduled day."
+  },
+  "checks": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "tests": 202,
+      "passed": 202,
+      "failed": 0
+    },
+    {
+      "command": "Google tests and storage migrations",
+      "exitCode": 0,
+      "tests": 105,
+      "passed": 105,
+      "failed": 0
+    },
+    {
+      "command": "Phase 3 tests",
+      "exitCode": 0,
+      "tests": 56,
+      "passed": 56,
+      "failed": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run check",
+      "exitCode": 0,
+      "tests": 202,
+      "passed": 202,
+      "failed": 0
+    },
+    {
+      "command": "npm run doctor",
+      "exitCode": 0,
+      "checks": 20,
+      "passed": 20
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "mainBaseline": {
+    "sha": "31fdf35125166416f476f7e3f9bcfe7a982a1316",
+    "isolatedArchive": true,
+    "tests": 99,
+    "passed": 99,
+    "failed": 0
+  },
+  "live": {
+    "platform": "Dedicated Google Tasks Dev iOS Simulator development build",
+    "operation": "User operated Planner and Google Calendar; database inspected read-only. End-to-end actions preceded the final main merge; post-merge cache, history, IDs, original 180 mappings and catalog version 2 were verified.",
+    "sequence": {
+      "beforeCalendar": {
+        "calendar": [
+          {
+            "enabled": 0,
+            "status": "idle",
+            "last_successful_sync_at": "2026-10-25T05:29:09.957Z",
+            "last_error_code": null
+          }
+        ],
+        "target": {
+          "id": "builtin-chore-01:2026-11-24",
+          "suggested_date": "2026-11-24",
+          "status": "scheduled",
+          "last_synced_due_date": "2026-11-24",
+          "task_id_sha256": "265f164b8ef8e9e7a4e985bca53fe2f50685b2e4f6006d8a424e9fdc673edcbf"
+        },
+        "mappingCount": 186
+      },
+      "afterCalendar": {
+        "calendar": [
+          {
+            "enabled": 1,
+            "status": "idle",
+            "last_attempt_at": "2026-10-25T08:09:19.813Z",
+            "last_successful_sync_at": "2026-10-25T08:09:19.813Z",
+            "last_error_code": null
+          }
+        ],
+        "target": {
+          "id": "builtin-chore-01:2026-11-24",
+          "suggested_date": "2026-11-23",
+          "status": "scheduled",
+          "last_synced_due_date": "2026-11-23",
+          "task_id_sha256": "265f164b8ef8e9e7a4e985bca53fe2f50685b2e4f6006d8a424e9fdc673edcbf"
+        },
+        "idPreservedForAllFixtureEntries": true,
+        "dateChanges": [
+          {
+            "id": "builtin-chore-01:2026-11-24",
+            "from": "2026-11-24",
+            "to": "2026-11-23"
+          }
+        ],
+        "availability": [
+          {
+            "local_date": "2026-11-22",
+            "busy_minutes": 0,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:09:19.813Z"
+          },
+          {
+            "local_date": "2026-11-23",
+            "busy_minutes": 90,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:09:19.813Z"
+          },
+          {
+            "local_date": "2026-11-24",
+            "busy_minutes": 270,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:09:19.813Z"
+          },
+          {
+            "local_date": "2026-11-25",
+            "busy_minutes": 90,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:09:19.813Z"
+          }
+        ],
+        "mappingCount": 186
+      },
+      "afterGoogleCompletion": {
+        "bath_history": [
+          {
+            "schedule_entry_id": "builtin-chore-01:initial",
+            "completed_at": "2026-10-25T08:04:06.935Z",
+            "source": "inApp",
+            "outcome": "completed",
+            "scheduled_date": "2026-10-25",
+            "scheduled_window_start": "2026-10-25",
+            "scheduled_window_end": "2026-10-25"
+          },
+          {
+            "schedule_entry_id": "builtin-chore-01:2026-11-24",
+            "completed_at": "2026-10-25T08:11:04.616Z",
+            "source": "googleTasks",
+            "outcome": "completed",
+            "scheduled_date": "2026-11-23",
+            "scheduled_window_start": "2026-11-23",
+            "scheduled_window_end": "2026-11-23"
+          }
+        ],
+        "history_count": 6,
+        "cache_days": 181,
+        "calendar": [
+          {
+            "enabled": 1,
+            "status": "idle",
+            "last_successful_sync_at": "2026-10-25T08:11:13.699Z",
+            "last_error_code": null
+          }
+        ],
+        "tasks": [
+          {
+            "enabled": 1,
+            "status": "idle",
+            "last_attempt_at": "2026-10-25T08:11:13.699Z",
+            "last_successful_sync_at": "2026-10-25T08:11:13.699Z",
+            "last_error_code": null
+          }
+        ],
+        "entries": [
+          {
+            "id": "builtin-chore-01:2026-11-24",
+            "suggested_date": "2026-11-23",
+            "status": "scheduled",
+            "last_synced_due_date": "2026-11-23"
+          },
+          {
+            "id": "builtin-chore-01:2026-12-24",
+            "suggested_date": "2026-12-24",
+            "status": "scheduled",
+            "last_synced_due_date": "2026-12-24"
+          },
+          {
+            "id": "builtin-chore-01:2027-01-23",
+            "suggested_date": "2027-01-23",
+            "status": "scheduled",
+            "last_synced_due_date": "2027-01-23"
+          },
+          {
+            "id": "builtin-chore-01:2027-02-22",
+            "suggested_date": "2027-02-22",
+            "status": "scheduled",
+            "last_synced_due_date": "2027-02-22"
+          },
+          {
+            "id": "builtin-chore-01:2027-03-24",
+            "suggested_date": "2027-03-24",
+            "status": "scheduled",
+            "last_synced_due_date": "2027-03-24"
+          },
+          {
+            "id": "builtin-chore-01:2027-04-23",
+            "suggested_date": "2027-04-23",
+            "status": "scheduled",
+            "last_synced_due_date": "2027-04-23"
+          }
+        ],
+        "next_cycle_availability": [
+          {
+            "local_date": "2026-12-23",
+            "busy_minutes": 90,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:11:13.699Z"
+          },
+          {
+            "local_date": "2026-12-24",
+            "busy_minutes": 0,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:11:13.699Z"
+          },
+          {
+            "local_date": "2026-12-25",
+            "busy_minutes": 0,
+            "time_zone": "Asia/Tokyo",
+            "fetched_at": "2026-10-25T08:11:13.699Z"
+          }
+        ]
+      },
+      "afterRestart": {
+        "calendar": [
+          {
+            "enabled": 1,
+            "status": "idle",
+            "last_successful_sync_at": "2026-10-25T08:12:53.140Z",
+            "last_error_code": null
+          }
+        ],
+        "tasks": [
+          {
+            "enabled": 1,
+            "status": "idle",
+            "last_attempt_at": "2026-10-25T08:12:53.140Z",
+            "last_successful_sync_at": "2026-10-25T08:12:53.140Z",
+            "last_error_code": null
+          }
+        ],
+        "cache_days": 181,
+        "history_count": 6,
+        "test_import_count": 1,
+        "mapping_count": 186
+      }
+    },
+    "final": {
+      "checkedAt": "2026-10-25T08:25:22.160566+00:00",
+      "schema": 15,
+      "catalogVersion": 2,
+      "calendar": {
+        "enabled": 1,
+        "status": "idle",
+        "retry_count": 0,
+        "last_attempt_at": "2026-10-25T08:15:06.005Z",
+        "last_successful_sync_at": "2026-10-25T08:15:06.005Z",
+        "next_retry_at": null,
+        "last_error_code": null
+      },
+      "tasks": {
+        "enabled": 1,
+        "status": "idle",
+        "retry_count": 0,
+        "last_attempt_at": "2026-10-25T08:15:06.005Z",
+        "last_successful_sync_at": "2026-10-25T08:15:06.005Z",
+        "last_error_code": null
+      },
+      "cache": {
+        "days": 181,
+        "firstDate": "2026-10-25",
+        "lastDate": "2027-04-23",
+        "timeZones": 1,
+        "timeZone": "Asia/Tokyo",
+        "fetchedAt": "2026-10-25T08:15:06.005Z",
+        "busyDays": 47
+      },
+      "historyCount": 6,
+      "googleHistoryCount": 3,
+      "originalMappingCount": 180,
+      "phase2TargetIdPreserved": true,
+      "fixtureCompletedTaskIdSha256": "265f164b8ef8e9e7a4e985bca53fe2f50685b2e4f6006d8a424e9fdc673edcbf",
+      "fixtureFinalConfiguration": {
+        "enabled": false,
+        "windowRadiusDays": 2,
+        "holidayPriority": true,
+        "load": "heavy",
+        "frequencyDaysByMode": {
+          "frequent": 14,
+          "balanced": 30,
+          "relaxed": 60
+        }
+      },
+      "fixtureRemainingMappingCount": 1,
+      "fixtureHistory": [
+        {
+          "schedule_entry_id": "builtin-chore-01:initial",
+          "completed_at": "2026-10-25T08:04:06.935Z",
+          "source": "inApp",
+          "outcome": "completed",
+          "scheduled_date": "2026-10-25",
+          "scheduled_window_start": "2026-10-25",
+          "scheduled_window_end": "2026-10-25"
+        },
+        {
+          "schedule_entry_id": "builtin-chore-01:2026-11-24",
+          "completed_at": "2026-10-25T08:11:04.616Z",
+          "source": "googleTasks",
+          "outcome": "completed",
+          "scheduled_date": "2026-11-23",
+          "scheduled_window_start": "2026-11-23",
+          "scheduled_window_end": "2026-11-23"
+        }
+      ],
+      "foreignKeyViolations": 0
+    },
+    "metrics": [
+      {
+        "durationMs": 1660,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "durationMs": 1761,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "durationMs": 1477,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "busyDays": 47,
+        "days": 181,
+        "durationMs": 971,
+        "from": "2026-10-25",
+        "requests": 3,
+        "result": "success",
+        "through": "2027-04-23",
+        "timeMax": "2027-04-23T15:00:00.000Z",
+        "timeMin": "2026-10-24T15:00:00.000Z",
+        "timeZone": "Asia/Tokyo"
+      },
+      {
+        "durationMs": 2091,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "durationMs": 1133,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 180,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "durationMs": 2337,
+        "hiddenCompletionsRead": 1,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 186,
+        "result": "success",
+        "writeRequests": 1
+      },
+      {
+        "durationMs": 2113,
+        "hiddenCompletionsRead": 2,
+        "imported": 1,
+        "readRequests": 3,
+        "remoteTasksRead": 186,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "busyDays": 47,
+        "days": 181,
+        "durationMs": 942,
+        "from": "2026-10-25",
+        "requests": 3,
+        "result": "success",
+        "through": "2027-04-23",
+        "timeMax": "2027-04-23T15:00:00.000Z",
+        "timeMin": "2026-10-24T15:00:00.000Z",
+        "timeZone": "Asia/Tokyo"
+      },
+      {
+        "durationMs": 2323,
+        "hiddenCompletionsRead": 2,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 186,
+        "result": "success",
+        "writeRequests": 0
+      },
+      {
+        "busyDays": 47,
+        "days": 181,
+        "durationMs": 2681,
+        "from": "2026-10-25",
+        "requests": 3,
+        "result": "success",
+        "through": "2027-04-23",
+        "timeMax": "2027-04-23T15:00:00.000Z",
+        "timeMin": "2026-10-24T15:00:00.000Z",
+        "timeZone": "Asia/Tokyo"
+      },
+      {
+        "durationMs": 5966,
+        "hiddenCompletionsRead": 2,
+        "imported": 0,
+        "readRequests": 3,
+        "remoteTasksRead": 186,
+        "result": "success",
+        "writeRequests": 5
+      }
+    ],
+    "cleanup": "Fixture disabled, window radius 2 and holiday priority true restored. Five uncompleted fixture tasks removed by normal cleanup; two fixture history entries and one completed remote task retained."
+  },
+  "credentials": {
+    "literalPatternFindings": 0,
+    "localEnvIgnored": true,
+    "localEnvMode": "0600",
+    "privateEnvTracked": false
+  },
+  "notExecuted": {
+    "physicalDeviceBackground": "NOT_EXECUTED_NO_PHYSICAL_DEVICE",
+    "androidNativeCompile": "NOT_EXECUTED",
+    "androidRealAccount": "NOT_EXECUTED",
+    "liveCalendarPermissionDenial": "NOT_EXECUTED_TESTED_WITH_MOCKS"
+  },
+  "pushExecuted": false,
+  "primaryWorkingDirectoryEdited": false
+}

@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import Animated, { LinearTransition, SlideInDown, SlideOutUp } from 'react-native-reanimated';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
+import { AccordionSection } from '@/components/accordion-section';
 import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { CalendarCountDisplayMode, Weekday } from '@/domain/shared/types';
@@ -209,11 +209,11 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <Text style={styles.hint}>休日を含む期間になるよう、家事ごとの許容範囲内で予定を調整します。</Text>
         <View style={styles.limitRow}>
           <View style={styles.limitCopy}><Text style={styles.label}>重い家事の1日上限</Text><Text style={styles.hint}>初期値：1件</Text></View>
-          <Counter value={heavyLimit} onChange={setHeavyLimit} />
+          <Counter value={heavyLimit} onChange={setHeavyLimit} maximum={10} label="重い家事の上限" />
         </View>
         <View style={styles.limitRow}>
           <View style={styles.limitCopy}><Text style={styles.label}>普通の家事の1日上限</Text><Text style={styles.hint}>初期値：2件</Text></View>
-          <Counter value={normalLimit} onChange={setNormalLimit} />
+          <Counter value={normalLimit} onChange={setNormalLimit} maximum={20} label="普通の家事の上限" />
         </View>
         {message ? <Text style={message.includes('保存し') || message.includes('追加しました') ? styles.success : styles.error}>{message}</Text> : null}
         <AppButton title={saving ? '保存中…' : '設定を保存'} onPress={() => void save()} disabled={saving} />
@@ -412,12 +412,20 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   );
 }
 
-function Counter({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+function Counter({ value, onChange, maximum, label }: {
+  value: number; onChange: (value: number) => void; maximum: number; label: string;
+}) {
   return (
     <View style={styles.counter}>
-      <Text onPress={() => onChange(Math.max(1, value - 1))} accessibilityRole="button" style={styles.counterButton}>−</Text>
+      <Pressable onPress={() => onChange(Math.max(1, value - 1))} disabled={value <= 1}
+        accessibilityRole="button" accessibilityLabel={`${label}を減らす`}>
+        <Text style={[styles.counterButton, value <= 1 && { opacity: 0.35 }]}>−</Text>
+      </Pressable>
       <Text style={styles.counterValue}>{value}</Text>
-      <Text onPress={() => onChange(value + 1)} accessibilityRole="button" style={styles.counterButton}>＋</Text>
+      <Pressable onPress={() => onChange(Math.min(maximum, value + 1))} disabled={value >= maximum}
+        accessibilityRole="button" accessibilityLabel={`${label}を増やす`}>
+        <Text style={[styles.counterButton, value >= maximum && { opacity: 0.35 }]}>＋</Text>
+      </Pressable>
     </View>
   );
 }
@@ -431,35 +439,6 @@ function FeatureStatus({ title, status, detail }: { title: string; status: strin
   );
 }
 
-function AccordionSection({ title, expanded, onToggle, children }: {
-  title: string;
-  expanded: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Animated.View layout={LinearTransition.duration(240)}>
-      <Card style={styles.accordionCard}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${title}を${expanded ? '閉じる' : '開く'}`}
-          accessibilityState={{ expanded }}
-          onPress={onToggle}
-          style={({ pressed }) => [styles.accordionHeader, pressed && styles.accordionHeaderPressed]}
-        >
-          <Text style={styles.accordionTitle}>{title}</Text>
-          <Text style={[styles.accordionChevron, expanded && styles.accordionChevronExpanded]}>⌄</Text>
-        </Pressable>
-        {expanded ? (
-          <Animated.View entering={SlideInDown.duration(240)} exiting={SlideOutUp.duration(180)} style={styles.accordionContent}>
-            {children}
-          </Animated.View>
-        ) : null}
-      </Card>
-    </Animated.View>
-  );
-}
-
 function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, ChoreDefinition[]][] {
   const groups = new Map<string, ChoreDefinition[]>();
   for (const chore of chores) groups.set(chore.category, [...(groups.get(chore.category) ?? []), chore]);
@@ -468,13 +447,8 @@ function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, Cho
 
 const styles = StyleSheet.create({
   back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
-  accordionCard: { gap: 0, paddingVertical: 4 },
-  accordionHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  accordionHeaderPressed: { opacity: 0.72 },
-  accordionTitle: { flex: 1, color: palette.ink, fontSize: 16, fontWeight: '700' },
   accordionChevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28, transform: [{ rotate: '0deg' }] },
   accordionChevronExpanded: { transform: [{ rotate: '180deg' }] },
-  accordionContent: { gap: 12, paddingTop: 8, paddingBottom: 10 },
   label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   weekdayRow: { width: '100%', flexDirection: 'row', flexWrap: 'nowrap', gap: 5 },

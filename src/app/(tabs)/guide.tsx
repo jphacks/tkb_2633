@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { localDateFromDate } from '@/domain/scheduling/local-date';
+import { selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { recordIncompleteChore } from '@/platform/storage/repository';
@@ -83,11 +84,12 @@ export default function ChoreGuideScreen() {
   const matchingTriviaItems = query
     ? triviaItems.filter((item) => normalizeChoreSearchText(item.trivia.title).includes(query))
     : triviaItems;
-  const currentEntry = selectedChore
-    ? snapshot.scheduleEntries.filter((entry) => entry.choreId === selectedChore.id)
-      .find((entry) => entry.status === 'overdue' || entry.status === 'inWindow' || entry.status === 'initialPending')
-      ?? snapshot.scheduleEntries.find((entry) => entry.choreId === selectedChore.id)
+  const today = localDateFromDate(new Date());
+  const todayTask = selectedChore
+    ? selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3).find((task) => task.choreId === selectedChore.id)
     : undefined;
+  const currentEntry = todayTask ? todayTask.entry
+    : snapshot.scheduleEntries.find((entry) => entry.choreId === selectedChore?.id && entry.suggestedDate >= today);
   const canRecordIncomplete = Boolean(currentEntry && currentEntry.windowStart <= localDateFromDate(new Date()));
 
   if (selectedTriviaId) {

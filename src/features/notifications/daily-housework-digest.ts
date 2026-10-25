@@ -1,5 +1,5 @@
 import type { ChoreCompletion, ChoreDefinition, ChoreScheduleEntry, HouseholdPlannerSettings } from '@/domain/chores/types';
-import { completionMatchesEntry } from '@/domain/scheduling/completion-matching';
+import { selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import type { LocalNotificationGateway, LocalNotificationRequest } from '@/features/notifications/contracts';
@@ -26,10 +26,9 @@ export function createDailyHouseworkDigestRequests(
     const fireAt = localDateAtTime(date, snapshot.settings.notificationHour, snapshot.settings.notificationMinute);
     if (fireAt <= now) continue;
 
-    const dueEntries = snapshot.scheduleEntries
-      .filter((entry) => isNotificationDay(entry, date))
-      .filter((entry) => !snapshot.completions.some((completion) => completionMatchesEntry(completion, entry)))
-      .sort((left, right) => urgency(left.status) - urgency(right.status)
+    const dueEntries = selectDateTasks(snapshot.scheduleEntries.filter((entry) => isNotificationDay(entry, date)), snapshot.completions, date, 1)
+      .filter((task) => !task.completed)
+      .sort((left, right) => urgency(left.entry!.status) - urgency(right.entry!.status)
         || left.suggestedDate.localeCompare(right.suggestedDate));
     const names = dueEntries
       .map((entry) => snapshot.chores.find((chore) => chore.id === entry.choreId)?.name)

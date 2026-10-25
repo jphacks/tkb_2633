@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { generateHouseworkSchedule, wouldCreateDependencyCycle } from '../src/domain/scheduling/engine.ts';
+import { addDays, daysBetween } from '../src/domain/scheduling/local-date.ts';
 
 const householdId = 'home';
 
@@ -16,7 +17,7 @@ function chore(id, overrides = {}) {
     frequencyDaysByMode: { frequent: 7, balanced: 7, relaxed: 7 },
     windowRadiusDays: 1,
     maxShiftDays: 4,
-    load: 'light',
+    load: 'normal',
     holidayPriority: false,
     everyday: false,
     instructions: [],
@@ -221,7 +222,7 @@ test('missed cycles remain one overdue entry and future cycles continue', () => 
   const overdueEntries = entries.filter((entry) => entry.status === 'overdue');
   assert.equal(overdueEntries.length, 1);
   assert.equal(overdueEntries[0].overdueCycles, 7);
-  assert.ok(overdueEntries[0].suggestedDate >= input().today);
+  assert.equal(overdueEntries[0].suggestedDate, '2026-10-20');
   assert.ok(entries.some((entry) => entry.status === 'scheduled' || entry.status === 'inWindow'));
 });
 
@@ -246,4 +247,43 @@ test('dependency cycles are detected before schedule generation', () => {
   ];
   assert.equal(wouldCreateDependencyCycle(dependencies, 'c', 'a'), true);
   assert.equal(wouldCreateDependencyCycle(dependencies, 'a', 'c'), false);
+});
+
+test('light chores keep a single-day period even when an older cached period was wider', () => {
+  const date = '2026-10-23';
+  const entries = generateHouseworkSchedule(input({
+    chores: [chore('light', { load: 'light', windowRadiusDays: 2, maxShiftDays: 0 })],
+    states: [{ choreId: 'light', lastCompletedDate: '2026-10-16', initialPending: false, lastCompletedEstimated: false }],
+    previousScheduleEntries: [{ id: `light:${date}`, choreId: 'light', cycleBaseDate: date,
+      windowStart: '2026-10-21', windowEnd: '2026-10-25', suggestedDate: date, status: 'inWindow', assignedMemberIds: [] }],
+  }));
+  assert.ok(entries.length > 0);
+  assert.ok(entries.every((entry) => entry.windowStart === entry.suggestedDate && entry.windowEnd === entry.suggestedDate));
+  assert.equal(entries[0].status, 'overdue');
+});
+
+test('load, cycle, frequency, holidays, and load limits preserve scheduling invariants in 72 configurations', () => {
+  for (const load of ['light', 'normal', 'heavy']) {
+    for (const cycle of [1, 2, 7, 30]) {
+      for (const frequencyMode of ['frequent', 'balanced', 'relaxed']) {
+        for (const restDays of [[], [6, 7]]) {
+          const radius = load === 'light' ? 0 : load === 'normal' ? 1 : 2;
+          const entries = generateHouseworkSchedule(input({
+            through: '2026-11-30',
+            chores: [chore('matrix', { load, windowRadiusDays: radius, holidayPriority: restDays.length > 0,
+              frequencyDaysByMode: { frequent: cycle, balanced: cycle, relaxed: cycle } })],
+            states: [{ choreId: 'matrix', lastCompletedDate: '2026-10-01', initialPending: false, lastCompletedEstimated: false }],
+            settings: { frequencyMode, restDays, loadLimits: { heavyDailyLimit: 1, normalDailyLimit: 1 } },
+          }));
+          assert.ok(entries.length > 0, `${load}/${cycle}/${frequencyMode}/${restDays}`);
+          assert.equal(new Set(entries.map((entry) => entry.id)).size, entries.length);
+          for (const entry of entries) {
+            assert.ok(entry.windowStart <= entry.suggestedDate && entry.suggestedDate <= entry.windowEnd);
+            assert.equal(daysBetween(entry.windowStart, entry.windowEnd), radius * 2);
+            if (entry.status === 'overdue') assert.ok(input().today <= addDays(entry.windowEnd, 3));
+          }
+        }
+      }
+    }
+  }
 });

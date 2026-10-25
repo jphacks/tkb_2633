@@ -1,26 +1,23 @@
 import { Tabs, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { LinearTransition, SlideInLeft, SlideOutRight } from 'react-native-reanimated';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 
 import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
-import type { ChoreLoad, ChoreScheduleEntry } from '@/domain/chores/types';
-import { completionIncludesDate, completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
-import { addDays, formatJapaneseDate, localDateFromDate, localDateFromISODateTime, weekdayOf } from '@/domain/scheduling/local-date';
+import { orderDateTasks, selectDateTasks, type DateTask } from '@/domain/scheduling/date-tasks';
+import { addDays, formatJapaneseDate, localDateFromDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, setWasteOccurrenceHidden, undoCompletedChore } from '@/platform/storage/repository';
 
 type WeekScope = 'current' | 'next';
-type UpcomingTaskRow = { id: string; choreId: string; completed: boolean; deemphasized?: boolean; entry?: ChoreScheduleEntry; completionId?: string };
 
 export default function HomeScreen() {
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
-  const [animatedCompletedChoreIds, setAnimatedCompletedChoreIds] = useState<Set<string>>(new Set());
   const [wasteMessage, setWasteMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
@@ -31,50 +28,14 @@ export default function HomeScreen() {
   const periodStart = weekScope === 'current' ? today : nextWeekStart;
   const periodEnd = weekScope === 'current' ? thisWeekEnd : nextWeekEnd;
   const upcomingByDate = useMemo(() => {
-    const groups = new Map<LocalDate, UpcomingTaskRow[]>();
-    const entries = snapshot?.scheduleEntries ?? [];
-    const completions = snapshot?.completions ?? [];
-    const choresById = new Map((snapshot?.chores ?? []).map((chore) => [chore.id, chore]));
-    const addRow = (date: LocalDate, row: UpcomingTaskRow) => {
-      const group = groups.get(date) ?? [];
-      group.push(row);
-      groups.set(date, group);
-    };
+    const groups: [LocalDate, DateTask[]][] = [];
+    if (!snapshot) return groups;
     const firstVisibleDate = periodStart > today ? periodStart : addDays(today, 1);
-
-    for (const entry of entries) {
-      if (entry.status === 'overdue') continue;
-      const firstDate = entry.windowStart > firstVisibleDate ? entry.windowStart : firstVisibleDate;
-      const lastDate = entry.windowEnd < periodEnd ? entry.windowEnd : periodEnd;
-      if (firstDate > lastDate) continue;
-      const completed = completions.some((completion) => completionMatchesEntry(completion, entry));
-      for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
-        addRow(date, {
-          id: `${entry.id}:${date}`,
-          choreId: entry.choreId,
-          completed,
-          deemphasized: date !== entry.suggestedDate,
-          entry,
-        });
-      }
+    for (let date = firstVisibleDate; date <= periodEnd; date = addDays(date, 1)) {
+      const tasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date), date, snapshot.chores);
+      if (tasks.length) groups.push([date, tasks]);
     }
-
-    for (const completion of completions) {
-      if (completion.outcome !== 'completed' || entries.some((entry) => completionMatchesEntry(completion, entry))) continue;
-      const period = completionPeriod(completion);
-      const firstDate = period.start > firstVisibleDate ? period.start : firstVisibleDate;
-      const lastDate = period.end < periodEnd ? period.end : periodEnd;
-      if (firstDate > lastDate) continue;
-      for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
-        addRow(date, { id: `completed:${completion.id}:${date}`, choreId: completion.choreId, completed: true, completionId: completion.id });
-      }
-    }
-    for (const group of groups.values()) {
-      group.sort((left, right) => Number(left.deemphasized) - Number(right.deemphasized)
-        || choreLoadPriority(choresById.get(left.choreId)?.load) - choreLoadPriority(choresById.get(right.choreId)?.load)
-        || Number(left.completed) - Number(right.completed));
-    }
-    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+    return groups;
   }, [periodEnd, periodStart, snapshot, today]);
 
   if (loading || !snapshot) {
@@ -91,19 +52,9 @@ export default function HomeScreen() {
   }
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const dueToday = snapshot.scheduleEntries
-    .filter((entry) => entry.status === 'overdue' || (entry.windowStart <= today && today <= entry.windowEnd));
-  const completedEntriesToday = dueToday.filter((entry) => snapshot.completions.some((completion) => completionMatchesEntry(completion, entry)));
-  const completedEntryIdsToday = new Set(completedEntriesToday.map((entry) => entry.id));
-  const orderedDueToday = [...dueToday].sort((left, right) => Number(left.suggestedDate !== today) - Number(right.suggestedDate !== today)
-    || choreLoadPriority(choresById.get(left.choreId)?.load) - choreLoadPriority(choresById.get(right.choreId)?.load)
-    || urgency(left.status) - urgency(right.status)
-    || Number(completedEntryIdsToday.has(left.id)) - Number(completedEntryIdsToday.has(right.id)));
-  const completedTodayOnly = snapshot.completions.filter((completion) => completion.outcome === 'completed'
-    && (completionIncludesDate(completion, today) || localDateFromISODateTime(completion.completedAt) === today)
-    && !dueToday.some((entry) => completionMatchesEntry(completion, entry)));
-  const todayTotal = dueToday.length + completedTodayOnly.length;
-  const todayDone = completedEntriesToday.length + completedTodayOnly.length;
+  const orderedDueToday = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3), today, snapshot.chores);
+  const todayTotal = orderedDueToday.length;
+  const todayDone = orderedDueToday.filter((task) => task.completed).length;
   const progress = todayTotal ? Math.round((todayDone / todayTotal) * 100) : 0;
   const todayWaste = snapshot.upcomingWasteDates.filter((occurrence) => occurrence.date === today);
 
@@ -112,12 +63,8 @@ export default function HomeScreen() {
     if (!entry || completingIds.has(entryId)) return;
     setCompletingIds((current) => new Set(current).add(entryId));
     setActionError(null);
-    let inserted = false;
     try {
-      inserted = await completeChore(database, entry);
-      if (inserted) {
-        setAnimatedCompletedChoreIds((current) => new Set(current).add(entry.choreId));
-      }
+      await completeChore(database, entry);
       await refresh();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');
@@ -223,42 +170,22 @@ export default function HomeScreen() {
       {wasteMessage ? <Text style={styles.noticeBody}>{wasteMessage}</Text> : null}
 
       <SectionHeading title="今日の家事" trailing={<Text style={styles.smallCount}>{todayTotal}件・{todayDone}件完了</Text>} />
-      {orderedDueToday.map((entry) => {
-        const chore = choresById.get(entry.choreId);
+      {orderedDueToday.map((task) => {
+        const chore = choresById.get(task.choreId);
         if (!chore) return null;
-        const completed = completedEntryIdsToday.has(entry.id);
-        const completion = completed ? snapshot.completions.find((item) => completionMatchesEntry(item, entry)) : undefined;
+        const { completed, entry, completion } = task;
         return (
           <Animated.View
-            key={completed ? `completed-${entry.id}` : entry.id}
-            entering={completed && animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
-            exiting={SlideOutRight.duration(280)}
+            key={chore.id}
             layout={LinearTransition.duration(240)}>
             <TaskCheckboxRow
               chore={chore}
               completed={completed}
-              deemphasized={today !== entry.suggestedDate}
+              deemphasized={today !== task.suggestedDate}
               onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
               onToggle={completed
                 ? completion && !completingIds.has(completion.id) ? () => void undo(completion.id) : undefined
-                : !completingIds.has(entry.id) ? () => void finish(entry.id) : undefined}
-            />
-          </Animated.View>
-        );
-      })}
-      {completedTodayOnly.map((completion) => {
-        const chore = choresById.get(completion.choreId);
-        if (!chore) return null;
-        return (
-          <Animated.View
-            key={`completed-${completion.id}`}
-            entering={animatedCompletedChoreIds.has(chore.id) ? SlideInLeft.duration(320) : undefined}
-            layout={LinearTransition.duration(240)}>
-            <TaskCheckboxRow
-              chore={chore}
-              completed
-              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-              onToggle={!completingIds.has(completion.id) ? () => void undo(completion.id) : undefined}
+                : entry && !completingIds.has(entry.id) ? () => void finish(entry.id) : undefined}
             />
           </Animated.View>
         );
@@ -286,17 +213,14 @@ export default function HomeScreen() {
           {entries.map((row) => {
             const chore = choresById.get(row.choreId);
             if (!chore) return null;
-            const matchedCompletion = row.entry
-              ? snapshot.completions.find((completion) => completionMatchesEntry(completion, row.entry!))
-              : undefined;
-            const completionId = row.completionId ?? matchedCompletion?.id;
+            const completionId = row.completion?.id;
             const entryId = row.entry?.id;
             return (
-              <Animated.View key={row.id} entering={row.completed && animatedCompletedChoreIds.has(row.choreId) ? SlideInLeft.duration(320) : undefined} exiting={SlideOutRight.duration(280)} layout={LinearTransition.duration(240)}>
+              <Animated.View key={`${row.choreId}:${date}`} layout={LinearTransition.duration(240)}>
                 <TaskCheckboxRow
                   chore={chore}
                   completed={row.completed}
-                  deemphasized={row.deemphasized}
+                  deemphasized={row.suggestedDate !== date}
                   onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
                   onToggle={row.completed
                     ? completionId && !completingIds.has(completionId) ? () => void undo(completionId) : undefined
@@ -319,17 +243,6 @@ export default function HomeScreen() {
       </Page>
     </>
   );
-}
-
-function choreLoadPriority(load: ChoreLoad | undefined): number {
-  return load === 'heavy' ? 0 : load === 'normal' ? 1 : load === 'light' ? 2 : 3;
-}
-
-function urgency(status: string): number {
-  if (status === 'overdue') return 0;
-  if (status === 'inWindow') return 1;
-  if (status === 'initialPending') return 2;
-  return 3;
 }
 
 const styles = StyleSheet.create({

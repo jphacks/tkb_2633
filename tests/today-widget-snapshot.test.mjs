@@ -101,8 +101,8 @@ test('completed chores remain checked below pending chores and become unchecked 
   assert.equal(snapshot(entries, chores).chores.find((row) => row.id === 'entry-done').completed, false);
 });
 
-test('regenerated schedules retain completed occurrences without completing the next occurrence', () => {
-  const entries = [entry('repeat', { id: 'next-occurrence' })];
+test('regenerated schedules show one checked row today without completing the next occurrence', () => {
+  const entries = [entry('repeat', { id: 'next-occurrence', windowEnd: '2026-10-25', suggestedDate: '2026-10-25' })];
   const chores = [{ id: 'repeat', name: '繰り返す家事' }, { id: 'yesterday', name: '昨日の家事' }];
   const completions = [
     completion('previous-occurrence', 'repeat', {
@@ -112,9 +112,21 @@ test('regenerated schedules retain completed occurrences without completing the 
     completion('yesterday-record', 'yesterday', { completedAt: '2026-10-23T03:00:00.000Z' }),
   ];
   assert.deepEqual(snapshot(entries, chores, completions).chores, [
-    { id: 'next-occurrence', name: '繰り返す家事', completed: false },
     { id: 'completed:previous-occurrence', name: '繰り返す家事', completed: true },
   ]);
+  assert.deepEqual(snapshot(entries, chores, completions, '2026-10-25').chores, [
+    { id: 'next-occurrence', name: '繰り返す家事', completed: false },
+  ]);
+});
+
+test('several recent daily occurrences only consume one widget row', () => {
+  const entries = ['2026-10-23', today].map((date) => entry('daily', {
+    id: `daily:${date}`, suggestedDate: date, windowStart: date, windowEnd: date,
+  }));
+  const result = snapshot(entries, [{ id: 'daily', name: '食器を洗う' }]);
+  assert.equal(result.chores.length, 1);
+  assert.equal(result.chores[0].id, `daily:${today}`);
+  assert.equal(result.remainingCount, 0);
 });
 
 test('missing chore definitions do not consume widget rows or inflate the remaining count', () => {

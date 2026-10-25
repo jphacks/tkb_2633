@@ -665,6 +665,12 @@ async function updatePlannerSettingsImpl(
   database: SQLiteDatabase,
   settings: Pick<HouseholdPlannerSettings, 'frequencyMode' | 'restDays' | 'heavyDailyLimit' | 'normalDailyLimit'>,
 ): Promise<void> {
+  if (!['frequent', 'balanced', 'relaxed'].includes(settings.frequencyMode)
+    || settings.restDays.some((day) => !Number.isInteger(day) || day < 1 || day > 7)
+    || !Number.isInteger(settings.heavyDailyLimit) || settings.heavyDailyLimit < 1 || settings.heavyDailyLimit > 10
+    || !Number.isInteger(settings.normalDailyLimit) || settings.normalDailyLimit < 1 || settings.normalDailyLimit > 20) {
+    throw new RangeError('頻度・休日と、重い家事1〜10件・普通の家事1〜20件の上限を確認してください。');
+  }
   await database.runAsync(
     `UPDATE household_settings SET frequency_mode = ?, rest_days_json = ?, heavy_daily_limit = ?,
      normal_daily_limit = ?, updated_at = ? WHERE household_id = ?`,
@@ -733,10 +739,29 @@ async function updateChoreDefinitionImpl(
   definition: ChoreDefinition,
 ): Promise<void> {
   if (definition.archived) throw new Error('この家事は現在の家事一覧から削除されています。');
-  await database.runAsync(
-    'UPDATE chore_definitions SET name = ?, enabled = ?, definition_json = ? WHERE id = ?',
-    definition.name, definition.enabled ? 1 : 0, JSON.stringify(definition), definition.id,
+  const previous = await database.getFirstAsync<{ definition_json: string }>(
+    'SELECT definition_json FROM chore_definitions WHERE id = ?', definition.id,
   );
+  if (!previous) throw new Error('Chore not found');
+  const scheduleChanged = choreScheduleSignature(JSON.parse(previous.definition_json) as ChoreDefinition)
+    !== choreScheduleSignature(definition);
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      'UPDATE chore_definitions SET name = ?, enabled = ?, definition_json = ? WHERE id = ?',
+      definition.name, definition.enabled ? 1 : 0, JSON.stringify(definition), definition.id,
+    );
+    // Cached overdue periods otherwise retain the old width after a scheduling setting is edited.
+    if (scheduleChanged) await database.runAsync('DELETE FROM chore_schedule_entries WHERE chore_id = ?', definition.id);
+  });
+}
+
+function choreScheduleSignature(chore: ChoreDefinition): string {
+  return JSON.stringify([
+    chore.enabled, chore.load, chore.everyday, chore.requiresCycleSelection,
+    chore.frequencyDaysByMode.frequent, chore.frequencyDaysByMode.balanced, chore.frequencyDaysByMode.relaxed,
+    chore.recommendedCycleDays, chore.userIntervalDays, chore.manufacturerRecommendedIntervalDays,
+    chore.windowRadiusDays, chore.maxShiftDays, chore.holidayPriority, chore.laundryDryingPreference,
+  ]);
 }
 
 export interface SaveReviewedApplianceResult {

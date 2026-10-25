@@ -1,7 +1,6 @@
 import type { ChoreCompletion, ChoreDefinition, ChoreScheduleEntry } from '@/domain/chores/types';
 import type { LocalDate } from '@/domain/shared/types';
-import { addDays } from '@/domain/scheduling/local-date';
-import { completionIncludesDate, completionMatchesEntry } from '@/domain/scheduling/completion-matching';
+import { selectDateTasks } from '@/domain/scheduling/date-tasks';
 import type { NextChoreWidgetSnapshot, TodayWidgetChore } from '@/features/widgets/contracts';
 
 export function createTodayWidgetSnapshot(
@@ -11,25 +10,11 @@ export function createTodayWidgetSnapshot(
   today: LocalDate,
   updatedAt: string,
 ): NextChoreWidgetSnapshot {
-  const activeEntries = entries.filter((entry) => entry.windowStart <= today
-    && today <= addDays(entry.windowEnd, 1));
-  const pendingEntries = activeEntries
-    .filter((entry) => !completions.some((completion) => completionMatchesEntry(completion, entry)))
-    .sort((left, right) => urgency(left.status) - urgency(right.status)
+  const tasks = selectDateTasks(entries, completions, today, 1)
+    .sort((left, right) => Number(left.completed) - Number(right.completed)
+      || urgency(left.entry?.status ?? 'scheduled') - urgency(right.entry?.status ?? 'scheduled')
       || left.suggestedDate.localeCompare(right.suggestedDate));
-  const completedEntries = activeEntries
-    .filter((entry) => completions.some((completion) => completionMatchesEntry(completion, entry)))
-    .sort((left, right) => left.suggestedDate.localeCompare(right.suggestedDate));
-
-  const unresolvedRows: (TodayWidgetChore | null)[] = [
-    ...pendingEntries.map((entry) => widgetRow(entry.id, entry.choreId, false, chores)),
-    ...completedEntries.map((entry) => widgetRow(entry.id, entry.choreId, true, chores)),
-    ...completions
-      .filter((completion) => completion.outcome === 'completed'
-        && completionIncludesDate(completion, today)
-        && !activeEntries.some((entry) => completionMatchesEntry(completion, entry)))
-      .map((completion) => widgetRow(`completed:${completion.id}`, completion.choreId, true, chores)),
-  ];
+  const unresolvedRows = tasks.map((task) => widgetRow(task.id, task.choreId, task.completed, chores));
   const rows = unresolvedRows.filter((row): row is TodayWidgetChore => row !== null);
 
   return {

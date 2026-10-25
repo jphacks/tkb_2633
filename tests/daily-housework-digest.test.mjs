@@ -75,3 +75,19 @@ test('a scheduling failure does not remove all existing reminders', async () => 
   assert.equal(client.requests.size, 3);
   assert.deepEqual(client.cancelled, []);
 });
+
+test('daily cycles notify each chore once and skip a day already completed', () => {
+  const entries = ['2026-10-23', '2026-10-24', '2026-10-25'].map((date) => ({
+    ...entry, id: `daily:${date}`, choreId: 'one', cycleBaseDate: date,
+    windowStart: date, windowEnd: date, suggestedDate: date,
+  }));
+  const requests = createDailyHouseworkDigestRequests(snapshot({ scheduleEntries: entries }), now);
+  assert.ok(requests.length > 0);
+  assert.ok(requests.every((request) => request.subtitle === '1件の未完了タスク' && request.body === '掃除'));
+  const done = { id: 'done', choreId: 'one', outcome: 'completed', completedAt: now.toISOString(),
+    scheduleEntryId: 'daily:2026-10-24', scheduledDate: '2026-10-24',
+    scheduledWindowStart: '2026-10-24', scheduledWindowEnd: '2026-10-24' };
+  const after = createDailyHouseworkDigestRequests(snapshot({ scheduleEntries: entries, completions: [done] }), now);
+  assert.equal(after.some((request) => request.data.date === '2026-10-24'), false);
+  assert.equal(after.some((request) => request.data.date === '2026-10-25'), true);
+});

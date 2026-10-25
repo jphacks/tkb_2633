@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { NumberInputField } from '@/components/number-input-field';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse, ProductVerifiedResponse } from '@/features/appliance-care/api-contracts';
 import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-client';
 import type { ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
@@ -279,10 +280,7 @@ function TaskReviewCard({ task, index, working, cycleValue, onChangeCycle, manuf
             ? <Text style={styles.body}>メーカー推奨：{task.recommendedIntervalDays}日</Text>
             : <Text style={styles.noCycleTag}>定期予定なし · メーカー指定の具体的周期なし</Text>}
         </View>
-        <View style={styles.cycleInputWrap}>
-          <TextInput value={cycleValue} editable={!working} onChangeText={onChangeCycle} keyboardType="number-pad" style={styles.cycleInput} accessibilityLabel={`${task.name}の周期`} placeholder="任意" />
-          <Text style={styles.fieldLabel}>日</Text>
-        </View>
+        <NumberInputField value={cycleValue} editable={!working} onChangeText={onChangeCycle} accessibilityLabel={`${task.name}の周期`} placeholder="任意" />
       </View>
       {task.recommendedIntervalDays === undefined ? <Text style={styles.note}>周期欄を空のままにすると家電詳細に保存され、カレンダー・自動予定・定期通知には入りません。周期を入力すると、その設定で予定を作ります。</Text> : null}
       {task.recommendedConditions?.map((condition) => <Text key={condition} style={styles.body}>条件：{condition}</Text>)}
@@ -353,8 +351,6 @@ const styles = StyleSheet.create({
   taskIndex: { ...typography.caption, color: palette.accent, fontWeight: '800', letterSpacing: 1 },
   cycleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border },
   flexCopy: { flex: 1, gap: 3 },
-  cycleInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, backgroundColor: palette.background },
-  cycleInput: { ...typography.control, minWidth: 54, paddingVertical: 7, color: palette.ink, textAlign: 'center', fontWeight: '700' },
   noCycleTag: { ...typography.caption, color: '#8D682E', fontWeight: '800' },
   invalidLink: { ...typography.caption, color: palette.muted },
   cautionBox: { backgroundColor: palette.warningSoft, borderRadius: 12, padding: 12, gap: 4 },

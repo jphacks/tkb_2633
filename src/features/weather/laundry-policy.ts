@@ -5,8 +5,10 @@ import type {
   ChoreScheduleEntry,
 } from '@/domain/chores/types';
 import type { EntityId, LocalDate } from '@/domain/shared/types';
-import type { ScheduleSettings } from '@/domain/scheduling/contracts';
+import type { ExternalAvailabilityByDate, ScheduleSettings } from '@/domain/scheduling/contracts';
+import { calendarPenaltyForChore } from '../../domain/scheduling/calendar-penalty.ts';
 import { addDays, daysBetween, weekdayOf } from '../../domain/scheduling/local-date.ts';
+import { completionMatchesEntry } from '../../domain/scheduling/completion-matching.ts';
 import type { DailyWeather, WeatherAdjustmentPolicy, WeatherScheduleAdjustment } from './contracts';
 
 export const LAUNDRY_WEATHER_RULES = Object.freeze({
@@ -29,6 +31,7 @@ export interface LaundryWeatherPolicyContext {
   completions: readonly ChoreCompletion[];
   dependencies: readonly ChoreDependency[];
   settings: ScheduleSettings;
+  externalAvailabilityByDate?: ExternalAvailabilityByDate;
 }
 
 interface DayLoad {
@@ -62,26 +65,12 @@ export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
     const forecastByDate = new Map(input.forecast.map((day) => [day.date, day]));
     const forecastThrough = addDays(this.context.today, LAUNDRY_WEATHER_RULES.forecastDays - 1);
     const choresById = new Map(this.context.chores.map((chore) => [chore.id, chore]));
-    const completedScheduleIds = new Set(this.context.completions
-      .filter((completion) => completion.outcome === 'completed' && completion.scheduleEntryId)
-      .map((completion) => completion.scheduleEntryId));
     const workingSchedule = input.schedule.map((entry) => ({ ...entry, assignedMemberIds: [...entry.assignedMemberIds] }));
     const loads = createDayLoads(workingSchedule, choresById);
     const entriesByChore = indexEntriesByChore(workingSchedule);
     const adjustments: WeatherScheduleAdjustment<LaundryWeatherAdjustmentData>[] = [];
 
-    const targets = [...workingSchedule]
-      .filter((entry) => {
-        const chore = choresById.get(entry.choreId);
-        return chore !== undefined
-          && isLaundryChore(chore)
-          && chore.laundryDryingPreference !== 'indoors'
-          && entry.status !== 'initialPending'
-          && entry.status !== 'overdue'
-          && !completedScheduleIds.has(entry.id)
-          && entry.suggestedDate >= this.context.today
-          && entry.suggestedDate <= forecastThrough;
-      })
+    const targets = eligibleLaundryEntries(workingSchedule, this.context)
       .sort((left, right) => left.suggestedDate.localeCompare(right.suggestedDate) || left.id.localeCompare(right.id));
 
     for (const target of targets) {
@@ -106,13 +95,16 @@ export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
         for (let date = candidateStart; date <= candidateEnd; date = addDays(date, 1)) {
           if (!isSuitableLaundryDay(forecastByDate.get(date))) continue;
           if (!fitsLoadLimits(loads.get(date), chore, this.context.settings)) continue;
+          if (!respectsOccurrenceOrder(date, current, entriesByChore)) continue;
           if (!respectsDependencies(date, current, this.context.dependencies, entriesByChore)) continue;
           candidates.push({ date, windowStart, windowEnd, shiftDays });
         }
       }
 
       candidates.sort((left, right) => {
-        const distanceDifference = Math.abs(daysBetween(originalDate, left.date)) - Math.abs(daysBetween(originalDate, right.date));
+        const cost = (date: LocalDate) => Math.abs(daysBetween(originalDate, date))
+          + calendarPenaltyForChore(chore.load, this.context.externalAvailabilityByDate?.[date]?.busyMinutes);
+        const distanceDifference = cost(left.date) - cost(right.date);
         if (distanceDifference !== 0) return distanceDifference;
         if (chore.holidayPriority) {
           const leftRestDay = this.context.settings.restDays.includes(weekdayOf(left.date)) ? 0 : 1;
@@ -151,6 +143,33 @@ export class LaundryWeatherAdjustmentPolicy implements WeatherAdjustmentPolicy<
 export function isLaundryChore(chore: ChoreDefinition): boolean {
   return chore.category.trim().toLocaleLowerCase() === '洗濯'
     || chore.laundryDryingPreference !== undefined;
+}
+
+/** Shared by the no-network fast path and policy so completion/eligibility rules cannot diverge. */
+export function eligibleLaundryEntries(
+  schedule: readonly ChoreScheduleEntry[],
+  context: Pick<LaundryWeatherPolicyContext, 'today' | 'chores' | 'completions'>,
+): ChoreScheduleEntry[] {
+  const through = addDays(context.today, LAUNDRY_WEATHER_RULES.forecastDays - 1);
+  const chores = new Map(context.chores.map((chore) => [chore.id, chore]));
+  const completedIds = new Set<EntityId>();
+  const completedByChore = new Map<EntityId, ChoreCompletion[]>();
+  for (const completion of context.completions) {
+    if (completion.outcome !== 'completed') continue;
+    if (completion.scheduleEntryId) { completedIds.add(completion.scheduleEntryId); continue; }
+    const values = completedByChore.get(completion.choreId) ?? [];
+    values.push(completion);
+    completedByChore.set(completion.choreId, values);
+  }
+  return schedule.filter((entry) => {
+    const chore = chores.get(entry.choreId);
+    return chore?.enabled && !chore.archived && isLaundryChore(chore)
+      && chore.laundryDryingPreference !== 'indoors'
+      && entry.status !== 'initialPending' && entry.status !== 'overdue'
+      && entry.suggestedDate >= context.today && entry.suggestedDate <= through
+      && !completedIds.has(entry.id)
+      && !(completedByChore.get(entry.choreId) ?? []).some((completion) => completionMatchesEntry(completion, entry));
+  });
 }
 
 export function isSuitableLaundryDay(day: DailyWeather | undefined): boolean {
@@ -226,6 +245,16 @@ function replaceIndexedEntry(entriesByChore: Map<EntityId, ChoreScheduleEntry[]>
   if (!entries) return;
   const index = entries.findIndex((entry) => entry.id === updated.id);
   if (index >= 0) entries[index] = updated;
+}
+
+function respectsOccurrenceOrder(
+  candidate: LocalDate, current: ChoreScheduleEntry, entriesByChore: ReadonlyMap<EntityId, readonly ChoreScheduleEntry[]>,
+): boolean {
+  const entries = entriesByChore.get(current.choreId) ?? [];
+  const index = entries.findIndex((entry) => entry.id === current.id);
+  const previous = entries[index - 1];
+  const next = entries[index + 1];
+  return (!previous || candidate > previous.suggestedDate) && (!next || candidate < next.suggestedDate);
 }
 
 function respectsDependencies(

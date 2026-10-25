@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
+import { NumberInputField } from '@/components/number-input-field';
 
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition, ChoreLoad } from '@/domain/chores/types';
@@ -76,18 +77,13 @@ function ChoreSettingsContent({
                   : `頻度モードの初期値は${chore.frequencyDaysByMode[snapshot.settings.frequencyMode]}日です。`}
             </Text>
           </View>
-          <View style={styles.numberField}>
-            <TextInput
-              value={cycleText}
-              onChangeText={autosave.changeCycle}
-              onEndEditing={() => void autosave.flush()}
-              keyboardType="number-pad"
-              style={styles.numberInput}
-              accessibilityLabel="家事周期の日数"
-              placeholder={chore.requiresCycleSelection ? '入力' : undefined}
-            />
-            <Text style={styles.unit}>日</Text>
-          </View>
+          <NumberInputField
+            value={cycleText}
+            onChangeText={autosave.changeCycle}
+            onEndEditing={() => void autosave.flush()}
+            accessibilityLabel="家事周期の日数"
+            placeholder={chore.requiresCycleSelection ? '入力' : undefined}
+          />
         </View>
         {autosave.cycleError ? <Text style={styles.error}>{autosave.cycleError}</Text> : null}
         {chore.schedulingNotes ? <Text style={styles.body}>{chore.schedulingNotes}</Text> : null}
@@ -100,7 +96,7 @@ function ChoreSettingsContent({
         <SectionHeading title="実施スケジュール" level="subsection" />
         <View style={styles.fieldRow}>
           <View style={styles.settingCopy}><Text style={styles.settingTitle}>実施期間の幅</Text><Text style={styles.body}>基準日から前後に何日広げるか（0〜14日）</Text></View>
-          <View style={styles.numberField}><Text style={styles.unit}>±</Text><TextInput value={radiusText} onChangeText={autosave.changeRadius} onEndEditing={() => void autosave.flush()} keyboardType="number-pad" style={styles.numberInput} accessibilityLabel="実施期間の日数幅" /><Text style={styles.unit}>日</Text></View>
+          <NumberInputField prefix="±" value={radiusText} onChangeText={autosave.changeRadius} onEndEditing={() => void autosave.flush()} accessibilityLabel="実施期間の日数幅" />
         </View>
         {autosave.radiusError ? <Text style={styles.error}>{autosave.radiusError}</Text> : null}
         <View style={styles.settingBlock}>
@@ -144,9 +140,6 @@ const styles = StyleSheet.create({
   settingCopy: { flex: 1, gap: 3 },
   settingTitle: { ...typography.control, color: palette.ink, fontWeight: '700' },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
-  numberField: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border, borderRadius: 11, paddingHorizontal: 8, backgroundColor: palette.background },
-  numberInput: { ...typography.control, width: 64, paddingVertical: 8, textAlign: 'center', color: palette.ink, fontWeight: '700' },
-  unit: { ...typography.caption, color: palette.muted },
   settingBlock: { gap: 8, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   error: { ...typography.caption, color: palette.warning },

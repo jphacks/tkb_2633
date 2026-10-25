@@ -5,11 +5,11 @@ import type {
   ChoreScheduleEntry,
 } from '@/domain/chores/types';
 import type { EntityId, LocalDate, WeatherLocation } from '@/domain/shared/types';
-import type { ScheduleSettings } from '@/domain/scheduling/contracts';
+import type { ExternalAvailabilityByDate, ScheduleSettings } from '@/domain/scheduling/contracts';
 import { addDays } from '../../domain/scheduling/local-date.ts';
 import {
   applyLaundryWeatherAdjustments,
-  isLaundryChore,
+  eligibleLaundryEntries,
   LaundryWeatherAdjustmentPolicy,
 } from './laundry-policy.ts';
 import type { DailyWeather, WeatherForecastProvider } from './contracts';
@@ -32,6 +32,7 @@ export interface LaundryWeatherOptimizationInput {
   completions: readonly ChoreCompletion[];
   dependencies: readonly ChoreDependency[];
   settings: ScheduleSettings;
+  externalAvailabilityByDate?: ExternalAvailabilityByDate;
   schedule: readonly ChoreScheduleEntry[];
 }
 
@@ -47,22 +48,7 @@ export async function optimizeLaundryScheduleForWeather(
   }
 
   const forecastThrough = addDays(input.today, 6);
-  const choresById = new Map(input.chores.map((chore) => [chore.id, chore]));
-  const completedScheduleIds = new Set(input.completions
-    .filter((completion) => completion.outcome === 'completed' && completion.scheduleEntryId)
-    .map((completion) => completion.scheduleEntryId));
-  const hasUpcomingLaundry = input.schedule.some((entry) => {
-    const chore = choresById.get(entry.choreId);
-    return chore !== undefined
-      && isLaundryChore(chore)
-      && chore.laundryDryingPreference !== 'indoors'
-      && entry.status !== 'initialPending'
-      && entry.status !== 'overdue'
-      && !completedScheduleIds.has(entry.id)
-      && entry.suggestedDate >= input.today
-      && entry.suggestedDate <= forecastThrough;
-  });
-  if (!hasUpcomingLaundry) return { schedule: [...input.schedule], outcome: 'current', adjustmentCount: 0 };
+  if (!eligibleLaundryEntries(input.schedule, input).length) return { schedule: [...input.schedule], outcome: 'current', adjustmentCount: 0 };
 
   try {
     const forecast = await provider.fetchForecast({
@@ -77,6 +63,9 @@ export async function optimizeLaundryScheduleForWeather(
         return { schedule: [...input.schedule], outcome: 'unavailable', adjustmentCount: 0 };
       }
     }
+    if (!forecast.some((day) => day.weatherCode !== null && day.precipitationProbability !== null && day.precipitationMm !== null)) {
+      return { schedule: [...input.schedule], outcome: 'unavailable', adjustmentCount: 0 };
+    }
 
     const policy = new LaundryWeatherAdjustmentPolicy({
       today: input.today,
@@ -84,6 +73,7 @@ export async function optimizeLaundryScheduleForWeather(
       completions: input.completions,
       dependencies: input.dependencies,
       settings: input.settings,
+      externalAvailabilityByDate: input.externalAvailabilityByDate,
     });
     const adjustments = policy.proposeAdjustments({ forecast, schedule: input.schedule });
     return {

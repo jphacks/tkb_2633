@@ -31,6 +31,7 @@ import type { ApprovedApplianceCareTask, ApplianceCareProductIdentity } from '@/
 import { buildReviewedApplianceChore, hasExactChoreNameDuplicate, retireApplianceTaskSnapshot } from '@/features/appliance-care/persistence-policy';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
+import { WEATHER_FORECAST_CACHE_TTL_MS } from '@/features/weather/contracts';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
 import type { CalendarAvailabilityDay, CalendarAvailabilityState } from '@/features/google-sync/calendar-availability';
 import { CALENDAR_AVAILABILITY_MAX_AGE_MS, calendarAvailabilitySignature, freshCalendarAvailability, getDeviceTimeZone } from '@/features/google-sync/calendar-availability';
@@ -47,6 +48,19 @@ const initializedHouseholds = new WeakSet<SQLiteDatabase>();
 const operationTails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
 const plannerVersions = new WeakMap<SQLiteDatabase, number>();
 const snapshotVersions = new WeakMap<PlannerSnapshot, number>();
+type WeatherOptimizer = typeof optimizeLaundryScheduleForWeather;
+interface WeatherAssessment {
+  result: PlannerSnapshot;
+  baseSchedule: ChoreScheduleEntry[];
+  optimize: WeatherOptimizer;
+  context: string;
+  assessedAt: number;
+  expiresAt: number;
+}
+const weatherAssessments = new WeakMap<PlannerSnapshot, WeatherAssessment>();
+const pendingWeather = new WeakMap<PlannerSnapshot, {
+  optimize: WeatherOptimizer; context: string; promise: ReturnType<WeatherOptimizer>;
+}>();
 const cachedPlannerSnapshots = new WeakMap<SQLiteDatabase, {
   snapshot: PlannerSnapshot; today: LocalDate; timeZone: string; savedAt: number; expiresAt: number;
 }>();
@@ -629,15 +643,37 @@ export async function applyWeatherToPlannerSnapshot(
   snapshot: PlannerSnapshot,
   canCommit: () => boolean = () => true,
   optimize = optimizeLaundryScheduleForWeather,
+  clock: () => Date = () => new Date(),
 ): Promise<PlannerSnapshot | null> {
   if (!snapshot.settings.setupCompleted || !snapshot.settings.weatherLocation) {
+    if (snapshot.weatherOutcome === 'disabled' && snapshot.weatherAdjustmentCount === 0) return snapshot;
     return { ...snapshot, weatherOutcome: 'disabled', weatherAdjustmentCount: 0 };
   }
 
   const version = snapshotVersions.get(snapshot) ?? plannerVersions.get(database) ?? 0;
-  const weatherResult = await optimize({
+  const now = clock();
+  const today = localDateFromDate(now);
+  const context = `${today}:${getDeviceTimeZone()}`;
+  const prior = weatherAssessments.get(snapshot);
+  const reusable = (assessment: WeatherAssessment | undefined, instant: Date) => {
+    const cached = cachedPlannerSnapshots.get(database);
+    return assessment && assessment.optimize === optimize
+      && assessment.context === `${localDateFromDate(instant)}:${getDeviceTimeZone()}`
+      && instant.getTime() >= assessment.assessedAt && instant.getTime() < assessment.expiresAt
+      && snapshotVersions.get(assessment.result) === (plannerVersions.get(database) ?? 0)
+      && (!cached || (cached.snapshot === snapshot || cached.snapshot === assessment.result)
+        && cached.today === today && cached.timeZone === getDeviceTimeZone() && instant.getTime() <= cached.expiresAt);
+  };
+  if (!canCommit()) return null;
+  if (reusable(prior, now)) return prior!.result;
+  const currentCache = cachedPlannerSnapshots.get(database);
+  if (version !== (plannerVersions.get(database) ?? 0)
+    || (currentCache && (currentCache.snapshot !== snapshot || currentCache.today !== today
+      || currentCache.timeZone !== getDeviceTimeZone() || now.getTime() > currentCache.expiresAt))) return null;
+  const baseSchedule = prior?.baseSchedule ?? snapshot.scheduleEntries;
+  const input = {
     householdId: snapshot.household.id,
-    today: localDateFromDate(new Date()),
+    today,
     location: snapshot.settings.weatherLocation,
     chores: snapshot.chores,
     completions: snapshot.completions,
@@ -650,25 +686,43 @@ export async function applyWeatherToPlannerSnapshot(
         normalDailyLimit: snapshot.settings.normalDailyLimit,
       },
     },
-    schedule: snapshot.scheduleEntries,
-  });
+    schedule: baseSchedule,
+    externalAvailabilityByDate: snapshot.externalAvailabilityByDate,
+  };
+  let pending = pendingWeather.get(snapshot);
+  if (!pending || pending.optimize !== optimize || pending.context !== context) {
+    const promise = Promise.resolve().then(() => optimize(input)).finally(() => {
+      if (pendingWeather.get(snapshot)?.promise === promise) pendingWeather.delete(snapshot);
+    });
+    pending = { optimize, context, promise };
+    pendingWeather.set(snapshot, pending);
+  }
+  const weatherResult = await pending.promise;
 
   return runDatabaseOperation(database, async () => {
-    if (!canCommit() || version !== (plannerVersions.get(database) ?? 0)) return null;
-    if (weatherResult.schedule === snapshot.scheduleEntries && weatherResult.outcome === snapshot.weatherOutcome
-      && weatherResult.adjustmentCount === snapshot.weatherAdjustmentCount) return snapshot;
-    if (weatherResult.outcome === 'adjusted') {
-      await replaceGeneratedSchedule(database, snapshot.household.id, weatherResult.schedule);
-    }
-    const result: PlannerSnapshot = {
+    const finishedAt = clock();
+    if (!canCommit() || context !== `${localDateFromDate(finishedAt)}:${getDeviceTimeZone()}`) return null;
+    const existing = weatherAssessments.get(snapshot);
+    if (reusable(existing, finishedAt)) return existing!.result;
+    const cached = cachedPlannerSnapshots.get(database);
+    if (version !== (plannerVersions.get(database) ?? 0) || (cached && cached.snapshot !== snapshot)
+      || (cached && (cached.today !== today || cached.timeZone !== getDeviceTimeZone() || finishedAt.getTime() > cached.expiresAt))) return null;
+    const changed = JSON.stringify(weatherResult.schedule) !== JSON.stringify(snapshot.scheduleEntries);
+    if (changed) await replaceGeneratedSchedule(database, snapshot.household.id, weatherResult.schedule);
+    const result: PlannerSnapshot = !changed && weatherResult.outcome === snapshot.weatherOutcome
+      && weatherResult.adjustmentCount === snapshot.weatherAdjustmentCount ? snapshot : {
       ...snapshot,
       scheduleEntries: weatherResult.schedule,
       weatherOutcome: weatherResult.outcome,
       weatherAdjustmentCount: weatherResult.adjustmentCount,
     };
-    plannerVersions.set(database, version + 1);
-    snapshotVersions.set(result, version + 1);
-    const cached = cachedPlannerSnapshots.get(database);
+    const nextVersion = version + (changed ? 1 : 0);
+    plannerVersions.set(database, nextVersion);
+    snapshotVersions.set(result, nextVersion);
+    const assessment: WeatherAssessment = { result, baseSchedule, optimize, context, assessedAt: finishedAt.getTime(),
+      expiresAt: finishedAt.getTime() + (weatherResult.outcome === 'unavailable' ? 60_000 : WEATHER_FORECAST_CACHE_TTL_MS) };
+    weatherAssessments.set(snapshot, assessment);
+    weatherAssessments.set(result, assessment);
     if (cached?.snapshot === snapshot) cachedPlannerSnapshots.set(database, { ...cached, snapshot: result });
     return result;
   });

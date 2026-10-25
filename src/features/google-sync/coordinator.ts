@@ -41,7 +41,7 @@ let pendingCompletionSyncDatabase: SQLiteDatabase | null = null;
 
 export async function syncGoogleTasks(
   database: SQLiteDatabase,
-  options: { force?: boolean; now?: Date } = {},
+  options: { force?: boolean; now?: Date; trigger?: 'manual' | 'completion' } = {},
 ): Promise<GoogleSyncRunResult> {
   const now = options.now ?? new Date();
   const householdId = 'local-household';
@@ -81,10 +81,11 @@ export async function syncGoogleTasks(
     deleteGoogleTaskLink: (id) => deleteGoogleTaskLink(database, id),
   }, {
     force: options.force ?? false,
+    forceCalendar: options.force === true && options.trigger !== 'completion',
     now,
     // Manual actions may recover a saved attempt from a terminated app process.
     // The shared runningSync promise still joins a live attempt in this process.
-    recoverInterruptedAttempt: options.force === true,
+    recoverInterruptedAttempt: options.force === true && options.trigger !== 'completion',
   });
   if (readRequests + writeRequests > 0 && typeof __DEV__ !== 'undefined' && __DEV__) {
     console.info('[google-sync]', {
@@ -104,16 +105,17 @@ export function syncGoogleTasksAfterLocalCompletion(database: SQLiteDatabase): v
     pendingCompletionSyncDatabase = database;
     return;
   }
-  void syncGoogleTasks(database, { force: true }).catch(() => undefined);
+  void syncGoogleTasks(database, { force: true, trigger: 'completion' }).catch(() => undefined);
 }
 
 export async function syncGoogleTasksWithDependencies(
   dependencies: GoogleSyncCoordinatorDependencies,
-  options: { force?: boolean; now: Date; recoverInterruptedAttempt?: boolean },
+  options: { force?: boolean; forceCalendar?: boolean; now: Date; recoverInterruptedAttempt?: boolean },
 ): Promise<GoogleSyncRunResult> {
   if (runningSync) return runningSync;
   const run = withGoogleSyncOperation(() => runSync(dependencies, {
     force: options.force ?? false,
+    forceCalendar: options.forceCalendar ?? options.force ?? false,
     now: options.now,
     recoverInterruptedAttempt: options.recoverInterruptedAttempt ?? false,
   }));
@@ -126,7 +128,7 @@ export async function syncGoogleTasksWithDependencies(
       const pendingDatabase = pendingCompletionSyncDatabase;
       pendingCompletionSyncDatabase = null;
       if (pendingDatabase) {
-        void Promise.resolve().then(() => syncGoogleTasks(pendingDatabase, { force: true })).catch(() => undefined);
+        void Promise.resolve().then(() => syncGoogleTasks(pendingDatabase, { force: true, trigger: 'completion' })).catch(() => undefined);
       }
     }
   }
@@ -134,7 +136,7 @@ export async function syncGoogleTasksWithDependencies(
 
 async function runSync(
   dependencies: GoogleSyncCoordinatorDependencies,
-  options: { force: boolean; now: Date; recoverInterruptedAttempt: boolean },
+  options: { force: boolean; forceCalendar: boolean; now: Date; recoverInterruptedAttempt: boolean },
 ): Promise<GoogleSyncRunResult> {
   const { now, force } = options;
   let state = await dependencies.loadState();
@@ -145,7 +147,7 @@ async function runSync(
   }
   let calendarChanged = false;
   try {
-    calendarChanged = (await dependencies.refreshCalendar?.({ now, today: localDateFromDate(now), force }))?.plannerChanged ?? false;
+    calendarChanged = (await dependencies.refreshCalendar?.({ now, today: localDateFromDate(now), force: options.forceCalendar }))?.plannerChanged ?? false;
   } catch { /* Calendar failure is isolated; Tasks completion and retry policy continue. */ }
   if (!force && !calendarChanged && !staleAttempt && !shouldSyncGoogleTasks(state, now)) return { kind: 'success', skipped: true };
 

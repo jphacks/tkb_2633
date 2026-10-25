@@ -341,5 +341,72 @@
         "name": "connected Google settings serialize sync, pause, calendar permissions and disconnect without deleting remote tasks"
       }
     ]
+  },
+  {
+    "feature": "numeric-input-native-alignment",
+    "tests": [
+      {
+        "file": "tests/number-input-alignment.test.mjs",
+        "name": "numeric field centers native digits and equal unit slots on"
+      },
+      {
+        "file": "tests/number-input-alignment.test.mjs",
+        "name": "individual settings and monthly waste use the shared aligned numeric control and keep save handlers"
+      },
+      {
+        "file": "tests/number-input-alignment.test.mjs",
+        "name": "appliance analysis cycle fields use the shared aligned control and still update the saved appliance"
+      }
+    ]
+  },
+  {
+    "feature": "weather-calendar-consistent-planning",
+    "tests": [
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "sunny laundry alternatives also respect Calendar busy penalties before choosing a nearby day"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "weather never merges or reverses adjacent occurrences of the same laundry chore"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "weather does not fetch or move a completed legacy occurrence without a schedule id"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "cached weather adjustments keep their notice and do not optimize or write again during the cache lifetime"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "expired forecasts are evaluated against the base plan and failure restores the same plan shown by the UI"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "late weather cannot overwrite a plan after"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "completing and undoing a weather-shifted future occurrence only changes that date and retains its identity"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "combined weather and Calendar preserve constraints across 128 deterministic forecast and availability patterns"
+      }
+    ]
+  },
+  {
+    "feature": "google-completion-calendar-refresh-cadence",
+    "tests": [
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "completion-triggered Tasks sync can force task changes while retaining Calendar refresh cadence"
+      },
+      {
+        "file": "tests/weather-calendar-audit.test.mjs",
+        "name": "completion and queued completion use the completion trigger while explicit manual sync still forces Calendar"
+      }
+    ]
   }
 ]

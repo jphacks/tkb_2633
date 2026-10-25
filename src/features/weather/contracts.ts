@@ -34,3 +34,4 @@ export interface WeatherAdjustmentPolicy<TForecast = readonly DailyWeather[], TD
 
 /** Weather changes are opt-in through the user's selected region in Settings. */
 export const WEATHER_ADJUSTMENTS_ENABLED = true;
+export const WEATHER_FORECAST_CACHE_TTL_MS = 15 * 60 * 1000;

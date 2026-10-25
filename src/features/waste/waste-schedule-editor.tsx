@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { NumberInputField } from '@/components/number-input-field';
 
 import { AppButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
@@ -93,8 +94,7 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
       {recurrence === 'monthly' ? (
         <>
           <View style={styles.monthlyRow}><Text style={styles.label}>毎月の収集日</Text>
-            <TextInput accessibilityLabel="毎月の収集日" value={monthlyDay} editable={!locked} onChangeText={setMonthlyDay}
-              keyboardType="number-pad" maxLength={2} style={[styles.input, styles.dayInput]} /><Text style={styles.label}>日</Text>
+            <NumberInputField accessibilityLabel="毎月の収集日" value={monthlyDay} editable={!locked} onChangeText={setMonthlyDay} maxLength={2} />
           </View>
           <Text style={styles.body}>指定した日がない月は、月末に表示します。</Text>
         </>
@@ -138,7 +138,6 @@ const styles = StyleSheet.create({
   weekdayText: { ...typography.label, color: palette.muted, fontWeight: '700' },
   weekdaySelectedText: { color: palette.accent },
   monthlyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dayInput: { width: 65, textAlign: 'center' },
   selection: { borderRadius: 13, borderWidth: 1.5, backgroundColor: '#FFFFFF', paddingHorizontal: 13, minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 8 },
   selectionText: { ...typography.body, flex: 1, color: palette.ink, fontWeight: '700' },
   suggestions: { gap: 8 },

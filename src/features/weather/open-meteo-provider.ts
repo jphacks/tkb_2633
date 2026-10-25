@@ -1,10 +1,10 @@
 import { addDays, daysBetween, parseLocalDate } from '../../domain/scheduling/local-date.ts';
 import type { WeatherLocation } from '@/domain/shared/types';
 import type { DailyWeather, WeatherForecastProvider, WeatherForecastQuery } from './contracts';
+import { WEATHER_FORECAST_CACHE_TTL_MS } from './contracts.ts';
 
 const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const REQUEST_TIMEOUT_MS = 15_000;
-const CACHE_TTL_MS = 15 * 60 * 1000;
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -97,7 +97,7 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<Weathe
       if (!response.ok) throw new Error(`Open-Meteo request failed with HTTP ${response.status}`);
       const forecast = parseOpenMeteoDailyResponse(await response.json());
       const requestedForecast = forecast.filter((day) => day.date >= query.from && day.date <= query.through);
-      this.cache.set(cacheKey, { expiresAt: this.now() + CACHE_TTL_MS, forecast: requestedForecast });
+      this.cache.set(cacheKey, { expiresAt: this.now() + WEATHER_FORECAST_CACHE_TTL_MS, forecast: requestedForecast });
       return requestedForecast;
     } finally {
       clearTimeout(timeout);

@@ -3,7 +3,11 @@
     "name": "家事お知らせアプリ",
     "slug": "housework-planner",
     "version": "1.0.0",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "houseworkplanner",
@@ -24,7 +28,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "server",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -59,7 +63,10 @@
               "displayName": "次の家事",
               "description": "今日の家事を最大3件表示します",
               "ios": {
-                "supportedFamilies": ["systemSmall", "systemMedium"],
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium"
+                ],
                 "initialLayout": "src/platform/widgets/NextChoreWidget.ios.tsx"
               },
               "android": {
@@ -75,6 +82,37 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "headers": {
+          "Cross-Origin-Embedder-Policy": "credentialless",
+          "Cross-Origin-Opener-Policy": "same-origin"
+        },
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ExpoWidgetsTarget",
+                  "bundleIdentifier": "jp.jphacks.tkb2633.ExpoWidgetsTarget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.jp.jphacks.tkb2633"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "b32c351a-bf4f-461c-9aae-02335eebd129"
+      }
     }
   }
 }

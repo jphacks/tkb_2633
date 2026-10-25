@@ -38,7 +38,8 @@ test('180 tasks use all pages and import the final first-party hidden completion
 });
 
 test('multiple completion snapshots survive regeneration and use the existing Scheduler for the next cycle', async () => {
-  const h = await createIntegration({ cycleDays: 3, previousDate: '2026-10-23' });
+  // Import three occurrences whose windows have started, retaining the separate future-checkmark contract.
+  const h = await createIntegration({ cycleDays: 3, previousDate: '2026-10-14', initialToday: '2026-10-15' });
   try {
     const originals = h.entries.slice(0, 3);
     for (const [index, task] of [...h.tasks.values()].slice(0, 3).entries()) {
@@ -55,6 +56,23 @@ test('multiple completion snapshots survive regeneration and use the existing Sc
     assert.ok(h.events.indexOf('IMPORT') < h.events.indexOf('POST'));
     assert.equal((await h.sync()).imported, 0);
     assert.equal(h.history().length, 3);
+  } finally { h.connection.close(); }
+});
+
+test('future Google completion keeps its actual timestamp without advancing the cycle before its scheduled day', async () => {
+  const h = await createIntegration({ cycleDays: 7, previousDate: '2026-10-20' });
+  try {
+    const original = h.entries[0];
+    assert.equal(original.suggestedDate, '2026-10-27');
+    Object.assign(h.tasks.get('remote-0'), { status: 'completed', hidden: true, completed: now.toISOString() });
+    assert.equal((await h.sync()).imported, 1);
+    assert.equal(h.history()[0].completed_at, now.toISOString());
+    assert.equal(h.history()[0].scheduled_date, '2026-10-27');
+    assert.equal(h.state().last_completed_date, '2026-10-20');
+    assert.equal((await h.snapshot()).scheduleEntries[0].id, original.id);
+    const scheduledDay = await repository.loadPlannerSnapshot(h.database, '2026-10-27', new Date('2026-10-27T03:00:00.000Z'));
+    assert.equal(scheduledDay.scheduleEntries[0].suggestedDate, '2026-11-03');
+    assert.equal(h.history().length, 1);
   } finally { h.connection.close(); }
 });
 
@@ -207,7 +225,7 @@ test('an existing occurrence record, including a local undo, is never duplicated
 test('Google completion and next occurrences persist after closing and reopening the database', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'google-completion-persistence-'));
   const file = join(directory, 'planner.db');
-  const h = await createIntegration({ cycleDays: 3, previousDate: '2026-10-23', databasePath: file });
+  const h = await createIntegration({ cycleDays: 3, previousDate: '2026-10-22', databasePath: file });
   let reopened;
   try {
     Object.assign(h.tasks.get('remote-0'), { status: 'completed', hidden: true, completed: now.toISOString() });

@@ -9,11 +9,11 @@ export const now = new Date('2026-10-25T03:00:00.000Z');
 export const today = '2026-10-25';
 export const listId = 'planner-list';
 
-export async function createIntegration({ cycleDays = 1, previousDate = today, databasePath, choreOverrides = {} } = {}) {
+export async function createIntegration({ cycleDays = 1, previousDate = today, databasePath, choreOverrides = {}, initialToday = today } = {}) {
   const store = createDatabase(databasePath);
   const { database, connection } = store;
   await repository.initializeLocalDatabase(database);
-  let snapshot = await repository.loadPlannerSnapshot(database, today);
+  let snapshot = await repository.loadPlannerSnapshot(database, initialToday);
   let chore = snapshot.chores.find((item) => item.name === '食器を洗う');
   assert.ok(chore);
   chore = { ...chore, load: 'light', windowRadiusDays: 0, maxShiftDays: 0, holidayPriority: false, recommendedCycleDays: cycleDays,
@@ -23,7 +23,7 @@ export async function createIntegration({ cycleDays = 1, previousDate = today, d
     frequencyMode: 'balanced', restDays: [], enabledChoreIds: [chore.id],
     previousDates: { [chore.id]: { date: previousDate } }, weatherLocation: null,
   });
-  snapshot = await repository.loadPlannerSnapshot(database, today);
+  snapshot = await repository.loadPlannerSnapshot(database, initialToday);
   const entries = snapshot.scheduleEntries.filter((entry) => entry.choreId === chore.id);
   const tasks = new Map();
   for (const [index, entry] of entries.entries()) {

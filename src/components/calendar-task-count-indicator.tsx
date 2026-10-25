@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { calendarCountColor } from '@/domain/calendar/count-colors';
+import { calendarCountColor, calendarDotCount } from '@/domain/calendar/count-colors';
 import type { CalendarCountColors, CalendarCountDisplayMode } from '@/domain/shared/types';
 
 export function CalendarTaskCountIndicator({ count, colors, mode, selected = false }: {
@@ -20,7 +20,7 @@ export function CalendarTaskCountIndicator({ count, colors, mode, selected = fal
     );
   }
 
-  const dotCount = count <= 4 ? count : count <= 9 ? count - 4 : Math.min(count - 9, 5);
+  const dotCount = calendarDotCount(count);
   return (
     <View style={styles.container}>
       {Array.from({ length: dotCount }, (_, index) => (

@@ -138,7 +138,7 @@ test('disabled and retry-before-deadline Calendar calls are zero and fresh cache
  }finally{h.connection.close();}
 });
 test('completion regeneration uses fresh Calendar cache and stale cache produces the original schedule',async()=>{
- const h=await createIntegration({cycleDays:7,previousDate:'2026-10-20',choreOverrides:{load:'heavy',maxShiftDays:2}});
+ const h=await createIntegration({cycleDays:7,previousDate:'2026-10-18',choreOverrides:{load:'heavy',maxShiftDays:2}});
  try{
   await repository.setCalendarAvailabilityEnabled(h.database,true,now);
   const full=range();const busy=createCalendarQueryRange('2026-11-01','2026-11-01',full.timeZone);

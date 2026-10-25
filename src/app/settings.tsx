@@ -425,11 +425,11 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         </View>
         <Text style={styles.hint}>{calendarCountDisplayMode === 'bar'
           ? '横棒は1本だけを色で表示し、数字は付けません。'
-          : '1〜4件はその件数分、5〜9件は中間色の1〜5個、10〜14件は多件数色の1〜5個で表示します。15件以上は多件数色の5個で固定します。'}</Text>
+          : '1〜5件はその件数分、6〜9件は中間色の1〜4個、10〜14件は多件数色の1〜5個で表示します。15件以上は多件数色の5個で固定します。'}0件の日は表示しません。</Text>
         <Text style={styles.label}>件数帯ごとの色</Text>
         {([
-          { key: 'low', title: '1〜4件' },
-          { key: 'medium', title: '5〜9件' },
+          { key: 'low', title: '1〜5件' },
+          { key: 'medium', title: '6〜9件' },
           { key: 'high', title: '10件以上' },
         ] as const).map(({ key, title }) => (
           <View key={key} style={styles.colorTier}>
@@ -460,8 +460,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <Text style={styles.label}>表示プレビュー</Text>
           <View style={styles.previewRow}>
             {[
-              { count: 4, label: '1〜4件' },
-              { count: 9, label: '5〜9件' },
+              { count: 5, label: '1〜5件' },
+              { count: 9, label: '6〜9件' },
               { count: 15, label: '10件以上' },
             ].map(({ count, label }) => (
               <View key={label} style={styles.previewCell}>

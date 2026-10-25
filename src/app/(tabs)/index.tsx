@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerActionButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
   helpSymbol: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', lineHeight: 29 },
-  settingsSymbol: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, textAlign: 'center' },
+  settingsSymbol: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, textAlign: 'center', top: -2 },
   actionPressed: { opacity: 0.72 },
   date: { color: palette.muted, fontSize: 11, fontWeight: '500' },
   title: { color: palette.ink, fontSize: 28, fontWeight: '800' },

@@ -30,11 +30,12 @@ type PreviousChoice = 'today' | 'week' | 'month' | 'unknown';
 
 export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: PlannerSnapshot; onComplete: () => Promise<void>; loadError?: string | null }) {
   const database = useSQLiteContext();
+  const availableChores = snapshot.chores.filter((chore) => !chore.archived);
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState(snapshot.settings.frequencyMode);
   const [restDays, setRestDays] = useState<Weekday[]>(snapshot.settings.restDays as Weekday[]);
   const [enabledChoreIds, setEnabledChoreIds] = useState(() =>
-    new Set(snapshot.chores.filter((chore) => chore.enabled).map((chore) => chore.id)),
+    new Set(availableChores.filter((chore) => chore.enabled).map((chore) => chore.id)),
   );
   const [previousChoices, setPreviousChoices] = useState<Record<string, PreviousChoice>>({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(snapshot.settings.notificationsEnabled);
@@ -114,7 +115,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
     }
   };
 
-  const enabledChores = snapshot.chores.filter((chore) => enabledChoreIds.has(chore.id));
+  const enabledChores = availableChores.filter((chore) => enabledChoreIds.has(chore.id));
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -182,13 +183,13 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
           <>
             <Text style={styles.body}>定期的に行う家事を選びます。あとから設定で変更できます。</Text>
             <View style={styles.choreList}>
-              {snapshot.chores.map((chore) => (
+              {availableChores.map((chore) => (
                 <SetupChoreRow key={chore.id} chore={chore} selected={enabledChoreIds.has(chore.id)} onPress={() => toggleChore(chore.id)} />
               ))}
             </View>
             <AppButton
-              title={enabledChoreIds.size === snapshot.chores.length ? '選択をすべて外す' : 'すべて選択'}
-              onPress={() => setEnabledChoreIds(enabledChoreIds.size === snapshot.chores.length ? new Set() : new Set(snapshot.chores.map((chore) => chore.id)))}
+              title={enabledChoreIds.size === availableChores.length ? '選択をすべて外す' : 'すべて選択'}
+              onPress={() => setEnabledChoreIds(enabledChoreIds.size === availableChores.length ? new Set() : new Set(availableChores.map((chore) => chore.id)))}
               variant="quiet"
               compact
             />

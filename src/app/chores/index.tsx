@@ -15,15 +15,16 @@ export default function ChoresScreen() {
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
-  const categories = useMemo(() => ['すべて', ...new Set(snapshot?.chores.map((chore) => chore.category) ?? [])], [snapshot?.chores]);
+  const chores = useMemo(() => snapshot?.chores.filter((chore) => !chore.archived) ?? [], [snapshot?.chores]);
+  const categories = useMemo(() => ['すべて', ...new Set(chores.map((chore) => chore.category))], [chores]);
   const visibleChores = useMemo(() => {
     if (!snapshot) return [];
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    return snapshot.chores.filter((chore) =>
+    return chores.filter((chore) =>
       (category === 'すべて' || chore.category === category)
       && (!normalizedQuery || `${chore.name} ${chore.category} ${chore.locationOrAppliance ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)),
     );
-  }, [snapshot, query, category]);
+  }, [snapshot, chores, query, category]);
 
   if (loading || !snapshot) return <PlannerLoadState title="家事一覧" message="家事を読み込んでいます。" error={error} retry={refresh} />;
 
@@ -49,7 +50,7 @@ export default function ChoresScreen() {
   return (
     <Page>
       <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
-      <ScreenHeading eyebrow="CHORES" title="家事一覧" description={`${snapshot.chores.filter((chore) => chore.enabled).length}件の家事を有効にしています。検索や設定変更ができます。`} />
+      <ScreenHeading eyebrow="CHORES" title="家事一覧" description={`${chores.filter((chore) => chore.enabled).length}件の家事を有効にしています。検索や設定変更ができます。`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       {toggleError ? <Card><Text style={styles.error}>{toggleError}</Text></Card> : null}
       <Card style={styles.applianceCard}>

@@ -27,6 +27,7 @@ import { migrateLocalDatabase } from '@/platform/storage/migrations';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
+const BUILT_IN_CHORE_CATALOG_VERSION = 1;
 
 const initializedHouseholds = new WeakSet<SQLiteDatabase>();
 const operationTails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
@@ -199,18 +200,41 @@ async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void>
       LOCAL_HOUSEHOLD_ID, now,
     );
 
-    for (const definition of definitions) {
-      await database.runAsync(
-        'INSERT OR IGNORE INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, 1, ?)',
-        definition.id, definition.householdId, definition.name, JSON.stringify(definition),
+    const catalogVersionRow = await database.getFirstAsync<{ built_in_chore_catalog_version: number }>(
+      'SELECT built_in_chore_catalog_version FROM household_settings WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
+    );
+    if ((catalogVersionRow?.built_in_chore_catalog_version ?? 0) < BUILT_IN_CHORE_CATALOG_VERSION) {
+      const legacyBuiltIns = await database.getAllAsync<{ id: string; definition_json: string }>(
+        `SELECT id, definition_json FROM chore_definitions
+         WHERE household_id = ? AND id GLOB 'chore-[0-9][0-9]'`, LOCAL_HOUSEHOLD_ID,
       );
+      for (const row of legacyBuiltIns) {
+        const legacy = JSON.parse(row.definition_json) as ChoreDefinition;
+        const archived = { ...legacy, archived: true, enabled: false };
+        await database.runAsync(
+          'UPDATE chore_definitions SET enabled = 0, definition_json = ? WHERE id = ?',
+          JSON.stringify(archived), row.id,
+        );
+        await database.runAsync('DELETE FROM chore_schedule_entries WHERE chore_id = ?', row.id);
+      }
+
+      for (const definition of definitions) {
+        await database.runAsync(
+          'INSERT OR IGNORE INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, 1, ?)',
+          definition.id, definition.householdId, definition.name, JSON.stringify(definition),
+        );
+        await database.runAsync(
+          'INSERT OR IGNORE INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)',
+          definition.id, 'skipped',
+        );
+        await database.runAsync(
+          'INSERT OR IGNORE INTO chore_assignments (chore_id, member_id) VALUES (?, ?)',
+          definition.id, LOCAL_MEMBER_ID,
+        );
+      }
       await database.runAsync(
-        'INSERT OR IGNORE INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)',
-        definition.id, 'skipped',
-      );
-      await database.runAsync(
-        'INSERT OR IGNORE INTO chore_assignments (chore_id, member_id) VALUES (?, ?)',
-        definition.id, LOCAL_MEMBER_ID,
+        'UPDATE household_settings SET built_in_chore_catalog_version = ? WHERE household_id = ?',
+        BUILT_IN_CHORE_CATALOG_VERSION, LOCAL_HOUSEHOLD_ID,
       );
     }
   });
@@ -672,6 +696,7 @@ async function updateChoreDefinitionImpl(
   database: SQLiteDatabase,
   definition: ChoreDefinition,
 ): Promise<void> {
+  if (definition.archived) throw new Error('この家事は現在の家事一覧から削除されています。');
   await database.runAsync(
     'UPDATE chore_definitions SET name = ?, enabled = ?, definition_json = ? WHERE id = ?',
     definition.name, definition.enabled ? 1 : 0, JSON.stringify(definition), definition.id,
@@ -834,6 +859,7 @@ async function setChoreEnabledImpl(database: SQLiteDatabase, choreId: EntityId, 
   );
   if (!row) throw new Error('Chore not found');
   const definition = { ...(JSON.parse(row.definition_json) as ChoreDefinition), enabled };
+  if (definition.archived) throw new Error('この家事は現在の家事一覧から削除されています。');
   if (enabled && definition.requiresCycleSelection) {
     throw new Error('メーカー指定の周期がありません。周期を設定してから有効にしてください。');
   }

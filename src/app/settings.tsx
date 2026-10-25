@@ -270,7 +270,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       <Card>
         <SectionHeading title="家事ごとの設定" />
         <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
-        {groupChoresByCategory(snapshot.chores).map(([category, chores]) => {
+        {groupChoresByCategory(snapshot.chores.filter((chore) => !chore.archived)).map(([category, chores]) => {
           const expanded = expandedCategories.has(category);
           return (
             <View key={category} style={styles.choreGroup}>

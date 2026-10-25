@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 12;
+const CURRENT_SCHEMA_VERSION = 13;
 
 export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -232,6 +232,15 @@ export async function migrateLocalDatabase(database: SQLiteDatabase): Promise<vo
     }
     await database.execAsync('PRAGMA user_version = 12');
     version = 12;
+  }
+  if (version < 13) {
+    if (!settingsColumns.has('built_in_chore_catalog_version')) {
+      await database.execAsync(`
+        ALTER TABLE household_settings ADD COLUMN built_in_chore_catalog_version INTEGER NOT NULL DEFAULT 0;
+      `);
+    }
+    await database.execAsync('PRAGMA user_version = 13');
+    version = 13;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

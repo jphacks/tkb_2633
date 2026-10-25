@@ -20,6 +20,17 @@ export interface ApplianceCareSource {
   evidence: ChoreSourceEvidence[];
 }
 
+export interface ChoreTrivia {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export interface ChoreProcedureSection {
+  title: string;
+  steps: string[];
+}
+
 export interface ChoreDefinition {
   id: EntityId;
   householdId: EntityId;
@@ -48,8 +59,14 @@ export interface ChoreDefinition {
   locationOrAppliance?: string;
   laundryDryingPreference?: LaundryDryingPreference;
   instructions: string[];
+  /** Grouped procedures for jobs with different ways to handle removable parts. */
+  procedureSections?: ChoreProcedureSection[];
   tools: string[];
   cautions: string[];
+  trivia?: ChoreTrivia[];
+  sourceNotes?: string[];
+  /** Retired seeded chores stay available to render their existing completion history. */
+  archived?: boolean;
   estimatedMinutes?: number;
   /** Provenance for appliance-care chores created from a reviewed official manual analysis. */
   applianceCareSource?: ApplianceCareSource;

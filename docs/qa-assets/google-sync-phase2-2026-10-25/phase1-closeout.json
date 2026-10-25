@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-25",
+  "timezone": "Asia/Tokyo",
+  "phase1StartCommit": "1feb38084837c166347b7cdbfc01785daba5dfc5",
+  "startSha": "e2bb58a04a4432a533d0c7c39e5f7f4d68873ade",
+  "originMainSha": "e14e085288adab85a3df591d6c587c80f5f6e2d0",
+  "checks": [
+    {"command": "npm test", "exitCode": 0, "tests": 125, "passed": 125, "failed": 0},
+    {"command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/google-*.test.mjs tests/storage-migrations.test.mjs", "exitCode": 0, "tests": 28, "passed": 28, "failed": 0},
+    {"command": "npm run lint", "exitCode": 0},
+    {"command": "npm run typecheck", "exitCode": 0},
+    {"command": "npm run check", "exitCode": 0, "tests": 125, "passed": 125, "failed": 0},
+    {"command": "npm run doctor", "exitCode": 0, "checks": 20, "passed": 20},
+    {"command": "git diff --check", "exitCode": 0}
+  ],
+  "mainComparison": {
+    "source": "unmodified git archive of originMainSha",
+    "dependencies": "same installed node_modules as Google sync worktree",
+    "command": "npm test",
+    "exitCode": 0,
+    "tests": 99,
+    "passed": 99,
+    "failed": 0
+  },
+  "liveDisconnectReconnect": "PASS_USER_OPERATED",
+  "liveDueDatePatch": "NOT_EXECUTED_NO_DIRECT_EDITOR",
+  "liveTitlePatch": "NOT_EXECUTED_NO_DIRECT_EDITOR",
+  "physicalDeviceBackground": "NOT_EXECUTED_NO_PHYSICAL_DEVICE",
+  "closeoutGate": "PASS"
+}

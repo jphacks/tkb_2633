@@ -80,3 +80,19 @@
 - Android実機の認証。EAS / Google Play配布時は実際の署名鍵に対応するAndroid OAuthクライアントを登録します。
 
 設定方法と制約は [セットアップ手順](./google-sync-setup.md) を参照してください。
+
+## Phase 1 Closeout（Phase 2着手前）
+
+2026-10-25、開始HEAD `e2bb58a04a4432a533d0c7c39e5f7f4d68873ade` で再確認しました。取得し直したorigin/mainは `e14e085288adab85a3df591d6c587c80f5f6e2d0` で、取り込み済みです。
+
+- `npm test`: 125/125 PASS。
+- Google同期・migrationの個別テスト: 28/28 PASS。
+- `npm run lint` / `npm run typecheck` / `npm run check`: PASS。
+- `npm run doctor`: 20/20 PASS。
+- `git diff --check`: PASS。
+- origin/mainの変更していないソースを別ディレクトリへ展開した比較実行: `npm test` 99/99 PASS。以前のScheduler 5件の失敗は今回再現していません。
+- 本人の操作で接続解除・再接続を確認。解除後もGoogle上の既存Taskは残り、再接続後も同じ日のTaskは1件のままです。端末の対応表も180件、同期成功状態を確認しました。
+- 予定日・家事名変更の実Google確認: NOT_EXECUTED。現在の画面には個々の予定日と家事名を直接編集する操作がなく、今回のcloseoutでは追加していません。対応するpatchロジックのテストはPASSです。
+- Physical-device background: `NOT_EXECUTED_NO_PHYSICAL_DEVICE`。device inventoryにはSimulatorのみでした。clock injectionによる24時間・1時間・no-op・stale recoveryのテストはPASSです。
+
+Closeout Gate: PASS。Phase 2へ進む条件を満たしています。[確認記録](./qa-assets/google-sync-phase2-2026-10-25/phase1-closeout.json)

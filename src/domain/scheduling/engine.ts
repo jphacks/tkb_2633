@@ -268,9 +268,14 @@ function appendRecurringEntries(options: {
 
     if (options.input.today > addDays(windowEnd, OVERDUE_GRACE_DAYS)) {
       overdueCycles += 1;
-      cycleAnchorDate = suggestedDate > cycleAnchorDate ? suggestedDate : addDays(cycleAnchorDate, 1);
+      const minimumAnchorForProgress = addDays(baseDate, 1 - options.cycleDays);
+      const minimumAnchorAfterPrevious = addDays(cycleAnchorDate, 1);
+      const minimumAnchor = minimumAnchorForProgress > minimumAnchorAfterPrevious
+        ? minimumAnchorForProgress
+        : minimumAnchorAfterPrevious;
+      cycleAnchorDate = suggestedDate > minimumAnchor ? suggestedDate : minimumAnchor;
       options.onSimulatedCompletion(cycleAnchorDate);
-      baseDate = nextCycleBaseDate(baseDate, cycleAnchorDate, options.cycleDays);
+      baseDate = addDays(cycleAnchorDate, options.cycleDays);
       occurrence += 1;
       continue;
     }
@@ -334,12 +339,6 @@ function appendRecurringEntries(options: {
     }
     occurrence += 1;
   }
-}
-
-function nextCycleBaseDate(currentBaseDate: LocalDate, completionDate: LocalDate, cycleDays: number): LocalDate {
-  const fromRecommendation = addDays(completionDate, cycleDays);
-  const minimumProgress = addDays(currentBaseDate, 1);
-  return fromRecommendation > currentBaseDate ? fromRecommendation : minimumProgress;
 }
 
 function effectiveCycleDays(chore: ChoreDefinition, mode: ScheduleGenerationInput['settings']['frequencyMode']): number {

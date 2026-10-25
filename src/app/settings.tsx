@@ -121,7 +121,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       const result = await syncGoogleTasks(database, { force: true });
       await refreshGoogleState();
       setGoogleMessage(result.kind === 'success'
-        ? { text: 'Google Tasksに接続し、同期しました。', kind: 'success' }
+        ? result.skipped
+          ? { text: 'Googleには接続しましたが、同期は実行されていません。同期設定を確認してください。', kind: 'error' }
+          : { text: 'Google Tasksに接続し、同期しました。', kind: 'success' }
         : { text: syncFailureMessage(result.kind), kind: 'error' });
     } catch (cause) {
       setGoogleMessage({ text: cause instanceof Error && cause.name === 'GoogleAuthorizationCancelledError'
@@ -167,7 +169,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         const result = await syncGoogleTasks(database, { force: true });
         await refreshGoogleState();
         setGoogleMessage(result.kind === 'success'
-          ? { text: 'Google Tasksとの同期を有効にしました。', kind: 'success' }
+          ? result.skipped
+            ? { text: '同期を有効にしましたが、同期は実行されていません。同期状態を確認してください。', kind: 'error' }
+            : { text: 'Google Tasksとの同期を有効にしました。', kind: 'success' }
           : { text: syncFailureMessage(result.kind), kind: 'error' });
       } else {
         await unregisterGoogleSyncBackgroundTask().catch(() => undefined);
@@ -191,7 +195,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       const result = await syncGoogleTasks(database, { force: true });
       await refreshGoogleState();
       setGoogleMessage(result.kind === 'success'
-        ? { text: `同期しました（新規 ${result.created ?? 0}件・更新 ${result.updated ?? 0}件）。`, kind: 'success' }
+        ? result.skipped
+          ? { text: '同期は実行されていません。同期状態を確認してから再試行してください。', kind: 'error' }
+          : { text: `同期しました（新規 ${result.created ?? 0}件・更新 ${result.updated ?? 0}件）。`, kind: 'success' }
         : { text: syncFailureMessage(result.kind), kind: 'error' });
     } catch {
       setGoogleMessage({ text: '同期できませんでした。Googleとの再接続をお試しください。', kind: 'error' });

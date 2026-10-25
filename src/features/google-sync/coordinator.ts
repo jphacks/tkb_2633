@@ -52,7 +52,13 @@ export async function syncGoogleTasks(
     listGoogleTaskLinks: (id) => listGoogleTaskLinks(database, id),
     upsertGoogleTaskLink: (link) => upsertGoogleTaskLink(database, link),
     deleteGoogleTaskLink: (id) => deleteGoogleTaskLink(database, id),
-  }, { force: options.force ?? false, now });
+  }, {
+    force: options.force ?? false,
+    now,
+    // Manual actions may recover a saved attempt from a terminated app process.
+    // The shared runningSync promise still joins a live attempt in this process.
+    recoverInterruptedAttempt: options.force === true,
+  });
 }
 
 /** Best-effort immediate propagation for in-app and widget completion actions. */
@@ -66,10 +72,14 @@ export function syncGoogleTasksAfterLocalCompletion(database: SQLiteDatabase): v
 
 export async function syncGoogleTasksWithDependencies(
   dependencies: GoogleSyncCoordinatorDependencies,
-  options: { force?: boolean; now: Date },
+  options: { force?: boolean; now: Date; recoverInterruptedAttempt?: boolean },
 ): Promise<GoogleSyncRunResult> {
   if (runningSync) return runningSync;
-  const run = runSync(dependencies, { force: options.force ?? false, now: options.now });
+  const run = runSync(dependencies, {
+    force: options.force ?? false,
+    now: options.now,
+    recoverInterruptedAttempt: options.recoverInterruptedAttempt ?? false,
+  });
   runningSync = run;
   try {
     return await run;
@@ -87,13 +97,15 @@ export async function syncGoogleTasksWithDependencies(
 
 async function runSync(
   dependencies: GoogleSyncCoordinatorDependencies,
-  options: { force: boolean; now: Date },
+  options: { force: boolean; now: Date; recoverInterruptedAttempt: boolean },
 ): Promise<GoogleSyncRunResult> {
   const { now, force } = options;
   let state = await dependencies.loadState();
   if (!state?.enabled) return { kind: 'success', skipped: true };
   const staleAttempt = isGoogleSyncAttemptStale(state, now);
-  if (state.status === 'syncing' && !staleAttempt) return { kind: 'success', skipped: true };
+  if (state.status === 'syncing' && !staleAttempt && !options.recoverInterruptedAttempt) {
+    return { kind: 'success', skipped: true };
+  }
   if (!force && !staleAttempt && !shouldSyncGoogleTasks(state, now)) return { kind: 'success', skipped: true };
 
   const attemptAt = now.toISOString();

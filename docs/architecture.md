@@ -22,8 +22,8 @@
 ## 保存と初期データ
 
 - `src/platform/storage/migrations.ts`: 世帯、メンバー、家事、割り当て、依存関係、予定、完了、曜日、同期待ち変更、天気、家電スナップショット、通知許可、非表示ゴミ予定のスキーマ
-- `src/features/google-sync/`: Google Tasksの同期頻度・状態遷移・予定の送信と完了の双方向同期・BackgroundTask
-- `src/platform/google-tasks/`: Google Sign-In SDKとGoogle Tasks APIのadapter
+- `src/features/google-sync/`: Google Tasksの双方向同期・BackgroundTask、Calendarの追加許可・日別集計・独立した取得状態と共通の操作キュー
+- `src/platform/google-tasks/`: Google Sign-In SDK、Google Tasks API、Calendar FreeBusy APIのadapter
 - `src/platform/storage/repository.ts`: 初期マスター投入、SQLite読み書き、初回設定、完了・未完了の記録と予定再生成
 - `src/domain/chores/catalog.ts`: 18件の家事名、初期手順・道具・注意点・負荷、3つの頻度モードの暫定周期
 - `src/domain/chores/types.ts`: 家事、実施状態、完了・未完了記録、世帯設定の型
@@ -45,6 +45,8 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 
 依存関係は「先に行う家事」から「後に行う家事」へ保存し、後の家事の推奨日が先の家事より前にならないようにします。循環する依存関係は保存前に拒否します。
 
+Calendar連携がONで36時間以内・同じtimezoneの日別cacheがある場合は、候補の`abs(offset)`に`busyBucket × load別の日数相当値`を加えます。bucketは0〜120／121〜300／301〜480／481分以上、日数相当値はlight=1、normal=2、heavy=3です。日ごとの負荷上限・restDaysの優先順位を保ち、busyな候補も除外しません。Calendarなし・OFF・期限切れでは従来と同じ入力になります。cycle基準のschedule entry IDを維持するため、日付変更は同じGoogle Taskへのdue PATCHになります。
+
 ## ゴミ収集日
 
 - `src/features/waste/weekly-scheduler.ts`: 曜日を日付範囲に展開する純粋関数
@@ -61,6 +63,12 @@ SQLiteのスキーマは `PRAGMA user_version` で段階的に更新します。
 初回設定と設定画面に通知ON/OFFを表示します。通知許可があり、設定がONの場合は毎朝9:00に、その日に実施期間へ入る家事・期間最終日の家事・期間終了翌日の家事をまとめて通知します。すでに完了した家事は除き、期間終了翌日を過ぎた家事には通知しません。ウィジェットはiOS systemSmall（2×2）とsystemMedium、Androidは2×2に対応します。今日の実施期間内と期間終了翌日の家事を優先順で最大3件表示し、丸を押すと完了できます。完了した家事はチェック付きで残ります。
 
 ## 外部機能
+
+### Google Tasks・Calendar
+
+Tasksは専用リストの対応表にある家事だけを送信・完了取込します。任意のCalendar連携は、設定でONにしたときだけ`calendar.freebusy`を追加許可し、primary calendarのFreeBusyを取得します。Event一覧や予定内容は取得せず、raw busy intervalも保存しません。schema v15の日別cacheは日付・分数・IANA timezone・取得時刻を保持し、Calendar設定・retry状態はTasksと別テーブルです。
+
+同じGoogle同期キューでCalendar更新・Scheduler再生成・Tasks同期を順に実行します。CalendarのHTTP失敗や追加許可不足でもTasksは継続します。Plannerの180日先までの全期間を最大90日ずつのHTTP要求に分け、すべて成功してから日別cacheと成功状態を1つのtransactionで置換します。OFF時はcacheを削除しAPIを呼びません。認証は既存のGoogle native SDKと`offlineAccess=false`を維持します。セットアップは[Google連携](./google-sync-setup.md)を参照してください。
 
 ### 天気
 
@@ -100,6 +108,7 @@ APIは特定クラウドに依存しないNode.jsモジュールです。ロー�
 
 - `tests/scheduling.test.mjs`: 周期、初回負荷分散、休日、超過、依存順、循環検知
 - `tests/weather.test.mjs`: 地域検索応答と予報応答の検証、WMO・降水条件、負荷・依存・完了制約、失敗時フォールバック、冪等性
+- `tests/google-calendar-*.test.mjs`: FreeBusy、IANA timezone・DST、集計・cache・migration、追加許可、Calendar障害とTasksの分離、候補日scoreと天気の回帰
 - `npm run check`: lint、TypeScript型チェック、単体テスト
 - `.github/workflows/ci.yml`: Pull Requestと `main` pushで `npm ci` と `npm run check`
 

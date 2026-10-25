@@ -2,182 +2,78 @@
 
 > **家事を記録するだけではなく、家事を「いつ・何を・どうやるか考える負担」まで減らす。**
 
-周期・家事の負荷・休日・天気・Google Calendarの忙しさをもとに、家事を行う日を自動で調整する家事Plannerです。
+周期、家事の負荷、休日、天気、Google Calendarの忙しさを考慮して、家事を行うタイミングを自動で調整する家事Plannerです。
 
-Google Tasksとも連携し、Plannerが決めた予定を普段使うGoogle側で確認・完了できます。Google側で完了した結果はPlannerへ戻り、実際の完了日を基準に次回予定を再計算します。
+Google Tasksとも連携し、Plannerが決めた予定を普段使うGoogle側で確認・完了できます。完了結果はPlannerへ戻り、**実際に家事を行った日から次回予定を自動計算**します。
 
-掃除機などの家電については、メーカー名・製品名・型番から**メーカー公式情報と公式説明書だけを確認し、AIでお手入れ方法を構造化**します。
+家電については、メーカー名・製品名・型番から**メーカー公式情報・公式説明書を確認し、AIでお手入れ方法を構造化**します。
 
-通常の家事管理・Scheduler・履歴はExpo SQLite上で動作し、外部APIが利用できない場合でも基本的な家事管理を継続できます。
+通常の家事管理・Scheduler・履歴は端末内のExpo SQLiteで動作し、外部APIが利用できない場合でも基本機能を継続できます。
 
 ---
 
-<!--
-============================================================
-画像置き場 0: デモ動画
-============================================================
-
-ファイル:
-docs/readme/00-demo-thumbnail.png
-
-内容:
-・ホーム画面を中心にした見栄えのいい画像
-・可能ならGoogle Calendar / Tasks連携が分かる要素も入れる
-・YouTube等へ動画をアップロードした後、下のURLを書き換える
-
-推奨動画:
-30〜90秒
-
-動画内容:
-1. Calendar上の忙しい日を用意
-2. Plannerが重い家事を別日へ移動
-3. 同じGoogle Taskのdueが更新
-4. Google側で完了
-5. Plannerへ完了反映
-6. 次回予定が再計算
-
-撮影後、このコメント内の次の2行をコメント外へ移動:
-
 ## 🎬 デモ動画
 
-[![デモ動画](docs/readme/00-demo-thumbnail.png)](ここを動画URLへ変更)
+[▶ YouTubeでデモ動画を見る（約3分22秒）](https://youtu.be/RIMiwtUhU-I)
 
-============================================================
--->
+動画は限定公開です。上記リンクから視聴できます。
 
-<!--
-============================================================
-画像置き場 1: アプリ全体
-============================================================
+### デモで確認できること
 
-ファイル:
-docs/readme/01-home.png
+```text
+家事予定を自動生成
+        ↓
+天気とGoogle Calendarの忙しさを考慮
+        ↓
+Google Tasksへ同期
+        ↓
+アプリ / Google側で完了
+        ↓
+完了履歴へ反映
+        ↓
+次回予定を自動計算
+```
 
-撮影する画面:
-ホーム画面
+---
 
-入っていてほしい要素:
-・今日または近日中の家事
-・実施期間
-・完了操作
-・家事が複数日に分散していることが分かる状態
+# アプリ画面
 
-注意:
-・テスト用の自然な家事データにする
-・デバッグ表示は入れない
-・個人情報は映さない
+<p align="center">
+  <img src="docs/readme/01-home.png" width="31%" alt="ホーム画面">
+  <img src="docs/readme/02-calendar.png" width="31%" alt="カレンダー画面">
+  <img src="docs/readme/05-appliance-ai.png" width="31%" alt="家電AI画面">
+</p>
 
-撮影後、下の行をコメント外へ移動:
+<p align="center">
+  <b>今日のタスク</b>　／　<b>家事カレンダー</b>　／　<b>公式説明書を利用した家電お手入れ解析</b>
+</p>
 
-![ホーム画面](docs/readme/01-home.png)
+### 家事を検索して、具体的な手順まで確認
 
-============================================================
--->
+<p align="center">
+  <img src="docs/readme/03-guide-search.png" width="45%" alt="家事検索画面">
+  <img src="docs/readme/04-guide-detail.png" width="45%" alt="家事手順画面">
+</p>
 
-<!--
-============================================================
-画像置き場 2: Calendar
-============================================================
+家事名を検索し、具体的な手順・注意事項・参照元まで確認できます。
 
-ファイル:
-docs/readme/02-calendar.png
+---
 
-撮影する画面:
-Plannerの月間カレンダー
+# 製品概要
 
-入っていてほしい要素:
-・複数日に家事が配置されている
-・実施可能期間が視覚的に分かる
-・可能ならCalendar連携で移動した家事が確認できる
+## 背景・解決したい課題
 
-撮影後、下の行をコメント外へ移動:
-
-![家事カレンダー](docs/readme/02-calendar.png)
-
-============================================================
--->
-
-<!--
-============================================================
-画像置き場 3: Google連携
-============================================================
-
-ファイル:
-docs/readme/03-google-sync.png
-
-最もおすすめ:
-1枚の画像内で左右または上下に並べる
-
-左:
-・Planner側のGoogle連携設定
-または
-・Planner上の家事予定
-
-右:
-・Google Calendar / Google Tasks上の同じ家事
-
-見せたいこと:
-・Plannerの予定がGoogleへ出ている
-・同じTaskを使い続けている
-・Calendarを利用して日付を調整できる
-
-重要:
-実際の個人予定名は映さず、
-デモ用予定だけで撮影すること。
-
-撮影後、下の行をコメント外へ移動:
-
-![Google Calendar・Tasks連携](docs/readme/03-google-sync.png)
-
-============================================================
--->
-
-<!--
-============================================================
-画像置き場 4: 家電AI
-============================================================
-
-ファイル:
-docs/readme/04-appliance-ai.png
-
-撮影する画面:
-家電の解析結果画面
-
-入っていてほしい要素:
-・製品名 / 型番
-・お手入れ項目
-・手順
-・注意事項
-・メーカー公式出典
-・可能なら「定期予定なし」の項目
-
-AIチャット画面ではなく、
-「公式情報を構造化した製品機能」であることが分かる画面が最適。
-
-撮影後、下の行をコメント外へ移動:
-
-![家電公式説明書AI](docs/readme/04-appliance-ai.png)
-
-============================================================
--->
-
-## 製品概要
-
-### 解決したい課題
-
-家事には、単に「やる / やらない」だけではなく、
+家事には単純な「やる / やらない」以外にも、多くの判断が必要です。
 
 - 何をやればいいのか分からない
 - どのくらいの頻度で行えばいいのか分からない
-- 今日やるべきか、数日ずらしていいのか判断が必要
-- 休日にまとめたい
+- 今日やるべきか、数日ずらしてもいいのか分からない
+- 休日にまとめて行いたい
 - 重い家事が同じ日に集中すると負担が大きい
 - 洗濯は天気によって予定を変えたい
-- 忙しい日は重い家事を避けたい
-- 家電のお手入れ方法を説明書から探すのが面倒
-- 家事を完了した後、次にいつやるか再び考える必要がある
-
-といった問題があります。
+- 忙しい日は負荷の高い家事を避けたい
+- 家電のお手入れ方法を説明書から探すのが大変
+- 完了した後、次にいつ行うか再び考える必要がある
 
 一般的なToDoアプリでは、ユーザー自身が
 
@@ -195,7 +91,7 @@ AIチャット画面ではなく、
 
 を継続して管理する必要があります。
 
-このアプリでは、**家事そのものではなく「家事を管理するための判断」まで減らすこと**を目指しています。
+このアプリでは、**家事そのものだけではなく「家事を管理するための判断」も減らすこと**を目指しています。
 
 ---
 
@@ -220,71 +116,109 @@ AIチャット画面ではなく、
 
 ---
 
-# 主な特徴
+# 特長
 
 ## 1. 家事を自動で分散するScheduler
 
 家事ごとに、
 
 - 実施周期
-- 実施できる期間
+- 実施可能期間
 - 家事の負荷
 - 休日優先
 - 前回の実施日
 - 家事同士の依存関係
-- 日付をどこまで移動してよいか
+- 最大移動日数
 
 を持ち、共通のSchedulerが予定を生成します。
 
 例えば、
 
-- 重い家事が1日に集中しない
+- 重い家事が同じ日に集中しないようにする
 - 休日向きの家事を休日付近へ配置する
 - 前回いつ行ったか分からない家事を初回から分散する
 - 期限を過ぎた家事も消さず、現在の負荷に合わせて再提案する
 - 実際に完了した日を次回周期の基準にする
-- 家事同士の順序関係を守る
+- 家事同士の実行順序を維持する
 
 といった処理を自動で行います。
 
-予定日は単純な「締切」ではなく、**ある程度動かせる実施可能期間**として扱います。
+予定日は固定された「締切」ではなく、**一定範囲の中で移動できる実施可能期間**として扱います。
 
 ---
 
-## 2. Google Calendarの忙しさを見て家事日を調整
+## 2. 天気とGoogle Calendarの両方を見て予定を調整
 
 例えば、
 
-> **「明日は予定が多いから、重い掃除を今日へずらす」**
+> **「明日は予定が多いので、重い掃除を今日へずらす」**
 
-という判断をPlannerが行います。
+といった判断をPlannerが行います。
 
 Google Calendar連携を有効にすると、Calendarの忙しさを日ごとの時間量へ変換し、Schedulerの候補選択へ反映します。
 
-ただし、予定がある日を禁止するわけではありません。
+ただし予定のある日を単純に禁止するわけではありません。
 
-Calendarはあくまで**soft penalty**として扱い、
+Calendarは**soft penalty**として扱い、
 
-- 家事の実施期間
+- 家事の実施可能期間
 - 最大移動日数
-- 休日設定
+- 休日
 - 1日の家事負荷
 - 家事同士の依存関係
 - 期限超過
 
 などの既存ルールを維持します。
 
-また、重い家事ほど忙しい日を避けやすく、軽い家事は多少予定があっても近い日を維持しやすくしています。
+重い家事ほど忙しい日を避けやすくし、軽い家事は多少予定があっても近い日を維持しやすくしています。
 
-### Calendarの予定内容は読みません
-
-Calendar連携で取得するのは、
+さらに洗濯では、
 
 ```text
-「何時から何時まで予定が入っているか」
+天気条件を満たす日
++
+Calendarの忙しさ
++
+負荷上限
++
+依存関係
++
+同じ家事の周期順序
+```
+
+を組み合わせて候補日を決定します。
+
+<p align="center">
+  <img src="docs/screenshots/input-weather-calendar-2026-10-26/weather-calendar.png" width="48%" alt="天気とCalendarを考慮した予定">
+</p>
+
+### 古い天気結果で新しい予定を上書きしない
+
+天気取得中に、
+
+- 日付
+- timezone
+- Calendar
+- 家事設定
+- Plannerのsnapshot
+
+が変更された場合、遅れて返ってきた古い結果を保存しません。
+
+同じ予報の短時間での再評価も抑制し、不要なAPI通信・DB更新・Widget更新を増やさないようにしています。
+
+---
+
+## 3. Calendarの予定内容を取得しない
+
+Google Calendar連携で必要なのは、
+
+```text
+「その日に何分予定が入っているか」
 ```
 
 だけです。
+
+そのためGoogle Calendar Events一覧ではなく、**FreeBusy APIのみ**を利用します。
 
 取得しないもの：
 
@@ -295,9 +229,9 @@ Calendar連携で取得するのは、
 - 主催者
 - Event本文
 
-Google Calendar Events一覧ではなく、**FreeBusy APIだけを使用**しています。
+取得したraw busy intervalもそのまま永続保存しません。
 
-取得したbusy intervalもそのまま保存せず、
+保存するのは日ごとの、
 
 ```text
 日付
@@ -306,28 +240,30 @@ timezone
 取得時刻
 ```
 
-だけを日単位で保存します。
+だけです。
+
+家事の予定調整に不要なCalendar情報を取得しない設計にしています。
 
 ---
 
-## 3. Google Tasksとの双方向連携
+## 4. Google Tasksとの双方向連携
 
-Plannerが生成した家事予定を、専用のGoogle Tasksリストへ同期します。
+Plannerが生成した家事予定を専用のGoogle Tasksリストへ同期します。
 
 ```text
 Planner
 ↓
 家事予定を生成
 ↓
-Google Tasksへ反映
+Google Tasksへ同期
 ↓
-Google Calendar上でも確認可能
+Google Calendar上でも確認
 ```
 
-Planner側で予定日が変わった場合も、Google Taskを削除・再作成せず、
+Planner側で予定日が変わっても、Google Taskを削除・再作成しません。
 
 ```text
-同じGoogle Task ID
+同じGoogle Task IDを維持
 +
 dueだけ更新
 ```
@@ -339,11 +275,11 @@ Google側で家事を完了した場合は、
 ```text
 Google Taskを完了
 ↓
-Plannerへ完了を取り込む
+Plannerへ取り込む
 ↓
 完了履歴へ保存
 ↓
-ChoreState更新
+家事状態を更新
 ↓
 Scheduler再計算
 ↓
@@ -352,32 +288,64 @@ Scheduler再計算
 
 までつながります。
 
-同じ完了を何度同期しても、完了履歴を重複生成しません。
+同じ完了を何度同期しても、完了履歴を二重生成しません。
+
+家事の完了・完了取り消し後はGoogle Tasksをすぐ同期しますが、Calendarまで毎回再取得せず、Calendarは通常の更新間隔を維持します。
+
+設定画面の「今すぐ同期」を実行した場合だけ、TasksとCalendarの両方を明示的に更新します。
 
 ---
 
-## 4. 天気に合わせて洗濯予定を調整
+## 5. 天気に合わせて洗濯予定を調整
 
-ユーザーが設定した市区町村を使ってOpen-Meteoから天気予報を取得し、今後7日以内の洗濯予定を調整します。
+ユーザーが設定した市区町村を使ってOpen-Meteoから予報を取得し、今後7日以内の洗濯予定を調整します。
 
-候補日は、
+候補日の判定では、
 
 - 降水確率
 - 降水量
 - 天気コード
-- 元の家事実施期間
+- 元の実施可能期間
 - 1日の家事負荷
 - 家事の依存関係
+- Google Calendarの忙しさ
 
-を確認して決定します。
+を利用します。
 
-天気APIが利用できない場合でも、通常のSchedulerによる予定はそのまま利用できます。
+天気APIが利用できない場合は、通常Schedulerの予定へ戻ります。
 
-端末のGPSや位置情報権限は使用せず、ユーザーが入力・選択した市区町村だけを利用します。
+端末GPSや位置情報権限は使用せず、ユーザーが入力・選択した市区町村のみを利用します。
 
 ---
 
-## 5. 型番からメーカー公式説明書をAI解析
+## 6. 家事を検索して「どうやるか」まで確認
+
+予定だけ提示されても、
+
+> 「で、どう掃除するの？」
+
+が残ってしまいます。
+
+そのため家事には、
+
+- 手順
+- 必要な道具
+- 注意事項
+- 参照元
+- 過去の実施履歴
+
+を持たせています。
+
+例えば「シンク」で検索すると関連する家事を探すことができ、個別画面では水アカ除去などの具体的な手順を確認できます。
+
+<p align="center">
+  <img src="docs/readme/03-guide-search.png" width="45%" alt="家事検索">
+  <img src="docs/readme/04-guide-detail.png" width="45%" alt="家事手順">
+</p>
+
+---
+
+## 7. 型番からメーカー公式説明書をAI解析
 
 家電のお手入れでは、一般的なAI知識だけを使って回答させません。
 
@@ -397,18 +365,18 @@ Scheduler再計算
 出典
 を構造化
         ↓
-ユーザーが内容を確認
+ユーザーが確認
         ↓
 保存
         ↓
 周期がある項目だけSchedulerへ登録
 ```
 
-製品同定と説明書検索では、メーカー公式情報を優先します。
+製品同定と説明書検索ではメーカー公式情報を優先します。
 
 ### AIに存在しない周期を作らせない
 
-メーカー資料に、
+例えばメーカー資料に、
 
 ```text
 定期的に確認する
@@ -430,11 +398,17 @@ Scheduler再計算
 
 として保存します。
 
-公式資料のURLやページ情報も保持し、ユーザーが元資料を確認できる設計です。
+実際のDyson V12 Detect Slim（SV20）の解析画面でも、メーカーが具体的な周期を指定していない項目は「定期予定なし」として表示します。
+
+<p align="center">
+  <img src="docs/readme/05-appliance-ai.png" width="48%" alt="Dyson SV20の家電AI解析">
+</p>
+
+公式製品ページ・公式取扱説明書へのリンクも保持し、解析内容の根拠をユーザー自身が確認できます。
 
 ---
 
-# メインデモ
+# メインデモの流れ
 
 このアプリの中心は、各機能を別々に使うことではなく、**家事管理の判断を一周して自動化すること**です。
 
@@ -449,14 +423,14 @@ Scheduler再計算
    ↓
 ⑤ Google Tasksへ同期
    ↓
-⑥ Google側またはアプリ側で完了
+⑥ Googleまたはアプリ側で完了
    ↓
 ⑦ Plannerへ完了履歴を保存
    ↓
-⑧ 実際の完了日を基準に次回予定を自動計算
+⑧ 実際の完了日から次回予定を自動計算
 ```
 
-家電については別の導線で、
+家電については、
 
 ```text
 型番を入力
@@ -470,29 +444,29 @@ Scheduler再計算
 周期があるものだけSchedulerへ追加
 ```
 
-します。
+という別の入口から、同じPlannerへ統合します。
 
 ---
 
 # 実GoogleアカウントでのE2E検証
 
-Google連携はmockだけでなく、**実Googleアカウントを利用したE2E検証**も行いました。
+Google連携はmockだけでなく、**iOS Simulator + 実Googleアカウント**でも一連の動作を確認しています。
 
-Phase 3検証では、例えば次のケースを確認しています。
+検証例：
 
 ```text
-2026-11-24
-busyMinutes = 270分
+11月24日
+Calendar busy = 270分
 
-2026-11-23
-busyMinutes = 90分
+11月23日
+Calendar busy = 90分
 
 ↓
-heavy家事の候補日を比較
+heavy家事を比較
 
-2026-11-24
+11月24日
 ↓
-2026-11-23へ移動
+11月23日へ移動
 
 ↓
 同じGoogle Task IDを維持
@@ -508,54 +482,40 @@ Plannerへ完了を1件だけ取り込み
 次回予定を再計算
 
 ↓
-アプリ再起動
+アプリを完全終了・再起動
 
 ↓
-完了履歴・次回予定を保持
+完了履歴・次回予定・Calendar状態を保持
 ```
 
-Google Calendarで予定変更を検知するだけではなく、
+つまり、
 
-**Calendar → Scheduler → Tasks → Completion → Scheduler**
+```text
+Calendar
+↓
+Scheduler
+↓
+Google Tasks
+↓
+Google側で完了
+↓
+Planner
+↓
+次回Scheduler
+```
 
-まで一連の流れを確認しています。
+まで一周させています。
+
+<p align="center">
+  <img src="docs/screenshots/input-weather-calendar-2026-10-26/google-live-sync.png" width="65%" alt="実Googleアカウント同期検証">
+</p>
 
 詳細：
 
 - [`docs/google-sync-phase1-report.md`](./docs/google-sync-phase1-report.md)
 - [`docs/google-sync-phase2-report.md`](./docs/google-sync-phase2-report.md)
 - [`docs/google-sync-phase3-report.md`](./docs/google-sync-phase3-report.md)
-
----
-
-# 品質保証
-
-予定・完了・同期は、少しの不整合でも
-
-- 同じ家事が二重に出る
-- 完了が消える
-- 次回予定がずれる
-- GoogleとPlannerが無限に上書きし合う
-
-といった問題が起きやすい部分です。
-
-そのため、自動テストで状態遷移を固定しています。
-
-Phase 3完成時点：
-
-| 検証 | 結果 |
-|---|---:|
-| 全自動テスト | **202 / 202 PASS** |
-| Google関連テスト | **105 / 105 PASS** |
-| Phase 3関連テスト | **56 / 56 PASS** |
-| lint | PASS |
-| TypeScript typecheck | PASS |
-| `npm run check` | PASS |
-| Expo Doctor | PASS |
-| `git diff --check` | PASS |
-| 実Google E2E | PASS |
-
-GitHub ActionsでもCIを実行しています。
+- [`docs/google-undo-and-audit-2026-10-25.md`](./docs/google-undo-and-audit-2026-10-25.md)
 
 ---
 
@@ -569,7 +529,7 @@ GitHub ActionsでもCIを実行しています。
 
 メーカー公式説明書から人力で正解データを作成し、実際のアプリと同じAPI経路で比較しました。
 
-検証対象：
+対象：
 
 ```text
 Dyson V12 Detect Slim
@@ -577,7 +537,7 @@ Dyson V12 Detect Slim
 公式日本語取扱説明書
 ```
 
-GPT-5.5を使った3回のE2E検証：
+GPT-5.5を利用した3回のE2E検証：
 
 | 指標 | 結果 |
 |---|---:|
@@ -592,9 +552,77 @@ GPT-5.5を使った3回のE2E検証：
 | 出典 | 10 / 10 × 3 |
 | 根拠のない生成 | **0** |
 
-数値周期がメーカー資料に存在したのは、フィルター洗浄の「約1か月」のみでした。
+数値周期がメーカー資料に存在した項目以外には、根拠のない周期を生成しませんでした。
 
-その他の項目については、根拠のない数値周期を生成しませんでした。
+---
+
+# 品質保証
+
+予定・天気・Calendar・完了・Google同期は、少しの不整合でも
+
+- 同じ家事が二重に表示される
+- 完了履歴が重複する
+- 次回予定がずれる
+- 天気取得中に古い結果で予定が巻き戻る
+- GoogleとPlannerが互いに古い状態を上書きする
+
+といった問題が起きやすい部分です。
+
+そのため状態遷移・UI契約・保存・同期を自動テストしています。
+
+## 現在の自動検証
+
+| 検証 | 結果 |
+|---|---:|
+| 自動テスト | **335 tests PASS** |
+| lint | PASS |
+| TypeScript typecheck | PASS |
+| `npm run check` | PASS |
+| Expo Doctor | PASS |
+| GitHub Actions CI | PASS |
+| 保護対象feature contract | **26機能** |
+| iOS Simulator + 実Google E2E | PASS |
+
+さらに天気・Calendarについては、**128種類の予報・busyパターン**を使い、
+
+- 実施可能期間
+- 負荷上限
+- 依存順
+- 周期順序
+- 完了済み予定の固定
+- 元データの不変性
+
+を確認しています。
+
+詳細：
+
+- [`docs/input-weather-calendar-audit-2026-10-26.md`](./docs/input-weather-calendar-audit-2026-10-26.md)
+- [`docs/autosave-typography-audit-2026-10-26.md`](./docs/autosave-typography-audit-2026-10-26.md)
+- [`docs/mobile-readable-layout-2026-10-26.md`](./docs/mobile-readable-layout-2026-10-26.md)
+
+---
+
+# Android native構成の検証
+
+iOSとAndroidでnative部分の実装は完全には同一ではありません。
+
+そのためGitHub Actionsにnative設定専用のworkflowを用意し、
+
+```text
+npm ci
+↓
+Expo Doctor
+↓
+expo prebuild --platform android
+```
+
+を実行してAndroid native projectを生成できることも確認しています。
+
+必要に応じてworkflow_dispatchからAndroid debug appのGradle compileも実行できる構成です。
+
+- [`.github/workflows/native-check.yml`](./.github/workflows/native-check.yml)
+
+ただし、**Android Emulator / Android実機での実GoogleアカウントE2Eは現時点では未検証**です。
 
 ---
 
@@ -608,18 +636,19 @@ Hack Day開始前の基準commit：
 ecf5ec752e9dfd0b938c219662d7dbf3d6d1b603
 ```
 
-Hack Dayでは主に以下を実装しました。
+Hack Dayでは主に以下を開発しました。
 
 - 家事Planner UI
 - SQLiteデータモデル
 - 家事Scheduler
-- 実施期間
+- 実施可能期間
 - 家事負荷分散
 - 休日優先
-- 依存関係
+- 家事依存関係
 - 期限超過家事の再提案
-- 完了履歴
+- 完了・完了取り消し
 - 月間カレンダー
+- 家事検索
 - 家事ガイド
 - ゴミ収集日
 - 通知
@@ -630,23 +659,23 @@ Hack Dayでは主に以下を実装しました。
 - Google側完了のPlanner取込
 - Google Calendar FreeBusy連携
 - Calendar busyを使ったScheduler調整
+- 天気とCalendarの統合調整
+- mobile UI / typography改善
+- 設定の自動保存
 - 自動テスト / CI
+- Android native configuration CI
 
-Google Calendar Phase 3完成commit：
+現在との差分：
 
-```text
-f35b6753e98138e24e92adb85c7a1a04f2f19ca4
-```
-
-特に、Hack Day開始前commitから現在の`main`までの差分が、本イベントでの主な開発範囲です。
+https://github.com/jphacks/tkb_2633/compare/ecf5ec752e9dfd0b938c219662d7dbf3d6d1b603...main
 
 ---
 
-# 独自技術・特に注力した部分
+# 注力したこと・独自技術
 
-## Scheduler
+## 1. Schedulerを中心に機能を統合
 
-全家事を同じ固定期限ルールで扱うのではなく、
+各外部サービスがそれぞれ別々に予定を作るのではなく、
 
 ```text
 周期
@@ -659,34 +688,95 @@ f35b6753e98138e24e92adb85c7a1a04f2f19ca4
 +
 依存関係
 +
-期限超過
+天気
 +
-外部条件
+Calendar busy
 ```
 
-を組み合わせて日単位で予定を生成します。
+を最終的に一つのSchedulerへ統合しています。
+
+主要コード：
 
 - [`src/domain/scheduling/engine.ts`](./src/domain/scheduling/engine.ts)
-- [`src/domain/scheduling/contracts.ts`](./src/domain/scheduling/contracts.ts)
 - [`src/domain/scheduling/calendar-penalty.ts`](./src/domain/scheduling/calendar-penalty.ts)
+- [`src/domain/scheduling/completion-matching.ts`](./src/domain/scheduling/completion-matching.ts)
 
 ---
 
-## Google Calendar FreeBusy → Scheduler
+## 2. 天気とCalendarを競合させない
 
-予定本文を取得せず、busy時間だけを取得してSchedulerへsoft penaltyとして渡します。
+例えば、
+
+> 晴れているので洗濯したい
+
+という条件だけで日付を変更すると、
+
+> その日はCalendar上では非常に忙しい
+
+という問題が起こります。
+
+逆にCalendarだけを見ると雨の日へ洗濯を移動してしまう可能性があります。
+
+そのため、
+
+```text
+天気条件を満たす
+↓
+実施期間・負荷・依存関係を満たす
+↓
+Calendar busyも比較する
+↓
+候補日を決定
+```
+
+という順序で統合しています。
+
+主要コード：
+
+- [`src/features/weather/laundry-policy.ts`](./src/features/weather/laundry-policy.ts)
+- [`src/features/weather/optimize-laundry-schedule.ts`](./src/features/weather/optimize-laundry-schedule.ts)
+- [`src/features/google-sync/calendar-availability.ts`](./src/features/google-sync/calendar-availability.ts)
+
+---
+
+## 3. Google Calendarは必要最小限だけ取得
+
+Calendarの内容を家事Plannerが読む必要はありません。
+
+そのためFreeBusyだけを使い、
+
+```text
+予定の中身
+```
+
+ではなく、
+
+```text
+予定が入っている時間量
+```
+
+だけをSchedulerへ渡します。
+
+主要コード：
 
 - [`src/platform/google-tasks/google-calendar-freebusy-client.ts`](./src/platform/google-tasks/google-calendar-freebusy-client.ts)
-- [`src/features/google-sync/calendar-availability.ts`](./src/features/google-sync/calendar-availability.ts)
 - [`src/features/google-sync/calendar-coordinator.ts`](./src/features/google-sync/calendar-coordinator.ts)
 
 ---
 
-## Google Tasks双方向同期
+## 4. Google Tasksを作り直さず安定IDで同期
 
-Plannerの予定とGoogle Tasksを安定IDで対応付け、日付変更時もTaskを作り直しません。
+予定日が変わるたびにGoogle Taskを削除・再作成すると、
 
-Google側の完了はPlannerの通常の完了処理へ統合し、別Schedulerを作らない設計にしています。
+- 重複
+- ID変更
+- 完了履歴の対応崩れ
+
+が発生しやすくなります。
+
+そのため同一予定では同じGoogle Taskを維持し、必要な値だけ更新します。
+
+主要コード：
 
 - [`src/features/google-sync/coordinator.ts`](./src/features/google-sync/coordinator.ts)
 - [`src/features/google-sync/reconcile-google-tasks.ts`](./src/features/google-sync/reconcile-google-tasks.ts)
@@ -694,21 +784,21 @@ Google側の完了はPlannerの通常の完了処理へ統合し、別Scheduler�
 
 ---
 
-## 天気連動
+## 5. メーカー公式資料を基準にした家電AI
 
-天気をSchedulerそのものへ密結合せず、通常予定を生成した後の最適化境界として実装しています。
+家電AIは、
 
-天気取得に失敗した場合は通常Schedulerへfallbackします。
+```text
+Product Resolver
+↓
+Manual Resolver
+↓
+Manual Analyzer
+```
 
-- [`src/features/weather/laundry-policy.ts`](./src/features/weather/laundry-policy.ts)
-- [`src/features/weather/optimize-laundry-schedule.ts`](./src/features/weather/optimize-laundry-schedule.ts)
-- [`src/features/weather/open-meteo-provider.ts`](./src/features/weather/open-meteo-provider.ts)
+へ処理を分離しています。
 
----
-
-## メーカー公式説明書AI
-
-製品同定、公式説明書特定、AI解析を分離しています。
+主要コード：
 
 - [`server/appliance-care-api/src/product-resolver.mjs`](./server/appliance-care-api/src/product-resolver.mjs)
 - [`server/appliance-care-api/src/manual-resolver.mjs`](./server/appliance-care-api/src/manual-resolver.mjs)
@@ -721,7 +811,7 @@ Google側の完了はPlannerの通常の完了処理へ統合し、別Scheduler�
 
 通常の家事管理は端末内で完結します。
 
-外部サービスは補助機能として接続し、外部APIの障害によって基本Schedulerまで停止しない構成です。
+外部サービスは補助機能として接続し、外部API障害によって基本Schedulerまで停止しない構成です。
 
 ```mermaid
 flowchart TD
@@ -735,7 +825,7 @@ flowchart TD
     Tasks["Google Tasks"]
 
     Appliance["Appliance Care API"]
-    Official["メーカー公式製品情報 / 公式説明書"]
+    Official["メーカー公式情報 / 公式説明書"]
     OpenAI["OpenAI Responses API"]
 
     UI --> Scheduler
@@ -753,7 +843,7 @@ flowchart TD
     Appliance --> UI
 ```
 
-より詳細な構成：
+詳細：
 
 - [`docs/architecture.md`](./docs/architecture.md)
 
@@ -761,60 +851,44 @@ flowchart TD
 
 # Google連携とデータの正本
 
-Planner本体の家事データは**端末内SQLiteが正本**です。
+Planner本体の家事DBは**端末内SQLiteが正本**です。
 
-Google Tasksを、
-
-```text
-クラウド上の家事DB
-```
-
-として利用しているわけではありません。
+Google Tasksをクラウド上のPlanner DBとして利用しているわけではありません。
 
 Google Tasksは、
 
-- Plannerが決めた予定を普段のGoogle環境で確認する
+- Plannerが決めた予定をGoogle環境で確認する
 - Google側から家事完了を入力する
 
 ための外部インターフェースとして扱います。
 
 そのため、
 
-- アカウントベースのPlanner DB同期
+- Plannerアカウント
 - 家族間データ共有
-- 複数端末間のPlanner DB同期
+- 複数端末間Planner DB同期
 
-は別機能です。
+とは別機能です。
 
 ---
 
 # プライバシー設計
 
-外部サービスへ必要以上の情報を送らないようにしています。
-
-### 天気
+## 天気
 
 端末GPSは利用しません。
 
 ユーザーが入力・選択した市区町村を利用します。
 
-### Google Calendar
+## Google Calendar
 
-取得するのはFreeBusyのみです。
+FreeBusyのみを利用し、Event内容を取得しません。
 
-取得しないもの：
+## 家電AI
 
-- Event title
-- description
-- location
-- attendees
-- organizer
+メーカー公式情報・公式説明書を基準にし、出典を保持します。
 
-### 家電AI
-
-家電解析ではメーカー公式情報を優先し、出典を保持します。
-
-### Planner
+## Planner
 
 通常の家事データは端末内SQLiteへ保存します。
 
@@ -822,7 +896,7 @@ Google Tasksは、
 
 # 実装済み機能
 
-### Planner
+## Planner
 
 - 初回セットアップ
 - 家事頻度モード
@@ -836,26 +910,30 @@ Google Tasksは、
 - 家事依存関係
 - 期限超過再提案
 - 完了 / 未完了履歴
+- 完了取り消し
 - 月間カレンダー
 - 家事検索
 - 家事説明
+- 家事設定の自動保存
 
-### 外部条件
+## 外部条件
 
 - Open-Meteo天気連動
 - Google Calendar FreeBusy連動
 - Google Tasks連携
 - Google Tasks完了取込
+- 天気 + Calendar統合予定調整
 
-### 補助機能
+## 補助機能
 
 - 毎朝の家事通知
 - iOS Widget
 - Android Widget
 - Widgetからの完了
 - ゴミ収集曜日
+- カレンダー上のゴミ種別表示
 
-### 家電
+## 家電
 
 - 家電登録
 - メーカー / 製品 / 型番確認
@@ -873,27 +951,27 @@ Google Tasksは、
 
 ---
 
-# 現在の未検証・制限
+# 現在の制限・未検証
 
 実装済みと実機検証済みを混同しないため、未確認部分も明記します。
 
 ### Android Google連携
 
-Google Calendar Phase 3追加後のAndroid native再ビルドと、Android実アカウントでのGoogle E2Eは未実施です。
+Android native projectの生成はCIで確認しています。
 
-自動テストではGoogle関連を含めて検証しています。
+ただし、Android Emulator / Android物理端末での実GoogleアカウントE2Eは未検証です。
 
 ### BackgroundTask
 
-OSによる物理端末上のBackgroundTask実行は未検証です。
+物理端末上でOSに長時間任せたBackgroundTask実行は未検証です。
 
-foreground復帰・アプリ起動・手動同期でも再確認を行います。
+アプリ起動・foreground復帰・手動同期でも状態を再確認します。
 
 ### ゴミ収集日の例外
 
-通常の曜日ルールには対応しています。
+通常の曜日・月次ルールには対応しています。
 
-祝日・自治体固有の臨時変更などは未実装です。
+自治体による祝日・臨時変更などの自動取得は未実装です。
 
 ### Plannerクラウド同期
 
@@ -908,7 +986,7 @@ MVPでは、
 
 ---
 
-# 技術構成
+# 開発技術
 
 ## Mobile
 
@@ -927,7 +1005,7 @@ MVPでは、
 - Google Sign-In native SDK
 - Google Tasks API
 - Google Calendar FreeBusy API
-- `react-native-nitro-google-signin`
+- react-native-nitro-google-signin
 
 ## Weather
 
@@ -939,7 +1017,7 @@ MVPでは、
 - OpenAI Responses API
 - Structured Outputs
 - PDF input
-- 公式Web / 公式説明書の解析
+- メーカー公式Web / 公式説明書解析
 
 ## Quality
 
@@ -948,31 +1026,46 @@ MVPでは、
 - TypeScript
 - Expo Doctor
 - GitHub Actions
+- Feature contract tests
+- Android native configuration check
 
 ---
 
 # 起動方法
 
-## まず基本機能を確認する
+このアプリはnative機能を利用するため、完全な動作確認にはExpo development buildを使用します。
+
+## 依存関係
 
 ```bash
-npm install
+npm ci
+```
+
+## iOS
+
+```bash
 npm run ios
 ```
 
-Androidのdevelopment buildは次のコマンドを利用します。
+## Android
 
 ```bash
 npm run android
 ```
 
-外部APIを設定していなくても、通常のScheduler・家事管理・履歴などの基本機能は動作します。
+## development server
+
+development buildを作成済みの場合：
+
+```bash
+npm start
+```
 
 ---
 
-## 家電AIを利用する
+## 家電AI API
 
-環境変数の例は以下を参照してください。
+環境変数の例：
 
 - [`.env.example`](./.env.example)
 - [`.env.server.example`](./.env.server.example)
@@ -987,15 +1080,15 @@ OpenAI API keyをクライアントアプリへ直接埋め込まない構成で
 
 ---
 
-## Google Tasks / Calendar連携を利用する
+## Google Tasks / Calendar
 
-Google Cloud側の設定とdevelopment buildが必要です。
+Google Cloud側のOAuth設定とdevelopment buildが必要です。
 
 詳細：
 
 - [`docs/google-sync-setup.md`](./docs/google-sync-setup.md)
 
-Calendar連携ではGoogle Tasks scopeとは別に、ユーザーが機能をONにした時だけFreeBusy用の追加権限を要求します。
+Calendar連携ではGoogle Tasksとは別に、ユーザーがCalendar連携を有効にした場合だけFreeBusy用の追加権限を要求します。
 
 ---
 
@@ -1037,20 +1130,22 @@ npm run doctor
 
 ```text
 src/
-├── app/                 # 画面 / Expo Router
+├── app/                 # Expo Router / 各画面
 ├── components/          # UI部品
 ├── domain/
 │   ├── chores/          # 家事定義
 │   └── scheduling/      # Scheduler
 ├── features/
-│   ├── appliance-care/  # 家電AIクライアント
-│   ├── google-sync/     # Google Tasks / Calendar連携
+│   ├── appliance-care/  # 家電AI
+│   ├── google-sync/     # Google Tasks / Calendar
 │   ├── notifications/   # 通知
+│   ├── planner/         # Planner更新制御
+│   ├── settings/        # 設定・自動保存
 │   ├── weather/         # 天気
 │   ├── waste/           # ゴミ収集日
 │   └── widgets/         # Widget
 └── platform/
-    ├── google-tasks/     # Google API adapters
+    ├── google-tasks/     # Google API adapter
     ├── notifications/
     ├── storage/          # SQLite
     └── widgets/
@@ -1060,7 +1155,8 @@ server/
     └── src/
         ├── product-resolver.mjs
         ├── manual-resolver.mjs
-        └── manual-analyzer.mjs
+        ├── manual-analyzer.mjs
+        └── analysis-runner.mjs
 
 tests/
 └── *.test.mjs
@@ -1070,27 +1166,25 @@ docs/
 ├── google-sync-phase1-report.md
 ├── google-sync-phase2-report.md
 ├── google-sync-phase3-report.md
-└── google-sync-setup.md
+├── google-sync-setup.md
+└── input-weather-calendar-audit-2026-10-26.md
 ```
 
 ---
 
 # 今後の展望
 
-今後は、
-
 - 実利用者による継続利用テスト
-- Schedulerの調整
+- Schedulerの長期利用データによる調整
 - 家事・家電データの拡充
-- Android実機でのGoogle連携検証
-- BackgroundTask実機検証
+- Android実GoogleアカウントE2E
+- Android / iOS物理端末でのBackgroundTask検証
 - Plannerの複数端末同期
 - 家族単位での共有
 - ゴミ収集日の自治体別例外対応
+- 家電AI解析結果の再利用・共有cache
 
-などを検討しています。
-
-特に、家電AIについては同じ製品・同じ公式説明書を何度も解析せず、
+家電AIについては、同じ製品・同じ公式説明書を毎回AI解析するのではなく、
 
 ```text
 製品型番
@@ -1100,13 +1194,13 @@ docs/
 検証済み解析結果
 ```
 
-を再利用できる仕組みへ発展させることで、解析コストを抑えながら対応製品を増やせます。
+を再利用することで、解析コストを抑えながら対応製品を増やす構成へ拡張できます。
 
 ---
 
 # このアプリが目指すもの
 
-家事を行うこと自体は自動化できなくても、
+家事を実行すること自体は自動化できなくても、
 
 ```text
 何をやる？
@@ -1121,8 +1215,6 @@ docs/
 
 を毎回人間が考える必要はありません。
 
-このアプリでは、
+> **家事をする人ではなく、「家事を管理する人」の負担を減らす。**
 
-> **家事をする人ではなく、家事を管理する人の負担を減らす**
-
-ことを目指しています。
+それがこのアプリの目標です。

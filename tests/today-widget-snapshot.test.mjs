@@ -101,6 +101,16 @@ test('completed chores remain checked below pending chores and become unchecked 
   assert.equal(snapshot(entries, chores).chores.find((row) => row.id === 'entry-done').completed, false);
 });
 
+test('a checked row stays visible when more than three chores remain pending', () => {
+  const ids = ['done', 'one', 'two', 'three', 'four'];
+  const entries = ids.map((id) => entry(id));
+  const chores = ids.map((id) => ({ id, name: id }));
+  const result = snapshot(entries, chores, [completion('done-record', 'done', { scheduleEntryId: 'entry-done' })]);
+  assert.deepEqual(result.chores.map((row) => row.name), ['one', 'two', 'done']);
+  assert.equal(result.chores[2].completed, true);
+  assert.equal(result.remainingCount, 2);
+});
+
 test('regenerated schedules show one checked row today without completing the next occurrence', () => {
   const entries = [entry('repeat', { id: 'next-occurrence', windowEnd: '2026-10-25', suggestedDate: '2026-10-25' })];
   const chores = [{ id: 'repeat', name: '繰り返す家事' }, { id: 'yesterday', name: '昨日の家事' }];

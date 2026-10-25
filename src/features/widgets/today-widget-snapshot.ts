@@ -16,9 +16,13 @@ export function createTodayWidgetSnapshot(
       || left.suggestedDate.localeCompare(right.suggestedDate));
   const unresolvedRows = tasks.map((task) => widgetRow(task.id, task.choreId, task.completed, chores));
   const rows = unresolvedRows.filter((row): row is TodayWidgetChore => row !== null);
+  const visible = rows.slice(0, 3);
+  const checkedRow = rows.find((row) => row.completed);
+  // Keep a checkmark visible after completion even when three or more chores are still pending.
+  if (checkedRow && visible.length === 3 && visible.every((row) => !row.completed)) visible[2] = checkedRow;
 
   return {
-    chores: rows.slice(0, 3),
+    chores: visible,
     remainingCount: Math.max(0, rows.length - 3),
     updatedAt: updatedAt as NextChoreWidgetSnapshot['updatedAt'],
   };

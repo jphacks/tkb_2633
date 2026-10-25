@@ -15,7 +15,7 @@ import { parseCalendarCountColors } from '@/domain/calendar/count-colors';
 import { completionCycleDate, completionWasRecordedBeforeWindow } from '@/domain/scheduling/completion-matching';
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
-import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
+import { addDays, localDateFromDate, parseLocalDate } from '@/domain/scheduling/local-date';
 import type { CalendarCountColors, CalendarCountDisplayMode, EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WeeklyWasteSchedule } from '@/features/waste/contracts';
 import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink, GoogleTaskStatus, GoogleTaskStatusChange } from '@/features/google-sync/contracts';
@@ -1499,8 +1499,9 @@ async function saveWeeklyWasteScheduleImpl(
 ): Promise<void> {
   const label = schedule.label.trim();
   const weekdays = [...new Set(schedule.collectionWeekdays)].sort();
-  if (!label) throw new Error('ゴミの種類を入力してください');
+  if (!label || label.length > 80) throw new Error('ゴミの種類は1〜80文字で入力してください');
   if (weekdays.length === 0) throw new Error('収集曜日を1つ以上選択してください');
+  if (weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7)) throw new RangeError('収集曜日を確認してください。');
   const id = schedule.id ?? createId('waste');
   await database.runAsync(
     `INSERT INTO weekly_waste_schedules (id, household_id, label, weekdays_json)
@@ -1516,7 +1517,7 @@ async function setWasteOccurrenceHiddenImpl(
   occurrenceDate: LocalDate,
   hidden: boolean,
 ): Promise<void> {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(occurrenceDate)) throw new RangeError('収集日を確認してください。');
+  parseLocalDate(occurrenceDate);
   if (hidden) {
     await database.runAsync(
       'INSERT OR IGNORE INTO hidden_waste_occurrences (schedule_id, occurrence_date) VALUES (?, ?)',

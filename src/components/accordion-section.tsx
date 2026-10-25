@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { Card, palette } from '@/components/planner-ui';
@@ -18,6 +19,9 @@ export function AccordionSection({ title, expanded, onToggle, children }: {
   const bodyStyle = useAnimatedStyle(() => ({
     height: withTiming(expanded ? height.value : 0, { duration: DURATION }),
   }), [expanded]);
+  const measureContent = (event: LayoutChangeEvent) => {
+    height.value = event.nativeEvent.layout.height;
+  };
 
   useEffect(() => {
     if (expanded) return;
@@ -45,7 +49,7 @@ export function AccordionSection({ title, expanded, onToggle, children }: {
         importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
       >
         {expanded || retainContent ? (
-          <View style={styles.content} onLayout={(event) => { height.value = event.nativeEvent.layout.height; }}>
+          <View style={styles.content} onLayout={measureContent}>
             {children}
           </View>
         ) : null}
@@ -61,6 +65,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, color: palette.ink, fontSize: 16, fontWeight: '700' },
   chevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28 },
   chevronExpanded: { transform: [{ rotate: '180deg' }] },
-  clip: { overflow: 'hidden' },
-  content: { position: 'absolute', width: '100%', gap: 12, paddingTop: 8, paddingBottom: 10 },
+  clip: { overflow: 'hidden', position: 'relative' },
+  // Explicitly anchor the body. Yoga's automatic absolute position can move as the parent height changes.
+  content: { position: 'absolute', top: 0, left: 0, right: 0, gap: 12, paddingTop: 8, paddingBottom: 10 },
 });

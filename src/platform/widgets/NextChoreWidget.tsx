@@ -1,6 +1,6 @@
 import type { NextChoreWidgetDisplayProps } from '@/features/widgets/contracts';
 
-/** Web fallback for builds that do not include native home-screen extensions. */
+/** Keep the fallback extension aligned with native .tsx files so Metro selects native widgets first. */
 const NextChoreWidget = {
   updateSnapshot(_snapshot: NextChoreWidgetDisplayProps): void {},
   async getTimeline(): Promise<{ date: Date; props: NextChoreWidgetDisplayProps }[]> {

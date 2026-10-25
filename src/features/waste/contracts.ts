@@ -23,7 +23,7 @@ export interface WasteExceptionSource<TException = unknown> {
   list(scheduleId: EntityId, range: WasteScheduleRange): Promise<readonly TException[]>;
 }
 
-/** Exception meaning and application order remain open; a policy can be added later. */
+/** Future holiday/rescheduling policy. One-time manual hiding already uses occurrence-visibility.ts. */
 export interface WasteExceptionPolicy<TException = unknown> {
   apply(
     weeklyOccurrences: readonly WasteCollectionOccurrence[],

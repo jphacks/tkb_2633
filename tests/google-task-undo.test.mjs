@@ -53,12 +53,12 @@ test('an offline local undo survives a failed PATCH and retries without resurrec
     await repository.completeChore(h.database, h.entries[0]);
     await h.sync();
     await repository.undoCompletedChore(h.database, h.history()[0].id);
-    const patch = h.dependencies.api.patchTask;
-    h.dependencies.api.patchTask = async () => { throw new GoogleTasksApiError(503, 'unavailable', null); };
+    const patch = h.dependencies.api.patchTasksBatch;
+    h.dependencies.api.patchTasksBatch = async () => { throw new GoogleTasksApiError(503, 'unavailable', null); };
     assert.equal((await h.sync()).kind, 'retry');
     assert.equal(h.history()[0].outcome, 'incomplete');
     assert.equal((await repository.listGoogleTaskLinks(h.database))[0].pendingStatus, 'needsAction');
-    h.dependencies.api.patchTask = patch;
+    h.dependencies.api.patchTasksBatch = patch;
     assert.equal((await h.sync()).kind, 'success');
     assert.equal(h.history()[0].outcome, 'incomplete');
     assert.equal(h.tasks.get('remote-0').status, 'needsAction');
@@ -72,15 +72,15 @@ test('a new local action during the undo PATCH is not acknowledged by the older 
     await repository.completeChore(h.database, entry);
     await h.sync();
     await repository.undoCompletedChore(h.database, h.history()[0].id);
-    const patch = h.dependencies.api.patchTask;
-    h.dependencies.api.patchTask = async (...args) => {
-      if (args[3].status === 'needsAction') await repository.completeChore(h.database, entry);
+    const patch = h.dependencies.api.patchTasksBatch;
+    h.dependencies.api.patchTasksBatch = async (...args) => {
+      if (args[2].some((update) => update.patch.status === 'needsAction')) await repository.completeChore(h.database, entry);
       return patch(...args);
     };
     await h.sync();
     assert.equal(h.history()[0].outcome, 'completed');
     assert.equal((await repository.listGoogleTaskLinks(h.database))[0].pendingStatus, 'completed');
-    h.dependencies.api.patchTask = patch;
+    h.dependencies.api.patchTasksBatch = patch;
     await h.sync();
     assert.equal(h.tasks.get('remote-0').status, 'completed');
     assert.equal((await repository.listGoogleTaskLinks(h.database))[0].pendingStatus, undefined);

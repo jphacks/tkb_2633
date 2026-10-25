@@ -81,8 +81,10 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
     const lastCompleted = stateDate ?? completionDate;
     const assignment = [...(assignmentByChore.get(chore.id) ?? [])];
     const cycleDays = effectiveCycleDays(chore, input.settings.frequencyMode);
-    const radius = Math.max(0, chore.windowRadiusDays ?? (cycleDays < 30 ? 1 : 2));
-    const maxShift = Math.max(0, chore.maxShiftDays ?? (cycleDays < 30 ? 4 : 7));
+    // Moving daily fixed chores piles several cycles onto a free day and leaves other days empty.
+    const fixedDaily = chore.everyday === true && cycleDays === 1;
+    const radius = fixedDaily ? 0 : Math.max(0, chore.windowRadiusDays ?? (cycleDays < 30 ? 1 : 2));
+    const maxShift = fixedDaily ? 0 : Math.max(0, chore.maxShiftDays ?? (cycleDays < 30 ? 4 : 7));
     const choreEntries: ChoreScheduleEntry[] = [];
     const recordSimulatedCompletion = (date: LocalDate) => {
       const previous = simulatedCompletionByChore.get(chore.id);
@@ -142,7 +144,7 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
         chore,
         baseDate: input.from,
         radius: 0,
-        maxShift: daysBetween(input.from, input.through),
+        maxShift: fixedDaily ? 0 : daysBetween(input.from, input.through),
         minDate: dependencyDate && dependencyDate > input.from ? dependencyDate : input.from,
         from: input.from,
         through: input.through,

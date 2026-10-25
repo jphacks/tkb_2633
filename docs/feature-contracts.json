@@ -408,5 +408,56 @@
         "name": "completion and queued completion use the completion trigger while explicit manual sync still forces Calendar"
       }
     ]
+  },
+  {
+    "feature": "google-bounded-resumable-batches",
+    "tests": [
+      {
+        "file": "tests/google-sync-reconciliation.test.mjs",
+        "name": "new tasks are created only through the rolling two-week window"
+      },
+      {
+        "file": "tests/google-sync-reconciliation.test.mjs",
+        "name": "new task creation is split into batches of at most 100 requests"
+      },
+      {
+        "file": "tests/google-sync-reconciliation.test.mjs",
+        "name": "205 linked tasks moved beyond the creation window keep their IDs and update in batches of 100, 100, 5"
+      },
+      {
+        "file": "tests/google-sync-reconciliation.test.mjs",
+        "name": "a partial batch failure saves successful mappings and retry adopts already-created remote tasks"
+      },
+      {
+        "file": "tests/google-sync-reconciliation.test.mjs",
+        "name": "partial update failures acknowledge successes and retry only the failed linked task"
+      },
+      {
+        "file": "tests/google-sync-reconciliation.test.mjs",
+        "name": "reinitializing local storage adopts an existing same-name, same-date task instead of duplicating it"
+      }
+    ]
+  },
+  {
+    "feature": "calendar-daily-fixed-occurrences",
+    "tests": [
+      {
+        "file": "tests/google-calendar-scheduler.test.mjs",
+        "name": "daily fixed chores stay on each calendar date once despite busy days and old shift settings"
+      }
+    ]
+  },
+  {
+    "feature": "google-quota-errors-retry",
+    "tests": [
+      {
+        "file": "tests/google-tasks-api.test.mjs",
+        "name": "Google Tasks retains the quota reason from HTTP 403 in direct, batch envelope and batch item errors"
+      },
+      {
+        "file": "tests/google-sync-policy.test.mjs",
+        "name": "HTTP 403 quota limits retry while genuine permission failures remain permanent"
+      }
+    ]
   }
 ]

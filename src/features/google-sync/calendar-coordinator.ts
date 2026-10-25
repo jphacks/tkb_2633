@@ -109,7 +109,7 @@ export async function refreshGoogleCalendarAvailability(
       return changed;
     },
   }, { now: options.now, range, force: options.force });
-  if (requests && typeof __DEV__ !== 'undefined' && __DEV__) {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
     console.info('[google-calendar]', { result: result.kind, durationMs: Date.now() - startedAt, requests,
       days: result.days ?? 0, busyDays: result.busyDays ?? 0,
       from: range.from, through: range.through, timeZone: range.timeZone,

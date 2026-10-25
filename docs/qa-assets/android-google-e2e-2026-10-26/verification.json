@@ -1,0 +1,227 @@
+{
+  "checkedDate": "2026-10-26",
+  "timeZone": "Asia/Tokyo",
+  "result": "PASS",
+  "scope": "Android Emulator + real Google account: Google Tasks / Calendar Phase 3 E2E",
+  "sourceBaseAtNativeBuild": "898ca69c4eb2e642131869008700e9111c0ede6c",
+  "readmeIntegrationBase": "c4bea08d1fd44bbe2bdcb3bfa4e3fb13d0abc0c5",
+  "environment": {
+    "device": "Medium Phone API 37.0",
+    "androidApiLevel": 37,
+    "applicationId": "jp.jphacks.tkb2633",
+    "expoSDK": 58,
+    "build": "native development build using Metro",
+    "authentication": "inherited real account native Google Sign-In grant; protected Tasks and FreeBusy requests succeeded",
+    "googleTasksUI": "Google Calendar Android native integrated Tasks"
+  },
+  "nativeBuild": {
+    "cleanPrebuild": "PASS",
+    "gradleBuild": "BUILD SUCCESSFUL",
+    "duration": "6m 42s",
+    "apkSHA256": "4c63e69dd4b18d46060bde516047e4007abb253cf9366b65144f22267766a42f",
+    "lastUpdateTimeJST": "2026-10-26 07:20:10",
+    "existingDebugKeystorePreserved": true
+  },
+  "calendar": {
+    "from": "2026-10-26",
+    "through": "2027-04-24",
+    "timeZone": "Asia/Tokyo",
+    "requests": 3,
+    "days": 181,
+    "busyDays": 47,
+    "2026-11-03BusyMinutes": 270,
+    "2026-11-04BusyMinutes": 90
+  },
+  "occurrenceChecks": {
+    "calendar-off": {
+      "googleTaskIdSHA256Prefix": "20f16a6f33171b71",
+      "plannerDate": "2026-11-03",
+      "googleDueDate": "2026-11-03",
+      "googleStatus": "needsAction",
+      "pendingStatus": null,
+      "history": []
+    },
+    "calendar-on": {
+      "googleTaskIdSHA256Prefix": "20f16a6f33171b71",
+      "plannerDate": "2026-11-04",
+      "googleDueDate": "2026-11-04",
+      "googleStatus": "needsAction",
+      "pendingStatus": null,
+      "history": []
+    },
+    "completed-import": {
+      "googleTaskIdSHA256Prefix": "20f16a6f33171b71",
+      "plannerDate": "2026-11-04",
+      "googleDueDate": "2026-11-04",
+      "googleStatus": "completed",
+      "pendingStatus": null,
+      "history": [
+        {
+          "source": "googleTasks",
+          "outcome": "completed",
+          "scheduled_date": "2026-11-04"
+        }
+      ]
+    },
+    "restarted": {
+      "googleTaskIdSHA256Prefix": "20f16a6f33171b71",
+      "plannerDate": "2026-11-04",
+      "googleDueDate": "2026-11-04",
+      "googleStatus": "completed",
+      "pendingStatus": null,
+      "history": [
+        {
+          "source": "googleTasks",
+          "outcome": "completed",
+          "scheduled_date": "2026-11-04"
+        }
+      ]
+    },
+    "restarted-resynced": {
+      "googleTaskIdSHA256Prefix": "20f16a6f33171b71",
+      "plannerDate": "2026-11-04",
+      "googleDueDate": "2026-11-04",
+      "googleStatus": "completed",
+      "pendingStatus": null,
+      "history": [
+        {
+          "source": "googleTasks",
+          "outcome": "completed",
+          "scheduled_date": "2026-11-04"
+        }
+      ]
+    },
+    "undone": {
+      "googleTaskIdSHA256Prefix": "20f16a6f33171b71",
+      "plannerDate": "2026-11-04",
+      "googleDueDate": "2026-11-04",
+      "googleStatus": "needsAction",
+      "pendingStatus": null,
+      "history": [
+        {
+          "source": "inApp",
+          "outcome": "incomplete",
+          "scheduled_date": "2026-11-04"
+        }
+      ]
+    }
+  },
+  "restart": {
+    "pidBefore": 9105,
+    "pidAbsentAfterDismiss": true,
+    "pidAfter": 11528,
+    "nextScheduledDateRetained": "2026-11-05",
+    "repeatSync": {
+      "result": "success",
+      "durationMs": 5589,
+      "readRequests": 9,
+      "writeRequests": 0,
+      "writeOperations": 0,
+      "created": 0,
+      "updated": 0,
+      "removed": 0,
+      "imported": 0
+    }
+  },
+  "realSyncSamples": {
+    "calendarOff": {
+      "result": "success",
+      "readRequests": 9,
+      "writeRequests": 2,
+      "writeOperations": 76,
+      "created": 3,
+      "updated": 73
+    },
+    "calendarOn": {
+      "result": "success",
+      "durationMs": 14258,
+      "readRequests": 9,
+      "writeRequests": 1,
+      "writeOperations": 62,
+      "created": 0,
+      "updated": 62,
+      "removed": 0,
+      "imported": 0,
+      "remoteTasksReadIncludingDeletedAndHidden": 790
+    },
+    "googleCompletionImport": {
+      "result": "success",
+      "durationMs": 5606,
+      "readRequests": 9,
+      "writeRequests": 0,
+      "writeOperations": 0,
+      "created": 0,
+      "updated": 0,
+      "removed": 0,
+      "imported": 1
+    },
+    "plannerUndo": {
+      "result": "success",
+      "durationMs": 4766,
+      "readRequests": 9,
+      "writeRequests": 1,
+      "writeOperations": 1,
+      "created": 0,
+      "updated": 1,
+      "removed": 0,
+      "imported": 0
+    },
+    "fixtureCleanup": {
+      "result": "success",
+      "durationMs": 12334,
+      "readRequests": 9,
+      "writeRequests": 4,
+      "writeOperations": 39,
+      "created": 0,
+      "updated": 36,
+      "removed": 3,
+      "imported": 0
+    }
+  },
+  "batching": {
+    "maxOperationsPerRequest": 100,
+    "regressionCreateBatchSizes": [
+      100,
+      100,
+      5
+    ],
+    "regressionUpdateBatchSizes": [
+      100,
+      100,
+      5
+    ],
+    "partialSuccessResume": "PASS",
+    "resetExistingTaskAdoption": "PASS"
+  },
+  "observedTransientFailure": {
+    "httpStatus": 403,
+    "structuredReason": "forbidden",
+    "recoveredOnManualSync": true,
+    "successesPersistedBetweenAttempts": true,
+    "causeConfirmed": false,
+    "notClaimedResolvedBy100ItemLimit": true
+  },
+  "cleanup": {
+    "originalChoreDefinitionRestoredExactly": true,
+    "originalEffectiveCycleDays": 30,
+    "originalWindowRadiusDays": 7,
+    "originalHolidayPriority": true,
+    "temporaryGoogleTasksRemoved": 3,
+    "syntheticHistoryRemoved": 1,
+    "finalLinkCount": 600,
+    "finalSyncStatus": "idle"
+  },
+  "automatedChecks": {
+    "testsPassed": 351,
+    "testsFailed": 0,
+    "testsSkipped": 0,
+    "featureContracts": 29,
+    "lint": "PASS",
+    "typecheck": "PASS"
+  },
+  "notVerified": [
+    "physical Android device Google E2E",
+    "physical device OS scheduled BackgroundTask after long idle"
+  ],
+  "privacy": "Google account identifiers, raw task IDs, OAuth tokens, Calendar event content and raw SQLite files are omitted."
+}

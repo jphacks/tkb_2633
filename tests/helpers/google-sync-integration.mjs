@@ -46,6 +46,60 @@ export async function createIntegration({ cycleDays = 1, previousDate = today, d
   const api = createGoogleTasksApi(async (url, init) => {
     const parsed = new URL(url);
     const method = init.method ?? 'GET';
+    if (parsed.pathname === '/batch') {
+      const contentType = init.headers['Content-Type'];
+      const boundary = contentType.match(/boundary=([^;\s]+)/u)?.[1];
+      assert.ok(boundary);
+      const responseBoundary = 'fixture-response-boundary';
+      const responseParts = [];
+      for (const rawPart of String(init.body).split(`--${boundary}`)) {
+        const part = rawPart.trim();
+        if (!part || part === '--') continue;
+        const headerEnd = part.indexOf('\r\n\r\n');
+        assert.notEqual(headerEnd, -1);
+        const partHeaders = part.slice(0, headerEnd);
+        const requestId = partHeaders.match(/^Content-ID:\s*<([^>]+)>/imu)?.[1];
+        assert.ok(requestId);
+        const nestedRequest = part.slice(headerEnd + 4);
+        const requestLine = nestedRequest.match(/^(POST|PATCH|DELETE)\s+(\S+)\s+HTTP\/1\.1/u);
+        assert.ok(requestLine);
+        const nestedMethod = requestLine[1];
+        const nestedUrl = new URL(requestLine[2], 'https://tasks.googleapis.com');
+        const bodyStart = nestedRequest.indexOf('\r\n\r\n');
+        const nestedBody = bodyStart >= 0 ? nestedRequest.slice(bodyStart + 4).trim() : '';
+        const nestedBodyValue = nestedBody ? JSON.parse(nestedBody) : undefined;
+        calls.push({ method: nestedMethod, path: nestedUrl.pathname, query: Object.fromEntries(nestedUrl.searchParams), body: nestedBodyValue });
+        events.push(nestedMethod);
+        const nestedTaskId = nestedUrl.pathname.length > `/tasks/v1/lists/${listId}/tasks`.length
+          ? decodeURIComponent(nestedUrl.pathname.slice(`/tasks/v1/lists/${listId}/tasks/`.length)) : undefined;
+        let status = 200;
+        let responseBody = '';
+        if (nestedMethod === 'POST') {
+          const task = { id: `generated-${++generated}`, status: 'needsAction', ...nestedBodyValue };
+          tasks.set(task.id, task);
+          status = 201;
+          responseBody = JSON.stringify(task);
+        } else {
+          const task = tasks.get(nestedTaskId);
+          if (!task) status = 404;
+          else if (nestedMethod === 'PATCH') { Object.assign(task, nestedBodyValue); responseBody = JSON.stringify(task); }
+          else if (nestedMethod === 'DELETE') { task.deleted = true; status = 204; }
+        }
+        responseParts.push([
+          `--${responseBoundary}`,
+          'Content-Type: application/http',
+          `Content-ID: <response-${requestId}>`,
+          '',
+          `HTTP/1.1 ${status} ${status === 201 ? 'Created' : status === 204 ? 'No Content' : status === 404 ? 'Not Found' : 'OK'}`,
+          ...(responseBody ? ['Content-Type: application/json; charset=UTF-8', '', responseBody] : ['', '']),
+        ].join('\r\n'));
+      }
+      responseParts.push(`--${responseBoundary}--`, '');
+      return new Response(responseParts.join('\r\n'), {
+        status: 200,
+        headers: { 'Content-Type': `multipart/mixed; boundary=${responseBoundary}` },
+      });
+    }
     // Retain only request metadata and JSON bodies, never the Authorization header.
     calls.push({ method, path: parsed.pathname, query: Object.fromEntries(parsed.searchParams), body: init.body ? JSON.parse(init.body) : undefined });
     events.push(method);

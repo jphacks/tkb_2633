@@ -40,6 +40,25 @@ test('Calendar respects maxShift and fixed occurrences and never removes all-bus
  assert.deepEqual(generateHouseworkSchedule({...fixed,externalAvailabilityByDate:days}),generateHouseworkSchedule(fixed));
  assert.equal(result.length,generateHouseworkSchedule(input).length);
 });
+test('daily fixed chores stay on each calendar date once despite busy days and old shift settings',()=>{
+ const input=fixture('light',{everyday:true,frequencyDaysByMode:{frequent:1,balanced:1,relaxed:1},windowRadiusDays:0,maxShiftDays:7});
+ input.from=input.today='2026-10-26';input.through='2026-11-09';
+ input.chores=Array.from({length:4},(_,i)=>({...input.chores[0],id:`daily-${i}`}));
+ input.states=input.chores.map((chore)=>({choreId:chore.id,lastCompletedDate:'2026-10-25',initialPending:false}));
+ const availability=Object.fromEntries(['2026-10-27','2026-10-30','2026-11-03','2026-11-06'].map((date)=>[date,{busyMinutes:1440}]));
+ const baseline=generateHouseworkSchedule(input);
+ const withCalendar=generateHouseworkSchedule({...input,externalAvailabilityByDate:availability,previousScheduleEntries:baseline});
+ assert.deepEqual(withCalendar,baseline);
+ for(const chore of input.chores){
+  const entries=withCalendar.filter((entry)=>entry.choreId===chore.id);
+  assert.equal(entries.length,15);
+  assert.equal(new Set(entries.map((entry)=>entry.suggestedDate)).size,15);
+  assert.ok(entries.every((entry)=>entry.suggestedDate===entry.cycleBaseDate&&entry.windowStart===entry.suggestedDate&&entry.windowEnd===entry.suggestedDate));
+ }
+ const initial={...input,states:input.chores.map((chore)=>({choreId:chore.id,initialPending:true}))};
+ assert.ok(generateHouseworkSchedule({...initial,externalAvailabilityByDate:{'2026-10-26':{busyMinutes:1440}}})
+  .filter((entry)=>entry.status==='initialPending').every((entry)=>entry.suggestedDate==='2026-10-26'));
+});
 test('rest preference remains above Calendar soft cost',()=>{
  const input=fixture('heavy',{holidayPriority:true});
  input.settings.restDays=[7];

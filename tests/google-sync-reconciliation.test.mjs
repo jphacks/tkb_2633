@@ -50,7 +50,7 @@ function createHarness({ entries = [], links = [], tasks = [], taskLists = [{ id
   const api = {
     taskLists: [...taskLists],
     tasks: new Map(tasks.map((task) => [`${task.taskListId}/${task.id}`, { ...task }])),
-    calls: { createList: 0, create: 0, patch: [], deleted: [], get: 0, list: 0 },
+    calls: { createList: 0, create: 0, batchSizes: [], patchBatchSizes: [], patch: [], deleted: [], get: 0, list: 0 },
     async listTaskLists() { return [...this.taskLists]; },
     async listTasks(_token, listId) {
       this.calls.list += 1;
@@ -74,12 +74,27 @@ function createHarness({ entries = [], links = [], tasks = [], taskLists = [{ id
       this.tasks.set(`${listId}/${task.id}`, task);
       return { ...task };
     },
+    async createTasksBatch(_token, listId, drafts) {
+      this.calls.batchSizes.push(drafts.length);
+      const results = [];
+      for (const [index, draft] of drafts.entries()) {
+        const task = await this.createTask('token', listId, draft);
+        results.push({ requestId: `request-${index}`, ok: true, task });
+      }
+      return results;
+    },
     async patchTask(_token, listId, id, patch) {
       this.calls.patch.push({ id, patch: { ...patch } });
       const key = `${listId}/${id}`;
       const task = { ...this.tasks.get(key), ...patch };
       this.tasks.set(key, task);
       return { ...task };
+    },
+    async patchTasksBatch(_token, listId, updates) {
+      this.calls.patchBatchSizes.push(updates.length);
+      return Promise.all(updates.map(async ({ taskId, patch }, index) => ({
+        requestId: `request-${index}`, ok: true, task: await this.patchTask('token', listId, taskId, patch),
+      })));
     },
     async deleteTask(_token, listId, id) {
       this.calls.deleted.push(id);
@@ -150,6 +165,145 @@ test('reconciliation creates once, then updates the same Google Task for title, 
     id: savedLink.googleTaskId,
     patch: { status: 'completed', completed: '2026-10-25T11:30:00.000Z' },
   });
+});
+
+test('new tasks are created only through the rolling two-week window', async () => {
+  const harness = createHarness({ entries: [
+    entry('near-window'),
+    entry('outside-window', { entry: { ...entry('outside-window').entry, suggestedDate: '2026-11-09' } }),
+  ] });
+
+  await reconcile(harness);
+
+  assert.equal(harness.api.calls.create, 1);
+  assert.deepEqual(harness.repository.links.map((item) => item.scheduleEntryId), ['near-window']);
+  assert.equal(harness.api.tasks.size, 1);
+});
+
+test('new task creation is split into batches of at most 100 requests', async () => {
+  const harness = createHarness({ entries: Array.from({ length: 205 }, (_, index) => entry(`batch-${index}`)) });
+
+  await reconcile(harness);
+
+  assert.deepEqual(harness.api.calls.batchSizes, [100, 100, 5]);
+  assert.equal(harness.api.calls.batchSizes.every((size) => size <= 100), true);
+  assert.equal(harness.api.calls.create, 205);
+  assert.equal(harness.repository.links.length, 205);
+});
+
+test('205 linked tasks moved beyond the creation window keep their IDs and update in batches of 100, 100, 5', async () => {
+  const entries = Array.from({ length: 205 }, (_, index) => entry(`moved-${index}`, {
+    entry: { ...entry(`moved-${index}`).entry, suggestedDate: '2026-11-30' },
+  }));
+  const links = entries.map(({ entry }) => link(entry.id, `existing-${entry.id}`));
+  const tasks = links.map((link) => ({ id: link.googleTaskId, taskListId, title: link.lastSyncedTitle,
+    due: '2026-10-26T00:00:00.000Z', status: 'needsAction' }));
+  const harness = createHarness({ entries, links, tasks });
+
+  const result = await reconcile(harness);
+  assert.equal(result.updated, 205);
+  assert.deepEqual(harness.api.calls.patchBatchSizes, [100, 100, 5]);
+  assert.equal(harness.api.calls.create, 0);
+  assert.equal(harness.api.calls.deleted.length, 0);
+  assert.deepEqual(harness.repository.links.map((link) => link.googleTaskId), links.map((link) => link.googleTaskId));
+  assert.ok([...harness.api.tasks.values()].every((task) => task.due === '2026-11-30T00:00:00.000Z'));
+
+  assert.equal((await reconcile(harness)).updated, 0);
+  assert.deepEqual(harness.api.calls.patchBatchSizes, [100, 100, 5]);
+});
+
+test('partial update failures acknowledge successes and retry only the failed linked task', async () => {
+  const entries = ['one', 'two', 'three'].map((id) => entry(id, {
+    entry: { ...entry(id).entry, suggestedDate: '2026-10-28' },
+  }));
+  const links = entries.map(({ entry }) => link(entry.id, `existing-${entry.id}`));
+  const tasks = links.map((link) => ({ id: link.googleTaskId, taskListId, title: link.lastSyncedTitle,
+    due: '2026-10-26T00:00:00.000Z', status: 'needsAction' }));
+  const harness = createHarness({ entries, links, tasks });
+  let failOnce = true;
+  harness.api.patchTasksBatch = async (_token, listId, updates) => {
+    harness.api.calls.patchBatchSizes.push(updates.length);
+    const results = [];
+    for (const [index, update] of updates.entries()) {
+      results.push(failOnce && index === 1
+        ? { requestId: `request-${index}`, ok: false, status: 429, code: 'RESOURCE_EXHAUSTED', retryAfter: '3600' }
+        : { requestId: `request-${index}`, ok: true,
+          task: await harness.api.patchTask('token', listId, update.taskId, update.patch) });
+    }
+    failOnce = false;
+    return results;
+  };
+
+  await assert.rejects(reconcile(harness), (error) => error.status === 429 && error.retryAfter === '3600');
+  assert.equal(harness.repository.links.find((link) => link.scheduleEntryId === 'one').lastSyncedDueDate, '2026-10-28');
+  assert.equal(harness.repository.links.find((link) => link.scheduleEntryId === 'two').lastSyncedDueDate, '2026-10-26');
+  assert.equal(harness.repository.links.find((link) => link.scheduleEntryId === 'three').lastSyncedDueDate, '2026-10-28');
+  assert.equal((await reconcile(harness)).updated, 1);
+  assert.deepEqual(harness.api.calls.patchBatchSizes, [3, 1]);
+  assert.equal(harness.api.calls.patch.length, 3);
+  assert.equal(harness.api.calls.create, 0);
+});
+
+test('a partial batch failure saves successful mappings and retry adopts already-created remote tasks', async () => {
+  const harness = createHarness({ entries: [entry('partial-1'), entry('partial-2'), entry('partial-3')] });
+  const createBatch = harness.api.createTasksBatch.bind(harness.api);
+  let failOnce = true;
+  harness.api.createTasksBatch = async (...args) => {
+    const results = await createBatch(...args);
+    if (failOnce) {
+      failOnce = false;
+      results[1] = { requestId: 'request-1', ok: false, status: 503, code: 'backend_error' };
+    }
+    return results;
+  };
+
+  await assert.rejects(reconcile(harness), /Google Tasks request failed/u);
+  assert.equal(harness.repository.links.length, 2);
+  assert.equal(harness.api.tasks.size, 3);
+
+  await reconcile(harness, new Date(now.getTime() + 1000));
+  assert.equal(harness.api.tasks.size, 3);
+  assert.equal(harness.repository.links.length, 3);
+  assert.equal(harness.api.calls.create, 3);
+});
+
+test('reinitializing local storage adopts an existing same-name, same-date task instead of duplicating it', async () => {
+  const existingTask = {
+    id: 'existing-task', taskListId, title: '食器を洗う', due: '2026-10-26T00:00:00.000Z', status: 'needsAction',
+  };
+  const reinitializedEntry = entry('new-local-entry-id', { choreName: '食器を洗う' });
+  const harness = createHarness({ entries: [reinitializedEntry], tasks: [existingTask] });
+
+  await reconcile(harness);
+  assert.equal(harness.api.calls.create, 0);
+  assert.equal(harness.repository.links[0].googleTaskId, existingTask.id);
+
+  // Simulate app data being initialized again while the Google list survives.
+  harness.repository.links = [];
+  await reconcile(harness);
+  assert.equal(harness.api.calls.create, 0);
+  assert.equal(harness.api.tasks.size, 1);
+  assert.equal(harness.repository.links[0].googleTaskId, existingTask.id);
+});
+
+test('linked tasks outside the creation window still receive completion changes', async () => {
+  const futureEntry = entry('future-linked', {
+    completedAt: '2026-10-25T11:30:00.000Z',
+    entry: { ...entry('future-linked').entry, suggestedDate: '2026-11-30' },
+  });
+  const existingLink = link('future-linked', 'future-task', { lastSyncedStatus: 'needsAction' });
+  const harness = createHarness({
+    entries: [futureEntry],
+    links: [existingLink],
+    tasks: [{ id: 'future-task', taskListId, title: '家事 future-linked', due: '2026-11-30T00:00:00.000Z', status: 'needsAction' }],
+  });
+
+  await reconcile(harness);
+
+  assert.deepEqual(harness.api.calls.patch, [{
+    id: 'future-task', patch: { status: 'completed', completed: '2026-10-25T11:30:00.000Z' },
+  }]);
+  assert.equal(harness.api.calls.create, 0);
 });
 
 test('unvalidated remote completion is not reverted; obsolete open tasks are deleted and completed history is preserved', async () => {

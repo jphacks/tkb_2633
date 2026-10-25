@@ -48,6 +48,7 @@ export async function syncGoogleTasks(
   const startedAt = Date.now();
   let readRequests = 0;
   let writeRequests = 0;
+  let writeOperations = 0;
   const result = await syncGoogleTasksWithDependencies({
     loadState: () => loadGoogleSyncState(database, householdId),
     saveState: (state) => saveGoogleSyncState(database, state),
@@ -59,9 +60,12 @@ export async function syncGoogleTasks(
       const { refreshGoogleCalendarAvailability } = await import('./calendar-coordinator');
       return refreshGoogleCalendarAvailability(database, calendarOptions);
     },
-    api: createGoogleTasksApi(fetch, (method) => {
+    api: createGoogleTasksApi(fetch, (method, operationCount = 1) => {
       if (method === 'GET') readRequests += 1;
-      else writeRequests += 1;
+      else {
+        writeRequests += 1;
+        writeOperations += operationCount;
+      }
     }),
     importGoogleTaskChanges: async (changes, today) => {
       const imported = await importGoogleTaskChanges(database, changes, today as LocalDate, now);
@@ -93,7 +97,10 @@ export async function syncGoogleTasks(
       durationMs: Date.now() - startedAt,
       readRequests,
       writeRequests,
-      ...(result.kind === 'success' ? { remoteTasksRead: result.remoteTasksRead, hiddenCompletionsRead: result.hiddenCompletionsRead, imported: result.imported } : {}),
+      writeOperations,
+      ...(result.kind === 'success' ? { created: result.created, updated: result.updated, removed: result.removed,
+        remoteTasksRead: result.remoteTasksRead, hiddenCompletionsRead: result.hiddenCompletionsRead, imported: result.imported }
+        : { code: result.code }),
     });
   }
   return result;
@@ -148,7 +155,15 @@ async function runSync(
   let calendarChanged = false;
   try {
     calendarChanged = (await dependencies.refreshCalendar?.({ now, today: localDateFromDate(now), force: options.forceCalendar }))?.plannerChanged ?? false;
-  } catch { /* Calendar failure is isolated; Tasks completion and retry policy continue. */ }
+  } catch (error) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.warn('[google-calendar]', {
+        result: 'coordinator_error',
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
+    // Calendar failure is isolated; Tasks completion and retry policy continue.
+  }
   if (!force && !calendarChanged && !staleAttempt && !shouldSyncGoogleTasks(state, now)) return { kind: 'success', skipped: true };
 
   const attemptAt = now.toISOString();
@@ -159,9 +174,9 @@ async function runSync(
     nextRetryAt: undefined,
     updatedAt: attemptAt,
   };
-  await dependencies.saveState(state);
 
   try {
+    await dependencies.saveState(state);
     const accessToken = await dependencies.getAccessToken();
     const result = await reconcileGoogleTasks({
       accessToken,
@@ -199,7 +214,11 @@ async function runSync(
       lastErrorAt: updatedAt,
       updatedAt,
     };
-    await dependencies.saveState(failedState);
+    try {
+      await dependencies.saveState(failedState);
+    } catch {
+      return { kind: 'error', code: 'sync_state_persist_failed' };
+    }
     return { kind: classification.kind, code: classification.code };
   }
 }

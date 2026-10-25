@@ -80,3 +80,13 @@ test('429 honors Retry-After without retrying earlier than one hour', () => {
   const dateHeader = new Date(t0.getTime() + 5_000_000).toUTCString();
   assert.equal(classifyGoogleSyncFailure({ status: 429, retryAfter: dateHeader }, t0).nextRetryAt?.getTime(), t0.getTime() + 5_000_000);
 });
+
+test('HTTP 403 quota limits retry while genuine permission failures remain permanent', () => {
+  for (const code of ['quotaExceeded', 'rateLimitExceeded', 'userRateLimitExceeded', 'dailyLimitExceeded', 'RESOURCE_EXHAUSTED']) {
+    const result = classifyGoogleSyncFailure({ status: 403, code, retryAfter: '7200' }, t0);
+    assert.equal(result.kind, 'retry');
+    assert.equal(result.nextRetryAt?.getTime(), t0.getTime() + 7_200_000);
+  }
+  assert.equal(classifyGoogleSyncFailure({ status: 403, code: 'insufficientPermissions' }, t0).kind, 'error');
+  assert.equal(classifyGoogleSyncFailure({ status: 403, code: 'PERMISSION_DENIED' }, t0).kind, 'error');
+});

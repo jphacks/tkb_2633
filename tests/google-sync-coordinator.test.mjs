@@ -93,6 +93,38 @@ test('transient API failures persist an hourly retry and 401 asks for reconnecti
   assert.equal(unauthorized.currentState.status, 'authRequired');
 });
 
+test('failure to persist the syncing marker is converted to a saved failure state instead of leaving syncing forever', async () => {
+  const harness = setup();
+  const saveState = harness.dependencies.saveState.bind(harness.dependencies);
+  let failStartSave = true;
+  harness.dependencies.saveState = async (state) => {
+    if (state.status === 'syncing' && failStartSave) {
+      failStartSave = false;
+      throw new Error('temporary storage failure');
+    }
+    await saveState(state);
+  };
+
+  const result = await syncGoogleTasksWithDependencies(harness.dependencies, { now, force: true });
+
+  assert.deepEqual(result, { kind: 'error', code: 'error' });
+  assert.equal(harness.currentState.status, 'error');
+  assert.equal(harness.currentState.lastErrorCode, 'error');
+  assert.equal(harness.counters.api, 0);
+});
+
+test('failure to persist both the syncing marker and failure state returns a stable error result', async () => {
+  const harness = setup();
+  harness.dependencies.saveState = async (state) => {
+    if (state.status === 'syncing' || state.status === 'error') throw new Error('storage unavailable');
+  };
+
+  const result = await syncGoogleTasksWithDependencies(harness.dependencies, { now, force: true });
+
+  assert.deepEqual(result, { kind: 'error', code: 'sync_state_persist_failed' });
+  assert.equal(harness.counters.api, 0);
+});
+
 test('the coordinator does not start an overlapping attempt while the saved state is fresh-syncing', async () => {
   const active = setup({ status: 'syncing', lastAttemptAt: now.toISOString() });
   const result = await syncGoogleTasksWithDependencies(active.dependencies, { now, force: true });

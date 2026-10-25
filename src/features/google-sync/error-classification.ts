@@ -24,7 +24,9 @@ export function classifyGoogleSyncFailure(
     return { kind: 'authRequired', code };
   }
 
-  if (failure.status === 429) {
+  const quotaLimited = ['ratelimitexceeded', 'userratelimitexceeded', 'quotaexceeded',
+    'dailylimitexceeded', 'rate_limit_exceeded', 'quota_exceeded', 'resource_exhausted'].includes(code);
+  if (failure.status === 429 || (failure.status === 403 && quotaLimited)) {
     const retryAfterTime = parseRetryAfter(failure.retryAfter, now);
     const minimumRetryTime = now.getTime() + GOOGLE_SYNC_RETRY_INTERVAL_MS;
     return {

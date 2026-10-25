@@ -250,6 +250,10 @@ timezone
 
 Plannerが生成した家事予定を専用のGoogle Tasksリストへ同期します。
 
+新しいTaskを作る範囲は、当日から14日先までです。Planner内の長期予定は保持し、日が進むと対象範囲へ入った予定を追加します。既に紐付いたTaskは、範囲外でも予定日・名前・完了状態の更新を続けます。
+
+作成・更新は1リクエストあたり最大100件に分割し、成功した項目から紐付けを保存します。途中で失敗した場合は、次の同期で残った差分を処理します。ローカル初期化後も、専用リストの家事名と予定日が一致するTaskを再利用して重複作成を抑えます。
+
 ```text
 Planner
 ↓
@@ -574,14 +578,15 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **335 tests PASS** |
+| 自動テスト | **351 tests PASS** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **26機能** |
+| 保護対象feature contract | **29機能** |
 | iOS Simulator + 実Google E2E | PASS |
+| Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 
 さらに天気・Calendarについては、**128種類の予報・busyパターン**を使い、
 
@@ -599,6 +604,7 @@ GPT-5.5を利用した3回のE2E検証：
 - [`docs/input-weather-calendar-audit-2026-10-26.md`](./docs/input-weather-calendar-audit-2026-10-26.md)
 - [`docs/autosave-typography-audit-2026-10-26.md`](./docs/autosave-typography-audit-2026-10-26.md)
 - [`docs/mobile-readable-layout-2026-10-26.md`](./docs/mobile-readable-layout-2026-10-26.md)
+- [`docs/android-google-e2e-2026-10-26.md`](./docs/android-google-e2e-2026-10-26.md)
 
 ---
 
@@ -622,7 +628,9 @@ expo prebuild --platform android
 
 - [`.github/workflows/native-check.yml`](./.github/workflows/native-check.yml)
 
-ただし、**Android Emulator / Android実機での実GoogleアカウントE2Eは現時点では未検証**です。
+2026年10月26日にはローカルでもAndroid nativeをクリーン再生成・再ビルドし、**Android Emulator + 実GoogleアカウントでGoogle Tasks / Calendar Phase 3 E2E PASS**を確認しました。FreeBusyによるheavy家事の移動、同じTask IDでのdue更新、Google側の完了取込、終了・再起動後の保持を[検証記録](docs/android-google-e2e-2026-10-26.md)にまとめています。
+
+Android物理端末と、物理端末上のBackgroundTaskは未検証です。
 
 ---
 
@@ -959,7 +967,7 @@ FreeBusyのみを利用し、Event内容を取得しません。
 
 Android native projectの生成はCIで確認しています。
 
-ただし、Android Emulator / Android物理端末での実GoogleアカウントE2Eは未検証です。
+Android Emulator + 実GoogleアカウントのGoogle Tasks / Calendar Phase 3 E2Eは2026年10月26日にPASSしました。Android物理端末は未検証です。
 
 ### BackgroundTask
 
@@ -1177,7 +1185,7 @@ docs/
 - 実利用者による継続利用テスト
 - Schedulerの長期利用データによる調整
 - 家事・家電データの拡充
-- Android実GoogleアカウントE2E
+- Android物理端末での実GoogleアカウントE2E
 - Android / iOS物理端末でのBackgroundTask検証
 - Plannerの複数端末同期
 - 家族単位での共有

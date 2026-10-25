@@ -1,7 +1,9 @@
 import { Tabs } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { StyleSheet, View, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette } from '@/components/planner-ui';
+import { plannerTabBarLayout } from './planner-tab-bar';
 
 function tabIcon(name: SymbolViewProps['name']) {
   function TabIcon({ color, focused }: { color: ColorValue; focused: boolean; size: number }) {
@@ -15,14 +17,15 @@ function tabIcon(name: SymbolViewProps['name']) {
 }
 
 export default function AppTabs() {
+  const insets = useSafeAreaInsets();
   return (
     <Tabs screenOptions={{
       headerShown: false,
       tabBarActiveTintColor: palette.accent,
       tabBarInactiveTintColor: palette.muted,
-      tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 },
-      tabBarLabelStyle: { fontSize: 14, fontWeight: '600' },
-      tabBarItemStyle: { paddingTop: 2 },
+      tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 },
+      tabBarLabelStyle: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
+      tabBarItemStyle: { paddingBottom: 4 },
     }}>
       <Tabs.Screen name="index" options={{ title: 'ホーム', tabBarIcon: tabIcon({ ios: 'house', android: 'house' }) }} />
       <Tabs.Screen name="explore" options={{ title: 'カレンダー', tabBarIcon: tabIcon({ ios: 'calendar', android: 'calendar_month' }) }} />

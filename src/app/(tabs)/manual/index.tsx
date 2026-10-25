@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 
@@ -107,31 +107,31 @@ export default function ManualScreen() {
 }
 
 const styles = StyleSheet.create({
-  count: { color: palette.muted, fontSize: 14 },
+  count: { ...typography.caption, color: palette.muted },
   applianceCard: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 16, paddingVertical: 14 },
   pressed: { opacity: 0.75 },
   applianceIcon: { width: 54, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accentSoft },
   applianceIconText: { color: palette.accent, fontSize: 25, fontWeight: '700' },
   applianceCopy: { flex: 1, gap: 5 },
-  applianceName: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  applianceMeta: { color: palette.muted, fontSize: 14 },
+  applianceName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  applianceMeta: { ...typography.caption, color: palette.muted },
   chevron: { color: palette.muted, fontSize: 26, fontWeight: '300' },
   emptyCard: { paddingVertical: 24 },
-  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  emptyBody: { color: palette.muted, fontSize: 15, lineHeight: 23 },
+  emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  emptyBody: { ...typography.body, color: palette.muted },
   addButton: { width: 54, height: 54, borderRadius: 18, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accent, marginTop: 4 },
   addSymbol: { color: '#FFFFFF', fontSize: 30, lineHeight: 34, fontWeight: '400' },
-  addCaption: { color: palette.accent, fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: -9 },
+  addCaption: { ...typography.label, color: palette.accent, fontWeight: '700', textAlign: 'center', marginTop: -9 },
   secondaryActions: { gap: 3, marginTop: 7 },
   modalBackdrop: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(24, 31, 48, 0.36)' },
   modalCard: { borderRadius: 20, backgroundColor: '#FFFFFF', padding: 20, gap: 12, shadowColor: '#182038', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 12 },
-  modalTitle: { color: palette.ink, fontSize: 18, fontWeight: '800' },
-  modalHint: { color: palette.muted, fontSize: 15 },
-  modalInput: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 13, color: palette.ink, fontSize: 17 },
+  modalTitle: { ...typography.section, color: palette.ink, fontWeight: '800' },
+  modalHint: { ...typography.caption, color: palette.muted },
+  modalInput: { ...typography.body, minHeight: 54, borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 13, color: palette.ink },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 },
   modalAction: { minHeight: 42, minWidth: 94, paddingHorizontal: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accentSoft },
   modalContinue: { backgroundColor: palette.accent },
-  cancelText: { color: palette.muted, fontSize: 15, fontWeight: '700' },
-  continueText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  error: { color: palette.warning, fontSize: 15 },
+  cancelText: { ...typography.label, color: palette.muted, fontWeight: '700' },
+  continueText: { ...typography.label, color: '#FFFFFF', fontWeight: '700' },
+  error: { ...typography.label, color: palette.warning },
 });

@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
@@ -49,7 +49,7 @@ export default function ChoresScreen() {
 
   return (
     <Page>
-      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
+      <BackButton onPress={() => router.back()} />
       <ScreenHeading eyebrow="CHORES" title="家事一覧" description={`${chores.filter((chore) => chore.enabled).length}件の家事を有効にしています。検索や設定変更ができます。`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       {toggleError ? <Card><Text style={styles.error}>{toggleError}</Text></Card> : null}
@@ -129,24 +129,23 @@ function statusRank(status: string): number {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
-  search: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, color: palette.ink, fontSize: 16 },
+  search: { ...typography.body, minHeight: 54, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, color: palette.ink },
   categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   choreCard: { gap: 12 },
   applianceCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
   savedApplianceCard: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  applianceTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
+  applianceTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   choreCopy: { gap: 5 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  choreName: { flex: 1, color: palette.ink, fontSize: 18, fontWeight: '700' },
-  meta: { color: palette.muted, fontSize: 14 },
-  period: { color: palette.accent, fontSize: 14, fontWeight: '600' },
-  offTag: { color: palette.muted, backgroundColor: palette.background, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, fontWeight: '700' },
+  choreName: { ...typography.body, flex: 1, color: palette.ink, fontWeight: '700' },
+  meta: { ...typography.caption, color: palette.muted },
+  period: { ...typography.caption, color: palette.accent, fontWeight: '600' },
+  offTag: { ...typography.caption, color: palette.muted, backgroundColor: palette.background, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, fontWeight: '700' },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 8 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  switchLabel: { color: palette.muted, fontSize: 14, fontWeight: '600' },
-  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  emptyText: { color: palette.muted, fontSize: 15, lineHeight: 23 },
-  footnote: { color: palette.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  error: { color: palette.warning, fontSize: 15 },
+  switchLabel: { ...typography.caption, color: palette.muted, fontWeight: '600' },
+  emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  emptyText: { ...typography.body, color: palette.muted },
+  footnote: { ...typography.caption, color: palette.muted, textAlign: 'center' },
+  error: { ...typography.label, color: palette.warning },
 });

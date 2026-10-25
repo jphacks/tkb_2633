@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthKey } from '@/domain/scheduling/local-date';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
@@ -24,7 +24,7 @@ export default function HistoryScreen() {
 
   return (
     <Page>
-      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
+      <BackButton onPress={() => router.back()} />
       <ScreenHeading eyebrow="HISTORY" title={selectedChore ? `${selectedChore.name}の履歴` : '実施履歴'} description="完了と未完了の記録を端末内に保存します。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       <Card style={styles.summary}>
@@ -64,26 +64,25 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
   summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
-  summaryLabel: { color: palette.accent, fontSize: 14, fontWeight: '700' },
+  summaryLabel: { ...typography.label, color: palette.accent, fontWeight: '700' },
   summaryValue: { color: palette.ink, fontSize: 28, fontWeight: '800' },
-  summaryUnit: { fontSize: 15, fontWeight: '600' },
-  summaryNote: { maxWidth: 145, color: palette.muted, fontSize: 14, lineHeight: 20 },
-  count: { color: palette.muted, fontSize: 14 },
+  summaryUnit: { ...typography.caption, fontWeight: '600' },
+  summaryNote: { ...typography.caption, maxWidth: 145, color: palette.muted },
+  count: { ...typography.caption, color: palette.muted },
   emptyCard: { alignItems: 'center', paddingVertical: 26 },
   emptyMark: { color: palette.accent, fontSize: 30, fontWeight: '700' },
-  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  emptyText: { color: palette.muted, fontSize: 15, lineHeight: 23, textAlign: 'center' },
+  emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  emptyText: { ...typography.body, color: palette.muted, textAlign: 'center' },
   historyCard: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 13, paddingHorizontal: 14 },
   checkMark: { width: 32, height: 32, borderRadius: 11, backgroundColor: palette.accentSoft, alignItems: 'center', justifyContent: 'center' },
   checkText: { color: palette.accent, fontSize: 18, fontWeight: '800' },
   incompleteMark: { backgroundColor: '#F4E7E3' },
   incompleteText: { color: palette.warning },
   copy: { flex: 1, gap: 3 },
-  choreName: { color: palette.ink, fontSize: 16, fontWeight: '700' },
-  meta: { color: palette.muted, fontSize: 14 },
-  source: { color: palette.muted, fontSize: 13 },
-  footnote: { color: palette.muted, fontSize: 14, textAlign: 'center' },
-  error: { color: palette.warning, fontSize: 15 },
+  choreName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  meta: { ...typography.caption, color: palette.muted },
+  source: { ...typography.caption, color: palette.muted },
+  footnote: { ...typography.caption, color: palette.muted, textAlign: 'center' },
+  error: { ...typography.label, color: palette.warning },
 });

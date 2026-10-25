@@ -1,6 +1,9 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { typography } from './planner-typography';
+
+export { typography } from './planner-typography';
 
 export const palette = {
   background: '#FFFFFF',
@@ -46,6 +49,29 @@ export function SectionHeading({ title, trailing }: { title: string; trailing?: 
       <Text style={styles.sectionTitle}>{title}</Text>
       {trailing}
     </View>
+  );
+}
+
+export function BackButton({
+  onPress,
+  accessibilityLabel = '前の画面に戻る',
+  disabled = false,
+}: {
+  onPress: () => void;
+  accessibilityLabel?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed, disabled && styles.buttonDisabled]}>
+      <View style={styles.backIcon} aria-hidden><View style={styles.backChevron} /></View>
+      <Text style={styles.backText}>戻る</Text>
+    </Pressable>
   );
 }
 
@@ -124,12 +150,16 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.background },
   page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 15 },
   heading: { gap: 5, marginBottom: 2 },
-  eyebrow: { color: palette.accent, fontSize: 14, fontWeight: '700', letterSpacing: 1.4 },
-  title: { color: palette.ink, fontSize: 29, fontWeight: '700' },
-  description: { color: palette.muted, fontSize: 16, lineHeight: 24 },
+  eyebrow: { ...typography.caption, color: palette.accent, fontWeight: '700', letterSpacing: 1.4 },
+  title: { ...typography.title, color: palette.ink, fontWeight: '700' },
+  description: { ...typography.body, color: palette.muted },
   card: { backgroundColor: palette.surface, borderRadius: 16, borderWidth: 1, borderColor: palette.border, padding: 16, gap: 12 },
-  sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
-  sectionTitle: { color: palette.ink, fontSize: 18, fontWeight: '700' },
+  sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', columnGap: 12, rowGap: 4, marginTop: 2 },
+  sectionTitle: { ...typography.section, color: palette.ink, fontWeight: '700', flexShrink: 1 },
+  backButton: { alignSelf: 'flex-start', minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingRight: 16, gap: 6 },
+  backIcon: { width: 20, height: 24, alignItems: 'center', justifyContent: 'center' },
+  backChevron: { width: 11, height: 11, borderLeftWidth: 2.5, borderBottomWidth: 2.5, borderColor: palette.accent, transform: [{ rotate: '45deg' }] },
+  backText: { ...typography.body, color: palette.accent, fontWeight: '700' },
   button: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 10 },
   buttonCompact: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 12 },
   button_primary: { backgroundColor: palette.accent },
@@ -138,19 +168,19 @@ const styles = StyleSheet.create({
   button_danger: { backgroundColor: palette.warningSoft },
   buttonDisabled: { opacity: 0.45 },
   buttonPressed: { opacity: 0.75 },
-  buttonText: { fontSize: 17, fontWeight: '700' },
-  buttonTextCompact: { fontSize: 15 },
+  buttonText: { ...typography.label, fontWeight: '700', textAlign: 'center' },
+  buttonTextCompact: { ...typography.label },
   buttonText_primary: { color: '#FFFFFF' },
   buttonText_secondary: { color: palette.accent },
   buttonText_quiet: { color: palette.muted },
   buttonText_danger: { color: palette.warning },
   chip: { minHeight: 44, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
   chipSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
-  chipText: { color: palette.muted, fontSize: 15, fontWeight: '600' },
+  chipText: { ...typography.label, color: palette.muted, fontWeight: '600', textAlign: 'center' },
   chipTextSelected: { color: palette.accent, fontWeight: '700' },
   badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: palette.accentSoft },
   badgeWarning: { backgroundColor: palette.warningSoft },
-  badgeText: { color: palette.accent, fontSize: 14, fontWeight: '700' },
+  badgeText: { ...typography.caption, color: palette.accent, fontWeight: '700' },
   badgeTextWarning: { color: palette.warning },
-  mutedText: { color: palette.muted, fontSize: 15, lineHeight: 23 },
+  mutedText: { ...typography.caption, color: palette.muted },
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, ChoiceChip, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { LocalDate, Weekday } from '@/domain/shared/types';
 import type { WasteRecurrence, WasteScheduleInput } from './contracts';
@@ -125,22 +125,22 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
 }
 
 const styles = StyleSheet.create({
-  input: { minHeight: 50, borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, fontSize: 16, color: palette.ink, backgroundColor: palette.background },
-  label: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  body: { color: palette.muted, fontSize: 14, lineHeight: 22 },
-  error: { color: palette.warning, fontSize: 15 },
+  input: { ...typography.body, minHeight: 54, borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, color: palette.ink, backgroundColor: palette.background },
+  label: { ...typography.label, color: palette.ink, fontWeight: '700' },
+  body: { ...typography.caption, color: palette.muted },
+  error: { ...typography.label, color: palette.warning },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   weekdays: { flexDirection: 'row', gap: 5 },
-  weekday: { flex: 1, minHeight: 40, borderWidth: 1, borderColor: palette.border, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  weekday: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: palette.border, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   weekdaySelected: { backgroundColor: palette.accentSoft, borderColor: palette.accent },
-  weekdayText: { color: palette.muted, fontSize: 15, fontWeight: '700' },
+  weekdayText: { ...typography.label, color: palette.muted, fontWeight: '700' },
   weekdaySelectedText: { color: palette.accent },
   monthlyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dayInput: { width: 65, textAlign: 'center' },
   selection: { borderRadius: 13, borderWidth: 1.5, backgroundColor: '#FFFFFF', paddingHorizontal: 13, minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  selectionText: { flex: 1, color: palette.ink, fontWeight: '700', fontSize: 16 },
+  selectionText: { ...typography.body, flex: 1, color: palette.ink, fontWeight: '700' },
   suggestions: { gap: 8 },
   candidate: { minHeight: 46, borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  candidateText: { color: palette.ink, fontSize: 16, flex: 1, fontWeight: '600' },
+  candidateText: { ...typography.label, color: palette.ink, flex: 1, fontWeight: '600' },
   arrow: { color: palette.accent, fontSize: 23, lineHeight: 25 },
 });

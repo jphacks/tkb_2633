@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse, ProductVerifiedResponse } from '@/features/appliance-care/api-contracts';
 import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-client';
 import type { ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
@@ -133,7 +133,7 @@ export default function ApplianceCareScreen() {
 
   return (
     <Page>
-      <Pressable accessibilityRole="button" onPress={() => returnTo ? router.replace(returnTo) : router.back()}><Text style={styles.back}>‹  {returnTo === '/chores' ? '家事一覧' : '家電一覧'}</Text></Pressable>
+      <BackButton onPress={() => returnTo ? router.replace(returnTo) : router.back()} />
       <ScreenHeading
         eyebrow="OFFICIAL MANUAL"
         title={applianceId ? '公式資料を再解析' : '家電を追加'}
@@ -319,38 +319,37 @@ function errorTitle(error: ProductAnalysisErrorResponse): string {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
   field: { gap: 6 },
   categoryResults: { gap: 6 },
   categoryOption: { borderWidth: 1, borderColor: palette.border, borderRadius: 12, padding: 12 },
   resultNavigation: { borderWidth: 1, borderColor: palette.border, borderRadius: 16, padding: 16, gap: 6 },
-  fieldLabel: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background, fontSize: 16 },
+  fieldLabel: { ...typography.label, color: palette.ink, fontWeight: '700' },
+  input: { ...typography.body, minHeight: 54, borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
   inputReadonly: { opacity: 0.7 },
-  note: { color: palette.muted, fontSize: 14, lineHeight: 21 },
-  body: { color: palette.muted, fontSize: 15, lineHeight: 23 },
-  message: { color: palette.warning, fontSize: 15, lineHeight: 23 },
-  savedMessage: { color: palette.accent, fontSize: 15, lineHeight: 23, fontWeight: '600' },
-  resultTitle: { color: palette.ink, fontSize: 18, lineHeight: 26, fontWeight: '700' },
+  note: { ...typography.caption, color: palette.muted },
+  body: { ...typography.body, color: palette.muted },
+  message: { ...typography.body, color: palette.warning },
+  savedMessage: { ...typography.body, color: palette.accent, fontWeight: '600' },
+  resultTitle: { ...typography.section, color: palette.ink, fontWeight: '700' },
   verifiedCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
   progressCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   progressCopy: { flex: 1, gap: 4 },
-  verifiedLabel: { color: palette.accent, fontSize: 14, fontWeight: '800' },
-  link: { color: palette.accent, fontSize: 15, fontWeight: '700', textDecorationLine: 'underline' },
+  verifiedLabel: { ...typography.caption, color: palette.accent, fontWeight: '800' },
+  link: { ...typography.label, color: palette.accent, fontWeight: '700', textDecorationLine: 'underline' },
   candidate: { gap: 8, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   taskHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   checkbox: { width: 26, height: 26, borderWidth: 1.5, borderColor: palette.muted, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   checkboxSelected: { backgroundColor: palette.accent, borderColor: palette.accent },
   checkmark: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
   taskHeading: { flex: 1, gap: 3 },
-  taskIndex: { color: palette.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  taskIndex: { ...typography.caption, color: palette.accent, fontWeight: '800', letterSpacing: 1 },
   cycleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border },
   flexCopy: { flex: 1, gap: 3 },
   cycleInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, backgroundColor: palette.background },
   cycleInput: { minWidth: 54, paddingVertical: 7, color: palette.ink, textAlign: 'center', fontWeight: '700' },
-  noCycleTag: { color: '#8D682E', fontSize: 14, lineHeight: 21, fontWeight: '800' },
-  invalidLink: { color: palette.muted, fontSize: 14 },
+  noCycleTag: { ...typography.caption, color: '#8D682E', fontWeight: '800' },
+  invalidLink: { ...typography.caption, color: palette.muted },
   cautionBox: { backgroundColor: palette.warningSoft, borderRadius: 12, padding: 12, gap: 4 },
-  cautionTitle: { color: palette.warning, fontSize: 15, fontWeight: '800' },
-  cautionText: { color: palette.warning, fontSize: 14, lineHeight: 22 },
+  cautionTitle: { ...typography.body, color: palette.warning, fontWeight: '800' },
+  cautionText: { ...typography.body, color: palette.warning },
 });

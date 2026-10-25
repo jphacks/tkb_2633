@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { AppButton, Card, ChoiceChip, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import { addDays, formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { Weekday, WeatherLocation } from '@/domain/shared/types';
@@ -322,13 +322,13 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
           <>
             <AppButton title="次へ" onPress={() => setStep((current) => current + 1)} disabled={saving} />
             {step === 3 ? <AppButton title="前回の時期はスキップ" onPress={() => { setPreviousChoices({}); setStep(4); }} variant="secondary" disabled={saving} /> : null}
-            {step > 0 ? <AppButton title="戻る" onPress={() => setStep((current) => current - 1)} variant="quiet" disabled={saving} /> : null}
+            {step > 0 ? <BackButton accessibilityLabel="戻る" onPress={() => setStep((current) => current - 1)} disabled={saving} /> : null}
           </>
         ) : (
           <>
             <AppButton title={saving ? '設定中…' : '設定して始める'} onPress={() => void saveSetup(false)} disabled={saving} />
             <AppButton title="ゴミ収集日はスキップして始める" onPress={() => void saveSetup(true)} variant="secondary" disabled={saving} />
-            <AppButton title="戻る" onPress={() => setStep((current) => current - 1)} variant="quiet" disabled={saving} />
+            <BackButton accessibilityLabel="戻る" onPress={() => setStep((current) => current - 1)} disabled={saving} />
           </>
         )}
       </View>
@@ -355,39 +355,39 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', gap: 6 },
   progressDot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: palette.border },
   progressDotActive: { backgroundColor: palette.accent },
-  eyebrow: { color: palette.accent, fontSize: 14, fontWeight: '700', letterSpacing: 1.2 },
-  title: { color: palette.ink, fontSize: 25, lineHeight: 35, fontWeight: '800', marginTop: -7 },
-  body: { color: palette.muted, fontSize: 16, lineHeight: 25, marginTop: -7 },
-  label: { color: palette.ink, fontSize: 16, fontWeight: '700' },
+  eyebrow: { ...typography.caption, color: palette.accent, fontWeight: '700', letterSpacing: 1.2 },
+  title: { ...typography.title, color: palette.ink, fontWeight: '800', marginTop: -7 },
+  body: { ...typography.body, color: palette.muted, marginTop: -7 },
+  label: { ...typography.label, color: palette.ink, fontWeight: '700' },
   modeList: { gap: 9, marginTop: 3 },
   modeOption: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: palette.accent, borderRadius: 15, backgroundColor: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 11 },
   modeSelected: { backgroundColor: palette.accentSoft },
-  modeTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
+  modeTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   selectedText: { color: palette.accent },
   weekdayList: { gap: 9, marginTop: 1 },
   weekdayOption: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 15, borderWidth: 1, borderColor: palette.accent, backgroundColor: '#FFFFFF', paddingHorizontal: 15 },
   weekdaySelected: { backgroundColor: palette.accentSoft },
-  weekdayName: { color: palette.ink, fontSize: 17, fontWeight: '600' },
+  weekdayName: { ...typography.label, color: palette.ink, fontWeight: '600' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  hint: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  hint: { ...typography.caption, color: palette.muted },
   choreList: { gap: 7 },
   choreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, paddingVertical: 9 },
   choreCopy: { flex: 1, gap: 3, paddingRight: 10 },
-  choreName: { color: palette.ink, fontSize: 16, fontWeight: '600' },
-  choreCategory: { color: palette.muted, fontSize: 14 },
+  choreName: { ...typography.body, color: palette.ink, fontWeight: '600' },
+  choreCategory: { ...typography.caption, color: palette.muted },
   checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
   checkboxSelected: { backgroundColor: palette.accent, borderColor: palette.accent },
   check: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   previousCard: { gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, paddingBottom: 12 },
   weatherSearch: { gap: 10 },
-  regionInput: { minHeight: 48, borderWidth: 1, borderColor: palette.accent, borderRadius: 14, paddingHorizontal: 14, color: palette.ink, backgroundColor: '#FFFFFF', fontSize: 17 },
+  regionInput: { ...typography.body, minHeight: 54, borderWidth: 1, borderColor: palette.accent, borderRadius: 14, paddingHorizontal: 14, color: palette.ink, backgroundColor: '#FFFFFF' },
   regionResults: { gap: 8 },
   regionCandidate: { minHeight: 47, justifyContent: 'center', borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, backgroundColor: '#FFFFFF' },
   regionCandidateSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
-  regionCandidateText: { color: palette.ink, fontSize: 15, fontWeight: '600' },
-  selectedRegion: { color: palette.accent, fontSize: 15, fontWeight: '700' },
-  error: { color: palette.warning, fontSize: 15, lineHeight: 22 },
-  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
-  disclaimer: { color: palette.muted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  regionCandidateText: { ...typography.label, color: palette.ink, fontWeight: '600' },
+  selectedRegion: { ...typography.label, color: palette.accent, fontWeight: '700' },
+  error: { ...typography.label, color: palette.warning },
+  success: { ...typography.label, color: palette.accent, fontWeight: '600' },
+  disclaimer: { ...typography.caption, color: palette.muted, textAlign: 'center' },
   footer: { alignItems: 'stretch', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8 },
 });

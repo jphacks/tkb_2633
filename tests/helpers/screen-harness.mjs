@@ -39,7 +39,7 @@ export function screenHarness(filename, options = {}) {
       Platform: { OS: options.platform ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
       Linking: { openURL: async () => {} },
     },
-    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) },
     'react-native-reanimated': {
       __esModule: true, default: { View: 'AnimatedView' }, LinearTransition: transition,
       useSharedValue: (value) => hook(() => ({ value }))[0], useAnimatedStyle: (fn) => fn(), withTiming: (value) => value,

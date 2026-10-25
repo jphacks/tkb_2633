@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { AccordionSection } from '@/components/accordion-section';
 import { WasteScheduleEditor } from '@/features/waste/waste-schedule-editor';
 import { wasteScheduleDescription } from '@/features/waste/schedule-policy';
@@ -72,7 +72,7 @@ export default function WasteScreen() {
 
   return (
     <Page>
-      <Text accessibilityRole="button" onPress={() => router.back()} style={styles.back}>‹  戻る</Text>
+      <BackButton onPress={() => router.back()} />
       <ScreenHeading eyebrow="WASTE DAY" title="ゴミ収集日" description="ゴミの種類を検索して選び、曜日や周期を登録します。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
@@ -124,19 +124,18 @@ export default function WasteScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
-  count: { color: palette.muted, fontSize: 14 },
+  count: { ...typography.caption, color: palette.muted },
   scheduleCard: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   scheduleCopy: { flex: 1, minWidth: 120, gap: 4 },
-  scheduleName: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  days: { color: palette.muted, fontSize: 14 },
+  scheduleName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  days: { ...typography.caption, color: palette.muted },
   actions: { flexDirection: 'row', gap: 6 },
   occurrence: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  occurrenceCopy: { flex: 1, minWidth: 120, gap: 4 },
-  occurrenceDate: { color: palette.accent, fontSize: 16, fontWeight: '700' },
-  occurrenceLabel: { color: palette.ink, fontSize: 16, fontWeight: '600' },
-  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  body: { color: palette.muted, fontSize: 15, lineHeight: 23 },
-  error: { color: palette.warning, fontSize: 15 },
-  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
+  occurrenceCopy: { flex: 1, minWidth: 160, gap: 4 },
+  occurrenceDate: { ...typography.label, color: palette.accent, fontWeight: '700' },
+  occurrenceLabel: { ...typography.body, color: palette.ink, fontWeight: '600' },
+  emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  body: { ...typography.body, color: palette.muted },
+  error: { ...typography.label, color: palette.warning },
+  success: { ...typography.label, color: palette.accent, fontWeight: '600' },
 });

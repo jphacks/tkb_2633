@@ -2,7 +2,7 @@ import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { palette } from '@/components/planner-ui';
+import { palette, typography } from '@/components/planner-ui';
 
 export function ChoreSourceLinks({ sources }: { sources: readonly string[] | undefined }) {
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function ChoreSourceLinks({ sources }: { sources: readonly string[] | und
 
 const styles = StyleSheet.create({
   container: { gap: 6, paddingTop: 4 },
-  label: { color: palette.muted, fontSize: 14, fontWeight: '600' },
-  link: { color: palette.accent, fontSize: 14, lineHeight: 21, textDecorationLine: 'underline' },
-  error: { color: palette.warning, fontSize: 14, lineHeight: 21 },
+  label: { ...typography.caption, color: palette.muted, fontWeight: '600' },
+  link: { ...typography.caption, color: palette.accent, textDecorationLine: 'underline' },
+  error: { ...typography.caption, color: palette.warning },
 });

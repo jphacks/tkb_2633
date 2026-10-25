@@ -4,7 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import type { ApplianceCareReviewContext } from '@/platform/storage/repository';
 import { loadApplianceCareReviewContext } from '@/platform/storage/repository';
@@ -33,13 +33,13 @@ export default function ApplianceDetailScreen() {
   }, [refresh]));
 
   if (loading) return <Page><ScreenHeading eyebrow="APPLIANCE CARE" title="家電の詳細" description="保存した公式資料とお手入れ項目を読み込んでいます。" /></Page>;
-  if (!context) return <Page><ScreenHeading eyebrow="APPLIANCE CARE" title="家電が見つかりません" /><AppButton title="一覧へ戻る" onPress={() => router.replace(returnTo ?? '/manual')} /></Page>;
+  if (!context) return <Page><BackButton accessibilityLabel="一覧へ戻る" onPress={() => router.replace(returnTo ?? '/manual')} /><ScreenHeading eyebrow="APPLIANCE CARE" title="家電が見つかりません" /></Page>;
 
   const { appliance, chores } = context;
   return (
     <Page>
       <View style={styles.detailHeader}>
-        <Pressable accessibilityRole="button" accessibilityLabel="一覧へ戻る" onPress={() => returnTo ? router.replace(returnTo) : router.back()}><Text style={styles.back}>‹</Text></Pressable>
+        <BackButton accessibilityLabel="一覧へ戻る" onPress={() => returnTo ? router.replace(returnTo) : router.back()} />
         <Text style={styles.modelTitle}>{appliance.modelNumber}</Text>
       </View>
       <ScreenHeading eyebrow={appliance.manufacturer} title="お手入れ方法" description={`${appliance.displayName}の公式資料から確認した内容です。`} />
@@ -114,21 +114,20 @@ function OfficialLink({ manufacturer, title, url }: { manufacturer: string; titl
 
 const styles = StyleSheet.create({
   detailHeader: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  back: { color: palette.accent, fontSize: 32, lineHeight: 36, fontWeight: '400', paddingHorizontal: 3 },
-  modelTitle: { color: palette.ink, fontSize: 20, fontWeight: '700' },
+  modelTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   productCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
-  productMeta: { color: palette.ink, fontSize: 16, fontWeight: '700' },
-  taskIndex: { color: palette.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  taskTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  body: { color: palette.muted, fontSize: 15, lineHeight: 23 },
-  note: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  productMeta: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  taskIndex: { ...typography.caption, color: palette.accent, fontWeight: '800', letterSpacing: 1 },
+  taskTitle: { ...typography.section, color: palette.ink, fontWeight: '700' },
+  body: { ...typography.body, color: palette.muted },
+  note: { ...typography.caption, color: palette.muted },
   intervalBlock: { gap: 4, padding: 12, borderRadius: 12, backgroundColor: palette.surface },
-  intervalActual: { color: palette.accent, fontSize: 16, fontWeight: '800' },
+  intervalActual: { ...typography.body, color: palette.accent, fontWeight: '800' },
   noSchedule: { gap: 4, padding: 12, borderRadius: 12, backgroundColor: '#FFF8EC', borderWidth: 1, borderColor: '#F0E3CB' },
-  noScheduleTitle: { color: '#8D682E', fontSize: 17, fontWeight: '800' },
+  noScheduleTitle: { ...typography.body, color: '#8D682E', fontWeight: '800' },
   cautionBox: { gap: 4, padding: 12, borderRadius: 12, backgroundColor: palette.warningSoft },
-  cautionTitle: { color: palette.warning, fontSize: 15, fontWeight: '800' },
-  cautionText: { color: palette.warning, fontSize: 14, lineHeight: 22 },
-  link: { color: palette.accent, fontSize: 15, fontWeight: '700', textDecorationLine: 'underline' },
-  invalidLink: { color: palette.muted, fontSize: 14 },
+  cautionTitle: { ...typography.body, color: palette.warning, fontWeight: '800' },
+  cautionText: { ...typography.body, color: palette.warning },
+  link: { ...typography.label, color: palette.accent, fontWeight: '700', textDecorationLine: 'underline' },
+  invalidLink: { ...typography.caption, color: palette.muted },
 });

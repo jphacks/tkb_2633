@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition, ChoreLoad, LaundryDryingPreference } from '@/domain/chores/types';
 import { formatJapaneseDate, localDateFromISODateTime } from '@/domain/scheduling/local-date';
 import { PlannerLoadState } from '@/components/planner-load-state';
@@ -21,7 +21,7 @@ export default function ChoreSettingsScreen() {
   const chore = snapshot?.chores.find((item) => item.id === choreId);
 
   if (loading || !snapshot) return <PlannerLoadState title="家事ごとの設定" message="設定を読み込んでいます。" error={error} retry={refresh} />;
-  if (!chore) return <Page><ScreenHeading title="家事が見つかりません" /><AppButton title="設定へ戻る" onPress={() => router.back()} /></Page>;
+  if (!chore) return <Page><BackButton onPress={() => router.back()} /><ScreenHeading title="家事が見つかりません" /></Page>;
 
   return <ChoreSettingsContent key={chore.id} chore={chore} snapshot={snapshot} error={error} refresh={refresh} saveDefinition={(definition) => updateChoreDefinition(database, definition)} />;
 }
@@ -107,7 +107,7 @@ function ChoreSettingsContent({
 
   return (
     <Page>
-      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  設定へ戻る</Text></Pressable>
+      <BackButton onPress={() => router.back()} />
       <ScreenHeading eyebrow={chore.category.toUpperCase()} title={`${chore.name}の設定`} description="この家事の頻度や実施条件を調整できます。" />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
 
@@ -190,17 +190,16 @@ function ChoreSettingsContent({
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
-  body: { color: palette.muted, fontSize: 14, lineHeight: 22 },
+  body: { ...typography.caption, color: palette.muted },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 6 },
   settingCopy: { flex: 1, gap: 3 },
-  settingTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
+  settingTitle: { ...typography.label, color: palette.ink, fontWeight: '700' },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   numberField: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border, borderRadius: 11, paddingHorizontal: 8, backgroundColor: palette.background },
-  numberInput: { width: 44, paddingVertical: 7, textAlign: 'center', color: palette.ink, fontSize: 17, fontWeight: '700' },
-  unit: { color: palette.muted, fontSize: 14 },
+  numberInput: { ...typography.body, width: 64, paddingVertical: 8, textAlign: 'center', color: palette.ink, fontWeight: '700' },
+  unit: { ...typography.caption, color: palette.muted },
   settingBlock: { gap: 8, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  error: { color: palette.warning, fontSize: 15 },
-  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
+  error: { ...typography.label, color: palette.warning },
+  success: { ...typography.label, color: palette.accent, fontWeight: '600' },
 });

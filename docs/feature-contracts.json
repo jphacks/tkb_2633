@@ -202,5 +202,22 @@
         "name": "app configuration supports iOS and Android without a Web entry point"
       }
     ]
+  },
+  {
+    "feature": "mobile-readable-navigation",
+    "tests": [
+      {
+        "file": "tests/mobile-navigation.test.mjs",
+        "name": "mobile back controls share a readable label and touch area while preserving route callbacks"
+      },
+      {
+        "file": "tests/mobile-navigation.test.mjs",
+        "name": "mobile onboarding back control retains selections when moving backward and forward"
+      },
+      {
+        "file": "tests/mobile-navigation.test.mjs",
+        "name": "mobile tab bar reserves space for labels on phones with and without a home indicator"
+      }
+    ]
   }
 ]

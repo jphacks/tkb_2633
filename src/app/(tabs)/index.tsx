@@ -2,8 +2,10 @@ import { Tabs, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { LinearTransition } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, Page, SectionHeading, palette } from '@/components/planner-ui';
+import { Card, Page, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { plannerTabBarLayout } from '@/components/planner-tab-bar';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
@@ -18,6 +20,7 @@ import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coor
 type WeekScope = 'current' | 'next';
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   const [wasteMessage, setWasteMessage] = useState<string | null>(null);
@@ -109,7 +112,7 @@ export default function HomeScreen() {
 
   return (
     <>
-      <Tabs.Screen options={{ tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
+      <Tabs.Screen options={{ tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
       <Page contentStyle={styles.homePage}>
         {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text></Card> : null}
 
@@ -256,40 +259,40 @@ const styles = StyleSheet.create({
   helpSymbol: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', lineHeight: 29 },
   settingsSymbol: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, textAlign: 'center', top: -2 },
   actionPressed: { opacity: 0.72 },
-  date: { color: palette.muted, fontSize: 14, fontWeight: '500' },
-  title: { color: palette.ink, fontSize: 28, fontWeight: '800' },
+  date: { ...typography.caption, color: palette.muted, fontWeight: '500' },
+  title: { ...typography.title, color: palette.ink, fontWeight: '800' },
   progressCard: { backgroundColor: '#ECFAFD', borderColor: '#ECFAFD', padding: 17, gap: 10 },
   progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   progressCopy: { flex: 1, gap: 2 },
-  progressTitle: { color: palette.accent, fontSize: 15, fontWeight: '800' },
-  progressCaption: { color: palette.muted, fontSize: 14, fontWeight: '600' },
+  progressTitle: { ...typography.label, color: palette.accent, fontWeight: '800' },
+  progressCaption: { ...typography.caption, color: palette.muted, fontWeight: '600' },
   progressValue: { color: palette.accent, fontSize: 28, fontWeight: '800' },
   progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3, backgroundColor: palette.accent },
   weatherNotice: { backgroundColor: palette.accentSoft, borderColor: palette.accentSoft, gap: 4 },
-  noticeTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  noticeBody: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  noticeTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  noticeBody: { ...typography.body, color: palette.muted },
   wasteCard: { flexDirection: 'row', alignItems: 'center', padding: 13, gap: 12, backgroundColor: '#F0FAFD', borderColor: '#D9F0F8' },
   wasteCopy: { flex: 1, gap: 4 },
-  wasteEyebrow: { color: palette.accent, fontSize: 14, fontWeight: '800' },
+  wasteEyebrow: { ...typography.label, color: palette.accent, fontWeight: '800' },
   wasteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 7 },
-  wasteName: { color: palette.ink, fontSize: 15, fontWeight: '700', flex: 1 },
-  hideWaste: { color: palette.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  wasteName: { ...typography.body, color: palette.ink, fontWeight: '700', flex: 1 },
+  hideWaste: { ...typography.caption, color: palette.accent, fontWeight: '700', textDecorationLine: 'underline' },
   wasteButton: { borderRadius: 11, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 9 },
-  wasteButtonText: { color: palette.accent, fontSize: 14, fontWeight: '700' },
-  smallCount: { color: palette.muted, fontSize: 14 },
+  wasteButtonText: { ...typography.label, color: palette.accent, fontWeight: '700' },
+  smallCount: { ...typography.caption, color: palette.muted },
   emptyCard: { paddingVertical: 18 },
-  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  emptyBody: { color: palette.muted, fontSize: 14, lineHeight: 21 },
-  textLink: { color: palette.accent, fontSize: 16, lineHeight: 24, fontWeight: '700', paddingVertical: 10 },
+  emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  emptyBody: { ...typography.body, color: palette.muted },
+  textLink: { ...typography.label, color: palette.accent, fontWeight: '700', paddingVertical: 10 },
   weekSwitcher: { flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: palette.accentSoft, marginTop: 2 },
-  weekOption: { flex: 1, minHeight: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  weekOption: { flex: 1, minHeight: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   weekOptionSelected: { backgroundColor: '#FFFFFF' },
-  weekOptionText: { color: palette.muted, fontSize: 14, fontWeight: '600' },
+  weekOptionText: { ...typography.caption, color: palette.muted, fontWeight: '600' },
   weekOptionTextSelected: { color: palette.accent, fontWeight: '800' },
   dayGroup: { gap: 9, marginTop: 2 },
-  dayGroupTitle: { color: palette.muted, fontSize: 14, fontWeight: '600' },
-  quickLinks: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 4 },
-  loading: { color: palette.muted, fontSize: 15, paddingTop: 8 },
-  error: { color: palette.warning, fontSize: 15 },
+  dayGroupTitle: { ...typography.caption, color: palette.muted, fontWeight: '600' },
+  quickLinks: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 16, paddingTop: 4 },
+  loading: { ...typography.label, color: palette.muted, paddingTop: 8 },
+  error: { ...typography.label, color: palette.warning },
 });

@@ -2,7 +2,7 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { ChoreSourceLinks } from '@/components/chore-source-links';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { localDateFromDate } from '@/domain/scheduling/local-date';
@@ -96,14 +96,7 @@ export default function ChoreGuideScreen() {
   if (selectedTriviaId) {
     return (
       <Page>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="豆知識一覧に戻る"
-          onPress={returnFromTrivia}
-          style={styles.backButton}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>豆知識一覧へ戻る</Text>
-        </Pressable>
+        <BackButton accessibilityLabel="豆知識一覧に戻る" onPress={returnFromTrivia} />
         {selectedTrivia ? (
           <>
             <ScreenHeading title={selectedTrivia.trivia.title} description={selectedTrivia.chore.name} />
@@ -120,6 +113,7 @@ export default function ChoreGuideScreen() {
   if (isTriviaCollectionOpen && !selectedChoreId) {
     return (
       <Page>
+        <BackButton accessibilityLabel="家事一覧に戻る" onPress={returnFromTrivia} />
         <ScreenHeading title="豆知識" description="家事の見出しを選ぶと、知っていると便利な情報を確認できます。" />
         <TextInput
           accessibilityLabel="豆知識の見出しを検索"
@@ -132,14 +126,6 @@ export default function ChoreGuideScreen() {
           style={styles.searchInput}
           value={searchText}
         />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="家事一覧に戻る"
-          onPress={returnFromTrivia}
-          style={styles.backButton}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>家事一覧に戻る</Text>
-        </Pressable>
         <SectionHeading title="見出しを選択" trailing={<Text style={styles.resultCount}>{matchingTriviaItems.length}件</Text>} />
         {matchingTriviaItems.length > 0 ? (
           <View style={styles.choreList}>
@@ -170,6 +156,7 @@ export default function ChoreGuideScreen() {
   if (!selectedChoreId) {
     return (
       <Page>
+        {selectedCategory ? <BackButton accessibilityLabel="分類一覧に戻る" onPress={() => setSelectedCategory(null)} /> : null}
         <ScreenHeading
           title="家事の説明"
           description={selectedCategory
@@ -216,16 +203,6 @@ export default function ChoreGuideScreen() {
               </>
             ) : (
               <>
-                {selectedCategory ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="分類一覧に戻る"
-                    onPress={() => setSelectedCategory(null)}
-                    style={styles.backButton}>
-                    <Text style={styles.backArrow}>‹</Text>
-                    <Text style={styles.backText}>分類一覧へ戻る</Text>
-                  </Pressable>
-                ) : null}
                 {query ? (
                   <SectionHeading
                     title="検索結果"
@@ -265,14 +242,7 @@ export default function ChoreGuideScreen() {
 
   return (
     <Page>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="前の画面に戻る"
-        onPress={returnFromDetail}
-        style={styles.backButton}>
-        <Text style={styles.backArrow}>‹</Text>
-        <Text style={styles.backText}>戻る</Text>
-      </Pressable>
+      <BackButton accessibilityLabel="前の画面に戻る" onPress={returnFromDetail} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
       {selectedChore ? <ChoreGuide chore={selectedChore} /> : (
         <Card><Text style={styles.body}>選んだ家事が見つかりませんでした。</Text></Card>
@@ -466,40 +436,37 @@ function ProcedureStep({ step, index }: { step: string; index: number }) {
 }
 
 const styles = StyleSheet.create({
-  backButton: { alignSelf: 'flex-start', minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingRight: 14, gap: 3 },
-  backArrow: { color: palette.accent, fontSize: 34, lineHeight: 40, fontWeight: '600' },
-  backText: { color: palette.accent, fontSize: 17, fontWeight: '700' },
   choreList: { gap: 10 },
-  searchInput: { minHeight: 52, borderWidth: 1, borderColor: palette.border, borderRadius: 16, backgroundColor: '#FFFFFF', color: palette.ink, fontSize: 18, paddingHorizontal: 16 },
-  resultCount: { color: palette.muted, fontSize: 14, fontWeight: '600' },
+  searchInput: { ...typography.body, minHeight: 54, borderWidth: 1, borderColor: palette.border, borderRadius: 16, backgroundColor: '#FFFFFF', color: palette.ink, paddingHorizontal: 16 },
+  resultCount: { ...typography.caption, color: palette.muted, fontWeight: '600' },
   choreListRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: palette.border, borderRadius: 16, backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 12 },
   choreListRowPressed: { backgroundColor: palette.accentSoft },
   choreListCopy: { flex: 1, gap: 4 },
-  choreListName: { color: palette.ink, fontSize: 18, fontWeight: '700' },
-  choreListCategory: { color: palette.muted, fontSize: 14 },
+  choreListName: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  choreListCategory: { ...typography.caption, color: palette.muted },
   choreListChevron: { color: palette.accent, fontSize: 31, lineHeight: 36, fontWeight: '500', paddingLeft: 12 },
   otherChores: { gap: 8, paddingTop: 5 },
   recordActions: { gap: 4 },
   chorePicker: { gap: 8, paddingRight: 20 },
-  choreOption: { minHeight: 39, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: '#FFFFFF', paddingHorizontal: 14 },
+  choreOption: { minHeight: 44, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 8 },
   choreOptionSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
-  choreOptionText: { color: palette.muted, fontSize: 14, fontWeight: '600' },
+  choreOptionText: { ...typography.label, color: palette.muted, fontWeight: '600' },
   choreOptionTextSelected: { color: palette.accent, fontWeight: '700' },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
   procedureSection: { gap: 10 },
-  procedureTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
-  stepNumber: { width: 25, color: palette.accent, fontSize: 15, fontWeight: '800', paddingTop: 1 },
-  stepText: { flex: 1, color: palette.ink, fontSize: 16, lineHeight: 24 },
+  procedureTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  stepNumber: { ...typography.body, minWidth: 32, color: palette.accent, fontWeight: '800' },
+  stepText: { ...typography.body, flex: 1, color: palette.ink },
   toolList: { gap: 7 },
-  toolText: { color: palette.ink, fontSize: 16, lineHeight: 24 },
+  toolText: { ...typography.body, color: palette.ink },
   cautionCard: { backgroundColor: '#FBF5EB', borderColor: '#F0E4CD' },
-  cautionHeading: { color: '#8D682E', fontSize: 16, fontWeight: '700' },
-  cautionText: { color: '#765A31', fontSize: 15, lineHeight: 23 },
+  cautionHeading: { ...typography.body, color: '#8D682E', fontWeight: '700' },
+  cautionText: { ...typography.body, color: '#765A31' },
   triviaCard: { backgroundColor: palette.accentSoft, borderColor: palette.border, gap: 10 },
-  triviaHeading: { color: palette.accent, fontSize: 17, fontWeight: '800' },
+  triviaHeading: { ...typography.body, color: palette.accent, fontWeight: '800' },
   triviaItem: { gap: 5 },
-  triviaTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
-  triviaBody: { color: palette.ink, fontSize: 15, lineHeight: 23 },
-  body: { color: palette.muted, fontSize: 15, lineHeight: 23 },
-  error: { color: palette.warning, fontSize: 15 },
+  triviaTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  triviaBody: { ...typography.body, color: palette.ink },
+  body: { ...typography.body, color: palette.muted },
+  error: { ...typography.label, color: palette.warning },
 });

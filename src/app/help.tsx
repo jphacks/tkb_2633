@@ -1,14 +1,12 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
-import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 
 export default function HelpScreen() {
   return (
     <Page>
-      <Pressable accessibilityRole="button" accessibilityLabel="前の画面に戻る" onPress={() => router.back()}>
-        <Text style={styles.back}>‹  戻る</Text>
-      </Pressable>
+      <BackButton onPress={() => router.back()} />
       <ScreenHeading eyebrow="HELP" title="アプリの使い方" description="家事の予定を確認し、手順や道具を見ながら進められます。" />
 
       <Card>
@@ -48,7 +46,6 @@ export default function HelpScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 18, fontWeight: '700', paddingVertical: 4 },
-  body: { color: palette.ink, fontSize: 16, lineHeight: 25 },
-  hint: { color: palette.muted, fontSize: 14, lineHeight: 22 },
+  body: { ...typography.body, color: palette.ink },
+  hint: { ...typography.caption, color: palette.muted },
 });

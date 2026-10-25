@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
+import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { AccordionSection } from '@/components/accordion-section';
 import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
@@ -373,7 +373,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
   return (
     <Page>
-      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹  戻る</Text></Pressable>
+      <BackButton onPress={() => router.back()} />
       <ScreenHeading eyebrow="SETTINGS" title="設定" description="家事の周期やアプリの使い方を調整できます。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
@@ -717,59 +717,58 @@ function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, Cho
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
   accordionChevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28, transform: [{ rotate: '0deg' }] },
   accordionChevronExpanded: { transform: [{ rotate: '180deg' }] },
-  label: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  label: { ...typography.label, color: palette.ink, fontWeight: '700' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   weekdayRow: { width: '100%', flexDirection: 'row', flexWrap: 'nowrap', gap: 5 },
-  weekdayChip: { flex: 1, minWidth: 0, minHeight: 40, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 0 },
+  weekdayChip: { flex: 1, minWidth: 0, minHeight: 44, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 0 },
   weekdayChipSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
   weekdayChipPressed: { opacity: 0.75 },
-  weekdayChipText: { color: palette.muted, fontSize: 15, fontWeight: '600' },
+  weekdayChipText: { ...typography.label, color: palette.muted, fontWeight: '600' },
   weekdayChipTextSelected: { color: palette.accent, fontWeight: '700' },
-  hint: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  hint: { ...typography.caption, color: palette.muted },
   limitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   limitCopy: { flex: 1, gap: 3 },
   colorTier: { gap: 8, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   colorOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  colorOption: { width: 38, alignItems: 'center', gap: 3 },
-  colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  colorOption: { minWidth: 60, alignItems: 'center', gap: 3 },
+  colorSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   colorSwatchSelected: { borderColor: palette.ink },
   colorCheck: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', lineHeight: 22, textShadowColor: '#333333', textShadowRadius: 2 },
-  colorOptionLabel: { color: palette.muted, fontSize: 13 },
+  colorOptionLabel: { ...typography.caption, color: palette.muted },
   colorOptionLabelSelected: { color: palette.ink, fontWeight: '700' },
   calendarPreview: { gap: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: '#FBFCFE' },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  previewRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', gap: 8 },
   previewCell: { minWidth: 76, alignItems: 'center', gap: 2 },
-  previewDate: { color: palette.ink, fontSize: 17, fontWeight: '700' },
-  previewCount: { color: palette.muted, fontSize: 13 },
-  counter: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: palette.background, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
-  counterButton: { color: palette.accent, fontSize: 20, fontWeight: '700', paddingHorizontal: 4 },
-  counterValue: { minWidth: 18, color: palette.ink, textAlign: 'center', fontWeight: '700' },
+  previewDate: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  previewCount: { ...typography.caption, color: palette.muted },
+  counter: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: palette.background, borderRadius: 12 },
+  counterButton: { ...typography.section, minWidth: 40, lineHeight: 44, color: palette.accent, fontWeight: '700', textAlign: 'center' },
+  counterValue: { ...typography.label, minWidth: 18, color: palette.ink, textAlign: 'center', fontWeight: '700' },
   choreGroup: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   choreGroupHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  choreGroupTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
-  groupCount: { color: palette.muted, fontSize: 14, fontWeight: '600' },
+  choreGroupTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
+  groupCount: { ...typography.caption, color: palette.muted, fontWeight: '600' },
   choreSettingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   choreSettingCopy: { flex: 1, gap: 2 },
-  choreSettingTitle: { color: palette.ink, fontSize: 15, fontWeight: '600' },
+  choreSettingTitle: { ...typography.body, color: palette.ink, fontWeight: '600' },
   chevron: { color: palette.accent, fontSize: 22 },
-  regionInput: { minHeight: 44, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
+  regionInput: { ...typography.body, minHeight: 54, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
   regionResults: { gap: 7 },
   regionCandidate: { minHeight: 42, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, justifyContent: 'center', backgroundColor: palette.surface },
   regionCandidatePressed: { backgroundColor: palette.accentSoft },
   regionCandidateSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
-  regionCandidateText: { color: palette.ink, fontSize: 15, fontWeight: '600' },
+  regionCandidateText: { ...typography.label, color: palette.ink, fontWeight: '600' },
   feature: { gap: 5, paddingVertical: 2 },
   notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   weatherActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   googleActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  featureTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  featureTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  featureStatus: { color: palette.accent, fontSize: 13, fontWeight: '700', backgroundColor: palette.accentSoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
+  featureTop: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  featureTitle: { ...typography.label, color: palette.ink, fontWeight: '700' },
+  featureStatus: { ...typography.caption, color: palette.accent, fontWeight: '700', backgroundColor: palette.accentSoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: 1 },
-  footer: { color: palette.muted, fontSize: 14, textAlign: 'center' },
-  error: { color: palette.warning, fontSize: 15 },
-  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
+  footer: { ...typography.caption, color: palette.muted, textAlign: 'center' },
+  error: { ...typography.label, color: palette.warning },
+  success: { ...typography.label, color: palette.accent, fontWeight: '600' },
 });

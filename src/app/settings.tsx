@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
@@ -358,9 +358,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     setMessage(null);
     try {
       if (enabled && !(await notificationGateway.requestPermission())) {
-        setMessage(Platform.OS === 'web'
-          ? 'このブラウザでは通知を利用できません。'
-          : '通知は有効になりませんでした。端末の設定から許可できます。');
+        setMessage('通知は有効になりませんでした。端末の設定から許可できます。');
         return;
       }
       await setNotificationsEnabled(database, enabled);
@@ -476,66 +474,64 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <AppButton title={calendarColorsSaving ? '保存中…' : '表示設定を保存'} onPress={() => void saveCalendarColors()} disabled={calendarColorsSaving} />
       </AccordionSection>
 
-      {Platform.OS !== 'web' ? (
-        <AccordionSection title="Google Tasks同期" expanded={expandedSections.has('google-sync')} onToggle={() => toggleSection('google-sync')}>
-          <FeatureStatus
-            title="Google Tasks"
-            status={googleConnected ? '接続済み' : googleSyncState?.enabled ? '再認証が必要' : googleOAuthConfigured ? '未接続' : 'OAuth設定待ち'}
-            detail="家事Plannerの名前と予定日をGoogle Tasksへ反映し、完了・完了の取り消しを双方へ同期します。取り消した家事は未完了に戻り、次回予定も再計算します。"
-          />
-          {!googleOAuthConfigured ? (
-            <Text style={styles.hint}>OAuth client IDが未設定です。docs/google-sync-setup.mdの手順後、ネイティブ開発ビルドを作り直してください。</Text>
-          ) : null}
-          {googleConnected || googleSyncState?.enabled ? (
-            <>
-              <View style={styles.notificationRow}>
-                <View style={styles.limitCopy}>
-                  <Text style={styles.featureTitle}>自動同期</Text>
-                  <Text style={styles.hint}>{googleSyncState?.enabled ? '通常は1日経過後、失敗時は約1時間経過後に再試行できます。アプリ復帰時やOSが許可したバックグラウンド実行で確認します。' : '自動同期は一時停止中です。'}</Text>
-                </View>
-                <Switch value={Boolean(googleSyncState?.enabled)} disabled={googleBusy} onValueChange={(value) => void toggleGoogleSync(value)} />
+      <AccordionSection title="Google Tasks同期" expanded={expandedSections.has('google-sync')} onToggle={() => toggleSection('google-sync')}>
+        <FeatureStatus
+          title="Google Tasks"
+          status={googleConnected ? '接続済み' : googleSyncState?.enabled ? '再認証が必要' : googleOAuthConfigured ? '未接続' : 'OAuth設定待ち'}
+          detail="家事Plannerの名前と予定日をGoogle Tasksへ反映し、完了・完了の取り消しを双方へ同期します。取り消した家事は未完了に戻り、次回予定も再計算します。"
+        />
+        {!googleOAuthConfigured ? (
+          <Text style={styles.hint}>OAuth client IDが未設定です。docs/google-sync-setup.mdの手順後、ネイティブ開発ビルドを作り直してください。</Text>
+        ) : null}
+        {googleConnected || googleSyncState?.enabled ? (
+          <>
+            <View style={styles.notificationRow}>
+              <View style={styles.limitCopy}>
+                <Text style={styles.featureTitle}>自動同期</Text>
+                <Text style={styles.hint}>{googleSyncState?.enabled ? '通常は1日経過後、失敗時は約1時間経過後に再試行できます。アプリ復帰時やOSが許可したバックグラウンド実行で確認します。' : '自動同期は一時停止中です。'}</Text>
               </View>
-              <FeatureStatus
-                title="同期状態"
-                status={googleSyncState?.enabled ? googleSyncStatusLabel(googleSyncState.status) : '一時停止'}
-                detail={`最終成功同期：${formatSyncTimestamp(googleSyncState?.lastSuccessfulSyncAt)}。iOS・Androidのバックグラウンド実行はOSの判断で遅れることがあります。`}
-              />
-              <View style={styles.notificationRow}>
-                <View style={styles.limitCopy}>
-                  <Text style={styles.featureTitle}>Googleカレンダーの予定を家事日調整に使う</Text>
-                  <Text style={styles.hint}>予定のタイトルや内容は取得せず、予定が入っている時間帯だけを使って家事日を調整します。</Text>
-                  <Text style={styles.hint}>現在はGoogleアカウントのメインカレンダーを対象にします。</Text>
-                </View>
-                <Switch accessibilityLabel="Googleカレンダーの予定を家事日調整に使う"
-                  value={Boolean(calendarAvailabilityState?.enabled)} disabled={googleBusy || !googleSyncState?.enabled}
-                  onValueChange={(value) => void toggleCalendarAvailability(value)} />
+              <Switch value={Boolean(googleSyncState?.enabled)} disabled={googleBusy} onValueChange={(value) => void toggleGoogleSync(value)} />
+            </View>
+            <FeatureStatus
+              title="同期状態"
+              status={googleSyncState?.enabled ? googleSyncStatusLabel(googleSyncState.status) : '一時停止'}
+              detail={`最終成功同期：${formatSyncTimestamp(googleSyncState?.lastSuccessfulSyncAt)}。iOS・Androidのバックグラウンド実行はOSの判断で遅れることがあります。`}
+            />
+            <View style={styles.notificationRow}>
+              <View style={styles.limitCopy}>
+                <Text style={styles.featureTitle}>Googleカレンダーの予定を家事日調整に使う</Text>
+                <Text style={styles.hint}>予定のタイトルや内容は取得せず、予定が入っている時間帯だけを使って家事日を調整します。</Text>
+                <Text style={styles.hint}>現在はGoogleアカウントのメインカレンダーを対象にします。</Text>
               </View>
-              <FeatureStatus title="カレンダー連携"
-                status={calendarAvailabilityState?.status === 'permissionRequired' ? '追加の許可が必要'
-                  : !calendarAvailabilityState?.enabled ? '無効'
-                    : calendarAvailabilityState.status === 'retryPending' ? '取得失敗・再試行待ち'
-                      : calendarAvailabilityState.status === 'syncing' ? '取得中'
-                        : calendarAvailabilityState.status === 'error' ? '取得エラー' : '有効'}
-                detail={`最終取得：${formatSyncTimestamp(calendarAvailabilityState?.lastSuccessfulSyncAt)}。36時間を超えた情報は使いません。`} />
-              {calendarAvailabilityState?.status === 'permissionRequired' ? (
-                <AppButton title="カレンダーの許可を確認" onPress={() => void toggleCalendarAvailability(true)} disabled={googleBusy || !googleSyncState?.enabled} />
-              ) : null}
-              {calendarAvailabilityState?.lastErrorCode === 'calendar_api_not_enabled' ? (
-                <Text style={styles.error}>Google Calendar APIが無効です。Google Cloudのプロジェクト設定で有効にしてください。</Text>
-              ) : null}
-              {calendarAvailabilityMessage ? <Text style={styles.hint}>{calendarAvailabilityMessage}</Text> : null}
-              <View style={styles.googleActions}>
-                <AppButton title={googleBusy ? '同期中…' : googleSyncState?.status === 'authRequired' ? '再接続して同期' : '今すぐ同期'} onPress={() => void syncGoogleNow()} disabled={googleBusy || !googleSyncState?.enabled} />
-                <AppButton title="接続解除" onPress={() => void disconnectGoogle()} disabled={googleBusy} variant="danger" />
-              </View>
-            </>
-          ) : (
-            <AppButton title={googleBusy ? '接続中…' : 'Googleと接続'} onPress={() => void connectGoogle()} disabled={googleBusy || !googleOAuthConfigured} />
-          )}
-          <Text style={styles.hint}>同期する家事名と予定日をGoogleへ送信します。接続解除時もGoogle Tasks上の既存家事は削除しません。Google Tasks権限は広い範囲に適用されるため、信頼できるGoogleアカウントで接続してください。</Text>
-          {googleMessage ? <Text style={googleMessage.kind === 'success' ? styles.success : styles.error}>{googleMessage.text}</Text> : null}
-        </AccordionSection>
-      ) : null}
+              <Switch accessibilityLabel="Googleカレンダーの予定を家事日調整に使う"
+                value={Boolean(calendarAvailabilityState?.enabled)} disabled={googleBusy || !googleSyncState?.enabled}
+                onValueChange={(value) => void toggleCalendarAvailability(value)} />
+            </View>
+            <FeatureStatus title="カレンダー連携"
+              status={calendarAvailabilityState?.status === 'permissionRequired' ? '追加の許可が必要'
+                : !calendarAvailabilityState?.enabled ? '無効'
+                  : calendarAvailabilityState.status === 'retryPending' ? '取得失敗・再試行待ち'
+                    : calendarAvailabilityState.status === 'syncing' ? '取得中'
+                      : calendarAvailabilityState.status === 'error' ? '取得エラー' : '有効'}
+              detail={`最終取得：${formatSyncTimestamp(calendarAvailabilityState?.lastSuccessfulSyncAt)}。36時間を超えた情報は使いません。`} />
+            {calendarAvailabilityState?.status === 'permissionRequired' ? (
+              <AppButton title="カレンダーの許可を確認" onPress={() => void toggleCalendarAvailability(true)} disabled={googleBusy || !googleSyncState?.enabled} />
+            ) : null}
+            {calendarAvailabilityState?.lastErrorCode === 'calendar_api_not_enabled' ? (
+              <Text style={styles.error}>Google Calendar APIが無効です。Google Cloudのプロジェクト設定で有効にしてください。</Text>
+            ) : null}
+            {calendarAvailabilityMessage ? <Text style={styles.hint}>{calendarAvailabilityMessage}</Text> : null}
+            <View style={styles.googleActions}>
+              <AppButton title={googleBusy ? '同期中…' : googleSyncState?.status === 'authRequired' ? '再接続して同期' : '今すぐ同期'} onPress={() => void syncGoogleNow()} disabled={googleBusy || !googleSyncState?.enabled} />
+              <AppButton title="接続解除" onPress={() => void disconnectGoogle()} disabled={googleBusy} variant="danger" />
+            </View>
+          </>
+        ) : (
+          <AppButton title={googleBusy ? '接続中…' : 'Googleと接続'} onPress={() => void connectGoogle()} disabled={googleBusy || !googleOAuthConfigured} />
+        )}
+        <Text style={styles.hint}>同期する家事名と予定日をGoogleへ送信します。接続解除時もGoogle Tasks上の既存家事は削除しません。Google Tasks権限は広い範囲に適用されるため、信頼できるGoogleアカウントで接続してください。</Text>
+        {googleMessage ? <Text style={googleMessage.kind === 'success' ? styles.success : styles.error}>{googleMessage.text}</Text> : null}
+      </AccordionSection>
 
       <AccordionSection title="家事ごとの設定" expanded={expandedSections.has('chore-settings')} onToggle={() => toggleSection('chore-settings')}>
         <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
@@ -580,19 +576,17 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <AppButton title="ゴミ収集日を管理" onPress={() => router.push('/waste')} variant="secondary" />
       </Card>
 
-      {Platform.OS !== 'web' ? (
-        <AccordionSection title="通知・ウィジェット" expanded={expandedSections.has('notifications')} onToggle={() => toggleSection('notifications')}>
-          <View style={styles.notificationRow}>
-            <View style={styles.limitCopy}>
-              <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
-              <Text style={styles.hint}>毎朝9時に、期間の開始日・最終日・終了翌日に未完了の家事をまとめて通知します。</Text>
-            </View>
-            <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
+      <AccordionSection title="通知・ウィジェット" expanded={expandedSections.has('notifications')} onToggle={() => toggleSection('notifications')}>
+        <View style={styles.notificationRow}>
+          <View style={styles.limitCopy}>
+            <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
+            <Text style={styles.hint}>毎朝9時に、期間の開始日・最終日・終了翌日に未完了の家事をまとめて通知します。</Text>
           </View>
-          <View style={styles.divider} />
-          <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
-        </AccordionSection>
-      ) : null}
+          <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
+        </View>
+        <View style={styles.divider} />
+        <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
+      </AccordionSection>
 
       <Card>
         <SectionHeading title="天気予報・洗濯" />
@@ -659,10 +653,8 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <View style={styles.divider} />
         <FeatureStatus
           title="家電お手入れ AI"
-          status={Platform.OS === 'web' ? 'Web版では停止' : '検索操作時のみ接続'}
-          detail={Platform.OS === 'web'
-            ? 'ブラウザ版からAI解析APIへは接続しません。AI向けの指示文は残してあり、登録済みの家電情報は確認できます。'
-            : '家事一覧からメーカー・製品名・型番を入力して解析できます。APIキーはサーバー側だけで扱い、家電情報と確認済み結果は端末内に保存します。'}
+          status="検索操作時のみ接続"
+          detail="家事一覧からメーカー・製品名・型番を入力して解析できます。APIキーはサーバー側だけで扱い、家電情報と確認済み結果は端末内に保存します。"
         />
       </Card>
 
@@ -725,18 +717,18 @@ function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, Cho
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
+  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
   accordionChevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28, transform: [{ rotate: '0deg' }] },
   accordionChevronExpanded: { transform: [{ rotate: '180deg' }] },
-  label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
+  label: { color: palette.ink, fontSize: 15, fontWeight: '700' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   weekdayRow: { width: '100%', flexDirection: 'row', flexWrap: 'nowrap', gap: 5 },
   weekdayChip: { flex: 1, minWidth: 0, minHeight: 40, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 0 },
   weekdayChipSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
   weekdayChipPressed: { opacity: 0.75 },
-  weekdayChipText: { color: palette.muted, fontSize: 13, fontWeight: '600' },
+  weekdayChipText: { color: palette.muted, fontSize: 15, fontWeight: '600' },
   weekdayChipTextSelected: { color: palette.accent, fontWeight: '700' },
-  hint: { color: palette.muted, fontSize: 12, lineHeight: 18 },
+  hint: { color: palette.muted, fontSize: 14, lineHeight: 21 },
   limitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   limitCopy: { flex: 1, gap: 3 },
   colorTier: { gap: 8, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
@@ -744,40 +736,40 @@ const styles = StyleSheet.create({
   colorOption: { width: 38, alignItems: 'center', gap: 3 },
   colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   colorSwatchSelected: { borderColor: palette.ink },
-  colorCheck: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', lineHeight: 19, textShadowColor: '#333333', textShadowRadius: 2 },
-  colorOptionLabel: { color: palette.muted, fontSize: 10 },
+  colorCheck: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', lineHeight: 22, textShadowColor: '#333333', textShadowRadius: 2 },
+  colorOptionLabel: { color: palette.muted, fontSize: 13 },
   colorOptionLabelSelected: { color: palette.ink, fontWeight: '700' },
   calendarPreview: { gap: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: '#FBFCFE' },
   previewRow: { flexDirection: 'row', justifyContent: 'space-around' },
   previewCell: { minWidth: 76, alignItems: 'center', gap: 2 },
-  previewDate: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  previewCount: { color: palette.muted, fontSize: 10 },
+  previewDate: { color: palette.ink, fontSize: 17, fontWeight: '700' },
+  previewCount: { color: palette.muted, fontSize: 13 },
   counter: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: palette.background, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
   counterButton: { color: palette.accent, fontSize: 20, fontWeight: '700', paddingHorizontal: 4 },
   counterValue: { minWidth: 18, color: palette.ink, textAlign: 'center', fontWeight: '700' },
   choreGroup: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   choreGroupHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  choreGroupTitle: { color: palette.ink, fontSize: 14, fontWeight: '700' },
-  groupCount: { color: palette.muted, fontSize: 12, fontWeight: '600' },
+  choreGroupTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
+  groupCount: { color: palette.muted, fontSize: 14, fontWeight: '600' },
   choreSettingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   choreSettingCopy: { flex: 1, gap: 2 },
-  choreSettingTitle: { color: palette.ink, fontSize: 13, fontWeight: '600' },
+  choreSettingTitle: { color: palette.ink, fontSize: 15, fontWeight: '600' },
   chevron: { color: palette.accent, fontSize: 22 },
   regionInput: { minHeight: 44, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background },
   regionResults: { gap: 7 },
   regionCandidate: { minHeight: 42, borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, justifyContent: 'center', backgroundColor: palette.surface },
   regionCandidatePressed: { backgroundColor: palette.accentSoft },
   regionCandidateSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
-  regionCandidateText: { color: palette.ink, fontSize: 13, fontWeight: '600' },
+  regionCandidateText: { color: palette.ink, fontSize: 15, fontWeight: '600' },
   feature: { gap: 5, paddingVertical: 2 },
   notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   weatherActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   googleActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   featureTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  featureTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
-  featureStatus: { color: palette.accent, fontSize: 10, fontWeight: '700', backgroundColor: palette.accentSoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
+  featureTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  featureStatus: { color: palette.accent, fontSize: 13, fontWeight: '700', backgroundColor: palette.accentSoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: 1 },
-  footer: { color: palette.muted, fontSize: 11, textAlign: 'center' },
-  error: { color: palette.warning, fontSize: 13 },
-  success: { color: palette.accent, fontSize: 13, fontWeight: '600' },
+  footer: { color: palette.muted, fontSize: 14, textAlign: 'center' },
+  error: { color: palette.warning, fontSize: 15 },
+  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
 });

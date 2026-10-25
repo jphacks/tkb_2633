@@ -1,5 +1,4 @@
 import * as BackgroundTask from 'expo-background-task';
-import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import * as TaskManager from 'expo-task-manager';
 
@@ -11,7 +10,6 @@ const MINIMUM_INTERVAL_MINUTES = 60;
 
 TaskManager.defineTask(GOOGLE_SYNC_BACKGROUND_TASK, async ({ error }) => {
   if (error) return BackgroundTask.BackgroundTaskResult.Failed;
-  if (Platform.OS === 'web') return BackgroundTask.BackgroundTaskResult.Success;
 
   let database: SQLite.SQLiteDatabase | null = null;
   try {
@@ -30,7 +28,7 @@ TaskManager.defineTask(GOOGLE_SYNC_BACKGROUND_TASK, async ({ error }) => {
 });
 
 export async function registerGoogleSyncBackgroundTask(): Promise<boolean> {
-  if (Platform.OS === 'web' || !(await TaskManager.isAvailableAsync())) return false;
+  if (!(await TaskManager.isAvailableAsync())) return false;
   if (await BackgroundTask.getStatusAsync() !== BackgroundTask.BackgroundTaskStatus.Available) return false;
   const registered = await TaskManager.getRegisteredTasksAsync();
   if (!registered.some((task) => task.taskName === GOOGLE_SYNC_BACKGROUND_TASK)) {
@@ -40,7 +38,7 @@ export async function registerGoogleSyncBackgroundTask(): Promise<boolean> {
 }
 
 export async function unregisterGoogleSyncBackgroundTask(): Promise<void> {
-  if (Platform.OS === 'web' || !(await TaskManager.isAvailableAsync())) return;
+  if (!(await TaskManager.isAvailableAsync())) return;
   const registered = await TaskManager.getRegisteredTasksAsync();
   if (registered.some((task) => task.taskName === GOOGLE_SYNC_BACKGROUND_TASK)) {
     await BackgroundTask.unregisterTaskAsync(GOOGLE_SYNC_BACKGROUND_TASK);

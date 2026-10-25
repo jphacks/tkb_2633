@@ -7,6 +7,7 @@ import type { LocalDate, Weekday } from '@/domain/shared/types';
 import type { WasteRecurrence, WasteScheduleInput } from './contracts';
 import { nextWasteWeekday, normalizeWasteSchedule, wasteWeekdays } from './schedule-policy';
 import { searchWasteTypes } from './waste-types';
+import { wasteTypeColor } from './type-appearance';
 
 /** The same editor is used in first-run setup and settings so the supported modes cannot drift. */
 export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = false }: {
@@ -67,13 +68,13 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
         onChangeText={(value) => { setQuery(value); setLabel(null); setError(null); }} maxLength={80}
         placeholder="ゴミの種類を入力（例：かね）" placeholderTextColor={palette.muted} style={styles.input} returnKeyType="done" />
       {label ? (
-        <View style={styles.selection}><Text style={styles.selectionText}>{label}</Text><AppButton title="選び直す" onPress={() => setLabel(null)} variant="quiet" compact disabled={locked} /></View>
+        <View style={[styles.selection, { borderColor: wasteTypeColor(label) }]}><Text style={[styles.selectionText, { color: wasteTypeColor(label) }]}>{label}</Text><AppButton title="選び直す" onPress={() => setLabel(null)} variant="quiet" compact disabled={locked} /></View>
       ) : query.trim() ? (
         <View style={styles.suggestions}>
           <Text style={styles.label}>候補を選択</Text>
           {candidates.map((candidate) => <Pressable key={candidate.label} accessibilityRole="button" accessibilityLabel={`${candidate.label}を選択`} disabled={locked}
             onPress={() => { setQuery(candidate.label); setLabel(candidate.label); }} style={styles.candidate}>
-            <Text style={styles.candidateText}>{candidate.label}</Text><Text style={styles.arrow}>›</Text>
+            <Text style={[styles.candidateText, { color: wasteTypeColor(candidate.label) }]}>{candidate.label}</Text><Text style={styles.arrow}>›</Text>
           </Pressable>)}
           {!candidates.length ? <Pressable accessibilityRole="button" disabled={locked} onPress={() => { setQuery(query.trim()); setLabel(query.trim()); }} style={styles.candidate}>
             <Text style={styles.candidateText}>「{query.trim()}」を使う</Text><Text style={styles.arrow}>›</Text>
@@ -124,22 +125,22 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
 }
 
 const styles = StyleSheet.create({
-  input: { minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, color: palette.ink, backgroundColor: palette.background },
-  label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
-  body: { color: palette.muted, fontSize: 12, lineHeight: 19 },
-  error: { color: palette.warning, fontSize: 13 },
+  input: { minHeight: 50, borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, fontSize: 16, color: palette.ink, backgroundColor: palette.background },
+  label: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  body: { color: palette.muted, fontSize: 14, lineHeight: 22 },
+  error: { color: palette.warning, fontSize: 15 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   weekdays: { flexDirection: 'row', gap: 5 },
   weekday: { flex: 1, minHeight: 40, borderWidth: 1, borderColor: palette.border, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   weekdaySelected: { backgroundColor: palette.accentSoft, borderColor: palette.accent },
-  weekdayText: { color: palette.muted, fontSize: 13, fontWeight: '700' },
+  weekdayText: { color: palette.muted, fontSize: 15, fontWeight: '700' },
   weekdaySelectedText: { color: palette.accent },
   monthlyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dayInput: { width: 65, textAlign: 'center' },
-  selection: { borderRadius: 13, backgroundColor: palette.accentSoft, paddingHorizontal: 13, minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  selectionText: { flex: 1, color: palette.ink, fontWeight: '700', fontSize: 14 },
+  selection: { borderRadius: 13, borderWidth: 1.5, backgroundColor: '#FFFFFF', paddingHorizontal: 13, minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  selectionText: { flex: 1, color: palette.ink, fontWeight: '700', fontSize: 16 },
   suggestions: { gap: 8 },
   candidate: { minHeight: 46, borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  candidateText: { color: palette.ink, fontSize: 14, flex: 1, fontWeight: '600' },
+  candidateText: { color: palette.ink, fontSize: 16, flex: 1, fontWeight: '600' },
   arrow: { color: palette.accent, fontSize: 23, lineHeight: 25 },
 });

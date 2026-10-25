@@ -38,7 +38,7 @@ export function ChoreSourceLinks({ sources }: { sources: readonly string[] | und
 
 const styles = StyleSheet.create({
   container: { gap: 6, paddingTop: 4 },
-  label: { color: palette.muted, fontSize: 12, fontWeight: '600' },
-  link: { color: palette.accent, fontSize: 12, lineHeight: 18, textDecorationLine: 'underline' },
-  error: { color: palette.warning, fontSize: 12, lineHeight: 18 },
+  label: { color: palette.muted, fontSize: 14, fontWeight: '600' },
+  link: { color: palette.accent, fontSize: 14, lineHeight: 21, textDecorationLine: 'underline' },
+  error: { color: palette.warning, fontSize: 14, lineHeight: 21 },
 });

@@ -39,18 +39,18 @@ export const WASTE_TYPES: readonly WasteType[] = [
   { label: '使用済み食用油', aliases: ['しょくようあぶら', '廃食油', 'はいしょくゆ', '油'] },
 ];
 
-function normalize(value: string): string {
+export function normalizeWasteTypeText(value: string): string {
   return value.normalize('NFKC').toLocaleLowerCase('ja-JP')
     .replace(/[ァ-ヶ]/gu, (character) => String.fromCharCode(character.charCodeAt(0) - 0x60))
     .replace(/[\s・･、]/gu, '').replace(/ごみ/gu, '');
 }
 
 export function searchWasteTypes(query: string): readonly WasteType[] {
-  const normalized = normalize(query.trim());
+  const normalized = normalizeWasteTypeText(query.trim());
   if (!query.trim()) return [];
   if (!normalized) return WASTE_TYPES;
   return WASTE_TYPES.flatMap((item, index) => {
-    const terms = [item.label, ...item.aliases].map(normalize);
+    const terms = [item.label, ...item.aliases].map(normalizeWasteTypeText);
     const rank = terms.some((term) => term === normalized) ? 0
       : terms.some((term) => term.startsWith(normalized)) ? 1
         : terms.some((term) => term.includes(normalized)) ? 2 : -1;

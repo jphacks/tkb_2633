@@ -190,17 +190,17 @@ function ChoreSettingsContent({
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
-  body: { color: palette.muted, fontSize: 12, lineHeight: 19 },
+  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
+  body: { color: palette.muted, fontSize: 14, lineHeight: 22 },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 6 },
   settingCopy: { flex: 1, gap: 3 },
-  settingTitle: { color: palette.ink, fontSize: 14, fontWeight: '700' },
+  settingTitle: { color: palette.ink, fontSize: 16, fontWeight: '700' },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   numberField: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border, borderRadius: 11, paddingHorizontal: 8, backgroundColor: palette.background },
-  numberInput: { width: 44, paddingVertical: 7, textAlign: 'center', color: palette.ink, fontSize: 15, fontWeight: '700' },
-  unit: { color: palette.muted, fontSize: 12 },
+  numberInput: { width: 44, paddingVertical: 7, textAlign: 'center', color: palette.ink, fontSize: 17, fontWeight: '700' },
+  unit: { color: palette.muted, fontSize: 14 },
   settingBlock: { gap: 8, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  error: { color: palette.warning, fontSize: 13 },
-  success: { color: palette.accent, fontSize: 13, fontWeight: '600' },
+  error: { color: palette.warning, fontSize: 15 },
+  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
 });

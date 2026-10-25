@@ -172,16 +172,6 @@ test('feature screen contract: verified appliance analysis auto-saves maker inte
   } finally { h.connection.close(); }
 });
 
-test('feature screen contract: Web never sends appliance input to AI', async () => {
-  let requests = 0;
-  const screen = screenHarness('src/app/(tabs)/manual/appliance-care.tsx', { platform: 'web',
-    mocks: { '@/features/appliance-care/api-client': { analyzeApplianceCareRequest: async () => { requests++; } } },
-  });
-  assert.equal(screen.button('Web版ではAI解析を利用できません').props.disabled, true);
-  screen.button('Web版ではAI解析を利用できません').props.onPress(); await screen.flush();
-  assert.equal(requests, 0);
-});
-
 test('feature screen contract guard rejects a virtual removal of the waste onboarding step', async () => {
   const h = await initialContext();
   try {

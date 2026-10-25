@@ -45,7 +45,7 @@ export interface ProductAnalysisErrorResponse {
   status: 'error';
   code: 'INVALID_REQUEST' | 'RATE_LIMITED' | 'SEARCH_FAILED' | 'MANUAL_NOT_FOUND' | 'MANUAL_FETCH_FAILED'
     | 'AI_ANALYSIS_FAILED' | 'INVALID_AI_OUTPUT' | 'PRODUCT_NOT_FOUND' | 'ANALYSIS_FAILED'
-    | 'TEMPORARY_NETWORK_ERROR' | 'WEB_AI_DISABLED';
+    | 'TEMPORARY_NETWORK_ERROR';
   message: string;
 }
 

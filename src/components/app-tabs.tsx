@@ -21,13 +21,13 @@ export default function AppTabs() {
       tabBarActiveTintColor: palette.accent,
       tabBarInactiveTintColor: palette.muted,
       tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 },
-      tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+      tabBarLabelStyle: { fontSize: 14, fontWeight: '600' },
       tabBarItemStyle: { paddingTop: 2 },
     }}>
-      <Tabs.Screen name="index" options={{ title: 'ホーム', tabBarIcon: tabIcon({ ios: 'house', android: 'house', web: 'house' }) }} />
-      <Tabs.Screen name="explore" options={{ title: 'カレンダー', tabBarIcon: tabIcon({ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }) }} />
-      <Tabs.Screen name="guide" options={{ title: '家事', tabBarIcon: tabIcon({ ios: 'checklist', android: 'checklist', web: 'checklist' }) }} />
-      <Tabs.Screen name="manual" options={{ title: '家電', tabBarIcon: tabIcon({ ios: 'robotic.vacuum', android: 'vacuum', web: 'vacuum' }) }} />
+      <Tabs.Screen name="index" options={{ title: 'ホーム', tabBarIcon: tabIcon({ ios: 'house', android: 'house' }) }} />
+      <Tabs.Screen name="explore" options={{ title: 'カレンダー', tabBarIcon: tabIcon({ ios: 'calendar', android: 'calendar_month' }) }} />
+      <Tabs.Screen name="guide" options={{ title: '家事', tabBarIcon: tabIcon({ ios: 'checklist', android: 'checklist' }) }} />
+      <Tabs.Screen name="manual" options={{ title: '家電', tabBarIcon: tabIcon({ ios: 'robotic.vacuum', android: 'vacuum' }) }} />
     </Tabs>
   );
 }

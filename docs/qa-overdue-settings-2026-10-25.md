@@ -51,7 +51,7 @@ Expoの公開用Webビルドをローカル配信し、通常の画面操作だ�
 
 - コードコミット: `001a3e76d953345211a0f8b8ac01e2fa05e679af`。GitHub ActionsのCIも成功。
 - 確認済みデプロイ: `6bcssertlr`。プレビューで起動と開閉を確認後、本番へ昇格。
-- 公開URL: https://housework-planner.expo.app/
+- 当時の公開URL: https://housework-planner.expo.app/（2026年10月26日のユーザー指定により公開終了・配信データ削除）
 - 本番URLを再読み込みし、起動とカード内の開閉を確認。読み込まれた`entry-55f0092f777446c7ab9214ec1f637d97.js`が最終書き出しと一致。
 
 ![本番URLで確認した設定](qa-assets/overdue-settings-2026-10-25/settings-published.jpg)

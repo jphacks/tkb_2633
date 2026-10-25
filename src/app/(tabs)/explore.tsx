@@ -14,6 +14,7 @@ import { usePlannerData } from '@/hooks/use-planner-data';
 import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
 import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 import { wasteCalendarLabels } from '@/features/waste/calendar-labels';
+import { calendarWasteLabel, wasteTypeColor } from '@/features/waste/type-appearance';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -33,7 +34,7 @@ export default function CalendarScreen() {
   const gridStart = addDays(dates[0], -leadingCells);
   const weekCount = Math.ceil((leadingCells + dates.length) / 7);
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
-  const { weeklyByColumn, byDate: wasteByDate } = wasteCalendarLabels(snapshot.wasteSchedules, gridStart, cells[cells.length - 1], snapshot.hiddenWasteOccurrenceKeys);
+  const { weeklyByColumn, byDate: wasteByDate, hiddenWeeklyByDate } = wasteCalendarLabels(snapshot.wasteSchedules, gridStart, cells[cells.length - 1], snapshot.hiddenWasteOccurrenceKeys);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
   const recommendedCountsByDate = recommendedChoreCounts(snapshot.scheduleEntries, snapshot.completions);
   const selectedTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate, 0, snapshot.chores), selectedDate, snapshot.chores);
@@ -116,15 +117,15 @@ export default function CalendarScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="次の月" onPress={(event) => { event.stopPropagation(); moveMonth(1); }} style={styles.monthArrow}><Text style={styles.arrowText}>›</Text></Pressable>
         </View>
         {!cells.includes(selectedDate) ? <View style={styles.retainedSelectionRow}>
-          <View style={styles.retainedSelectionChip}><Text style={styles.retainedSelectionDay}>{Number(selectedDate.slice(-2))}</Text></View>
           <Text style={styles.retainedSelectionText}>{formatJapaneseDate(selectedDate, { weekday: true })}の予定を表示中</Text>
         </View> : null}
         <View style={styles.weekRow}>
           {weekdayLabels.map((label, index) => <View key={label} style={styles.weekdaySlot}>
             <View accessibilityLabel={`${label}曜日${weeklyByColumn[index].length ? `、${weeklyByColumn[index].join('・')}` : ''}`}
-              style={[styles.weekdayPill, weeklyByColumn[index].length > 0 && styles.wasteOutline]}>
+              style={[styles.weekdayPill, weeklyByColumn[index].length > 0 && styles.wasteOutline,
+                weeklyByColumn[index].length > 0 && { borderColor: wasteTypeColor(weeklyByColumn[index][0]) }]}>
               <Text style={[styles.weekday, (index === 0 || index === 6) && styles.weekend]}>{label}</Text>
-              {weeklyByColumn[index].length ? <Text numberOfLines={2} style={styles.wasteLabel}>{weeklyByColumn[index].join('・')}</Text> : null}
+              {weeklyByColumn[index].map((name) => <Text key={name} numberOfLines={2} style={[styles.wasteLabel, { color: wasteTypeColor(name) }]}>{calendarWasteLabel(name)}</Text>)}
             </View>
           </View>)}
         </View>
@@ -133,6 +134,7 @@ export default function CalendarScreen() {
           {cells.slice(week * 7, week * 7 + 7).map((date) => {
             const recommendedCount = recommendedCountsByDate.get(date) ?? 0;
             const wasteLabels = wasteByDate.get(date) ?? [];
+            const hiddenWeeklyLabels = hiddenWeeklyByDate.get(date) ?? [];
             const selected = date === selectedDate;
             const isToday = date === today;
             const inMonth = date.slice(0, 7) === `${month.year}-${String(month.monthIndex + 1).padStart(2, '0')}`;
@@ -141,7 +143,7 @@ export default function CalendarScreen() {
               <View key={date} style={styles.daySlot}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の未完了の家事${recommendedCount}件${wasteLabels.length ? `、${wasteLabels.join('・')}` : ''}`}
+                accessibilityLabel={`${formatJapaneseDate(date)}、推奨日の未完了の家事${recommendedCount}件${wasteLabels.length ? `、${wasteLabels.join('・')}` : ''}${hiddenWeeklyLabels.length ? `、非表示の収集：${hiddenWeeklyLabels.join('・')}` : ''}`}
                 accessibilityState={{ selected }}
                 onPress={(event) => {
                   event.stopPropagation();
@@ -151,9 +153,16 @@ export default function CalendarScreen() {
                     setMonth({ year: tapped.getUTCFullYear(), monthIndex: tapped.getUTCMonth() });
                   }
                 }}
-                style={[styles.dayCell, wasteLabels.length > 0 && styles.tallDayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay, wasteLabels.length > 0 && styles.wasteOutline, selected && wasteLabels.length > 0 && styles.selectedWasteDay]}>
-                <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber, selected && styles.selectedDayNumber, selected && wasteLabels.length > 0 && styles.wasteDayNumber]}>{Number(date.slice(-2))}</Text>
-                {wasteLabels.length ? <Text numberOfLines={2} style={styles.wasteLabel}>{wasteLabels.join('・')}</Text> : null}
+                style={[styles.dayCell, selected && styles.selectedDay, isToday && !selected && styles.todayDay,
+                  wasteLabels.length > 0 && styles.wasteOutline,
+                  wasteLabels.length > 0 && { borderColor: wasteTypeColor(wasteLabels[0]) },
+                  hiddenWeeklyLabels.length > 0 && styles.hiddenWeeklyDay,
+                  selected && (wasteLabels.length > 0 || hiddenWeeklyLabels.length > 0) && styles.selectedOutlinedDay,
+                  isToday && !selected && wasteLabels.length > 0 && styles.todayDay]}>
+                <Text style={[styles.dayNumber, !inMonth && styles.outsideMonth, (weekDay === 6 || weekDay === 7) && styles.weekendNumber,
+                  selected && styles.selectedDayNumber,
+                  selected && (wasteLabels.length > 0 || hiddenWeeklyLabels.length > 0) && styles.outlinedDayNumber]}>{Number(date.slice(-2))}</Text>
+                {wasteLabels.map((name) => <Text key={name} numberOfLines={2} style={[styles.wasteLabel, { color: wasteTypeColor(name) }]}>{calendarWasteLabel(name)}</Text>)}
                 <CalendarTaskCountIndicator count={recommendedCount} colors={snapshot.settings.calendarCountColors} mode={snapshot.settings.calendarCountDisplayMode} selected={selected} />
               </Pressable>
               </View>
@@ -245,51 +254,49 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  calendarCard: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14, gap: 10 },
+  calendarCard: { paddingHorizontal: 8, paddingTop: 12, paddingBottom: 14, gap: 12 },
   monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   monthArrow: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: palette.accentSoft },
   arrowText: { color: palette.accent, fontSize: 30, lineHeight: 33, fontWeight: '500' },
-  monthTitle: { color: palette.ink, fontSize: 18, fontWeight: '700' },
+  monthTitle: { color: palette.ink, fontSize: 22, fontWeight: '700' },
   weekRow: { flexDirection: 'row' },
-  weekday: { textAlign: 'center', color: palette.muted, fontSize: 11, fontWeight: '700' },
+  weekday: { textAlign: 'center', color: palette.muted, fontSize: 15, fontWeight: '700' },
   weekdaySlot: { flex: 1, paddingHorizontal: 2 },
-  weekdayPill: { minHeight: 46, justifyContent: 'flex-start', alignItems: 'center', borderRadius: 10, paddingHorizontal: 1, paddingTop: 5, paddingBottom: 3, gap: 2 },
-  wasteOutline: { borderWidth: 1.5, borderColor: '#E99B2F', backgroundColor: '#FFFFFF' },
-  wasteLabel: { maxWidth: '100%', color: '#A85A08', fontSize: 8, lineHeight: 10, fontWeight: '700', textAlign: 'center' },
-  selectedWasteDay: { borderColor: '#C97813', backgroundColor: '#FFFBF2', borderWidth: 2 },
-  wasteDayNumber: { color: '#A85A08' },
-  tallDayCell: { height: 62 },
-  retainedSelectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  retainedSelectionChip: { minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: palette.accent },
-  retainedSelectionDay: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  retainedSelectionText: { color: palette.accent, fontSize: 11, fontWeight: '700' },
+  weekdayPill: { minHeight: 62, justifyContent: 'flex-start', alignItems: 'center', borderRadius: 12, paddingHorizontal: 1, paddingVertical: 7, gap: 4, borderWidth: 1.5, borderColor: 'transparent' },
+  wasteOutline: { borderWidth: 1.5, backgroundColor: '#FFFFFF' },
+  wasteLabel: { width: '100%', fontSize: 12, lineHeight: 15, fontWeight: '700', textAlign: 'center' },
+  hiddenWeeklyDay: { borderColor: '#929BAA', backgroundColor: '#F3F4F6', borderWidth: 1.5 },
+  selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5 },
+  outlinedDayNumber: { color: '#205B79' },
+  retainedSelectionRow: { alignItems: 'center', paddingVertical: 4 },
+  retainedSelectionText: { color: palette.accent, fontSize: 15, lineHeight: 22, fontWeight: '700', textAlign: 'center' },
   weekend: { color: palette.warning },
-  grid: { gap: 5 },
-  calendarWeek: { flexDirection: 'row', alignItems: 'flex-start' },
+  grid: { gap: 6 },
+  calendarWeek: { flexDirection: 'row', alignItems: 'stretch' },
   daySlot: { flex: 1, paddingHorizontal: 2 },
-  dayCell: { width: '100%', height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 3, gap: 3 },
+  dayCell: { flex: 1, width: '100%', minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 6, paddingBottom: 5, borderWidth: 1.5, borderColor: 'transparent', gap: 4 },
   selectedDay: { backgroundColor: palette.accent },
   todayDay: { backgroundColor: palette.accentSoft },
-  dayNumber: { color: palette.ink, fontSize: 13, fontWeight: '600' },
+  dayNumber: { color: palette.ink, fontSize: 18, lineHeight: 23, fontWeight: '600' },
   outsideMonth: { color: '#B7BED0' },
   weekendNumber: { color: '#78819A' },
   selectedDayNumber: { color: '#FFFFFF' },
   periodPanel: { gap: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 11 },
   periodPanelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  periodPanelTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
-  periodPanelClose: { color: palette.accent, fontSize: 12, fontWeight: '700' },
+  periodPanelTitle: { color: palette.ink, fontSize: 16, fontWeight: '700', flex: 1 },
+  periodPanelClose: { color: palette.accent, fontSize: 15, fontWeight: '700' },
   periodDateRow: { flexDirection: 'row', paddingBottom: 1 },
-  periodDate: { width: '14.2857%', textAlign: 'center', color: palette.muted, fontSize: 10, fontWeight: '600' },
+  periodDate: { width: '14.2857%', textAlign: 'center', color: palette.muted, fontSize: 14, fontWeight: '600' },
   periodDateSelected: { color: palette.accent, fontWeight: '800' },
   periodRow: { gap: 3 },
-  periodName: { color: palette.ink, fontSize: 12, fontWeight: '700' },
+  periodName: { color: palette.ink, fontSize: 15, fontWeight: '700' },
   periodCompletedText: { color: '#858B9E', textDecorationLine: 'line-through' },
   periodTrack: { height: 8, borderRadius: 4, backgroundColor: '#EFF2F7', overflow: 'hidden' },
   periodBar: { position: 'absolute', top: 0, bottom: 0, borderRadius: 4, backgroundColor: palette.accent },
   periodBarCompleted: { backgroundColor: '#AAB1C1' },
-  periodRange: { color: palette.muted, fontSize: 10 },
-  noPeriods: { color: palette.muted, fontSize: 12, paddingVertical: 4 },
-  smallCount: { color: palette.muted, fontSize: 12 },
+  periodRange: { color: palette.muted, fontSize: 14 },
+  noPeriods: { color: palette.muted, fontSize: 15, paddingVertical: 4 },
+  smallCount: { color: palette.muted, fontSize: 14 },
   emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
   emptyText: { color: palette.muted, fontSize: 13, lineHeight: 20 },
   error: { color: palette.warning, fontSize: 13 },

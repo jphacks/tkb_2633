@@ -25,7 +25,6 @@ const exampleAssets = [
   "react-logo.png",
   "react-logo@2x.png",
   "react-logo@3x.png",
-  "tutorial-web.png",
   "tabIcons",
 ];
 

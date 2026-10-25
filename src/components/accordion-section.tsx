@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   card: { gap: 0, paddingVertical: 4, overflow: 'hidden' },
   header: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   pressed: { opacity: 0.72 },
-  title: { flex: 1, color: palette.ink, fontSize: 16, fontWeight: '700' },
+  title: { flex: 1, color: palette.ink, fontSize: 18, fontWeight: '700' },
   chevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28 },
   chevronExpanded: { transform: [{ rotate: '180deg' }] },
   clip: { overflow: 'hidden', position: 'relative' },

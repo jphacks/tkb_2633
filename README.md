@@ -957,14 +957,10 @@ MVPでは、
 
 ```bash
 npm install
-npm run web
-```
-
-またはdevelopment buildを利用します。
-
-```bash
 npm run ios
 ```
+
+Androidのdevelopment buildは次のコマンドを利用します。
 
 ```bash
 npm run android

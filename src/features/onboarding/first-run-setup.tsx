@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
@@ -16,6 +16,7 @@ import type { WasteScheduleInput } from '@/features/waste/contracts';
 import { WasteScheduleEditor } from '@/features/waste/waste-schedule-editor';
 import { wasteScheduleDescription } from '@/features/waste/schedule-policy';
 import { generateWasteCollectionDates } from '@/features/waste/weekly-scheduler';
+import { wasteTypeColor } from '@/features/waste/type-appearance';
 
 const modeOptions: { id: FrequencyMode; title: string }[] = [
   { id: 'frequent', title: 'こまめ' },
@@ -43,7 +44,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   );
   const [previousChoices, setPreviousChoices] = useState<Record<string, PreviousChoice>>({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(
-    Platform.OS !== 'web' && snapshot.settings.notificationsEnabled,
+    snapshot.settings.notificationsEnabled,
   );
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
   const [weatherLocation, setWeatherLocation] = useState<WeatherLocation | null>(snapshot.settings.weatherLocation ?? null);
@@ -58,7 +59,6 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   const wasteSequence = useRef(0);
 
   useEffect(() => {
-    if (Platform.OS === 'web') return;
     let mounted = true;
     void notificationGateway.requestPermission()
       .then((granted) => {
@@ -294,8 +294,8 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
               }} />
             <SectionHeading title="登録済み" trailing={<Text style={styles.hint}>{wasteSchedules.length}種類</Text>} />
             {!wasteSchedules.length ? <Text style={styles.hint}>収集日はまだ登録されていません。</Text> : wasteSchedules.map((schedule) => (
-              <Card key={schedule.id}>
-                <Text style={styles.choreName}>{schedule.label}</Text>
+              <Card key={schedule.id} style={{ borderLeftColor: wasteTypeColor(schedule.label), borderLeftWidth: 4 }}>
+                <Text style={[styles.choreName, { color: wasteTypeColor(schedule.label) }]}>{schedule.label}</Text>
                 <Text style={styles.hint}>{wasteScheduleDescription(schedule)}</Text>
                 <View style={styles.chipRow}>
                   <AppButton title={`${schedule.label}を編集`} onPress={() => setEditingWaste(schedule)} variant="secondary" compact />
@@ -309,7 +309,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
             <SectionHeading title="次の収集日" />
             {wasteSchedules.flatMap((schedule) => generateWasteCollectionDates({ ...schedule, id: schedule.id!, householdId: snapshot.household.id }, localDateFromDate(new Date()), addDays(localDateFromDate(new Date()), 35)))
               .sort((left, right) => left.date.localeCompare(right.date)).slice(0, 4)
-              .map((occurrence) => <Text key={`${occurrence.scheduleId}-${occurrence.date}`} style={styles.hint}>{formatJapaneseDate(occurrence.date, { weekday: true })}　{occurrence.label}</Text>)}
+              .map((occurrence) => <Text key={`${occurrence.scheduleId}-${occurrence.date}`} style={[styles.hint, { color: wasteTypeColor(occurrence.label) }]}>{formatJapaneseDate(occurrence.date, { weekday: true })}　{occurrence.label}</Text>)}
           </>
         ) : null}
 
@@ -355,39 +355,39 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', gap: 6 },
   progressDot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: palette.border },
   progressDotActive: { backgroundColor: palette.accent },
-  eyebrow: { color: palette.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
+  eyebrow: { color: palette.accent, fontSize: 14, fontWeight: '700', letterSpacing: 1.2 },
   title: { color: palette.ink, fontSize: 25, lineHeight: 35, fontWeight: '800', marginTop: -7 },
-  body: { color: palette.muted, fontSize: 14, lineHeight: 22, marginTop: -7 },
-  label: { color: palette.ink, fontSize: 14, fontWeight: '700' },
+  body: { color: palette.muted, fontSize: 16, lineHeight: 25, marginTop: -7 },
+  label: { color: palette.ink, fontSize: 16, fontWeight: '700' },
   modeList: { gap: 9, marginTop: 3 },
   modeOption: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: palette.accent, borderRadius: 15, backgroundColor: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 11 },
   modeSelected: { backgroundColor: palette.accentSoft },
-  modeTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  modeTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
   selectedText: { color: palette.accent },
   weekdayList: { gap: 9, marginTop: 1 },
   weekdayOption: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 15, borderWidth: 1, borderColor: palette.accent, backgroundColor: '#FFFFFF', paddingHorizontal: 15 },
   weekdaySelected: { backgroundColor: palette.accentSoft },
-  weekdayName: { color: palette.ink, fontSize: 15, fontWeight: '600' },
+  weekdayName: { color: palette.ink, fontSize: 17, fontWeight: '600' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  hint: { color: palette.muted, fontSize: 12, lineHeight: 18 },
+  hint: { color: palette.muted, fontSize: 14, lineHeight: 21 },
   choreList: { gap: 7 },
   choreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, paddingVertical: 9 },
   choreCopy: { flex: 1, gap: 3, paddingRight: 10 },
-  choreName: { color: palette.ink, fontSize: 14, fontWeight: '600' },
-  choreCategory: { color: palette.muted, fontSize: 11 },
+  choreName: { color: palette.ink, fontSize: 16, fontWeight: '600' },
+  choreCategory: { color: palette.muted, fontSize: 14 },
   checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
   checkboxSelected: { backgroundColor: palette.accent, borderColor: palette.accent },
-  check: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  check: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   previousCard: { gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, paddingBottom: 12 },
   weatherSearch: { gap: 10 },
-  regionInput: { minHeight: 48, borderWidth: 1, borderColor: palette.accent, borderRadius: 14, paddingHorizontal: 14, color: palette.ink, backgroundColor: '#FFFFFF', fontSize: 15 },
+  regionInput: { minHeight: 48, borderWidth: 1, borderColor: palette.accent, borderRadius: 14, paddingHorizontal: 14, color: palette.ink, backgroundColor: '#FFFFFF', fontSize: 17 },
   regionResults: { gap: 8 },
   regionCandidate: { minHeight: 47, justifyContent: 'center', borderWidth: 1, borderColor: palette.border, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, backgroundColor: '#FFFFFF' },
   regionCandidateSelected: { borderColor: palette.accent, backgroundColor: palette.accentSoft },
-  regionCandidateText: { color: palette.ink, fontSize: 13, fontWeight: '600' },
-  selectedRegion: { color: palette.accent, fontSize: 13, fontWeight: '700' },
-  error: { color: palette.warning, fontSize: 13, lineHeight: 19 },
-  success: { color: palette.accent, fontSize: 13, fontWeight: '600' },
-  disclaimer: { color: palette.muted, fontSize: 11, lineHeight: 16, textAlign: 'center' },
+  regionCandidateText: { color: palette.ink, fontSize: 15, fontWeight: '600' },
+  selectedRegion: { color: palette.accent, fontSize: 15, fontWeight: '700' },
+  error: { color: palette.warning, fontSize: 15, lineHeight: 22 },
+  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
+  disclaimer: { color: palette.muted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   footer: { alignItems: 'stretch', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8 },
 });

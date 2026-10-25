@@ -2,7 +2,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { createContext, createElement, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 
 import { millisecondsUntilNextLocalDay } from '@/domain/scheduling/local-date';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
@@ -27,7 +27,6 @@ export function PlannerDataProvider({ children }: { children: ReactNode }) {
     weather: (snapshot, canCommit) => snapshot.settings.weatherLocation
       ? applyWeatherToPlannerSnapshot(database, snapshot, canCommit) : Promise.resolve(null),
     publish: (snapshot, canPublishWidget) => {
-      if (Platform.OS === 'web') return;
       if (canPublishWidget) publishTodayWidgetSnapshot(snapshot);
       return syncDailyHouseworkDigest(expoLocalNotificationGateway, snapshot).then(() => undefined);
     },
@@ -37,7 +36,6 @@ export function PlannerDataProvider({ children }: { children: ReactNode }) {
     let appState = AppState.currentState;
     let midnightTimer: ReturnType<typeof setTimeout> | undefined;
     const syncGoogleIfDue = async () => {
-      if (Platform.OS === 'web') return;
       const state = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
       if (!state?.enabled) return;
       await registerGoogleSyncBackgroundTask().catch(() => false);

@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse, ProductVerifiedResponse } from '@/features/appliance-care/api-contracts';
@@ -61,10 +61,6 @@ export default function ApplianceCareScreen() {
 
   const analyze = async () => {
     if (savingRef.current) return;
-    if (Platform.OS === 'web') {
-      setMessage('Web版ではAIと通信しません。入力した製品情報は送信されていません。メーカー公式サイトから手動で確認してください。');
-      return;
-    }
     const request = { manufacturer, productName, modelNumber, category, ...(savedContext ? { forceReanalysis: true } : {}) };
     if (!request.modelNumber.trim()) {
       setMessage('型番を確認してください。型番を確認してから解析できます。');
@@ -157,13 +153,11 @@ export default function ApplianceCareScreen() {
         </View> : null}
         {category ? <Text style={styles.note}>選択中：{applianceCategoryLabel(category)}</Text> : null}
         {savedContext ? <Text style={styles.note}>再解析では家電の識別情報を固定します。別の製品は家事一覧から新しく登録してください。</Text> : null}
-        <Text style={styles.note}>{Platform.OS === 'web'
-          ? 'Web版ではAIとの通信を行いません。入力した製品情報は送信されません。AI向けのプロンプトはリポジトリ内に残しています。'
-          : '検索を実行すると入力した製品情報と公式資料が外部サービスへ送られます。APIキーはアプリに保存せず、接続先サーバーだけで使用します。'}</Text>
+        <Text style={styles.note}>検索を実行すると入力した製品情報と公式資料が外部サービスへ送られます。APIキーはアプリに保存せず、接続先サーバーだけで使用します。</Text>
         <AppButton
-          title={Platform.OS === 'web' ? 'Web版ではAI解析を利用できません' : loadingAppliance ? '家電を読み込んでいます…' : working ? '解析しています…' : savedContext ? '公式資料を再解析' : '公式資料を検索して解析'}
+          title={loadingAppliance ? '家電を読み込んでいます…' : working ? '解析しています…' : savedContext ? '公式資料を再解析' : '公式資料を検索して解析'}
           onPress={() => void analyze()}
-          disabled={Platform.OS === 'web' || working || loadingAppliance || (Boolean(applianceId) && !savedContext)}
+          disabled={working || loadingAppliance || (Boolean(applianceId) && !savedContext)}
         />
       </Card>
 
@@ -318,7 +312,6 @@ function getOfficialSupportUrl(manufacturer: string): string | undefined {
 }
 
 function errorTitle(error: ProductAnalysisErrorResponse): string {
-  if (error.code === 'WEB_AI_DISABLED') return 'Web版では利用できません';
   if (error.code === 'MANUAL_NOT_FOUND') return '説明書なし';
   if (error.code === 'ANALYSIS_FAILED' || error.code === 'AI_ANALYSIS_FAILED' || error.code === 'INVALID_AI_OUTPUT') return '解析失敗';
   if (error.code === 'PRODUCT_NOT_FOUND') return '製品不明';
@@ -326,38 +319,38 @@ function errorTitle(error: ProductAnalysisErrorResponse): string {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
+  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
   field: { gap: 6 },
   categoryResults: { gap: 6 },
   categoryOption: { borderWidth: 1, borderColor: palette.border, borderRadius: 12, padding: 12 },
   resultNavigation: { borderWidth: 1, borderColor: palette.border, borderRadius: 16, padding: 16, gap: 6 },
-  fieldLabel: { color: palette.ink, fontSize: 13, fontWeight: '700' },
-  input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background, fontSize: 14 },
+  fieldLabel: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 12, color: palette.ink, backgroundColor: palette.background, fontSize: 16 },
   inputReadonly: { opacity: 0.7 },
-  note: { color: palette.muted, fontSize: 11, lineHeight: 17 },
-  body: { color: palette.muted, fontSize: 13, lineHeight: 20 },
-  message: { color: palette.warning, fontSize: 13, lineHeight: 20 },
-  savedMessage: { color: palette.accent, fontSize: 13, lineHeight: 20, fontWeight: '600' },
-  resultTitle: { color: palette.ink, fontSize: 16, lineHeight: 23, fontWeight: '700' },
+  note: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  body: { color: palette.muted, fontSize: 15, lineHeight: 23 },
+  message: { color: palette.warning, fontSize: 15, lineHeight: 23 },
+  savedMessage: { color: palette.accent, fontSize: 15, lineHeight: 23, fontWeight: '600' },
+  resultTitle: { color: palette.ink, fontSize: 18, lineHeight: 26, fontWeight: '700' },
   verifiedCard: { backgroundColor: palette.accentSoft, borderColor: '#D8E7DC' },
   progressCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   progressCopy: { flex: 1, gap: 4 },
-  verifiedLabel: { color: palette.accent, fontSize: 12, fontWeight: '800' },
-  link: { color: palette.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  verifiedLabel: { color: palette.accent, fontSize: 14, fontWeight: '800' },
+  link: { color: palette.accent, fontSize: 15, fontWeight: '700', textDecorationLine: 'underline' },
   candidate: { gap: 8, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border },
   taskHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   checkbox: { width: 26, height: 26, borderWidth: 1.5, borderColor: palette.muted, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   checkboxSelected: { backgroundColor: palette.accent, borderColor: palette.accent },
   checkmark: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
   taskHeading: { flex: 1, gap: 3 },
-  taskIndex: { color: palette.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  taskIndex: { color: palette.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
   cycleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border },
   flexCopy: { flex: 1, gap: 3 },
   cycleInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, backgroundColor: palette.background },
   cycleInput: { minWidth: 54, paddingVertical: 7, color: palette.ink, textAlign: 'center', fontWeight: '700' },
-  noCycleTag: { color: '#8D682E', fontSize: 12, lineHeight: 18, fontWeight: '800' },
-  invalidLink: { color: palette.muted, fontSize: 11 },
+  noCycleTag: { color: '#8D682E', fontSize: 14, lineHeight: 21, fontWeight: '800' },
+  invalidLink: { color: palette.muted, fontSize: 14 },
   cautionBox: { backgroundColor: palette.warningSoft, borderRadius: 12, padding: 12, gap: 4 },
-  cautionTitle: { color: palette.warning, fontSize: 13, fontWeight: '800' },
-  cautionText: { color: palette.warning, fontSize: 12, lineHeight: 19 },
+  cautionTitle: { color: palette.warning, fontSize: 15, fontWeight: '800' },
+  cautionText: { color: palette.warning, fontSize: 14, lineHeight: 22 },
 });

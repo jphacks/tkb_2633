@@ -6,6 +6,7 @@ import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@
 import { AccordionSection } from '@/components/accordion-section';
 import { WasteScheduleEditor } from '@/features/waste/waste-schedule-editor';
 import { wasteScheduleDescription } from '@/features/waste/schedule-policy';
+import { wasteTypeColor } from '@/features/waste/type-appearance';
 import type { WasteScheduleInput } from '@/features/waste/contracts';
 import { formatJapaneseDate, localDateFromDate } from '@/domain/scheduling/local-date';
 import { PlannerLoadState } from '@/components/planner-load-state';
@@ -82,9 +83,9 @@ export default function WasteScreen() {
       {snapshot.wasteSchedules.length === 0 ? (
         <Card><Text style={styles.emptyTitle}>ゴミの曜日はまだありません</Text><Text style={styles.body}>収集区分と曜日を追加すると、次の収集日を表示します。</Text></Card>
       ) : snapshot.wasteSchedules.map((schedule) => (
-        <Card key={schedule.id} style={styles.scheduleCard}>
+        <Card key={schedule.id} style={[styles.scheduleCard, { borderLeftColor: wasteTypeColor(schedule.label), borderLeftWidth: 4 }]}>
           <View style={styles.scheduleCopy}>
-            <Text style={styles.scheduleName}>{schedule.label}</Text>
+            <Text style={[styles.scheduleName, { color: wasteTypeColor(schedule.label) }]}>{schedule.label}</Text>
             <Text style={styles.days}>{wasteScheduleDescription(schedule)}</Text>
           </View>
           <View style={styles.actions}>
@@ -96,10 +97,10 @@ export default function WasteScreen() {
 
       <AccordionSection title="次の収集日" expanded={expandedUpcoming} onToggle={() => setExpandedUpcoming((value) => !value)}>
       {nextSevenDays.length === 0 ? <Card><Text style={styles.body}>表示できる収集日はありません。曜日を登録してください。</Text></Card> : nextSevenDays.map((occurrence) => (
-        <Card key={`${occurrence.scheduleId}-${occurrence.date}`} style={styles.occurrence}>
+        <Card key={`${occurrence.scheduleId}-${occurrence.date}`} style={[styles.occurrence, { borderLeftColor: wasteTypeColor(occurrence.label), borderLeftWidth: 4 }]}>
           <View style={styles.occurrenceCopy}>
             <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
-            <Text style={styles.occurrenceLabel}>{occurrence.label}</Text>
+            <Text style={[styles.occurrenceLabel, { color: wasteTypeColor(occurrence.label) }]}>{occurrence.label}</Text>
           </View>
           <AppButton title="今回は表示しない" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, true)} variant="quiet" disabled={updatingOccurrence} compact />
         </Card>
@@ -113,7 +114,7 @@ export default function WasteScreen() {
         <Card key={`${occurrence.scheduleId}-${occurrence.date}`} style={styles.occurrence}>
           <View style={styles.occurrenceCopy}>
             <Text style={styles.occurrenceDate}>{formatJapaneseDate(occurrence.date, { weekday: true })}</Text>
-            <Text style={styles.occurrenceLabel}>{occurrence.label}</Text>
+            <Text style={[styles.occurrenceLabel, { color: wasteTypeColor(occurrence.label) }]}>{occurrence.label}</Text>
           </View>
           <AppButton title="再表示" onPress={() => void setOccurrenceHidden(occurrence.scheduleId, occurrence.date, false)} variant="secondary" disabled={updatingOccurrence} compact />
         </Card>
@@ -123,19 +124,19 @@ export default function WasteScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
-  count: { color: palette.muted, fontSize: 12 },
-  scheduleCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  scheduleCopy: { flex: 1, gap: 4 },
-  scheduleName: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  days: { color: palette.muted, fontSize: 12 },
+  back: { color: palette.accent, fontSize: 16, fontWeight: '700', paddingVertical: 3 },
+  count: { color: palette.muted, fontSize: 14 },
+  scheduleCard: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  scheduleCopy: { flex: 1, minWidth: 120, gap: 4 },
+  scheduleName: { color: palette.ink, fontSize: 17, fontWeight: '700' },
+  days: { color: palette.muted, fontSize: 14 },
   actions: { flexDirection: 'row', gap: 6 },
-  occurrence: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  occurrenceCopy: { flex: 1, gap: 4 },
-  occurrenceDate: { color: palette.accent, fontSize: 14, fontWeight: '700' },
-  occurrenceLabel: { color: palette.ink, fontSize: 14, fontWeight: '600' },
-  emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  body: { color: palette.muted, fontSize: 13, lineHeight: 20 },
-  error: { color: palette.warning, fontSize: 13 },
-  success: { color: palette.accent, fontSize: 13, fontWeight: '600' },
+  occurrence: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  occurrenceCopy: { flex: 1, minWidth: 120, gap: 4 },
+  occurrenceDate: { color: palette.accent, fontSize: 16, fontWeight: '700' },
+  occurrenceLabel: { color: palette.ink, fontSize: 16, fontWeight: '600' },
+  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
+  body: { color: palette.muted, fontSize: 15, lineHeight: 23 },
+  error: { color: palette.warning, fontSize: 15 },
+  success: { color: palette.accent, fontSize: 15, fontWeight: '600' },
 });

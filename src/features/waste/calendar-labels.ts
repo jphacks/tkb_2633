@@ -9,12 +9,19 @@ export function wasteCalendarLabels(
 ) {
   const weeklyByColumn: string[][] = Array.from({ length: 7 }, () => []);
   const byDate = new Map<LocalDate, string[]>();
+  const hiddenWeeklyByDate = new Map<LocalDate, string[]>();
   const hidden = new Set(hiddenOccurrenceKeys);
   for (const schedule of schedules) {
     if ((schedule.recurrence ?? 'weekly') === 'weekly') {
       for (const day of schedule.collectionWeekdays) {
         const labels = weeklyByColumn[day % 7];
         if (labels && !labels.includes(schedule.label)) labels.push(schedule.label);
+      }
+      for (const occurrence of generateWasteCollectionDates(schedule, from, through)) {
+        if (!hidden.has(`${schedule.id}:${occurrence.date}`)) continue;
+        const labels = hiddenWeeklyByDate.get(occurrence.date) ?? [];
+        if (!labels.includes(schedule.label)) labels.push(schedule.label);
+        hiddenWeeklyByDate.set(occurrence.date, labels);
       }
     } else {
       for (const occurrence of generateWasteCollectionDates(schedule, from, through)) {
@@ -25,5 +32,5 @@ export function wasteCalendarLabels(
       }
     }
   }
-  return { weeklyByColumn, byDate };
+  return { weeklyByColumn, byDate, hiddenWeeklyByDate };
 }

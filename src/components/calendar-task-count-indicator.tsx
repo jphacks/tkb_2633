@@ -31,8 +31,8 @@ export function CalendarTaskCountIndicator({ count, colors, mode, selected = fal
 }
 
 const styles = StyleSheet.create({
-  container: { minHeight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },
-  bar: { width: 14, height: 3, borderRadius: 2 },
-  dot: { width: 4, height: 4, borderRadius: 2 },
+  container: { minHeight: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1 },
+  bar: { width: 18, height: 4, borderRadius: 2 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
   selectedMarker: { borderColor: '#FFFFFF', borderWidth: 0.5 },
 });

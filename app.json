@@ -5,8 +5,7 @@
     "version": "1.0.0",
     "platforms": [
       "ios",
-      "android",
-      "web"
+      "android"
     ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -26,21 +25,8 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": {
-      "bundler": "metro",
-      "output": "single",
-      "favicon": "./assets/images/favicon.png"
-    },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "headers": {
-            "Cross-Origin-Embedder-Policy": "credentialless",
-            "Cross-Origin-Opener-Policy": "same-origin"
-          }
-        }
-      ],
+      "expo-router",
       [
         "expo-splash-screen",
         {
@@ -85,15 +71,6 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {
-        "headers": {
-          "Cross-Origin-Embedder-Policy": "credentialless",
-          "Cross-Origin-Opener-Policy": "same-origin"
-        },
-        "asyncRoutes": {
-          "web": true
-        }
-      },
       "eas": {
         "build": {
           "experimental": {

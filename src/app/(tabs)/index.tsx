@@ -11,6 +11,7 @@ import { orderDateTasks, selectDateTasks, type DateTask } from '@/domain/schedul
 import { addDays, formatJapaneseDate, localDateFromDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
+import { wasteTypeColor } from '@/features/waste/type-appearance';
 import { completeChore, setWasteOccurrenceHidden, undoCompletedChore } from '@/platform/storage/repository';
 import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 
@@ -156,7 +157,7 @@ export default function HomeScreen() {
             <Text style={styles.wasteEyebrow}>今日のゴミ収集</Text>
             {todayWaste.map((item) => (
               <View key={`${item.scheduleId}-${item.date}`} style={styles.wasteRow}>
-                <Text style={styles.wasteName}>{item.label}</Text>
+                <Text style={[styles.wasteName, { color: wasteTypeColor(item.label) }]}>{item.label}</Text>
                 <Pressable accessibilityRole="button" onPress={() => void hideWasteOccurrence(item.scheduleId, item.date)}>
                   <Text style={styles.hideWaste}>今回だけ非表示</Text>
                 </Pressable>
@@ -255,40 +256,40 @@ const styles = StyleSheet.create({
   helpSymbol: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', lineHeight: 29 },
   settingsSymbol: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, textAlign: 'center', top: -2 },
   actionPressed: { opacity: 0.72 },
-  date: { color: palette.muted, fontSize: 11, fontWeight: '500' },
+  date: { color: palette.muted, fontSize: 14, fontWeight: '500' },
   title: { color: palette.ink, fontSize: 28, fontWeight: '800' },
   progressCard: { backgroundColor: '#ECFAFD', borderColor: '#ECFAFD', padding: 17, gap: 10 },
   progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   progressCopy: { flex: 1, gap: 2 },
-  progressTitle: { color: palette.accent, fontSize: 13, fontWeight: '800' },
-  progressCaption: { color: palette.muted, fontSize: 11, fontWeight: '600' },
+  progressTitle: { color: palette.accent, fontSize: 15, fontWeight: '800' },
+  progressCaption: { color: palette.muted, fontSize: 14, fontWeight: '600' },
   progressValue: { color: palette.accent, fontSize: 28, fontWeight: '800' },
   progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3, backgroundColor: palette.accent },
   weatherNotice: { backgroundColor: palette.accentSoft, borderColor: palette.accentSoft, gap: 4 },
-  noticeTitle: { color: palette.ink, fontSize: 13, fontWeight: '700' },
-  noticeBody: { color: palette.muted, fontSize: 12, lineHeight: 18 },
+  noticeTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
+  noticeBody: { color: palette.muted, fontSize: 14, lineHeight: 21 },
   wasteCard: { flexDirection: 'row', alignItems: 'center', padding: 13, gap: 12, backgroundColor: '#F0FAFD', borderColor: '#D9F0F8' },
   wasteCopy: { flex: 1, gap: 4 },
-  wasteEyebrow: { color: palette.accent, fontSize: 11, fontWeight: '800' },
+  wasteEyebrow: { color: palette.accent, fontSize: 14, fontWeight: '800' },
   wasteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 7 },
-  wasteName: { color: palette.ink, fontSize: 13, fontWeight: '700', flex: 1 },
-  hideWaste: { color: palette.accent, fontSize: 10, fontWeight: '700', textDecorationLine: 'underline' },
+  wasteName: { color: palette.ink, fontSize: 15, fontWeight: '700', flex: 1 },
+  hideWaste: { color: palette.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   wasteButton: { borderRadius: 11, backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 9 },
-  wasteButtonText: { color: palette.accent, fontSize: 12, fontWeight: '700' },
-  smallCount: { color: palette.muted, fontSize: 11 },
+  wasteButtonText: { color: palette.accent, fontSize: 14, fontWeight: '700' },
+  smallCount: { color: palette.muted, fontSize: 14 },
   emptyCard: { paddingVertical: 18 },
-  emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: '700' },
-  emptyBody: { color: palette.muted, fontSize: 12, lineHeight: 18 },
-  textLink: { color: palette.accent, fontSize: 12, fontWeight: '700', paddingVertical: 4 },
+  emptyTitle: { color: palette.ink, fontSize: 17, fontWeight: '700' },
+  emptyBody: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  textLink: { color: palette.accent, fontSize: 16, lineHeight: 24, fontWeight: '700', paddingVertical: 10 },
   weekSwitcher: { flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: palette.accentSoft, marginTop: 2 },
   weekOption: { flex: 1, minHeight: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   weekOptionSelected: { backgroundColor: '#FFFFFF' },
-  weekOptionText: { color: palette.muted, fontSize: 12, fontWeight: '600' },
+  weekOptionText: { color: palette.muted, fontSize: 14, fontWeight: '600' },
   weekOptionTextSelected: { color: palette.accent, fontWeight: '800' },
   dayGroup: { gap: 9, marginTop: 2 },
-  dayGroupTitle: { color: palette.muted, fontSize: 11, fontWeight: '600' },
+  dayGroupTitle: { color: palette.muted, fontSize: 14, fontWeight: '600' },
   quickLinks: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 4 },
-  loading: { color: palette.muted, fontSize: 13, paddingTop: 8 },
-  error: { color: palette.warning, fontSize: 13 },
+  loading: { color: palette.muted, fontSize: 15, paddingTop: 8 },
+  error: { color: palette.warning, fontSize: 15 },
 });

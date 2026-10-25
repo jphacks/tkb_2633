@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const { resolve } = require('metro-resolver');
 const directory = fileURLToPath(new URL('../src/platform/widgets/', import.meta.url));
 
-for (const platform of ['ios', 'android', 'web']) {
+for (const platform of ['ios', 'android']) {
   test(`Metro resolves the ${platform} widget implementation rather than the fallback stub`, () => {
     const result = resolve({
       originModulePath: join(directory, 'expo-widget-gateway.ts'),
@@ -23,6 +23,6 @@ for (const platform of ['ios', 'android', 'web']) {
       },
     }, './NextChoreWidget', platform);
     assert.equal(dirname(result.filePath), directory.replace(/\/$/, ''));
-    assert.ok(result.filePath.endsWith(`NextChoreWidget.${platform}.${platform === 'web' ? 'ts' : 'tsx'}`));
+    assert.ok(result.filePath.endsWith(`NextChoreWidget.${platform}.tsx`));
   });
 }

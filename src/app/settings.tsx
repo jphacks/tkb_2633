@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
@@ -149,7 +149,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     setMessage(null);
     try {
       if (enabled && !(await notificationGateway.requestPermission())) {
-        setMessage('通知は有効になりませんでした。端末の設定から許可できます。');
+        setMessage(Platform.OS === 'web'
+          ? 'このブラウザでは通知を利用できません。'
+          : '通知は有効になりませんでした。端末の設定から許可できます。');
         return;
       }
       await setNotificationsEnabled(database, enabled);
@@ -311,18 +313,20 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         <AppButton title="ゴミの曜日を管理" onPress={() => router.push('/waste')} variant="secondary" />
       </Card>
 
-      <Card>
-        <SectionHeading title="通知・ウィジェット" />
-        <View style={styles.notificationRow}>
-          <View style={styles.limitCopy}>
-            <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
-            <Text style={styles.hint}>毎朝9時に、期間の開始日・最終日・終了翌日に未完了の家事をまとめて通知します。</Text>
+      {Platform.OS !== 'web' ? (
+        <Card>
+          <SectionHeading title="通知・ウィジェット" />
+          <View style={styles.notificationRow}>
+            <View style={styles.limitCopy}>
+              <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
+              <Text style={styles.hint}>毎朝9時に、期間の開始日・最終日・終了翌日に未完了の家事をまとめて通知します。</Text>
+            </View>
+            <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
           </View>
-          <Switch value={snapshot.settings.notificationsEnabled} disabled={notificationUpdating} onValueChange={(value) => void toggleNotifications(value)} />
-        </View>
-        <View style={styles.divider} />
-        <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
-      </Card>
+          <View style={styles.divider} />
+          <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
+        </Card>
+      ) : null}
 
       <Card>
         <SectionHeading title="天気予報・洗濯" />
@@ -387,7 +391,13 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <Text style={weatherMessage.kind === 'success' ? styles.success : styles.error}>{weatherMessage.text}</Text>
         ) : null}
         <View style={styles.divider} />
-        <FeatureStatus title="家電お手入れ AI" status="検索操作時のみ接続" detail="家事一覧からメーカー・製品名・型番を入力して解析できます。APIキーはサーバー側だけで扱い、家電情報と確認済み結果は端末内に保存します。" />
+        <FeatureStatus
+          title="家電お手入れ AI"
+          status={Platform.OS === 'web' ? 'Web版では停止' : '検索操作時のみ接続'}
+          detail={Platform.OS === 'web'
+            ? 'ブラウザ版からAI解析APIへは接続しません。AI向けの指示文は残してあり、登録済みの家電情報は確認できます。'
+            : '家事一覧からメーカー・製品名・型番を入力して解析できます。APIキーはサーバー側だけで扱い、家電情報と確認済み結果は端末内に保存します。'}
+        />
       </Card>
 
       <Text style={styles.footer}>家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。</Text>

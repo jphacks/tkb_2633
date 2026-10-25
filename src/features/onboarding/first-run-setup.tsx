@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
@@ -38,7 +38,9 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
     new Set(availableChores.filter((chore) => chore.enabled).map((chore) => chore.id)),
   );
   const [previousChoices, setPreviousChoices] = useState<Record<string, PreviousChoice>>({});
-  const [notificationsEnabled, setNotificationsEnabled] = useState(snapshot.settings.notificationsEnabled);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    Platform.OS !== 'web' && snapshot.settings.notificationsEnabled,
+  );
   const [weatherRegion, setWeatherRegion] = useState(snapshot.settings.weatherLocation?.region ?? '');
   const [weatherLocation, setWeatherLocation] = useState<WeatherLocation | null>(snapshot.settings.weatherLocation ?? null);
   const [weatherSearchEnabled, setWeatherSearchEnabled] = useState(false);
@@ -49,6 +51,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     let mounted = true;
     void notificationGateway.requestPermission()
       .then((granted) => {

@@ -1,12 +1,12 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
-import { addUserInteractionListener } from 'expo-widgets';
 import { useCallback, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { initializeLocalDatabase } from '@/platform/storage/repository';
 import { syncDailyHouseworkDigest } from '@/features/notifications/daily-housework-digest';
 import { refreshPlannerFromWidget } from '@/platform/widgets/refresh-planner-from-widget';
+import { addWidgetUserInteractionListener } from '../platform/widgets/widget-interaction-listener';
 import { expoLocalNotificationGateway } from '@/platform/notifications/expo-local-notification-gateway';
 import '@/platform/notifications/configure-foreground-notifications';
 
@@ -23,7 +23,7 @@ function WidgetInteractionBridge() {
   }, [database]);
 
   useEffect(() => {
-    const interactionSubscription = addUserInteractionListener((event) => {
+    const interactionSubscription = addWidgetUserInteractionListener((event) => {
       const prefix = 'complete:';
       if (event.source === 'NextChoreWidget' && event.target.startsWith(prefix)) {
         void processCompletion(event.target.slice(prefix.length));

@@ -462,6 +462,12 @@ OpenAI APIキーはモバイルアプリへ埋め込まず、APIサーバー側�
 - iOS SwiftUI Widget
 - Android Jetpack Compose Widget
 
+## Web
+
+ブラウザ版は `npm run web` で起動できます。データはブラウザ内のSQLiteに保存され、iOS・Androidの端末データとは自動同期されません。
+
+ブラウザ版では端末通知とホーム画面ウィジェットを表示・実行しません。家電AIの検索・解析APIへも接続せず、入力した製品情報は送信されません。AI向けの指示文はサーバーの解析ソースに残しています。登録済み家電の閲覧や、その他のローカル家事管理は利用できます。
+
 ## External API
 
 - Open-Meteo

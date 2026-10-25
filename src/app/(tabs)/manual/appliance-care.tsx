@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse } from '@/features/appliance-care/api-contracts';
@@ -54,6 +54,10 @@ export default function ApplianceCareScreen() {
   const verified = result?.status === 'verified' ? result : undefined;
 
   const analyze = async () => {
+    if (Platform.OS === 'web') {
+      setMessage('Web版ではAIと通信しません。入力した製品情報は送信されていません。メーカー公式サイトから手動で確認してください。');
+      return;
+    }
     const request = { manufacturer, productName, modelNumber, category };
     if (!request.modelNumber.trim()) {
       setMessage('型番を確認してください。型番を確認してから解析できます。');
@@ -150,8 +154,14 @@ export default function ApplianceCareScreen() {
         {getOfficialSupportUrl(manufacturer) ? <ExternalLink title="メーカー公式サイトで型番を確認する ↗" url={getOfficialSupportUrl(manufacturer)!} manufacturer={manufacturer} /> : null}
         <Field label="カテゴリ（任意）" value={category} onChangeText={setCategory} placeholder="例：vacuum_cleaner" editable={!savedContext} />
         {savedContext ? <Text style={styles.note}>再解析では家電の識別情報を固定します。別の製品は家事一覧から新しく登録してください。</Text> : null}
-        <Text style={styles.note}>検索を実行すると入力した製品情報と公式資料が外部サービスへ送られます。APIキーはアプリに保存せず、接続先サーバーだけで使用します。</Text>
-        <AppButton title={loadingAppliance ? '家電を読み込んでいます…' : working ? '解析しています…' : savedContext ? '公式資料を再解析' : '公式資料を検索して解析'} onPress={() => void analyze()} disabled={working || loadingAppliance || (Boolean(applianceId) && !savedContext)} />
+        <Text style={styles.note}>{Platform.OS === 'web'
+          ? 'Web版ではAIとの通信を行いません。入力した製品情報は送信されません。AI向けのプロンプトはリポジトリ内に残しています。'
+          : '検索を実行すると入力した製品情報と公式資料が外部サービスへ送られます。APIキーはアプリに保存せず、接続先サーバーだけで使用します。'}</Text>
+        <AppButton
+          title={Platform.OS === 'web' ? 'Web版ではAI解析を利用できません' : loadingAppliance ? '家電を読み込んでいます…' : working ? '解析しています…' : savedContext ? '公式資料を再解析' : '公式資料を検索して解析'}
+          onPress={() => void analyze()}
+          disabled={Platform.OS === 'web' || working || loadingAppliance || (Boolean(applianceId) && !savedContext)}
+        />
       </Card>
 
       {working ? (
@@ -302,6 +312,7 @@ function getOfficialSupportUrl(manufacturer: string): string | undefined {
 }
 
 function errorTitle(error: ProductAnalysisErrorResponse): string {
+  if (error.code === 'WEB_AI_DISABLED') return 'Web版では利用できません';
   if (error.code === 'MANUAL_NOT_FOUND') return '説明書なし';
   if (error.code === 'ANALYSIS_FAILED' || error.code === 'AI_ANALYSIS_FAILED' || error.code === 'INVALID_AI_OUTPUT') return '解析失敗';
   if (error.code === 'PRODUCT_NOT_FOUND') return '製品不明';

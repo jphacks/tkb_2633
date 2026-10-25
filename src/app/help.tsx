@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 
@@ -32,14 +32,20 @@ export default function HelpScreen() {
 
       <Card>
         <SectionHeading title="家電" />
-        <Text style={styles.body}>メーカー名・製品名・型番から家電を登録し、確認できた公式情報やお手入れ内容を参照できます。</Text>
-        <Text style={styles.hint}>公式情報の確認にはインターネット接続が必要です。</Text>
+        <Text style={styles.body}>{Platform.OS === 'web'
+          ? '登録済み家電の公式情報やお手入れ内容を参照できます。ブラウザ版では新規AI解析を行わず、入力内容を外部へ送信しません。'
+          : 'メーカー名・製品名・型番から家電を登録し、確認できた公式情報やお手入れ内容を参照できます。'}</Text>
+        {Platform.OS !== 'web' ? <Text style={styles.hint}>公式情報の確認にはインターネット接続が必要です。</Text> : null}
       </Card>
 
       <Card>
         <SectionHeading title="設定" />
-        <Text style={styles.body}>家事の頻度、休日、通知、天気を確認する地域などは設定で調整できます。この画面の「設定を開く」から移動できます。</Text>
-        <Text style={styles.hint}>天気連動を使う場合は地域を設定してください。通知の許可は端末の設定から変更できます。</Text>
+        <Text style={styles.body}>{Platform.OS === 'web'
+          ? '家事の頻度、休日、天気を確認する地域などは設定で調整できます。この画面の「設定を開く」から移動できます。'
+          : '家事の頻度、休日、通知、天気を確認する地域などは設定で調整できます。この画面の「設定を開く」から移動できます。'}</Text>
+        <Text style={styles.hint}>{Platform.OS === 'web'
+          ? '天気連動を使う場合は地域を設定してください。ブラウザ版では端末通知とウィジェットを利用できません。'
+          : '天気連動を使う場合は地域を設定してください。通知の許可は端末の設定から変更できます。'}</Text>
       </Card>
 
       <AppButton title="設定を開く" onPress={() => router.push('/settings')} variant="secondary" />

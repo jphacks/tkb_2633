@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { millisecondsUntilNextLocalDay } from '@/domain/scheduling/local-date';
 import type { PlannerSnapshot } from '@/platform/storage/repository';
@@ -24,7 +24,7 @@ export function usePlannerData() {
       const { snapshot: data, canPublishWidget } = await refreshPlannerFromWidget(database);
       if (revision !== refreshRevision.current) return;
       setSnapshot(data);
-      void syncDailyHouseworkDigest(expoLocalNotificationGateway, data).catch(() => {});
+      if (Platform.OS !== 'web') void syncDailyHouseworkDigest(expoLocalNotificationGateway, data).catch(() => {});
       setError(null);
 
       if (data.settings.weatherLocation) {
@@ -36,7 +36,7 @@ export function usePlannerData() {
           if (!weatherData || revision !== refreshRevision.current) return;
           setSnapshot(weatherData);
           if (canPublishWidget) publishTodayWidgetSnapshot(weatherData);
-          void syncDailyHouseworkDigest(expoLocalNotificationGateway, weatherData).catch(() => {});
+          if (Platform.OS !== 'web') void syncDailyHouseworkDigest(expoLocalNotificationGateway, weatherData).catch(() => {});
         }).catch((cause) => {
           if (revision === refreshRevision.current) {
             setError(cause instanceof Error ? cause.message : '天気に合わせて予定を保存できませんでした');

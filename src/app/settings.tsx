@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import Animated, { LinearTransition, SlideInDown, SlideOutUp } from 'react-native-reanimated';
 
 import { AppButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette } from '@/components/planner-ui';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
@@ -51,6 +52,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
   const [normalLimit, setNormalLimit] = useState(snapshot.settings.normalDailyLimit);
   const [calendarCountColors, setCalendarCountColors] = useState(snapshot.settings.calendarCountColors);
   const [calendarCountDisplayMode, setCalendarCountDisplayMode] = useState<CalendarCountDisplayMode>(snapshot.settings.calendarCountDisplayMode);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [calendarColorsSaving, setCalendarColorsSaving] = useState(false);
@@ -69,6 +71,15 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
     setRestDays((current) => current.includes(day)
       ? current.filter((value) => value !== day)
       : [...current, day].sort() as Weekday[]);
+  };
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((current) => {
+      const next = new Set(current);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
   };
 
   const save = async () => {
@@ -170,8 +181,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       <ScreenHeading eyebrow="SETTINGS" title="設定" description="家事の周期やアプリの使い方を調整できます。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
-      <Card>
-        <SectionHeading title="生活リズム" />
+      <AccordionSection title="生活リズム" expanded={expandedSections.has('life-rhythm')} onToggle={() => toggleSection('life-rhythm')}>
         <Text style={styles.label}>家事の頻度</Text>
         <View style={styles.modeRow}>
           {modeOptions.map((option) => (
@@ -207,10 +217,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         </View>
         {message ? <Text style={message.includes('保存し') || message.includes('追加しました') ? styles.success : styles.error}>{message}</Text> : null}
         <AppButton title={saving ? '保存中…' : '設定を保存'} onPress={() => void save()} disabled={saving} />
-      </Card>
+      </AccordionSection>
 
-      <Card>
-        <SectionHeading title="カレンダーの家事数表示" />
+      <AccordionSection title="カレンダーの家事数表示" expanded={expandedSections.has('calendar-count')} onToggle={() => toggleSection('calendar-count')}>
         <Text style={styles.label}>表示方法</Text>
         <View style={styles.modeRow}>
           <ChoiceChip label="短い横棒" selected={calendarCountDisplayMode === 'bar'} onPress={() => setCalendarCountDisplayMode('bar')} />
@@ -267,10 +276,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         </View>
         {calendarColorsMessage ? <Text style={calendarColorsMessage.includes('保存しました') ? styles.success : styles.error}>{calendarColorsMessage}</Text> : null}
         <AppButton title={calendarColorsSaving ? '保存中…' : '表示設定を保存'} onPress={() => void saveCalendarColors()} disabled={calendarColorsSaving} />
-      </Card>
+      </AccordionSection>
 
-      <Card>
-        <SectionHeading title="家事ごとの設定" />
+      <AccordionSection title="家事ごとの設定" expanded={expandedSections.has('chore-settings')} onToggle={() => toggleSection('chore-settings')}>
         <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
         {groupChoresByCategory(snapshot.chores.filter((chore) => !chore.archived)).map(([category, chores]) => {
           const expanded = expandedCategories.has(category);
@@ -305,7 +313,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
             </View>
           );
         })}
-      </Card>
+      </AccordionSection>
 
       <Card>
         <SectionHeading title="ゴミ収集日" />
@@ -314,8 +322,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
       </Card>
 
       {Platform.OS !== 'web' ? (
-        <Card>
-          <SectionHeading title="通知・ウィジェット" />
+        <AccordionSection title="通知・ウィジェット" expanded={expandedSections.has('notifications')} onToggle={() => toggleSection('notifications')}>
           <View style={styles.notificationRow}>
             <View style={styles.limitCopy}>
               <Text style={styles.featureTitle}>家事の通知を受け取る</Text>
@@ -325,7 +332,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           </View>
           <View style={styles.divider} />
           <FeatureStatus title="今日の家事ウィジェット" status="iOS・Android" detail="最大3件を表示します。丸を押すと完了でき、完了した家事はチェック付きで残ります。" />
-        </Card>
+        </AccordionSection>
       ) : null}
 
       <Card>
@@ -424,6 +431,35 @@ function FeatureStatus({ title, status, detail }: { title: string; status: strin
   );
 }
 
+function AccordionSection({ title, expanded, onToggle, children }: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Animated.View layout={LinearTransition.duration(240)}>
+      <Card style={styles.accordionCard}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${title}を${expanded ? '閉じる' : '開く'}`}
+          accessibilityState={{ expanded }}
+          onPress={onToggle}
+          style={({ pressed }) => [styles.accordionHeader, pressed && styles.accordionHeaderPressed]}
+        >
+          <Text style={styles.accordionTitle}>{title}</Text>
+          <Text style={[styles.accordionChevron, expanded && styles.accordionChevronExpanded]}>⌄</Text>
+        </Pressable>
+        {expanded ? (
+          <Animated.View entering={SlideInDown.duration(240)} exiting={SlideOutUp.duration(180)} style={styles.accordionContent}>
+            {children}
+          </Animated.View>
+        ) : null}
+      </Card>
+    </Animated.View>
+  );
+}
+
 function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, ChoreDefinition[]][] {
   const groups = new Map<string, ChoreDefinition[]>();
   for (const chore of chores) groups.set(chore.category, [...(groups.get(chore.category) ?? []), chore]);
@@ -432,6 +468,13 @@ function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, Cho
 
 const styles = StyleSheet.create({
   back: { color: palette.accent, fontSize: 14, fontWeight: '700', paddingVertical: 3 },
+  accordionCard: { gap: 0, paddingVertical: 4 },
+  accordionHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  accordionHeaderPressed: { opacity: 0.72 },
+  accordionTitle: { flex: 1, color: palette.ink, fontSize: 16, fontWeight: '700' },
+  accordionChevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28, transform: [{ rotate: '0deg' }] },
+  accordionChevronExpanded: { transform: [{ rotate: '180deg' }] },
+  accordionContent: { gap: 12, paddingTop: 8, paddingBottom: 10 },
   label: { color: palette.ink, fontSize: 13, fontWeight: '700' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   weekdayRow: { width: '100%', flexDirection: 'row', flexWrap: 'nowrap', gap: 5 },

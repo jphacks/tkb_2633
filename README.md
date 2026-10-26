@@ -588,7 +588,7 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **825 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **826 tests PASS（iOS・Androidの両条件）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |

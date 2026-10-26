@@ -872,6 +872,10 @@
     "feature": "sharing-rejoin-archive",
     "tests": [
       {
+        "file": "tests/sharing-roster.test.mjs",
+        "name": "removing one same-account device is a revoked workspace even while the account retains its other device"
+      },
+      {
         "file": "tests/sharing-registry.test.mjs",
         "name": "a fresh rejoin generation is allowed only after departure and must retain the original local database reference"
       }

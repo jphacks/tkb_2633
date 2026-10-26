@@ -15,6 +15,7 @@ import { signSharedOperation, wrapGroupKey } from '../../features/sharing/crypto
 import { createSharedSynchronizer } from '../../features/sharing/synchronizer.ts';
 import type { SharedSyncDependencies, SharingSyncResult } from '../../features/sharing/synchronizer.ts';
 import { createSharedGroupManager } from '../../features/sharing/group-manager.ts';
+import { sharedAccessDisposition } from '../../features/sharing/access-state.ts';
 import { createSharedJoinRequest, parseSharedInvitation } from '../../features/sharing/invitations.ts';
 import { isSharedTimeZone, sharedLocalDate } from '../../features/sharing/group-clock.ts';
 import { sharedGroupBootstrap } from '../../features/sharing/planning.ts';
@@ -116,6 +117,7 @@ async function buildWorkspace(selection: SharingSelection) {
   let debounce: ReturnType<typeof setTimeout> | undefined;
   const authorize = () => {
     if (record?.lastErrorCode === 'sharing/scheduler-version-mismatch') throw new SharingSchedulerVersionError();
+    if (record && ['sharing/access-denied', 'permission-denied'].includes(record.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
     if (getSharingServices().auth.currentUser?.uid !== userId || !record || !['active', 'creating'].includes(record.status)) throw new SharingAccessError('この共有グループは現在編集できません。');
   };
   const adapter = createSharedPlannerRepository(database, { ...selection, householdId: LOCAL_HOUSEHOLD_ID, identity, makeId: randomUUID,
@@ -183,8 +185,10 @@ async function buildWorkspace(selection: SharingSelection) {
         return result;
       } catch (error) {
         const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'sharing/failed';
-        let removed = false;
-        if (code === 'permission-denied' && getSharingServices().auth.currentUser?.uid === userId && record?.status === 'active') {
+        const disposition = sharedAccessDisposition({ errorCode: code, currentAccountUserId: getSharingServices().auth.currentUser?.uid ?? null,
+          userId, deviceId: identity.deviceId, status: record?.status, roster });
+        let removed = disposition === 'removed';
+        if (disposition === 'check-membership') {
           try { removed = !await cloud.hasMembership(groupId); } catch { /* A network error does not prove removal. */ }
         }
         await update((previous) => ({ ...previous, ...(removed ? { status: 'removed' as const } : {}), lastErrorCode: code })).catch(() => undefined); throw error;

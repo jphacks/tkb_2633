@@ -2,6 +2,7 @@ import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomBytes } from 'node:crypto';
+import { sharedAccessDisposition } from '../src/features/sharing/access-state.ts';
 import { createDeviceIdentity, signSharedDocument, validateDevicePublicIdentity } from '../src/features/sharing/crypto.ts';
 import { approveSharedDevice, createSharedRoster, removeSharedMember, sharedAuthorIdentity,
   sharedRosterDigest, validateSharedRoster, verifyPinnedSharedRoster, verifySharedRosterTransition,
@@ -13,6 +14,19 @@ async function fixture() {
   const initial = createSharedRoster('group-test', 'owner-user', owner);
   return { owner, member, initial };
 }
+
+test('removing one same-account device is a revoked workspace even while the account retains its other device', async () => {
+  const h = await fixture(); const approved = approveSharedDevice(h.initial, h.owner, 'owner-user', h.member);
+  const removed = removeSharedDevice(approved, h.owner, h.member.deviceId);
+  const input = { errorCode: 'sharing/access-denied', currentAccountUserId: 'owner-user', userId: 'owner-user',
+    deviceId: h.member.deviceId, status: 'active', roster: removed };
+  assert.equal(sharedAccessDisposition(input), 'removed');
+  assert.equal(sharedAccessDisposition({ ...input, deviceId: h.owner.deviceId }), 'retain');
+  assert.equal(sharedAccessDisposition({ ...input, errorCode: 'unavailable' }), 'retain');
+  assert.equal(sharedAccessDisposition({ ...input, currentAccountUserId: 'another-user' }), 'retain');
+  assert.equal(sharedAccessDisposition({ ...input, status: 'joining' }), 'retain');
+  assert.equal(sharedAccessDisposition({ ...input, roster: approved, errorCode: 'permission-denied' }), 'check-membership');
+});
 
 test('a shared roster contains only public device keys and starts with the creators pinned authority', async () => {
   const h = await fixture();

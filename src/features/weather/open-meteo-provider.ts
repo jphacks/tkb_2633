@@ -45,7 +45,7 @@ export function parseOpenMeteoDailyResponse(value: unknown): DailyWeather[] {
 
 /** Open-Meteo forecast client with a short in-memory cache for repeated screen refreshes. */
 export class OpenMeteoForecastProvider implements WeatherForecastProvider<WeatherLocation, readonly DailyWeather[]> {
-  private readonly cache = new Map<string, { expiresAt: number; forecast: DailyWeather[] }>();
+  private readonly cache = new Map<string, { createdAt: number; expiresAt: number; forecast: DailyWeather[] }>();
   private readonly pending = new Map<string, Promise<DailyWeather[]>>();
   private readonly fetcher: FetchLike;
   private readonly now: () => number;
@@ -63,10 +63,13 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<Weathe
 
   async fetchForecast(query: WeatherForecastQuery<WeatherLocation>): Promise<readonly DailyWeather[]> {
     validateQuery(query);
+    const timestamp = this.now();
+    for (const [key, item] of this.cache) {
+      if (timestamp < item.createdAt || timestamp >= item.expiresAt) this.cache.delete(key);
+    }
     const cacheKey = [query.location.latitude.toFixed(3), query.location.longitude.toFixed(3), query.from, query.through].join(':');
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > this.now()) return cached.forecast.map((day) => ({ ...day }));
-    if (cached) this.cache.delete(cacheKey);
+    if (cached) return cached.forecast.map((day) => ({ ...day }));
 
     let request = this.pending.get(cacheKey);
     if (!request) {
@@ -97,7 +100,8 @@ export class OpenMeteoForecastProvider implements WeatherForecastProvider<Weathe
       if (!response.ok) throw new Error(`Open-Meteo request failed with HTTP ${response.status}`);
       const forecast = parseOpenMeteoDailyResponse(await response.json());
       const requestedForecast = forecast.filter((day) => day.date >= query.from && day.date <= query.through);
-      this.cache.set(cacheKey, { expiresAt: this.now() + WEATHER_FORECAST_CACHE_TTL_MS, forecast: requestedForecast });
+      const createdAt = this.now();
+      this.cache.set(cacheKey, { createdAt, expiresAt: createdAt + WEATHER_FORECAST_CACHE_TTL_MS, forecast: requestedForecast });
       return requestedForecast;
     } finally {
       clearTimeout(timeout);

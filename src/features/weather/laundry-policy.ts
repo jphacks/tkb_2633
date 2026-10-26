@@ -9,6 +9,7 @@ import type { ExternalAvailabilityByDate, ScheduleSettings } from '@/domain/sche
 import { calendarPenaltyForChore } from '../../domain/scheduling/calendar-penalty.ts';
 import { addDays, daysBetween, weekdayOf } from '../../domain/scheduling/local-date.ts';
 import { completionMatchesEntry } from '../../domain/scheduling/completion-matching.ts';
+import { dependencyPredecessorForDate } from '../../domain/scheduling/dependency-matching.ts';
 import type { DailyWeather, WeatherAdjustmentPolicy, WeatherScheduleAdjustment } from './contracts';
 
 export const LAUNDRY_WEATHER_RULES = Object.freeze({
@@ -263,20 +264,19 @@ function respectsDependencies(
   dependencies: readonly ChoreDependency[],
   entriesByChore: ReadonlyMap<EntityId, readonly ChoreScheduleEntry[]>,
 ): boolean {
-  const ownEntries = entriesByChore.get(current.choreId) ?? [];
-  const occurrence = ownEntries.findIndex((entry) => entry.id === current.id);
-  if (occurrence < 0) return true;
-
   for (const dependency of dependencies) {
     if (dependency.successorChoreId === current.choreId) {
       const predecessors = entriesByChore.get(dependency.predecessorChoreId) ?? [];
-      const predecessor = predecessors[Math.min(occurrence, predecessors.length - 1)];
+      const predecessor = dependencyPredecessorForDate(predecessors, current.cycleBaseDate);
       if (predecessor && candidate < predecessor.suggestedDate) return false;
     }
     if (dependency.predecessorChoreId === current.choreId) {
       const successors = entriesByChore.get(dependency.successorChoreId) ?? [];
-      const successor = successors[Math.min(occurrence, successors.length - 1)];
-      if (successor && candidate > successor.suggestedDate) return false;
+      const predecessors = entriesByChore.get(current.choreId) ?? [];
+      for (const successor of successors) {
+        if (dependencyPredecessorForDate(predecessors, successor.cycleBaseDate)?.id === current.id
+          && candidate > successor.suggestedDate) return false;
+      }
     }
   }
   return true;

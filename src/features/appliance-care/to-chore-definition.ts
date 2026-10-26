@@ -2,6 +2,7 @@ import type { ApplianceCareAnalysisDraft, ApplianceCareTaskDraft } from '@/featu
 import type { ChoreDefinition } from '@/domain/chores/types';
 import type { EntityId } from '@/domain/shared/types';
 import { applianceCategoryLabel } from './categories.ts';
+import { applianceDisplayName } from './display-name.ts';
 
 export interface ApplianceCareProductIdentity {
   applianceId: EntityId;
@@ -49,7 +50,7 @@ export function toApplianceCareChore(
     householdId,
     name: choreName,
     category: '家電',
-    description: product.manufacturer + ' ' + product.productName + '（' + product.modelNumber + '）のお手入れ作業です。',
+    description: applianceDisplayName(product) + 'のお手入れ作業です。',
     enabled: !cycleRequired,
     ...(selectedUserCycle !== undefined ? { recommendedCycleDays: selectedUserCycle } : {}),
     ...(selectedUserCycle !== undefined ? { userIntervalDays: selectedUserCycle } : {}),

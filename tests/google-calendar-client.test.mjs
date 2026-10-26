@@ -55,7 +55,7 @@ for(const [reason,code]of[
   ['rateLimitExceeded','calendar_rate_limited'],
   ['insufficientPermissions','calendar_permission_required'],
   ['forbidden','calendar_permission_required'],
-  ['quotaExceeded','calendar_http_403'],
+  ['quotaExceeded','calendar_rate_limited'],
 ]){
   test('FreeBusy HTTP 403 '+reason+' is distinguished from missing permission',async()=>{
     const client=createCalendarFreeBusyClient(async()=>Response.json({error:{errors:[{reason}]}},{status:403,headers:{'Retry-After':'7200'}}));

@@ -9,13 +9,15 @@ import {
   listEntriesForGoogleSync,
   listGoogleTaskLinks,
   loadGoogleSyncState,
+  hasPendingGoogleTaskChanges,
   saveGoogleSyncState,
   upsertGoogleTaskLink,
 } from '@/platform/storage/repository';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { classifyGoogleSyncFailure } from './error-classification';
 import type { GoogleSyncFailureDetails } from './error-classification';
-import { isGoogleSyncAttemptStale, shouldSyncGoogleTasks } from './sync-policy';
+import { googleSyncRunOptions, isGoogleSyncAttemptStale, shouldSyncGoogleTasks } from './sync-policy';
+import type { GoogleSyncTriggerOptions } from './sync-policy';
 import type { GoogleSyncState } from './contracts';
 import { reconcileGoogleTasks } from './reconcile-google-tasks';
 import type { GoogleSyncRepositoryPort } from './reconcile-google-tasks';
@@ -32,6 +34,7 @@ export interface GoogleSyncCoordinatorDependencies extends GoogleSyncRepositoryP
   loadState(): Promise<GoogleSyncState | null>;
   saveState(state: GoogleSyncState): Promise<void>;
   getAccessToken(): Promise<string>;
+  hasPendingLocalChanges?(lastSuccessfulSyncAt?: string): Promise<boolean>;
   api: GoogleTasksApi;
   refreshCalendar?(options: { now: Date; today: LocalDate; force: boolean }): Promise<{ plannerChanged: boolean }>;
 }
@@ -41,7 +44,7 @@ let pendingCompletionSyncDatabase: SQLiteDatabase | null = null;
 
 export async function syncGoogleTasks(
   database: SQLiteDatabase,
-  options: { force?: boolean; now?: Date; trigger?: 'manual' | 'completion' } = {},
+  options: GoogleSyncTriggerOptions & { now?: Date } = {},
 ): Promise<GoogleSyncRunResult> {
   const now = options.now ?? new Date();
   const householdId = 'local-household';
@@ -51,6 +54,7 @@ export async function syncGoogleTasks(
   let writeOperations = 0;
   const result = await syncGoogleTasksWithDependencies({
     loadState: () => loadGoogleSyncState(database, householdId),
+    hasPendingLocalChanges: (lastSuccess) => hasPendingGoogleTaskChanges(database, lastSuccess, householdId),
     saveState: (state) => saveGoogleSyncState(database, state),
     getAccessToken: async () => {
       const { getGoogleTasksAccessToken } = await import('@/platform/google-tasks/google-sign-in-gateway');
@@ -84,12 +88,8 @@ export async function syncGoogleTasks(
     acknowledgeGoogleTaskStatus: (link, status) => acknowledgeGoogleTaskStatus(database, link, status),
     deleteGoogleTaskLink: (id) => deleteGoogleTaskLink(database, id),
   }, {
-    force: options.force ?? false,
-    forceCalendar: options.force === true && options.trigger !== 'completion',
+    ...googleSyncRunOptions(options),
     now,
-    // Manual actions may recover a saved attempt from a terminated app process.
-    // The shared runningSync promise still joins a live attempt in this process.
-    recoverInterruptedAttempt: options.force === true && options.trigger !== 'completion',
   });
   if (readRequests + writeRequests > 0 && typeof __DEV__ !== 'undefined' && __DEV__) {
     console.info('[google-sync]', {
@@ -145,11 +145,17 @@ async function runSync(
   dependencies: GoogleSyncCoordinatorDependencies,
   options: { force: boolean; forceCalendar: boolean; now: Date; recoverInterruptedAttempt: boolean },
 ): Promise<GoogleSyncRunResult> {
-  const { now, force } = options;
+  const { now } = options;
   let state = await dependencies.loadState();
   if (!state?.enabled) return { kind: 'success', skipped: true };
+  // Native Android widget actions can commit while JS is stopped. Recover their
+  // durable changes on startup/resume without changing Calendar cadence or
+  // bypassing an existing retry/auth/permission failure on every foreground.
+  const pendingLocalChanges = (state.status === 'idle' || state.status === 'syncing')
+    && await dependencies.hasPendingLocalChanges?.(state.lastSuccessfulSyncAt) === true;
+  const force = options.force || pendingLocalChanges;
   const staleAttempt = isGoogleSyncAttemptStale(state, now);
-  if (state.status === 'syncing' && !staleAttempt && !options.recoverInterruptedAttempt) {
+  if (state.status === 'syncing' && !staleAttempt && !options.recoverInterruptedAttempt && !pendingLocalChanges) {
     return { kind: 'success', skipped: true };
   }
   let calendarChanged = false;

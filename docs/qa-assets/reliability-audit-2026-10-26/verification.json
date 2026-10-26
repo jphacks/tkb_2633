@@ -1,0 +1,220 @@
+{
+  "historicalSnapshot": true,
+  "followUp": "../resumed-native-audit-2026-10-26/verification.json",
+  "date": "2026-10-26",
+  "baseRevision": "e7b6bbefab78f3d1abb1ad4254323c8e4e867991",
+  "mainRevision": "13553029baeaa7af3d8535316d031ebb973f3291",
+  "branch": "codex/android-platform-scheduler-audit",
+  "scope": "Reliability audit using synthetic responses, dedicated SQLite databases, and controlled native boundaries. New real-account UI tests remain blocked by the Mac lock.",
+  "checks": {
+    "ios": {
+      "command": "HOUSEWORK_TEST_PLATFORM=ios npm run check",
+      "lint": "PASS",
+      "typecheck": "PASS",
+      "tests": 659,
+      "pass": 659,
+      "fail": 0,
+      "skipped": 0
+    },
+    "android": {
+      "command": "HOUSEWORK_TEST_PLATFORM=android npm test",
+      "tests": 659,
+      "pass": 659,
+      "fail": 0,
+      "skipped": 0
+    },
+    "expoDoctor": {
+      "command": "npx expo-doctor",
+      "passed": 20,
+      "total": 20
+    },
+    "exports": {
+      "ios": {
+        "status": "PASS",
+        "bundle": "_expo/static/js/ios/index-c746e274df62e5d01b2eccdba390d132.hbc",
+        "sha256": "c75d56e7b517260d1816bfac7c1d1f6c3896d3a5ab3ba486ff59efdd1f01db78",
+        "bytes": 4640712
+      },
+      "android": {
+        "status": "PASS",
+        "bundle": "_expo/static/js/android/index-2c0dde37f42138c0d625d5146c40d432.hbc",
+        "sha256": "02ed59edeede9d8e12754b5f9e860ebc7fac57e2fd5cace20109fd45aecb1089",
+        "bytes": 4721673
+      }
+    },
+    "featureContracts": {
+      "before": 36,
+      "after": 42,
+      "oldEntriesUnchanged": true,
+      "sha256": "3b484bb6fdf32d9f9f6af5a49ea8c54302d92eeeb69cca8b1074795ec390f1f9"
+    },
+    "readmeMedia": {
+      "preserved": true,
+      "entries": 10
+    },
+    "coverage": {
+      "tests": 659,
+      "pass": 659,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "newTests": {
+    "total": 88,
+    "reliability-server": 25,
+    "settings-autosave": 11,
+    "daily-housework-digest": 2,
+    "widget-gateway": 3,
+    "storage-reliability": 14,
+    "weather-provider-reliability": 17,
+    "openai-client-reliability": 16
+  },
+  "coverage": {
+    "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test --experimental-test-coverage '--test-coverage-include=src/**/*.ts' '--test-coverage-include=server/**/*.mjs' --test-reporter=spec tests/*.test.mjs",
+    "limits": "These metrics cover the measured TS/MJS files; TSX and transpiled native boundary harnesses do not map directly. They are not native-device or full-app coverage.",
+    "before": {
+      "http-server.mjs": {
+        "linePercent": 68.78,
+        "branchPercent": 62.16,
+        "functionPercent": 75.0
+      },
+      "manual-resolver.mjs": {
+        "linePercent": 76.42,
+        "branchPercent": 56.0,
+        "functionPercent": 60.0
+      },
+      "daily-housework-digest.ts": {
+        "linePercent": 94.96,
+        "branchPercent": 88.89,
+        "functionPercent": 85.71
+      },
+      "autosave-queue.ts": {
+        "linePercent": 100.0,
+        "branchPercent": 96.15,
+        "functionPercent": 91.67
+      },
+      "open-meteo-geocoder.ts": {
+        "linePercent": 81.73,
+        "branchPercent": 77.78,
+        "functionPercent": 75.0
+      },
+      "open-meteo-provider.ts": {
+        "linePercent": 97.12,
+        "branchPercent": 85.45,
+        "functionPercent": 92.86
+      },
+      "repository.ts": {
+        "linePercent": 86.31,
+        "branchPercent": 88.58,
+        "functionPercent": 89.63
+      },
+      "all files": {
+        "linePercent": 91.2,
+        "branchPercent": 87.35,
+        "functionPercent": 90.0
+      },
+      "openai-responses-client.mjs": {
+        "linePercent": 83.16,
+        "branchPercent": 37.5,
+        "functionPercent": 83.33
+      }
+    },
+    "after": {
+      "http-server.mjs": {
+        "linePercent": 88.07,
+        "branchPercent": 86.36,
+        "functionPercent": 75.0
+      },
+      "manual-resolver.mjs": {
+        "linePercent": 95.4,
+        "branchPercent": 80.52,
+        "functionPercent": 72.22
+      },
+      "daily-housework-digest.ts": {
+        "linePercent": 95.2,
+        "branchPercent": 89.36,
+        "functionPercent": 85.71
+      },
+      "autosave-queue.ts": {
+        "linePercent": 100.0,
+        "branchPercent": 100.0,
+        "functionPercent": 93.33
+      },
+      "open-meteo-geocoder.ts": {
+        "linePercent": 100.0,
+        "branchPercent": 82.93,
+        "functionPercent": 93.75
+      },
+      "open-meteo-provider.ts": {
+        "linePercent": 97.2,
+        "branchPercent": 91.8,
+        "functionPercent": 100.0
+      },
+      "repository.ts": {
+        "linePercent": 97.13,
+        "branchPercent": 90.38,
+        "functionPercent": 95.74
+      },
+      "all files": {
+        "linePercent": 95.61,
+        "branchPercent": 89.92,
+        "functionPercent": 92.38
+      },
+      "openai-responses-client.mjs": {
+        "linePercent": 100.0,
+        "branchPercent": 93.48,
+        "functionPercent": 100.0
+      }
+    }
+  },
+  "stressCases": {
+    "simultaneousForecastRequests": [
+      1,
+      100,
+      500
+    ],
+    "expiredLocationChanges": 80,
+    "kanaQueries": 12,
+    "htmlBytesLimit": 2097152,
+    "headFallbackStatus": [
+      405,
+      501
+    ],
+    "openAiHttpErrors": [
+      400,
+      401,
+      403,
+      408,
+      429,
+      500,
+      502,
+      503
+    ]
+  },
+  "nativeUi": {
+    "status": "BLOCKED_MAC_LOCK",
+    "confirmedWith": "cua.getApp(com.google.android.studio)",
+    "newRealGoogleAccountRuns": 0,
+    "newPaidAiRuns": 0,
+    "physicalBackgroundTask": "NOT_VERIFIED"
+  },
+  "sourceSha256": {
+    "server/appliance-care-api/src/http-server.mjs": "66f05cd18539ecbba2d5a70b21a661bb6363bf9f401aadba41f7db58f05e8998",
+    "server/appliance-care-api/src/manual-resolver.mjs": "8e70342a46e5973f52eee6d83a581dbf7d8138d5d42d12c6184636efe0e47eb5",
+    "server/appliance-care-api/src/openai-responses-client.mjs": "b8bd29ca43d74f95a81fc4dd144728c0d2cd5507e111e95240b1dfc88f75d50f",
+    "src/app/(tabs)/guide.tsx": "86620f6a861a58cb382b9b72e5cd1b9459cb4c8b460afdd923d0121431e94e7b",
+    "src/features/notifications/daily-housework-digest.ts": "2376d2ebfc5255f7a903e319c88a8b5155e31d8dae8834427ae8237f25aa8a5c",
+    "src/features/settings/autosave-queue.ts": "5a871d74e0e6708b12afb3e007826aeea158a1f0c34e507c5a7029934f4ac9a0",
+    "src/features/settings/use-chore-settings-autosave.tsx": "8a2f5433a9134ddc710020cd966f856a737262cbc4e16f8bb7c159796a258b34",
+    "src/features/weather/open-meteo-provider.ts": "95907c3b640150c039ddd196eff98912086d5e0c1404a04d88ddde4b0488affc",
+    "src/platform/storage/repository.ts": "e0474f3b7fe19be94779ebbd257ad4a8290601240913af9fe53a6401c34d5453",
+    "src/platform/widgets/expo-widget-gateway.ts": "64bc33f1a6599cc9b77cc9d38d5c351f90b9f7149884f406e8c7f3ee5f5286cd",
+    "tests/daily-housework-digest.test.mjs": "cea1e2644ccf10ddf0e61315398534b34774036d35fede7ba0af77339e709869",
+    "tests/openai-client-reliability.test.mjs": "22596c142d5d65c24da762885fa9817bdbf436dc0ea120406446d5a4db3a7a3e",
+    "tests/reliability-server.test.mjs": "9c7375aaac3a7e127a899ea0ce572fec3f884219cff0f279450a7216a3d40a78",
+    "tests/settings-autosave.test.mjs": "1b3d6e2e9779bb82551b89ce2ae5ed936e4b599a31a3a45fe5a0087c24fb3bed",
+    "tests/storage-reliability.test.mjs": "2760557eb084a37fb91c86a48fc6f4908a010488ae4709bd6a19dc7f2216eedb",
+    "tests/weather-provider-reliability.test.mjs": "236460955c8692886bc32c36ebd3b107442eb69a09ebf580d774bbd26baf0c15",
+    "tests/widget-gateway.test.mjs": "365d9c9632d55c3396920630f87eb7219e3d3bec7da7bcd7b95b480ade9072ab"
+  }
+}

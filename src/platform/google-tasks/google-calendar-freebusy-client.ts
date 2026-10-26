@@ -1,4 +1,5 @@
 import type { CalendarQueryRange } from '@/features/google-sync/calendar-availability';
+import { parseGoogleCompletedAt } from '@/features/google-sync/google-completion-policy';
 
 export class CalendarFreeBusyError extends Error {
   readonly status: number;
@@ -41,7 +42,8 @@ export function createCalendarFreeBusyClient(fetcher: typeof fetch = fetch, onRe
           ? 'calendar_time_range_too_long' : /time.*range.*empty/u.test(message) ? 'calendar_time_range_empty'
             : /time.?zone/u.test(message) ? 'calendar_time_zone_invalid'
               : /primary/u.test(message) ? 'calendar_primary_invalid' : undefined;
-        const rateLimited = response.status === 403 && reasons.some((reason) => ['userRateLimitExceeded', 'rateLimitExceeded'].includes(reason));
+        const rateLimited = response.status === 403 && reasons.some((reason) =>
+          ['userRateLimitExceeded', 'rateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded'].includes(reason));
         const permission = response.status === 401 || (response.status === 403 &&
           (reasons.some((reason) => ['insufficientPermissions', 'forbidden'].includes(reason)) || /insufficient.*scopes/u.test(message)));
         const code = reasons.some((reason) => ['accessNotConfigured', 'serviceDisabled'].includes(reason))
@@ -49,16 +51,25 @@ export function createCalendarFreeBusyClient(fetcher: typeof fetch = fetch, onRe
             : permission ? 'calendar_permission_required' : rangeError ?? `calendar_http_${response.status}`;
         throw new CalendarFreeBusyError(response.status, code, response.headers.get('Retry-After'));
       }
+      for (const key of ['timeMin', 'timeMax'] as const) {
+        const value = payload?.[key];
+        if (value !== undefined && (typeof value !== 'string' || !parseGoogleCompletedAt(value)
+          || Date.parse(value) !== Date.parse(range[key]))) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
+      }
       const calendar = payload?.calendars?.primary;
+      if (calendar?.errors != null && !Array.isArray(calendar.errors)) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
       if (Array.isArray(calendar?.errors) && calendar.errors.length) {
-        const reasons = calendar.errors.map((item: { reason?: string }) => item?.reason);
+        const reasons = calendar.errors.map((item: { reason?: unknown } | null) => item?.reason);
+        if (!reasons.every((reason: unknown) => typeof reason === 'string')) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
         if (reasons.includes('internalError')) throw new CalendarFreeBusyError(503, 'calendar_internal_error');
         if (reasons.includes('forbidden')) throw new CalendarFreeBusyError(403, 'calendar_permission_required');
         throw new CalendarFreeBusyError(400, 'calendar_item_error');
       }
       if (!calendar || !Array.isArray(calendar.busy)) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
       return calendar.busy.map((item: { start?: unknown; end?: unknown }) => {
-        if (typeof item?.start !== 'string' || typeof item?.end !== 'string') throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
+        if (typeof item?.start !== 'string' || typeof item?.end !== 'string'
+          || !parseGoogleCompletedAt(item.start) || !parseGoogleCompletedAt(item.end)
+          || Date.parse(item.end) <= Date.parse(item.start)) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
         return { start: item.start, end: item.end };
       });
     } finally { clearTimeout(timer); }
@@ -70,8 +81,11 @@ export function createCalendarFreeBusyClient(fetcher: typeof fetch = fetch, onRe
       if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new CalendarFreeBusyError(400, 'calendar_time_range_empty');
       const intervals: { start: string; end: string }[] = [];
       for (let start = min; start < max; start += FREEBUSY_QUERY_CHUNK_MS) {
-        intervals.push(...await queryWindow(accessToken, { ...range,
-          timeMin: new Date(start).toISOString(), timeMax: new Date(Math.min(max, start + FREEBUSY_QUERY_CHUNK_MS)).toISOString() }));
+        const chunk = await queryWindow(accessToken, { ...range,
+          timeMin: new Date(start).toISOString(), timeMax: new Date(Math.min(max, start + FREEBUSY_QUERY_CHUNK_MS)).toISOString() });
+        // Function argument limits differ between JS engines. Do not spread an
+        // unbounded API response into push(...), including on Hermes devices.
+        for (const interval of chunk) intervals.push(interval);
       }
       return intervals;
     },

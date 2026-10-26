@@ -3,6 +3,7 @@ import type { LocalDate } from '@/domain/shared/types';
 import {
   commitCalendarAvailabilitySuccess, listEntriesForGoogleSync, listGoogleTaskLinks,
   loadCalendarAvailabilityState, loadPlannerSnapshot, plannerGenerationRange, saveCalendarAvailabilityState, readCalendarPlanningSignatures,
+  hasFreshCalendarCoverage,
 } from '@/platform/storage/repository';
 import { createCalendarFreeBusyClient, CalendarFreeBusyError } from '@/platform/google-tasks/google-calendar-freebusy-client';
 import type { CalendarFreeBusyClient } from '@/platform/google-tasks/google-calendar-freebusy-client';
@@ -21,6 +22,7 @@ export interface CalendarCoordinatorPort {
   commitSuccess(days: readonly CalendarAvailabilityDay[], state: CalendarAvailabilityState): Promise<void>;
   regeneratePlanner(): Promise<boolean>;
   readPlanningSignatures(): Promise<{ current: string; applied: string | null }>;
+  hasFreshCoverage?(range: CalendarQueryRange, now: Date): Promise<boolean>;
 }
 
 export async function refreshCalendarWithDependencies(
@@ -30,7 +32,9 @@ export async function refreshCalendarWithDependencies(
   if (!state?.enabled) return { kind: 'disabled', plannerChanged: false };
   let kind = 'skipped';
   let days: CalendarAvailabilityDay[] | undefined;
-  if (shouldRefreshCalendar(state, options.now, options.force)) {
+  const missingCoverage = state.status === 'idle' && port.hasFreshCoverage
+    ? !(await port.hasFreshCoverage(options.range, options.now)) : false;
+  if (shouldRefreshCalendar(state, options.now, options.force) || missingCoverage) {
     const timestamp = options.now.toISOString();
     state = { ...state, status: 'syncing', lastAttemptAt: timestamp, nextRetryAt: undefined, updatedAt: timestamp };
     await port.saveState(state);
@@ -44,18 +48,19 @@ export async function refreshCalendarWithDependencies(
     } catch (error) {
       const api = error instanceof CalendarFreeBusyError ? error : undefined;
       const nativeCode = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+      const nativeUnavailable = nativeCode === 'NO_ACTIVITY' || nativeCode === 'IN_PROGRESS';
       const permission = error instanceof CalendarPermissionRequiredError || api?.code === 'calendar_permission_required'
-        || nativeCode === 'SIGN_IN_REQUIRED' || nativeCode === 'NO_ACTIVITY'
+        || nativeCode === 'SIGN_IN_REQUIRED'
         || (error instanceof Error && error.name === 'GoogleSignInRequiredError');
       const failure = classifyGoogleSyncFailure({
         // Google Calendar can return rateLimitExceeded as either 403 or 429.
         status: api?.code === 'calendar_rate_limited' ? 429 : api?.status,
         code: api?.code ?? (error instanceof Error && error.name === 'AbortError' ? 'timeout'
-          : nativeCode === 'IN_PROGRESS' ? 'calendar_native_operation_unavailable'
+          : nativeUnavailable ? 'calendar_native_operation_unavailable'
             : error instanceof TypeError ? 'network_error' : 'calendar_refresh_failed'),
         retryAfter: api?.retryAfter,
         // The Android SDK also uses IN_PROGRESS when no foreground Activity is available.
-        networkFailure: nativeCode === 'IN_PROGRESS',
+        networkFailure: nativeUnavailable,
       }, options.now);
       kind = permission ? 'permissionRequired' : failure.kind === 'retry' ? 'retryPending' : 'error';
       await port.saveState({ ...state, status: kind as CalendarAvailabilityState['status'],
@@ -88,6 +93,7 @@ export async function refreshGoogleCalendarAvailability(
     client,
     commitSuccess: (days, state) => commitCalendarAvailabilitySuccess(database, days, state),
     readPlanningSignatures: () => readCalendarPlanningSignatures(database, options.now, range.timeZone),
+    hasFreshCoverage: (coverage, now) => hasFreshCalendarCoverage(database, coverage, now),
     regeneratePlanner: async () => {
       const before = await listEntriesForGoogleSync(database, options.today);
       const snapshot = await loadPlannerSnapshot(database, options.today, options.now, range.timeZone);

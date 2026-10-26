@@ -23,7 +23,17 @@ export function createAutosaveQueue<Patch extends object>({ save, delayMs = 450 
     clearTimeout(timer);
     if (running) return running;
     if (!hasPending()) return Promise.resolve(true);
-    running = (async () => {
+    // Subscribers may enqueue and flush synchronously when the state changes.
+    // Install the shared promise before notifying them or calling the writer.
+    let start!: () => void;
+    running = new Promise<boolean>((resolve, reject) => {
+      start = () => { void drain().then(resolve, reject); };
+    }).finally(() => { running = undefined; });
+    start();
+    return running;
+  };
+  const drain = async (): Promise<boolean> => {
+    while (true) {
       while (hasPending()) {
         const batch = pending as Patch;
         pending = {};
@@ -33,15 +43,18 @@ export function createAutosaveQueue<Patch extends object>({ save, delayMs = 450 
           // An input cleared while this write ran must not reappear in a retry.
           const retry = Object.fromEntries(Object.entries(batch).filter(([key]) => !discarded.has(key as keyof Patch))) as Partial<Patch>;
           pending = { ...retry, ...pending };
-          if (!hasPending()) { publish('idle'); return true; }
+          if (!hasPending()) {
+            publish('idle');
+            if (hasPending()) continue;
+            return true;
+          }
           publish('error', cause instanceof Error ? cause.message : '設定を保存できませんでした。');
           return false;
         }
       }
       publish('saved');
-      return true;
-    })().finally(() => { running = undefined; });
-    return running;
+      if (!hasPending()) return true;
+    }
   };
   return {
     getSnapshot: () => state,

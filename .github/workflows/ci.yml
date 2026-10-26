@@ -9,6 +9,11 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ios, android]
+    env:
+      HOUSEWORK_TEST_PLATFORM: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

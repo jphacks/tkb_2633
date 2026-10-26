@@ -27,13 +27,14 @@ import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
 import type { Appliance, ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
+import { applianceDisplayName } from '@/features/appliance-care/display-name';
 import type { ApprovedApplianceCareTask, ApplianceCareProductIdentity } from '@/features/appliance-care/to-chore-definition';
 import { buildReviewedApplianceChore, hasExactChoreNameDuplicate, retireApplianceTaskSnapshot } from '@/features/appliance-care/persistence-policy';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { WEATHER_FORECAST_CACHE_TTL_MS } from '@/features/weather/contracts';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
-import type { CalendarAvailabilityDay, CalendarAvailabilityState } from '@/features/google-sync/calendar-availability';
+import type { CalendarAvailabilityDay, CalendarAvailabilityState, CalendarQueryRange } from '@/features/google-sync/calendar-availability';
 import { CALENDAR_AVAILABILITY_MAX_AGE_MS, calendarAvailabilitySignature, freshCalendarAvailability, getDeviceTimeZone } from '@/features/google-sync/calendar-availability';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
@@ -355,7 +356,7 @@ async function loadApplianceCareReviewContextImpl(
       productName: row.product_name,
       modelNumber: row.model_number,
       ...(row.category ? { category: row.category } : {}),
-      displayName: row.display_name,
+      displayName: applianceDisplayName({ manufacturer: row.manufacturer, productName: row.product_name, modelNumber: row.model_number }, row.display_name),
       ...(row.official_product_url ? { officialProductUrl: row.official_product_url } : {}),
       officialManualUrl: row.official_manual_url,
       analysis: JSON.parse(row.analysis_json) as ApplianceCareAnalysisDraft,
@@ -522,7 +523,7 @@ async function loadPlannerSnapshotImpl(
     productName: row.product_name,
     modelNumber: row.model_number,
     ...(row.category ? { category: row.category } : {}),
-    displayName: row.display_name,
+    displayName: applianceDisplayName({ manufacturer: row.manufacturer, productName: row.product_name, modelNumber: row.model_number }, row.display_name),
     ...(row.official_product_url ? { officialProductUrl: row.official_product_url } : {}),
     officialManualUrl: row.official_manual_url,
     analysis: JSON.parse(row.analysis_json) as ApplianceCareAnalysisDraft,
@@ -1013,7 +1014,7 @@ async function saveReviewedApplianceCareImpl(
   let scheduledTaskCount = 0;
   let duplicateTaskCount = 0;
   let noCycleTaskCount = 0;
-  const displayName = `${product.manufacturer} ${product.productName}（${product.modelNumber}）`;
+  const displayName = applianceDisplayName(product);
   const approvedByTaskName = new Map(approvedTasks.map((approved) => [approved.task.name, approved]));
   const currentTaskNames = new Set(analysis.tasks.map((task) => task.name));
 
@@ -1132,16 +1133,21 @@ async function completeChoreImpl(
   memberId?: EntityId,
   source: NonNullable<ChoreCompletion['source']> = 'inApp',
 ): Promise<boolean> {
-  if (entry.status === 'initialPending' && !entry.id.endsWith(':initial')) return false;
-  const active = await database.getFirstAsync<{ enabled: number }>(
-    'SELECT enabled FROM chore_definitions WHERE id = ? AND household_id = ?', entry.choreId, LOCAL_HOUSEHOLD_ID,
-  );
-  if (!active?.enabled) return false;
+  if (!await isActiveChoreEntry(database, entry)) return false;
   let inserted = false;
   await database.withTransactionAsync(async () => {
     inserted = await persistChoreCompletion(database, entry, new Date().toISOString(), source, memberId);
   });
   return inserted;
+}
+
+async function isActiveChoreEntry(database: SQLiteDatabase, entry: ChoreScheduleEntry): Promise<boolean> {
+  if (entry.householdId !== LOCAL_HOUSEHOLD_ID) return false;
+  if (entry.status === 'initialPending' && !entry.id.endsWith(':initial')) return false;
+  const active = await database.getFirstAsync<{ enabled: number }>(
+    'SELECT enabled FROM chore_definitions WHERE id = ? AND household_id = ?', entry.choreId, LOCAL_HOUSEHOLD_ID,
+  );
+  return Boolean(active?.enabled);
 }
 
 type CompletionTarget = Pick<ChoreScheduleEntry, 'id' | 'householdId' | 'choreId'>
@@ -1282,6 +1288,18 @@ async function markPendingGoogleStatus(database: SQLiteDatabase, scheduleEntryId
     'UPDATE google_task_links SET pending_status = ?, pending_status_revision = ? WHERE schedule_entry_id = ?',
     status, createId('google-status'), scheduleEntryId,
   );
+}
+
+async function hasPendingGoogleTaskChangesImpl(
+  database: SQLiteDatabase, lastSuccessfulSyncAt?: string, householdId = LOCAL_HOUSEHOLD_ID,
+): Promise<boolean> {
+  const row = await database.getFirstAsync<{ pending: number }>(
+    `SELECT EXISTS(SELECT 1 FROM google_task_links WHERE household_id = ? AND pending_status IS NOT NULL)
+       OR EXISTS(SELECT 1 FROM chore_completions WHERE household_id = ? AND source = 'widget'
+         AND outcome = 'completed' AND completed_at > ?) AS pending`,
+    householdId, householdId, lastSuccessfulSyncAt ?? '',
+  );
+  return Boolean(row?.pending);
 }
 
 async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
@@ -1505,6 +1523,7 @@ async function recordIncompleteChoreImpl(
   entry: ChoreScheduleEntry,
   memberId?: EntityId,
 ): Promise<boolean> {
+  if (!await isActiveChoreEntry(database, entry)) return false;
   let recorded = false;
   const recordedAt = new Date().toISOString();
   await database.withTransactionAsync(async () => {
@@ -1952,6 +1971,14 @@ async function readCalendarPlanningSignaturesImpl(database: SQLiteDatabase, now 
   return { current: calendarAvailabilitySignature(available), applied: row?.planner_calendar_signature ?? null };
 }
 
+async function hasFreshCalendarCoverageImpl(database: SQLiteDatabase, range: CalendarQueryRange, now = new Date()): Promise<boolean> {
+  const available = await getFreshCalendarAvailabilityDaysImpl(database, now, range.timeZone);
+  for (let date = range.from; date <= range.through; date = addDays(date, 1)) {
+    if (!available?.[date]) return false;
+  }
+  return true;
+}
+
 async function replaceCalendarAvailabilityRows(
   database: SQLiteDatabase, days: readonly CalendarAvailabilityDay[], householdId: string,
 ): Promise<void> {
@@ -1993,6 +2020,7 @@ export const setCalendarAvailabilityEnabled = serializePlannerOperation(setCalen
 export const listCalendarAvailabilityDays = serializeDatabaseOperation(listCalendarAvailabilityDaysImpl);
 export const getFreshCalendarAvailabilityDays = serializeDatabaseOperation(getFreshCalendarAvailabilityDaysImpl);
 export const readCalendarPlanningSignatures = serializeDatabaseOperation(readCalendarPlanningSignaturesImpl);
+export const hasFreshCalendarCoverage = serializeDatabaseOperation(hasFreshCalendarCoverageImpl);
 export const replaceCalendarAvailabilityDays = serializePlannerOperation(replaceCalendarAvailabilityDaysImpl);
 export const commitCalendarAvailabilitySuccess = serializePlannerOperation(commitCalendarAvailabilitySuccessImpl);
 
@@ -2023,6 +2051,7 @@ export const saveWeeklyWasteSchedule = serializePlannerOperation(saveWeeklyWaste
 export const setWasteOccurrenceHidden = serializePlannerOperation(setWasteOccurrenceHiddenImpl);
 export const deleteWeeklyWasteSchedule = serializePlannerOperation(deleteWeeklyWasteScheduleImpl);
 export const loadGoogleSyncState = serializeDatabaseOperation(loadGoogleSyncStateImpl);
+export const hasPendingGoogleTaskChanges = serializeDatabaseOperation(hasPendingGoogleTaskChangesImpl);
 export const saveGoogleSyncState = serializeDatabaseOperation(saveGoogleSyncStateImpl);
 export const listEntriesForGoogleSync = serializeDatabaseOperation(listEntriesForGoogleSyncImpl);
 export const listGoogleTaskLinks = serializeDatabaseOperation(listGoogleTaskLinksImpl);

@@ -25,6 +25,10 @@ export const expoWidgetGateway: WidgetGateway = {
       (current, entry) => !current || entry.date > current.date ? entry : current,
       null,
     );
-    return latest?.props.pendingWidgetCompletionIds ?? [];
+    const pendingIds = latest?.props.pendingWidgetCompletionIds ?? [];
+    // The extension can change native props without changing the planner content.
+    // Its pending actions still need the next snapshot to acknowledge them.
+    if (pendingIds.length > 0) publishedSignature = undefined;
+    return pendingIds;
   },
 };

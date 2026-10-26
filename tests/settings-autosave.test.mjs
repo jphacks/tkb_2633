@@ -55,6 +55,39 @@ test('autosave serializes slow writes and retains the final toggle and edits mad
   assert.deepEqual(writes, [{ enabled: true }, { enabled: false, cycleDays: 30 }]);
 });
 
+test('autosave publishes its running writer before notifying reentrant subscribers', async () => {
+  const writes = []; let active = 0; let maximum = 0; let triggered = false; let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const queue = createAutosaveQueue({ save: async (patch) => {
+    writes.push(patch); active++; maximum = Math.max(maximum, active);
+    await blocked; active--;
+  } });
+  queue.subscribe(() => {
+    if (queue.getSnapshot().phase === 'saving' && !triggered) {
+      triggered = true;
+      queue.enqueue({ cycleDays: 21 }, true);
+    }
+  });
+  queue.enqueue({ cycleDays: 14 }, true);
+  const inFlight = queue.flush();
+  release(); await inFlight;
+  assert.equal(maximum, 1);
+  assert.deepEqual(writes, [{ cycleDays: 14 }, { cycleDays: 21 }]);
+  assert.equal(queue.getSnapshot().phase, 'saved');
+});
+
+test('autosave drains edits enqueued synchronously by a saved-state observer', async () => {
+  const writes = []; let triggered = false;
+  const queue = createAutosaveQueue({ save: async (patch) => { writes.push(patch); } });
+  queue.subscribe(() => {
+    if (queue.getSnapshot().phase === 'saved' && !triggered) {
+      triggered = true; queue.enqueue({ enabled: false }, true);
+    }
+  });
+  queue.enqueue({ cycleDays: 17 }); await queue.flush();
+  assert.deepEqual(writes, [{ cycleDays: 17 }, { enabled: false }]);
+});
+
 test('autosave failed patches can be retried with the latest values instead of overwriting them', async () => {
   const writes = []; let fail = true;
   const queue = createAutosaveQueue({ save: async (patch) => { writes.push(patch); if (fail) throw new Error('保存失敗'); } });
@@ -158,6 +191,65 @@ for (const event of ['back', 'blur', 'background']) {
       for (const cleanup of cleanups) cleanup?.();
     } finally { h.connection.close(); }
   });
+}
+
+for (const event of ['blur', 'background', 'unmount']) {
+  test(`autosave restores a cleared cycle when leaving through ${event} without a native blur event`, async () => {
+    const h = await context();
+    try {
+      await repository.updateChoreSettings(h.database, h.chore.id, { cycleDays: 17, enabled: false }); await h.refresh();
+      let focus, stateListener; const effects = [];
+      const screen = screenHarness('src/app/chores/[id].tsx', { ...h.options,
+        focusEffect: (callback) => { focus = callback; }, effect: (callback) => effects.push(callback),
+        appStateListener: (callback) => { stateListener = callback; } });
+      const leave = focus(); const cleanups = effects.map((callback) => callback());
+      await screen.change('家事周期の日数', '');
+      if (event === 'blur') leave();
+      else if (event === 'background') stateListener('inactive');
+      else for (const cleanup of cleanups) cleanup?.();
+      await screen.flush();
+      const saved = h.snapshot().chores.find((item) => item.id === h.chore.id);
+      assert.equal(saved.recommendedCycleDays, undefined);
+      assert.equal(saved.enabled, false);
+      if (event !== 'unmount') for (const cleanup of cleanups) cleanup?.();
+      await screen.flush();
+    } finally { h.connection.close(); }
+  });
+}
+
+for (const manufacturerDays of [undefined, 30]) {
+  for (const event of ['blur', 'background', 'unmount']) {
+    test(`autosave clears an appliance override with manufacturer cycle ${manufacturerDays} on ${event}`, async () => {
+      const h = await context();
+      try {
+        const task = { name: 'フィルターのお手入れ', ...(manufacturerDays ? { recommendedIntervalDays: manufacturerDays } : {}),
+          steps: ['公式手順を保持'], tools: ['布'], safetyCautions: ['電源を切る'], evidence: [{ url: 'https://www.dyson.co.jp/support' }] };
+        const result = await repository.saveReviewedApplianceCare(h.database,
+          { manufacturer: 'Dyson', productName: 'V12', modelNumber: 'SV20', manualUrl: 'https://www.dyson.co.jp/support' },
+          { manufacturer: 'Dyson', model: 'SV20', tasks: [task], analyzedAt: new Date().toISOString(), requiresUserReview: true }, [{ task, userIntervalDays: 17 }]);
+        await h.refresh();
+        const chore = h.snapshot().chores.find((item) => item.applianceId === result.applianceId);
+        if (manufacturerDays) await repository.updateChoreSettings(h.database, chore.id, { enabled: false });
+        await h.refresh();
+        let focus, stateListener; const effects = [];
+        const screen = screenHarness('src/app/chores/[id].tsx', { ...h.options, params: { id: chore.id },
+          focusEffect: (callback) => { focus = callback; }, effect: (callback) => effects.push(callback),
+          appStateListener: (callback) => { stateListener = callback; } });
+        const leave = focus(); const cleanups = effects.map((callback) => callback());
+        await screen.change('家事周期の日数', '');
+        if (event === 'blur') leave(); else if (event === 'background') stateListener('background');
+        else for (const cleanup of cleanups) cleanup?.();
+        await screen.flush();
+        const saved = h.snapshot().chores.find((item) => item.id === chore.id);
+        assert.equal(saved.userIntervalDays, undefined);
+        assert.equal(saved.requiresCycleSelection, manufacturerDays === undefined);
+        assert.equal(saved.enabled, false);
+        assert.deepEqual(saved.instructions, chore.instructions);
+        if (event !== 'unmount') for (const cleanup of cleanups) cleanup?.();
+        await screen.flush();
+      } finally { h.connection.close(); }
+    });
+  }
 }
 
 test('individual settings show failed saves and retry the retained draft', async () => {

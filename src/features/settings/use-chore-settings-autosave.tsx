@@ -15,26 +15,17 @@ export function useChoreSettingsAutosave(chore: ChoreDefinition, mode: Frequency
   }));
   const latest = useRef(draft);
   const enabledTouched = useRef(false);
+  const emptyCyclePending = useRef(false);
   const leaving = useRef(false);
   const [queue] = useState(() => createAutosaveQueue<ChoreSettingsPatch>({ save: savePatch }));
   const status = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
-  const updateDraft = (patch: Partial<typeof draft>) => {
+  const updateDraft = useCallback((patch: Partial<typeof draft>) => {
     latest.current = { ...latest.current, ...patch };
     setDraft(latest.current);
-  };
-
-  useFocusEffect(useCallback(() => {
-    leaving.current = false;
-    return () => { void queue.flush(); };
-  }, [queue]));
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') void queue.flush();
-    });
-    return () => { subscription.remove(); void queue.flush(); };
-  }, [queue]);
+  }, []);
 
   const changeCycle = (text: string) => {
+    emptyCyclePending.current = !text.trim();
     const value = parseSettingInteger(text, 1, 3650);
     const autoEnable = value !== undefined && chore.requiresCycleSelection && !enabledTouched.current;
     updateDraft({ cycleText: text, ...(autoEnable ? { enabled: true } : {}) });
@@ -50,17 +41,30 @@ export function useChoreSettingsAutosave(chore: ChoreDefinition, mode: Frequency
     if (value !== undefined) queue.enqueue({ windowRadiusDays: value });
     else queue.remove('windowRadiusDays');
   };
-  const resetCycle = () => {
-    const missingManufacturerCycle = Boolean(chore.applianceCareSource && chore.manufacturerRecommendedIntervalDays === undefined);
-    updateDraft({ cycleText: missingManufacturerCycle ? '' : String(chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[mode]),
+  const missingManufacturerCycle = Boolean(chore.applianceCareSource && chore.manufacturerRecommendedIntervalDays === undefined);
+  const defaultCycleDays = chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[mode];
+  const resetCycle = useCallback(() => {
+    emptyCyclePending.current = false;
+    updateDraft({ cycleText: missingManufacturerCycle ? '' : String(defaultCycleDays),
       ...(missingManufacturerCycle ? { enabled: false } : {}) });
     queue.enqueue({ cycleDays: null, ...(missingManufacturerCycle ? { enabled: false } : {}) }, true);
-  };
-  const flush = () => {
+  }, [defaultCycleDays, missingManufacturerCycle, queue, updateDraft]);
+  const flush = useCallback(() => {
     // Finishing an empty cycle restores the default; unknown appliance cycles become unscheduled.
-    if (!latest.current.cycleText.trim()) resetCycle();
+    if (emptyCyclePending.current) resetCycle();
     return queue.flush();
-  };
+  }, [queue, resetCycle]);
+
+  useFocusEffect(useCallback(() => {
+    leaving.current = false;
+    return () => { void flush(); };
+  }, [flush]));
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') void flush();
+    });
+    return () => { subscription.remove(); void flush(); };
+  }, [flush]);
   return {
     draft, status, changeCycle, changeRadius, resetCycle, flush,
     async navigateAfterSave(navigate: () => void) {

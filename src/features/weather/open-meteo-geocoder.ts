@@ -79,7 +79,10 @@ export class OpenMeteoGeocodingProvider {
 
     // Open-Meteo treats two-character searches as exact matches. Add the common
     // city suffix for shorthand input so "横浜" resolves to "横浜市".
-    const searchName = /[市区町村]$/u.test(query) ? query : `${query}市`;
+    const romanized = query.normalize('NFKC');
+    const searchName = /^[\p{Script=Latin}\s'-]+$/u.test(romanized)
+      ? romanized
+      : /[市区町村]$/u.test(query) ? query : `${query}市`;
     return (await this.searchName(searchName, signal))
       .filter(isMunicipality)
       .sort((left, right) => (right.population ?? 0) - (left.population ?? 0)

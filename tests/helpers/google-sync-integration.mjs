@@ -131,6 +131,7 @@ export async function createIntegration({ cycleDays = 1, previousDate = today, d
   });
   const dependencies = {
     loadState: () => repository.loadGoogleSyncState(database),
+    hasPendingLocalChanges: (lastSuccess) => repository.hasPendingGoogleTaskChanges(database, lastSuccess),
     saveState: (state) => repository.saveGoogleSyncState(database, state),
     getAccessToken: async () => 'fixture-token', api,
     listEntriesForGoogleSync: (date, householdId) => repository.listEntriesForGoogleSync(database, date, householdId),

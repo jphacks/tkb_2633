@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -26,6 +26,7 @@ export default function ChoreGuideScreen() {
   const [isTriviaCollectionOpen, setIsTriviaCollectionOpen] = useState(false);
   const [selectedTriviaId, setSelectedTriviaId] = useState<string | null>(null);
   const [recordingIncomplete, setRecordingIncomplete] = useState(false);
+  const incompleteInFlight = useRef(false);
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => navigation.addListener('tabPress', () => {
     navigation.setParams({ choreId: undefined, returnTo: undefined });
@@ -139,16 +140,18 @@ export default function ChoreGuideScreen() {
   }
 
   const recordIncomplete = async () => {
-    if (!currentEntry || !canRecordIncomplete || recordingIncomplete) return;
+    if (!currentEntry || !canRecordIncomplete || incompleteInFlight.current) return;
+    incompleteInFlight.current = true;
     setRecordingIncomplete(true);
     setMessage(null);
     try {
       const recorded = await recordIncompleteChore(database, currentEntry);
-      setMessage(recorded ? '未完了を記録し、予定を再調整しました。' : 'この予定はすでに完了として記録されています。');
+      setMessage(recorded ? '未完了を記録し、予定を再調整しました。' : 'この予定は現在記録できません。最新の予定を確認してください。');
       await refresh();
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : '未完了を記録できませんでした。');
     } finally {
+      incompleteInFlight.current = false;
       setRecordingIncomplete(false);
     }
   };

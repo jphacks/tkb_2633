@@ -44,7 +44,13 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       return;
     }
 
-    const url = new URL(request.url ?? '/', 'http://localhost');
+    let url;
+    try {
+      url = new URL(request.url ?? '/', 'http://localhost');
+    } catch {
+      sendJson(response, 400, { status: 'error', code: 'INVALID_REQUEST', message: 'リクエストURLを確認してください。' });
+      return;
+    }
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'ok', aiConfigured });
       return;

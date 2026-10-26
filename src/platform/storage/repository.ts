@@ -1132,16 +1132,21 @@ async function completeChoreImpl(
   memberId?: EntityId,
   source: NonNullable<ChoreCompletion['source']> = 'inApp',
 ): Promise<boolean> {
-  if (entry.status === 'initialPending' && !entry.id.endsWith(':initial')) return false;
-  const active = await database.getFirstAsync<{ enabled: number }>(
-    'SELECT enabled FROM chore_definitions WHERE id = ? AND household_id = ?', entry.choreId, LOCAL_HOUSEHOLD_ID,
-  );
-  if (!active?.enabled) return false;
+  if (!await isActiveChoreEntry(database, entry)) return false;
   let inserted = false;
   await database.withTransactionAsync(async () => {
     inserted = await persistChoreCompletion(database, entry, new Date().toISOString(), source, memberId);
   });
   return inserted;
+}
+
+async function isActiveChoreEntry(database: SQLiteDatabase, entry: ChoreScheduleEntry): Promise<boolean> {
+  if (entry.householdId !== LOCAL_HOUSEHOLD_ID) return false;
+  if (entry.status === 'initialPending' && !entry.id.endsWith(':initial')) return false;
+  const active = await database.getFirstAsync<{ enabled: number }>(
+    'SELECT enabled FROM chore_definitions WHERE id = ? AND household_id = ?', entry.choreId, LOCAL_HOUSEHOLD_ID,
+  );
+  return Boolean(active?.enabled);
 }
 
 type CompletionTarget = Pick<ChoreScheduleEntry, 'id' | 'householdId' | 'choreId'>
@@ -1517,6 +1522,7 @@ async function recordIncompleteChoreImpl(
   entry: ChoreScheduleEntry,
   memberId?: EntityId,
 ): Promise<boolean> {
+  if (!await isActiveChoreEntry(database, entry)) return false;
   let recorded = false;
   const recordedAt = new Date().toISOString();
   await database.withTransactionAsync(async () => {

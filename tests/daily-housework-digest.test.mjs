@@ -76,6 +76,45 @@ test('a scheduling failure does not remove all existing reminders', async () => 
   assert.deepEqual(client.cancelled, []);
 });
 
+test('a failed new reminder still reconciles other dates and cancels obsolete reminders', async () => {
+  const client = gateway();
+  await syncDailyHouseworkDigest(client, snapshot(), now);
+  const oldKeys = [...client.requests.keys()];
+  const schedule = client.schedule.bind(client); const attempted = [];
+  client.schedule = async (request) => {
+    attempted.push(request.key);
+    if (attempted.length === 1) throw new Error('OS rejected one reminder');
+    return schedule(request);
+  };
+  const moved = { ...entry, windowStart: '2026-11-01', windowEnd: '2026-11-03', suggestedDate: '2026-11-02', cycleBaseDate: '2026-11-02' };
+  await assert.rejects(syncDailyHouseworkDigest(client, snapshot({ scheduleEntries: [moved] }), now), /OS rejected/);
+  assert.equal(attempted.length, 3);
+  assert.deepEqual(client.cancelled, oldKeys);
+  assert.equal(client.requests.size, 2);
+  assert.ok(oldKeys.every((key) => !client.requests.has(key)));
+  await syncDailyHouseworkDigest(client, snapshot({ scheduleEntries: [moved] }), now);
+  assert.equal(client.requests.size, 3, 'the failed date is retried without duplicating successful dates');
+  assert.equal(attempted.length, 4);
+});
+
+test('one cancellation failure does not retain every obsolete reminder or poison the next sync', async () => {
+  const client = gateway();
+  await syncDailyHouseworkDigest(client, snapshot(), now);
+  const cancel = client.cancel.bind(client); const attempted = []; let fail = true;
+  client.cancel = async (key) => {
+    attempted.push(key);
+    if (fail) { fail = false; throw new Error('OS cancellation failed'); }
+    await cancel(key);
+  };
+  const disabled = snapshot({ settings: { ...snapshot().settings, notificationsEnabled: false } });
+  await assert.rejects(syncDailyHouseworkDigest(client, disabled, now), /OS cancellation failed/);
+  assert.equal(attempted.length, 3);
+  assert.equal(client.requests.size, 1);
+  await syncDailyHouseworkDigest(client, disabled, now);
+  assert.equal(client.requests.size, 0);
+  assert.equal(attempted.length, 4);
+});
+
 test('daily cycles notify each chore once and skip a day already completed', () => {
   const entries = ['2026-10-23', '2026-10-24', '2026-10-25'].map((date) => ({
     ...entry, id: `daily:${date}`, choreId: 'one', cycleBaseDate: date,

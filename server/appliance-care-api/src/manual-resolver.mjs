@@ -109,32 +109,59 @@ function manualFormatRank(candidate) {
 
 export async function inspectOfficialManual(url, allowedDomains, fetchImpl = fetch) {
   const final = await requestOfficialUrl(url, allowedDomains, fetchImpl, 'HEAD');
-  const contentType = final.response.headers.get('content-type')?.toLocaleLowerCase('en-US') ?? '';
-  const contentLength = Number(final.response.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > MAX_MANUAL_BYTES) throw new ManualFetchError();
+  try {
+    const contentType = final.response.headers.get('content-type')?.toLocaleLowerCase('en-US') ?? '';
+    const contentLength = Number(final.response.headers.get('content-length') ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_MANUAL_BYTES) throw new ManualFetchError();
 
-  let kind;
-  if (contentType.includes('application/pdf') || new URL(final.url).pathname.toLocaleLowerCase('en-US').endsWith('.pdf')) {
-    kind = 'pdf';
-  } else if (contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) {
-    kind = 'web_manual';
-  } else {
-    throw new ManualFetchError();
+    let kind;
+    if (contentType.includes('application/pdf') || new URL(final.url).pathname.toLocaleLowerCase('en-US').endsWith('.pdf')) {
+      kind = 'pdf';
+    } else if (contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) {
+      kind = 'web_manual';
+    } else {
+      throw new ManualFetchError();
+    }
+    return { url: final.url, kind };
+  } finally {
+    // HEAD may fall back to GET; release its body on validation failures too.
+    await final.response.body?.cancel().catch(() => undefined);
   }
-  final.response.body?.cancel().catch(() => undefined);
-  return { url: final.url, kind };
 }
 
 export async function fetchOfficialManualText(manual, allowedDomains, fetchImpl = fetch) {
   if (manual.kind === 'pdf') throw new ManualFetchError();
   const final = await requestOfficialUrl(manual.url, allowedDomains, fetchImpl, 'GET');
   const contentLength = Number(final.response.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) throw new ManualFetchError();
-  const bytes = Buffer.from(await final.response.arrayBuffer());
-  if (bytes.byteLength > MAX_HTML_BYTES) throw new ManualFetchError();
   const contentType = final.response.headers.get('content-type')?.toLocaleLowerCase('en-US') ?? '';
-  if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) throw new ManualFetchError();
+  if ((Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES)
+    || (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml'))) {
+    await final.response.body?.cancel().catch(() => undefined);
+    throw new ManualFetchError();
+  }
+  const bytes = await readBoundedBody(final.response, MAX_HTML_BYTES);
   return { url: final.url, text: stripHtml(bytes.toString('utf8')) };
+}
+
+async function readBoundedBody(response, maximumBytes) {
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return Buffer.concat(chunks, length);
+      length += value.byteLength;
+      if (length > maximumBytes) throw new ManualFetchError();
+      chunks.push(Buffer.from(value));
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function requestOfficialUrl(initialUrl, allowedDomains, fetchImpl, initialMethod) {

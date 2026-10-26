@@ -42,6 +42,7 @@ export class OpenAIResponsesClient {
     }
 
     if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
       if (response.status === 408 || response.status === 429 || response.status >= 500) throw temporaryNetworkError();
       throw new Error('OpenAI request failed');
     }

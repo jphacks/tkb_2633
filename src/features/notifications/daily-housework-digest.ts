@@ -80,17 +80,23 @@ async function performSync(
   const requests = enabled ? createDailyHouseworkDigestRequests(snapshot, now) : [];
   const desiredKeys = new Set(requests.map((request) => request.key));
   const existingByKey = new Map(existing.map((request) => [request.key, request]));
+  const failures: unknown[] = [];
   for (const request of requests) {
     const previous = existingByKey.get(request.key);
     if (!previous || requestSignature(previous) !== requestSignature(request)) {
-      await gateway.schedule(request);
+      try { await gateway.schedule(request); }
+      catch (error) { failures.push(error); }
     }
   }
   for (const request of existing) {
     if (request.key.startsWith(DAILY_DIGEST_KEY_PREFIX) && !desiredKeys.has(request.key)) {
-      await gateway.cancel(request.key);
+      try { await gateway.cancel(request.key); }
+      catch (error) { failures.push(error); }
     }
   }
+  // Keep reminders whose replacements failed, but do not leave unrelated obsolete
+  // reminders active just because another operation failed.
+  if (failures.length > 0) throw failures[0];
 }
 
 function requestSignature(request: LocalNotificationRequest): string {

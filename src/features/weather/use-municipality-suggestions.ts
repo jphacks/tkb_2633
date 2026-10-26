@@ -29,13 +29,13 @@ export function useMunicipalitySuggestions(query: string, enabled = true): Munic
       void geocoder.search(normalizedQuery, controller.signal).then((candidates) => {
         if (controller.signal.aborted) return;
         setSuggestions({ query: normalizedQuery, candidates, status: candidates.length > 0 ? 'results' : 'empty', error: null });
-      }).catch((cause: unknown) => {
+      }).catch(() => {
         if (controller.signal.aborted) return;
         setSuggestions({
           query: normalizedQuery,
           candidates: [],
           status: 'error',
-          error: cause instanceof Error ? cause.message : '市区町村を検索できませんでした。通信状態を確認してください。',
+          error: '市区町村を検索できませんでした。入力内容と通信状態を確認して、もう一度入力してください。',
         });
       });
     }, SEARCH_DEBOUNCE_MS);

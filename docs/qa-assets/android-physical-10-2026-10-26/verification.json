@@ -1,0 +1,116 @@
+{
+  "device": {
+    "manufacturer": "Sony",
+    "model": "I4293",
+    "androidVersion": "10",
+    "api": 29,
+    "abi": "arm64-v8a",
+    "screenPixels": [
+      1080,
+      2520
+    ],
+    "densityDpi": 420,
+    "fontScale": 1.15,
+    "systemNightMode": true,
+    "googlePlayServicesVersion": "26.41.31"
+  },
+  "baseMainCommit": "91cff96b99918f4865633a2e7f090ad21c253ea4",
+  "releaseApk": {
+    "minSdk": 24,
+    "targetSdk": 36,
+    "bytes": 41398807,
+    "sha256": "077c456faa203307891d227db367b1c2fb6ba2abfbac2f29f1823fabe16f6bc7",
+    "architectures": [
+      "arm64-v8a"
+    ],
+    "qaSigning": "existing debug certificate; non-debuggable Release build"
+  },
+  "tests": {
+    "ios": {
+      "total": 683,
+      "passed": 683,
+      "failed": 0
+    },
+    "android": {
+      "total": 683,
+      "passed": 683,
+      "failed": 0
+    },
+    "protectedFeatureContracts": 44,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "expoDoctor": {
+      "passed": 20,
+      "total": 20
+    },
+    "physicalIOSXCTest": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "verified": {
+    "initialSetupAll20DisabledAndUnknown": true,
+    "weeklyWasteOnboarding": true,
+    "wasteHomeHideCalendarRestore": true,
+    "weatherSearchAfterConnection": true,
+    "unknownFloorEnableAutosave17": true,
+    "periodSurvivesNativeUpdate": true,
+    "localCompleteUndo": true,
+    "disableRemovesCardReenableRestoresSingleCard": true,
+    "periodRestoredTo7": true,
+    "releaseStandaloneLaunch": true,
+    "darkModeSystemBarContrast": true,
+    "physicalGoogleNativeSignIn": true,
+    "tasksSyncWithZeroEligibleEntries": true,
+    "calendarAuthorizationAndLiveFetch": true,
+    "savedApplianceVisibleAfterReleaseUpdate": true,
+    "friendlyMessageDuringPhysicalWifiLoss": true,
+    "rawNativeErrorHidden": true,
+    "wifiRestored": true,
+    "weatherCandidateRecoversAfterWifiRestored": true,
+    "androidOSRendersLiFlowNameAndRoundIcon": true
+  },
+  "googleScope": {
+    "eligibleChoresAtConnection": 0,
+    "calendarLastSuccessfulFetch": "2026-10-26T14:22:57.004Z",
+    "calendarAfterQA": false,
+    "physicalTaskWriteAndBidirectionalE2E": "NOT TESTED",
+    "fullPhase3PhysicalE2E": "NOT TESTED",
+    "tasksAutoSyncAfterQA": false
+  },
+  "applianceAI": {
+    "product": "Dyson V12 Detect Slim (SV20)",
+    "build": "Debug development build",
+    "transport": "USB port reverse to Mac loopback HTTP API",
+    "careItems": 10,
+    "steps": 78,
+    "scheduledItems": 1,
+    "itemsWithoutFixedCycle": 9,
+    "realAPI": "PASS",
+    "releaseLocalHttpConnection": "FAILED; Debug-only cleartext permission; production HTTPS endpoint required"
+  },
+  "iPhone": {
+    "device": "iPhone 12",
+    "os": "26.7.1",
+    "signedReleaseBuild": "PASS",
+    "install": "PASS",
+    "launch": "PASS",
+    "databaseTablesUnchangedAcrossInstall": 17
+  },
+  "unverified": [
+    "physical OS-scheduled long-running BackgroundTask",
+    "physical notification delivery at configured time",
+    "physical weather-driven laundry movement",
+    "physical Google Task writes and reverse completion",
+    "iPhone physical Google and appliance API"
+  ],
+  "sourceSha256": {
+    "app.json": "7fdc56c0f59be2325fa358033c76d32efb74d777017bc76f6cb66026772cc861",
+    "package.json": "446c6716b6e232e4afe3a54aa17dafff6327b35447315ca7b2bba91214692348",
+    "package-lock.json": "f63f7f612f75eee7f14a7e769c7b9b1f19e89205bbe7acce38085aab6463695b",
+    "src/app/_layout.tsx": "71bbc60e5a242be4c49e626f17f8b4a3e1197c06fa7c92432de427069c220f2c",
+    "src/components/planner-system-bars.tsx": "4fbac5099e07ce19518b67e71fedca046ade8cd17631df9214fba6b0482b9212",
+    "src/features/weather/use-municipality-suggestions.ts": "268335030a0c8df0b2be5168b80ebae25223001a16f436fdb628d45aa297f155"
+  }
+}

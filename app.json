@@ -10,7 +10,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/liflow-icon.png",
     "scheme": "houseworkplanner",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "jp.jphacks.tkb2633",
       "icon": "./assets/images/liflow-icon.png"
@@ -35,6 +35,21 @@
         }
       ],
       "expo-sqlite",
+      [
+        "expo-status-bar",
+        {
+          "style": "dark",
+          "hidden": false
+        }
+      ],
+      [
+        "expo-navigation-bar",
+        {
+          "style": "dark",
+          "hidden": false,
+          "enforceContrast": false
+        }
+      ],
       [
         "expo-notifications",
         {

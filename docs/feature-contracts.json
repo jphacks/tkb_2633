@@ -576,6 +576,8 @@
   {
     "feature": "forecast-cache-freshness-and-concurrent-retry",
     "tests": [
+      { "file": "tests/municipality-search-recovery.test.mjs", "name": "municipality search presents a Japanese recovery message" },
+      { "file": "tests/municipality-search-recovery.test.mjs", "name": "municipality search recovers after editing an offline query and ignores an obsolete in-flight result" },
       { "file": "tests/weather-provider-reliability.test.mjs", "name": "forecast caching expires at the boundary and invalidates data from a clock rollback" },
       { "file": "tests/weather-provider-reliability.test.mjs", "name": "changing locations discards expired forecast keys instead of retaining every past search" },
       { "file": "tests/weather-provider-reliability.test.mjs", "name": "simultaneous forecast requests share failure and retry without sharing mutable results" },
@@ -593,6 +595,14 @@
   {
     "feature": "liflow-name-shared-icon-and-adaptive-circle",
     "tests": [
+      {
+        "file": "tests/mobile-system-appearance.test.mjs",
+        "name": "the white planner uses light native appearance on both platforms without changing identity resources"
+      },
+      {
+        "file": "tests/mobile-system-appearance.test.mjs",
+        "name": "planner keeps dark status icons and only Android configures navigation buttons"
+      },
       {
         "file": "tests/app-branding.test.mjs",
         "name": "LiFlow uses the same app name and icon artwork on iOS and Android without changing app identity"

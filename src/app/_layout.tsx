@@ -7,6 +7,7 @@ import { initializeLocalDatabase } from '@/platform/storage/repository';
 import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
 import { PlannerDataProvider, usePlannerData } from '@/hooks/use-planner-data';
 import { addWidgetUserInteractionListener } from '../platform/widgets/widget-interaction-listener';
+import { PlannerSystemBars } from '@/components/planner-system-bars';
 import '@/platform/notifications/configure-foreground-notifications';
 
 function WidgetInteractionBridge() {
@@ -43,6 +44,7 @@ export default function RootLayout() {
       <PlannerDataProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <>
+            <PlannerSystemBars />
             <WidgetInteractionBridge />
             <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

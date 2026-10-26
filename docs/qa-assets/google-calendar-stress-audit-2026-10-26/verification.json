@@ -1,0 +1,128 @@
+{
+  "generatedAtUtc": "2026-10-26T02:00:29.703093+00:00",
+  "status": "automated_complete_native_account_e2e_waiting_for_mac_unlock",
+  "baseCommit": "e6a165edf0fafd42801932f7d8cb89afe8237430",
+  "mainCommitAtAudit": "13553029baeaa7af3d8535316d031ebb973f3291",
+  "hostRuntime": "v24.22.1",
+  "automated": {
+    "ios": {
+      "command": "npm run check",
+      "result": {
+        "tests": 571,
+        "pass": 571,
+        "fail": 0,
+        "skipped": 0
+      },
+      "lint": "pass",
+      "typecheck": "pass"
+    },
+    "android": {
+      "command": "HOUSEWORK_TEST_PLATFORM=android npm test",
+      "result": {
+        "tests": 571,
+        "pass": 571,
+        "fail": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "hermesExports": {
+    "ios": {
+      "status": "pass",
+      "format": "Hermes bytecode",
+      "sizeBytes": 4638949,
+      "sha256": "73e0950659a7fd436b54bd9ea4886574c1f4f39b736f2135af48fa0d3e300633"
+    },
+    "android": {
+      "status": "pass",
+      "format": "Hermes bytecode",
+      "sizeBytes": 4719985,
+      "sha256": "b93b4c9c27d847c481592def3fc1e2784a2fa293356d88739242c3c9daae9da5"
+    }
+  },
+  "syntheticCoverage": {
+    "independentMinuteUnionCases": 5120,
+    "ianaTimeZones": 10,
+    "dateConditions": 8,
+    "seedsPerDate": 64,
+    "plannerCases": 384,
+    "choresPerPlan": 21,
+    "daysPerPlan": 181,
+    "fixedDailyEntriesPerPlan": 724,
+    "largeTransportIntervals": 150000,
+    "disjointAggregationIntervals": 100000,
+    "retryAfterValues": 1000,
+    "concurrentGoogleSyncCalls": 100,
+    "freshCacheChecks": 200,
+    "rollingCacheReplacements": 50,
+    "newTestCases": 195,
+    "newAuthCases": 26
+  },
+  "reproductionsBeforeTargetedFix": {
+    "initialVolumeSuite": {
+      "tests": 56,
+      "failed": 9
+    },
+    "resilienceSuite": {
+      "tests": 33,
+      "failed": 8
+    },
+    "nativeAuthSuite": {
+      "tests": 24,
+      "failed": 2
+    },
+    "additionalResponseValidation": {
+      "tests": 115,
+      "failed": 4
+    }
+  },
+  "nodeOnlyAggregationBenchmark": {
+    "intervals": 100000,
+    "days": 181,
+    "runsPerVersion": 3,
+    "before": {
+      "intervals": 100000,
+      "days": 181,
+      "durationsMs": [
+        318.878916,
+        320.864583,
+        320.941125
+      ],
+      "medianMs": 320.864583
+    },
+    "after": {
+      "intervals": 100000,
+      "days": 181,
+      "durationsMs": [
+        179.476333,
+        182.553417,
+        185.00799999999998
+      ],
+      "medianMs": 182.553417
+    },
+    "nativeDeviceBenchmark": false
+  },
+  "contracts": {
+    "previousRetained": 32,
+    "current": 36
+  },
+  "readmeMediaRetained": true,
+  "nativeAccountE2e": {
+    "newLiveGoogleRequestsThisAudit": 0,
+    "status": "blocked_by_mac_lock",
+    "priorEvidence": "../../android-google-e2e-2026-10-26.md"
+  },
+  "sha256": {
+    "src/features/google-sync/calendar-availability.ts": "e647f6d65f380c661c918c0f889217a6d94eff48363ea22f015faef964ca6f89",
+    "src/features/google-sync/calendar-coordinator.ts": "b335b8d08bd3b68daa9feae9fef672c8e5eddfc1272701d5486cb479bd29d705",
+    "src/features/google-sync/error-classification.ts": "7785b4f8a226be3f06178f1d8c6777da26e92f4e95a16ac7811798543419076a",
+    "src/platform/google-tasks/google-calendar-freebusy-client.ts": "f4550ed4078019e7c52f3276f87559981544abadd3039cc7f378ff13116d06fa",
+    "src/platform/google-tasks/google-sign-in-gateway.ts": "8502ed032d0ba76e888b55c9fb725c60fd14283b79822b19014f229d7d40d350",
+    "src/platform/storage/repository.ts": "f8d2780b4202b82af17ea0e89e3732c1601e62dba43b8a67326b057e2c056231",
+    "tests/google-calendar-stress.test.mjs": "b4d9e130930747628d063bda0c81df8d93a6177718d4d979d14833dd62db88b2",
+    "tests/google-calendar-resilience.test.mjs": "3dcad1c878825408287ae15d5f82cff1710eaa7e0d44776d21faf64aa1ea140a",
+    "tests/google-calendar-native-auth.test.mjs": "f96a2eab854cadcc31bd37de3eaa16b14d9951d15385f4036327eecda64b830e",
+    "tests/google-calendar-storage-stress.test.mjs": "0824415463c7cbf3e636dec16c6955630202142cd0af11b1ecaed54e8d3bea36",
+    "tests/google-calendar-planner-stress.test.mjs": "3cc2b218a76921f49dc0bc2635577abe5ff685f130d583b5998a1b97e4787acc"
+  }
+}

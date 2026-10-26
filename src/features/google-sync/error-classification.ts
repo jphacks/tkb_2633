@@ -57,7 +57,10 @@ function normalizeErrorCode(code: string | undefined, status: number | undefined
 function parseRetryAfter(value: string | null | undefined, now: Date): number | null {
   if (!value) return null;
   const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return now.getTime() + seconds * 1000;
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    const deadline = now.getTime() + seconds * 1000;
+    return Number.isFinite(new Date(deadline).getTime()) ? deadline : null;
+  }
   const date = Date.parse(value);
   return Number.isFinite(date) ? date : null;
 }

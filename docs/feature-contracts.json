@@ -489,5 +489,41 @@
       { "file": "tests/native-platform-gateways.test.mjs", "name": "background tasks close their SQLite connection after a sync failure without mounting UI" },
       { "file": "tests/weather.test.mjs", "name": "romanized municipality queries do not acquire a Japanese suffix on an English Android keyboard" }
     ]
+  },
+  {
+    "feature": "calendar-freebusy-volume-and-response-validation",
+    "tests": [
+      { "file": "tests/google-calendar-stress.test.mjs", "name": "FreeBusy retains 150000 intervals without exceeding the JavaScript argument stack" },
+      { "file": "tests/google-calendar-stress.test.mjs", "name": "100000 disjoint Calendar intervals retain exact daily totals over 181 days" },
+      { "file": "tests/google-calendar-stress.test.mjs", "name": "calendar aggregation agrees with an independent minute-union oracle" },
+      { "file": "tests/google-calendar-stress.test.mjs", "name": "keeps retry timing instead of permanently stopping Calendar" },
+      { "file": "tests/google-calendar-stress.test.mjs", "name": "to an empty free calendar" }
+    ]
+  },
+  {
+    "feature": "calendar-cache-coverage-and-atomic-refresh",
+    "tests": [
+      { "file": "tests/google-calendar-storage-stress.test.mjs", "name": "real SQLite Calendar coverage refreshes after" },
+      { "file": "tests/google-calendar-storage-stress.test.mjs", "name": "a failed Calendar row insert rolls back the entire 181-day replacement and success timestamp" },
+      { "file": "tests/google-calendar-storage-stress.test.mjs", "name": "Calendar OFF queued behind a slow refresh clears the cache and cannot be overwritten by a late response" },
+      { "file": "tests/google-calendar-resilience.test.mjs", "name": "Retry-After malformed and huge values always produce a serializable finite retry time" }
+    ]
+  },
+  {
+    "feature": "calendar-native-auth-and-concurrent-sync",
+    "tests": [
+      { "file": "tests/google-calendar-native-auth.test.mjs", "name": "100 concurrent session checks configure the native SDK once" },
+      { "file": "tests/google-calendar-native-auth.test.mjs", "name": "iOS cold session restores Keychain once for 100 concurrent Calendar checks" },
+      { "file": "tests/google-calendar-native-auth.test.mjs", "name": "Android missing saved session never attempts the potentially interactive signIn fallback" },
+      { "file": "tests/google-calendar-storage-stress.test.mjs", "name": "100 concurrent Google sync requests share one Calendar fetch sequence and one Tasks reconciliation" }
+    ]
+  },
+  {
+    "feature": "calendar-large-planner-and-failure-matrix",
+    "tests": [
+      { "file": "tests/google-calendar-planner-stress.test.mjs", "name": "Calendar preserves 21-chore 181-day plans" },
+      { "file": "tests/google-calendar-resilience.test.mjs", "name": "never commits partial 181-day coverage" },
+      { "file": "tests/google-calendar-resilience.test.mjs", "name": "is transient and preserves granted permission" }
+    ]
   }
 ]

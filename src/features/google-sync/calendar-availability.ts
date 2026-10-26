@@ -113,10 +113,18 @@ export function aggregateBusyMinutes(
   const formatter = dateFormatter(range.timeZone);
   const days: CalendarAvailabilityDay[] = [];
   let start = min;
+  let intervalIndex = 0;
   for (let date = range.from; date <= range.through; date = addDays(date, 1)) {
     const end = dayStart(addDays(date, 1), formatter);
-    const milliseconds = merged.reduce((sum, interval) =>
-      sum + Math.max(0, Math.min(end, interval.end) - Math.max(start, interval.start)), 0);
+    let milliseconds = 0;
+    // Both days and merged intervals are ordered. Consume each interval once,
+    // retaining one that crosses midnight for the next day (including DST).
+    while (intervalIndex < merged.length && merged[intervalIndex].start < end) {
+      const interval = merged[intervalIndex];
+      milliseconds += Math.max(0, Math.min(end, interval.end) - Math.max(start, interval.start));
+      if (interval.end > end) break;
+      intervalIndex += 1;
+    }
     days.push({ localDate: date, busyMinutes: Math.ceil(milliseconds / 60_000), timeZone: range.timeZone, fetchedAt });
     start = end;
   }
@@ -141,8 +149,13 @@ export function shouldRefreshCalendar(state: CalendarAvailabilityState | null, n
   if (force) return true;
   if (state.status === 'permissionRequired' || state.status === 'error') return false;
   if (state.status === 'syncing') {
-    return !state.lastAttemptAt || Date.parse(state.lastAttemptAt) + 10 * 60 * 1000 <= now.getTime();
+    const attempted = Date.parse(state.lastAttemptAt ?? '');
+    return !Number.isFinite(attempted) || attempted > now.getTime() || attempted + 10 * 60 * 1000 <= now.getTime();
   }
-  if (state.status === 'retryPending') return Boolean(state.nextRetryAt && Date.parse(state.nextRetryAt) <= now.getTime());
-  return !state.lastSuccessfulSyncAt || Date.parse(state.lastSuccessfulSyncAt) + CALENDAR_REFRESH_INTERVAL_MS <= now.getTime();
+  if (state.status === 'retryPending') {
+    const retry = Date.parse(state.nextRetryAt ?? '');
+    return !Number.isFinite(retry) || retry <= now.getTime();
+  }
+  const successful = Date.parse(state.lastSuccessfulSyncAt ?? '');
+  return !Number.isFinite(successful) || successful > now.getTime() || successful + CALENDAR_REFRESH_INTERVAL_MS <= now.getTime();
 }

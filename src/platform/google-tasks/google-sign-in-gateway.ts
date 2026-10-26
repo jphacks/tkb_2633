@@ -60,6 +60,7 @@ async function authStep<T>(stage: string, operation: () => T | Promise<T>): Prom
 }
 
 let configuredModule: GoogleSignInModule | null = null;
+let configuringModule: Promise<void> | null = null;
 let restoringSession: Promise<GoogleUser> | null = null;
 
 async function loadGoogleSignIn(): Promise<GoogleSignInModule> {
@@ -72,13 +73,17 @@ async function loadGoogleSignIn(): Promise<GoogleSignInModule> {
     return require('react-native-nitro-google-signin') as GoogleSignInModule;
   });
   if (configuredModule !== module) {
-    await authStep('configure', () => module.GoogleOneTapSignIn.configure({
-      webClientId,
-      iosClientId,
-      offlineAccess: false,
-      scopes: [GOOGLE_TASKS_SCOPE],
-    }));
-    configuredModule = module;
+    // Settings/session checks and background work can load the SDK together.
+    // Join one configuration, and allow a failed attempt to be retried later.
+    if (!configuringModule) {
+      configuringModule = authStep('configure', () => module.GoogleOneTapSignIn.configure({
+        webClientId,
+        iosClientId,
+        offlineAccess: false,
+        scopes: [GOOGLE_TASKS_SCOPE],
+      })).then(() => { configuredModule = module; }).finally(() => { configuringModule = null; });
+    }
+    await configuringModule;
   }
   return module;
 }

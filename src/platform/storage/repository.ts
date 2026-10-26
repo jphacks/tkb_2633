@@ -33,7 +33,7 @@ import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { WEATHER_FORECAST_CACHE_TTL_MS } from '@/features/weather/contracts';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
-import type { CalendarAvailabilityDay, CalendarAvailabilityState } from '@/features/google-sync/calendar-availability';
+import type { CalendarAvailabilityDay, CalendarAvailabilityState, CalendarQueryRange } from '@/features/google-sync/calendar-availability';
 import { CALENDAR_AVAILABILITY_MAX_AGE_MS, calendarAvailabilitySignature, freshCalendarAvailability, getDeviceTimeZone } from '@/features/google-sync/calendar-availability';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
@@ -1964,6 +1964,14 @@ async function readCalendarPlanningSignaturesImpl(database: SQLiteDatabase, now 
   return { current: calendarAvailabilitySignature(available), applied: row?.planner_calendar_signature ?? null };
 }
 
+async function hasFreshCalendarCoverageImpl(database: SQLiteDatabase, range: CalendarQueryRange, now = new Date()): Promise<boolean> {
+  const available = await getFreshCalendarAvailabilityDaysImpl(database, now, range.timeZone);
+  for (let date = range.from; date <= range.through; date = addDays(date, 1)) {
+    if (!available?.[date]) return false;
+  }
+  return true;
+}
+
 async function replaceCalendarAvailabilityRows(
   database: SQLiteDatabase, days: readonly CalendarAvailabilityDay[], householdId: string,
 ): Promise<void> {
@@ -2005,6 +2013,7 @@ export const setCalendarAvailabilityEnabled = serializePlannerOperation(setCalen
 export const listCalendarAvailabilityDays = serializeDatabaseOperation(listCalendarAvailabilityDaysImpl);
 export const getFreshCalendarAvailabilityDays = serializeDatabaseOperation(getFreshCalendarAvailabilityDaysImpl);
 export const readCalendarPlanningSignatures = serializeDatabaseOperation(readCalendarPlanningSignaturesImpl);
+export const hasFreshCalendarCoverage = serializeDatabaseOperation(hasFreshCalendarCoverageImpl);
 export const replaceCalendarAvailabilityDays = serializePlannerOperation(replaceCalendarAvailabilityDaysImpl);
 export const commitCalendarAvailabilitySuccess = serializePlannerOperation(commitCalendarAvailabilitySuccessImpl);
 

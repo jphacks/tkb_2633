@@ -578,13 +578,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **376 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **571 tests PASS（iOS・Androidの両条件）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **32機能** |
+| 保護対象feature contract | **36機能** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 
@@ -631,6 +631,8 @@ expo prebuild --platform android
 2026年10月26日にはローカルでもAndroid nativeをクリーン再生成・再ビルドし、**Android Emulator + 実GoogleアカウントでGoogle Tasks / Calendar Phase 3 E2E PASS**を確認しました。FreeBusyによるheavy家事の移動、同じTask IDでのdue更新、Google側の完了取込、終了・再起動後の保持を[検証記録](docs/android-google-e2e-2026-10-26.md)にまとめています。
 
 追加の[Android機能検査と修正](docs/android-platform-audit-2026-10-26.md)では、依存家事の周期の違い、同期中断後の完了操作、アプリ終了中のウィジェット完了、地域検索を確認しました。CIの画面テストはiOS・Androidの両条件で実行します。
+
+[Google Calendarの大量・障害・OS差分検査](docs/google-calendar-stress-audit-2026-10-26.md)では、5,120ケースの集計照合、21家事・181日分の384配置パターン、15万区間の応答、SQLiteの部分失敗、両OSの認証経路を検査しました。今回の実アカウント画面検査はMacのロック解除待ちです。
 
 Android物理端末と、物理端末上のBackgroundTaskは未検証です。
 

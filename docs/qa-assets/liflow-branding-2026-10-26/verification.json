@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-26",
+  "automatedTests": {
+    "ios": 676,
+    "android": 676,
+    "featureContracts": 44,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "expoDoctor": "20/20"
+  },
+  "nativeBuilds": {
+    "androidDebug": "PASS",
+    "iosSignedDebug": "PASS",
+    "iosSignedRelease": "PASS"
+  },
+  "icon": {
+    "sharedAsset": "assets/images/liflow-icon.png",
+    "sha256": "73e008f98ec9e144958bc7ddf33ca70bf36ea6a0cd03d78bbffbc5d6682e1ac7",
+    "iosPhysicalLauncherNameAndIcon": "PASS",
+    "androidCircularLauncherNameAndIcon": "PASS"
+  },
+  "iosPhysical": {
+    "model": "iPhone 12",
+    "os": "26.7.1",
+    "releaseWorksWithoutDevelopmentServer": true,
+    "initialSetupUnknownAndDisabledChores": "PASS",
+    "reenableAndCycleAutosave": "PASS",
+    "settingsPreservedThroughNativeUpdate": "PASS",
+    "completeAndUndo": "PASS",
+    "storage": {
+      "quickCheck": "ok",
+      "builtInChores": 20,
+      "enabledChores": 1,
+      "disabledChores": 19,
+      "toiletDefaultsRestored": true,
+      "setupCompleted": true,
+      "notificationsEnabled": true,
+      "weeklyRecurrenceDays": 7,
+      "weeklyOccurrences": 27,
+      "googleTaskLinks": 0
+    },
+    "googleLiveE2E": "not-tested-on-physical-device",
+    "applianceApi": "not-tested-on-physical-device",
+    "longRunningOsBackgroundTask": "not-tested",
+    "scheduledNotificationDelivery": "not-tested"
+  },
+  "androidPreservation": {
+    "qaTables": 7,
+    "primaryTables": 18,
+    "googleTaskLinks": 575,
+    "exactRowEqualityBeforeAndAfterUpdate": true,
+    "connectedStatusAfterUpdate": true
+  },
+  "privacy": {
+    "rawDatabasePublished": false,
+    "deviceIdentifiersPublished": false,
+    "credentialsPublished": false,
+    "personalHomeScreenPublished": false
+  }
+}

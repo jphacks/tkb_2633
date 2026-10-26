@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "家事お知らせアプリ",
+    "name": "LiFlow",
     "slug": "housework-planner",
     "version": "1.0.0",
     "platforms": [
@@ -8,35 +8,39 @@
       "android"
     ],
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/liflow-icon.png",
     "scheme": "houseworkplanner",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "jp.jphacks.tkb2633",
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/liflow-icon.png"
     },
     "android": {
       "package": "jp.jphacks.tkb2633",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/liflow-icon.png",
+        "backgroundColor": "#5AA2D7"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "icon": "./assets/images/liflow-icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
+          "backgroundColor": "#5AA2D7",
+          "image": "./assets/images/liflow-icon.png",
           "imageWidth": 76
         }
       ],
       "expo-sqlite",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
       "./plugins/with-android-widget-completion",
       [
         "expo-widgets",
@@ -64,7 +68,8 @@
           ]
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      "./plugins/with-liflow-launcher-icons"
     ],
     "experiments": {
       "typedRoutes": true,

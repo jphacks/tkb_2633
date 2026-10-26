@@ -18,6 +18,8 @@ import { createSharedGroupManager } from '../../features/sharing/group-manager.t
 import { sharedAccessDisposition } from '../../features/sharing/access-state.ts';
 import { createSharedJoinRequest, parseSharedInvitation } from '../../features/sharing/invitations.ts';
 import { isSharedTimeZone, sharedLocalDate } from '../../features/sharing/group-clock.ts';
+import { decodeSharingSelection, encodeSharingSelection } from '../../features/sharing/workspace-selection.ts';
+import type { SharingSelection } from '../../features/sharing/workspace-selection.ts';
 import { sharedGroupBootstrap } from '../../features/sharing/planning.ts';
 import { SharingAccessError, SharingKeyVersionError, SharingSchedulerVersionError } from '../../features/sharing/cloud-contract.ts';
 import { initializeSharingRegistry, listSharingWorkspaces, readSharingWorkspace, saveSharingWorkspace, updateSharingWorkspace } from '../storage/sharing-registry.ts';
@@ -28,7 +30,7 @@ import { createSharedPlannerRepository } from '../storage/shared-planner-reposit
 import { registerSharedRepositoryAdapter, sharedRepositoryAdapter } from '../storage/shared-repository-adapter.ts';
 import { drainPlannerDatabaseOperations, loadGoogleSyncState, LOCAL_HOUSEHOLD_ID, withPlannerDatabaseOperation } from '../storage/repository.ts';
 
-export interface SharingSelection { userId: string; groupId: string }
+export type { SharingSelection } from '../../features/sharing/workspace-selection.ts';
 type Listener = (selection?: SharingSelection) => void;
 const listeners = new Set<Listener>();
 export function subscribeSharingChanges(listener: Listener): () => void { listeners.add(listener); return () => { listeners.delete(listener); }; }
@@ -54,9 +56,7 @@ async function requireUser(): Promise<User> {
 }
 export async function readSharingSelection(): Promise<SharingSelection | null> {
   const saved = await sharingSecureVault.getItem('active-workspace'); if (!saved) return null;
-  const selection = JSON.parse(saved) as SharingSelection;
-  if (Object.keys(selection).sort().join(',') !== 'groupId,userId') throw new Error('作業領域の選択を確認できません。');
-  assertSharedIdentifier(selection.userId); assertSharedIdentifier(selection.groupId); return selection;
+  return decodeSharingSelection(saved);
 }
 export async function saveSharingSelection(selection: SharingSelection | null): Promise<void> {
   if (!selection) await sharingSecureVault.removeItem('active-workspace');
@@ -65,7 +65,7 @@ export async function saveSharingSelection(selection: SharingSelection | null): 
     const workspace = await openSharedWorkspace(selection); const record = await workspace.record();
     if (!['active', 'creating'].includes(record.status)) throw new SharingAccessError('参加承認を完了してから切り替えてください。');
     await workspace.adapter.readSnapshot(new Date()); await drainPlannerDatabaseOperations(workspace.database);
-    await sharingSecureVault.setItem('active-workspace', canonicalJson(selection));
+    await sharingSecureVault.setItem('active-workspace', encodeSharingSelection(selection));
   }
   changed();
 }

@@ -18,7 +18,9 @@ Google Tasksとも連携し、Plannerが決めた予定を普段使うGoogle側�
 
 SQLiteと送信待ち操作の同時保存、競合の確認、鍵更新、Snapshotによる復旧、共通タイムゾーンの予定計算、共有画面と既存の単一workerへの接続を実装しました。Google Tasks/Calendar・通知・Widget・APIキーは個人用と区別します。
 
-実アカウントを使う共有画面全体のiOS/Android E2E、OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
+Android 10実機とiPhone 12で、別々の実Googleアカウント・本番Firestoreを使い、参加承認、家事の更新、完了と取り消し、オフライン保存と再送、再起動、所有者引き継ぎ、除名と再参加を確認しました。両端末の共有状態も照合しています。[実機検査の範囲と修正](docs/shared-native-interoperability-2026-10-27.md)に記録しています。
+
+OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
 ---
 

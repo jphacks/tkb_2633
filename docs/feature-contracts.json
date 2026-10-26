@@ -907,5 +907,31 @@
         "name": "shared chore autosave advances its own displayed baseline, rejects a stale remote overwrite and can explicitly reload the current settings"
       }
     ]
+  },
+  {
+    "feature": "sharing-cold-workspace-selection",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-selection.test.mjs",
+        "name": "shared workspace selection persists only account and group IDs when a screen passes a complete registry record"
+      },
+      {
+        "file": "tests/sharing-workspace-selection.test.mjs",
+        "name": "a cold offline restart can read legacy whole-record selections without trusting their stale permissions or error state"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-realtime-revocation",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "ios foreground sharing listener errors recheck membership instead of leaving revoked groups actionable until the next interval"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "android foreground sharing listener errors recheck membership instead of leaving revoked groups actionable until the next interval"
+      }
+    ]
   }
 ]

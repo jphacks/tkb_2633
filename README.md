@@ -578,13 +578,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **659 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **671 tests PASS（iOS・Androidの両条件）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **42機能** |
+| 保護対象feature contract | **43機能** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 
@@ -633,9 +633,9 @@ expo prebuild --platform android
 
 追加の[Android機能検査と修正](docs/android-platform-audit-2026-10-26.md)では、依存家事の周期の違い、同期中断後の完了操作、アプリ終了中のウィジェット完了、地域検索を確認しました。CIの画面テストはiOS・Androidの両条件で実行します。
 
-[Google Calendarの大量・障害・OS差分検査](docs/google-calendar-stress-audit-2026-10-26.md)では、5,120ケースの集計照合、21家事・181日分の384配置パターン、15万区間の応答、SQLiteの部分失敗、両OSの認証経路を検査しました。今回の実アカウント画面検査はMacのロック解除待ちです。
+[Google Calendarの大量・障害・OS差分検査](docs/google-calendar-stress-audit-2026-10-26.md)では、5,120ケースの集計照合、21家事・181日分の384配置パターン、15万区間の応答、SQLiteの部分失敗、両OSの認証経路を検査しました。両OSの実アカウントでもセッション復元、Calendar連携OFF／ON、181日分の再取得と同じTask IDの維持を確認しました。
 
-[保存・通知・家電APIなどの追加調査](docs/reliability-audit-2026-10-26.md)では、保存の終了経路、再入による同時書き込み、通知の部分失敗、iOSウィジェットの操作確認、古い履歴、APIの入力・受信上限、天気キャッシュを検査しました。88テストを追加し、既存の36保護項目を保持した上で42項目へ増やしています。
+[保存・通知・家電APIなどの追加調査](docs/reliability-audit-2026-10-26.md)では、保存の終了経路、再入による同時書き込み、通知の部分失敗、iOSウィジェットの操作確認、古い履歴、APIの入力・受信上限、天気キャッシュを検査しました。100テストを追加し、既存の36保護項目を保持した上で43項目へ増やしています。Androidの初期設定・ゴミ・通知配信・家電AI登録と、iOSのXCTestによる8シナリオも確認しています。
 
 Android物理端末と、物理端末上のBackgroundTaskは未検証です。
 

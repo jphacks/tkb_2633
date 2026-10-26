@@ -92,6 +92,30 @@ function product(productName, modelNumber) {
   };
 }
 
+test('appliance display names avoid a repeated manufacturer and preserve stored source data and custom names', async () => {
+  const { connection, database } = createDatabase();
+  try {
+    await repository.initializeLocalDatabase(database);
+    const identity = product('Dyson V12 Detect Slim', 'SV20');
+    const careTask = task('フィルター清掃', 30, identity.manualUrl, '清掃手順');
+    const draft = analysis('SV20', [careTask], '2026-10-26T00:00:00.000Z');
+    const saved = await repository.saveReviewedApplianceCare(database, identity, draft, [{ task: careTask }]);
+    const expected = 'Dyson V12 Detect Slim（SV20）';
+    assert.equal(connection.prepare('SELECT display_name FROM appliances WHERE id = ?').get(saved.applianceId).display_name, expected);
+    const legacyName = 'Dyson Dyson V12 Detect Slim（SV20）';
+    connection.prepare('UPDATE appliances SET display_name = ? WHERE id = ?').run(legacyName, saved.applianceId);
+    const snapshot = await repository.loadPlannerSnapshot(database, '2026-10-26');
+    assert.equal(snapshot.appliances.find((item) => item.id === saved.applianceId).displayName, expected);
+    const context = await repository.loadApplianceCareReviewContext(database, saved.applianceId);
+    assert.equal(context.appliance.displayName, expected);
+    assert.equal(context.appliance.productName, identity.productName);
+    assert.deepEqual(context.appliance.analysis, draft);
+    assert.equal(connection.prepare('SELECT display_name FROM appliances WHERE id = ?').get(saved.applianceId).display_name, legacyName);
+    connection.prepare('UPDATE appliances SET display_name = ? WHERE id = ?').run('リビングの掃除機', saved.applianceId);
+    assert.equal((await repository.loadApplianceCareReviewContext(database, saved.applianceId)).appliance.displayName, 'リビングの掃除機');
+  } finally { connection.close(); }
+});
+
 test('saving appliance care refreshes the shared snapshot; reading its detail preserves the cache', async () => {
   const { connection, database } = createDatabase();
   try {

@@ -581,5 +581,13 @@
       { "file": "tests/weather-provider-reliability.test.mjs", "name": "simultaneous forecast requests share failure and retry without sharing mutable results" },
       { "file": "tests/weather-provider-reliability.test.mjs", "name": "municipality kana conversion retains" }
     ]
+  },
+  {
+    "feature": "appliance-display-name-and-source-preservation",
+    "tests": [
+      { "file": "tests/appliance-display-name.test.mjs", "name": "official brand prefix" },
+      { "file": "tests/appliance-display-name.test.mjs", "name": "only automatically generated saved names are reformatted" },
+      { "file": "tests/appliance-care-repository.test.mjs", "name": "appliance display names avoid a repeated manufacturer and preserve stored source data and custom names" }
+    ]
   }
 ]

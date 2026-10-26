@@ -1,4 +1,6 @@
 {
+  "historicalSnapshot": true,
+  "followUp": "../resumed-native-audit-2026-10-26/verification.json",
   "status": "in_progress_waiting_for_mac_unlock",
   "generatedAtUtc": "2026-10-26T01:24:28.717549+00:00",
   "baseCommit": "13553029baeaa7af3d8535316d031ebb973f3291",

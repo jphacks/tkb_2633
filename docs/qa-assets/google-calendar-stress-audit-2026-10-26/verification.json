@@ -1,4 +1,6 @@
 {
+  "historicalSnapshot": true,
+  "followUp": "../resumed-native-audit-2026-10-26/verification.json",
   "generatedAtUtc": "2026-10-26T02:00:29.703093+00:00",
   "status": "automated_complete_native_account_e2e_waiting_for_mac_unlock",
   "baseCommit": "e6a165edf0fafd42801932f7d8cb89afe8237430",

@@ -27,6 +27,7 @@ import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
 import type { Appliance, ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
+import { applianceDisplayName } from '@/features/appliance-care/display-name';
 import type { ApprovedApplianceCareTask, ApplianceCareProductIdentity } from '@/features/appliance-care/to-chore-definition';
 import { buildReviewedApplianceChore, hasExactChoreNameDuplicate, retireApplianceTaskSnapshot } from '@/features/appliance-care/persistence-policy';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
@@ -355,7 +356,7 @@ async function loadApplianceCareReviewContextImpl(
       productName: row.product_name,
       modelNumber: row.model_number,
       ...(row.category ? { category: row.category } : {}),
-      displayName: row.display_name,
+      displayName: applianceDisplayName({ manufacturer: row.manufacturer, productName: row.product_name, modelNumber: row.model_number }, row.display_name),
       ...(row.official_product_url ? { officialProductUrl: row.official_product_url } : {}),
       officialManualUrl: row.official_manual_url,
       analysis: JSON.parse(row.analysis_json) as ApplianceCareAnalysisDraft,
@@ -522,7 +523,7 @@ async function loadPlannerSnapshotImpl(
     productName: row.product_name,
     modelNumber: row.model_number,
     ...(row.category ? { category: row.category } : {}),
-    displayName: row.display_name,
+    displayName: applianceDisplayName({ manufacturer: row.manufacturer, productName: row.product_name, modelNumber: row.model_number }, row.display_name),
     ...(row.official_product_url ? { officialProductUrl: row.official_product_url } : {}),
     officialManualUrl: row.official_manual_url,
     analysis: JSON.parse(row.analysis_json) as ApplianceCareAnalysisDraft,
@@ -1013,7 +1014,7 @@ async function saveReviewedApplianceCareImpl(
   let scheduledTaskCount = 0;
   let duplicateTaskCount = 0;
   let noCycleTaskCount = 0;
-  const displayName = `${product.manufacturer} ${product.productName}（${product.modelNumber}）`;
+  const displayName = applianceDisplayName(product);
   const approvedByTaskName = new Map(approvedTasks.map((approved) => [approved.task.name, approved]));
   const currentTaskNames = new Set(analysis.tasks.map((task) => task.name));
 

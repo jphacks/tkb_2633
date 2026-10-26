@@ -1,4 +1,6 @@
 {
+  "historicalSnapshot": true,
+  "followUp": "../resumed-native-audit-2026-10-26/verification.json",
   "date": "2026-10-26",
   "baseRevision": "e7b6bbefab78f3d1abb1ad4254323c8e4e867991",
   "mainRevision": "13553029baeaa7af3d8535316d031ebb973f3291",

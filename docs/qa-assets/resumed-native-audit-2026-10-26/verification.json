@@ -1,0 +1,283 @@
+{
+  "generatedAtUtc": "2026-10-26T09:08:50.261225+00:00",
+  "baseRevision": "735482c795b2b102abd8040d083ff0d878fb84fe",
+  "mainRevision": "13553029baeaa7af3d8535316d031ebb973f3291",
+  "scope": "Native Android ADB UI, native iOS XCTest UI, real Google sessions and one native paid appliance analysis; automated stress tests remain separate from live calls.",
+  "runtime": {
+    "expo": "58.0.19",
+    "reactNative": "0.88.0",
+    "androidApi": 37,
+    "androidArchitecture": "arm64-v8a",
+    "iosSimulator": "27.0",
+    "buildType": "development; JS served from current isolated worktree"
+  },
+  "checks": {
+    "ios": {
+      "command": "HOUSEWORK_TEST_PLATFORM=ios npm run check",
+      "tests": 671,
+      "pass": 671,
+      "fail": 0,
+      "skipped": 0,
+      "logSha256": "53eb84b39849641ede1a08e530db91fd257d0fa9eb4865c1a1d9f23560f8c7fc",
+      "lint": "PASS",
+      "typecheck": "PASS"
+    },
+    "android": {
+      "command": "HOUSEWORK_TEST_PLATFORM=android npm test",
+      "tests": 671,
+      "pass": 671,
+      "fail": 0,
+      "skipped": 0,
+      "logSha256": "9b4ad74642f7ec424dae3c8f0b27dd8072c0538e0d650e2c31cdb21592e746a0"
+    },
+    "expoDoctor": {
+      "passed": 20,
+      "total": 20,
+      "logSha256": "ab39d6a58873a0d1151d2a625641a5db22b312df3276b2c2ab3d03a3e9dbe4e1"
+    },
+    "featureContracts": {
+      "before": 42,
+      "after": 43,
+      "oldEntriesUnchanged": true,
+      "sha256": "0447b95541ceca567cddf4e7f3a0b4b6e7033fe363902c1d2028acd8fbc34098"
+    },
+    "readmeMedia": {
+      "preserved": true,
+      "entries": 10
+    },
+    "exports": {
+      "ios": {
+        "status": "PASS",
+        "bundle": "_expo/static/js/ios/index-611ad1bbc319ab9cc0e37aa0f85d273f.hbc",
+        "sha256": "e5ff3afbcf81677f9d333eeda67f38a12c623165922b366c3c758590fbae1de9",
+        "bytes": 4641478
+      },
+      "android": {
+        "status": "PASS",
+        "bundle": "_expo/static/js/android/index-f95eabd0c58834d09f583d67a4c9bd70.hbc",
+        "sha256": "fd7c97cf32e3ed550a7067b387c5f372d59347879a69a81f63ff2d92251f3ced",
+        "bytes": 4722461
+      }
+    }
+  },
+  "addedTests": {
+    "displayNameUnit": 11,
+    "displayNameRepository": 1,
+    "total": 12,
+    "reliabilityAuditAddedTestsIncludingPrior88": 100
+  },
+  "androidNative": {
+    "installedApkSha256": "fd2c65dabe143210645abb001a1fee1ea37fe97320fb8d79fa61648331d0a295",
+    "installedApkHashVerifiedFromDevice": true,
+    "dataPreservingInstall": true,
+    "freshOnboarding": {
+      "builtins": 20,
+      "allDisabled": true,
+      "allPreviousDatesUnknown": true,
+      "initialHomeChores": 0
+    },
+    "unknownChoreEnableCycleDisableReenable": "PASS: 17 days, empty/background/restart -> default 7; disable removes and enable/cycle 9 restores; final default 7",
+    "completionUndoZeroIndicator": "PASS",
+    "waste": {
+      "weeklyBiweeklyMonthly": true,
+      "hiddenRestore": true,
+      "weeklyHiddenGreyOutlineOnly": true,
+      "shortCalendarNamesAndDistinctColors": true,
+      "collapsedUpcomingList": true,
+      "finalRules": 3,
+      "finalHiddenOccurrences": 0
+    },
+    "notifications": {
+      "osPermissionDialog": "allowed in native UI",
+      "delivery": "PASS",
+      "testTargetLocal": "16:57",
+      "observedDeliveryApproxLocal": "16:59",
+      "exactTimingGuaranteed": false,
+      "queueAfterOff": 0,
+      "queueAfterOn": 13,
+      "duplicateQueuedIds": 0,
+      "finalTimeLocal": "09:00",
+      "finalEnabled": true
+    },
+    "applianceLiveAi": {
+      "runs": 1,
+      "product": "Dyson V12 Detect Slim / SV20",
+      "verifiedItems": 10,
+      "automaticallyScheduled": 1,
+      "conditionOnlyDescriptionsSaved": 9,
+      "sharedManufacturerDisplayFixVerified": true
+    },
+    "helpSettingsBackAndCredits": "PASS; collapsed sections, expanded legend, repeated detail navigation, credits above final storage note",
+    "hostRecovery": "OS boot display stalled with SwiftShader before app launch; data-preserving cold boot with host GPU restored it. This is not an app crash or a device frame-rate guarantee."
+  },
+  "iosNative": {
+    "xctestScenarios": 8,
+    "cases": [
+      {
+        "case": "session-restore",
+        "status": "PASS",
+        "logSha256": "3d56ab926a6d50e013f6776f17c9f75961f6bc8fc9f4120d884ddc008dc3271c"
+      },
+      {
+        "case": "calendar-off",
+        "status": "PASS",
+        "logSha256": "d652358e32f10afd4ee7c82376252684247ada6f48f6fb5aedbe55378ccb821c"
+      },
+      {
+        "case": "calendar-on",
+        "status": "PASS",
+        "logSha256": "3d0b14d9ba48e6db748b4c165da788cd031b896d8d47c876e00ae760713810e7"
+      },
+      {
+        "case": "complete-selected",
+        "status": "PASS",
+        "logSha256": "c4ac15008348f8f2506f838277fc324388a308ba82e5749d128b9125bfcc99cb"
+      },
+      {
+        "case": "undo-selected",
+        "status": "PASS",
+        "logSha256": "2ba4a7411b647aecc2364f6b9f377b3658c9c4531a60c65bc6b7712286ffc566"
+      },
+      {
+        "case": "autosave-background-v3",
+        "status": "PASS",
+        "logSha256": "894469e2fc2c8032d63e7b0656eb4ab424f8283d2088e186af3f44a72d8caa2b"
+      },
+      {
+        "case": "qa-widget-complete-v2",
+        "status": "PASS",
+        "logSha256": "800569f14ffc4d28bb397cc087b06c50c8ed482e50aea1b62908a0579097427e"
+      },
+      {
+        "case": "qa-widget-undo-v2",
+        "status": "PASS",
+        "logSha256": "f67ed66cd8e864b7c0bed356f51ee9668608e2e0e841a2697d52fd5e5892c77b"
+      }
+    ],
+    "setup": "Each scenario was run individually with explicit fixture preconditions; Google-connected and unconnected QA simulators were separate.",
+    "autosave": "Disabled chore 17 -> empty -> background -> default 7; remains disabled and Google links unchanged",
+    "widget": {
+      "appStoppedCompletionImported": true,
+      "source": "widget",
+      "completionRowsForOccurrence": 1,
+      "undoStableAfterResume": true,
+      "pendingIdsAfterSettledRefresh": 0,
+      "priorChoreStateRestored": true,
+      "unrelatedDataPreserved": true,
+      "displayedCompletedRows": "One checked row is retained; max three rows does not show every completed chore at once."
+    },
+    "initialHarnessRetries": "Completed fixture date, OS external-link confirmation, numeric caret position and exact Add Widget accessibility label were corrected; failed setup attempts are not app regressions or extra passing scenarios."
+  },
+  "googleLive": {
+    "newConsentRequired": false,
+    "android": {
+      "off": {
+        "enabled": false,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-25T23:15:30.248Z",
+        "lastErrorCode": null,
+        "days": 0,
+        "start": null,
+        "end": null,
+        "daysWithBusyIntervals": 0
+      },
+      "on": {
+        "enabled": true,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-26T08:54:23.342Z",
+        "lastErrorCode": null,
+        "days": 181,
+        "start": "2026-10-26",
+        "end": "2027-04-24",
+        "daysWithBusyIntervals": 47
+      },
+      "final": {
+        "enabled": true,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-26T09:01:45.261Z",
+        "lastErrorCode": null,
+        "days": 181,
+        "start": "2026-10-26",
+        "end": "2027-04-24",
+        "daysWithBusyIntervals": 47
+      },
+      "sync": {
+        "enabled": true,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-26T09:01:45.261Z",
+        "lastErrorCode": null,
+        "links": 575,
+        "pending": 0
+      },
+      "taskIdSetPreserved": true,
+      "choreDefinitionsStateAndHistoryPreserved": true,
+      "coldRestartAndManualSync": "PASS",
+      "finalManualNew": 0,
+      "finalManualUpdated": 0
+    },
+    "ios": {
+      "off": {
+        "enabled": false,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-25T19:57:19.330Z",
+        "lastErrorCode": null,
+        "days": 0,
+        "start": null,
+        "end": null,
+        "daysWithBusyIntervals": 0
+      },
+      "on": {
+        "enabled": true,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-26T08:18:15.929Z",
+        "lastErrorCode": null,
+        "days": 181,
+        "start": "2026-10-26",
+        "end": "2027-04-24",
+        "daysWithBusyIntervals": 47
+      },
+      "sync": {
+        "enabled": true,
+        "status": "idle",
+        "lastSuccessfulSyncAt": "2026-10-26T08:23:08.631Z",
+        "lastErrorCode": null,
+        "links": 182,
+        "pending": 0
+      },
+      "taskIdSetPreserved": true,
+      "completionRoundTrip": [
+        "needsAction",
+        "completed",
+        "needsAction"
+      ],
+      "sameIdForCompletionAndUndo": true,
+      "pendingAfterRoundTrip": 0,
+      "unrelatedHistoryAndCurrentChoreStatePreserved": true
+    },
+    "previousHeavyMoveAndRemoteCompletionEvidence": "docs/android-google-e2e-2026-10-26.md"
+  },
+  "limitations": [
+    "No physical iOS or Android device validation",
+    "No long-running physical-device BackgroundTask / Doze validation",
+    "Development build; no release-build or constant frame-rate claim",
+    "Real Calendar requests were bounded; large and failure matrices used controlled data"
+  ],
+  "publicFilesSha256": {
+    "docs/qa-assets/resumed-native-audit-2026-10-26/PlannerUITests.swift": "9ce5a261dbbb83466d56c10ce0e36b6816b46a2457f6d62cd4d9fefc893d5141",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/android-appliance-detail.png": "85dbd7fc4c6d556f67f5eb4375dbd47d1776ea391d8623237dfe8535259ea6fc",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/android-google-resync.png": "3d48a63433c1d04904e7ed1744965bab8e8d5df5b1b3a13dadcf68ff30e955f2",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/android-help-legend.png": "2f1201eeee4a32d7d605e02df6e02e94d894bee1d1a1d41983dc83d886b539f0",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/android-notification-delivery.png": "09c2d86417c637c6ff8ad70fec0fe9a3d9dcb2dc7f4e4d25aff9638ebc3ffcdb",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/android-settings-credits.png": "e42d7e1e83ab5cb8e5d6ce9adca31ae87d2e58d3668fff0b0aa88d7cdd7015ba",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/ios-autosave-restored.png": "3a3b73cb93ec1cee3e8bc64823a47a6f86077b8b0b1a54567f7a618061f9604d",
+    "docs/qa-assets/resumed-native-audit-2026-10-26/ios-widget-after-undo.png": "8862cd9fb4fcbae8d0eeb881c553a3b68806b754a4c2b359a94da475908d29c0"
+  },
+  "sourceSha256": {
+    "src/features/appliance-care/display-name.ts": "a592be7e74abf7e8e5bf2dd6816219735fed00fb0d25cb7a85aceff4e51af832",
+    "src/features/appliance-care/to-chore-definition.ts": "af3c14cffdca8b807185fa3af1a486110fd595d25a2b1dae9599694256ba9ebe",
+    "src/app/(tabs)/manual/appliance-care.tsx": "9759307ee2b35777313d72ef3186f9053aa91437a68d98fcc3d949b9d9b3871d",
+    "src/platform/storage/repository.ts": "188a207f03c7f7ef1108223bfd14963f310fe04cf1fe0c1bc6c324d35e62aa07",
+    "tests/appliance-display-name.test.mjs": "dd198421edf41db31f8e22c88e48b7e22c70e2ce5a8cbe0d5872c2d5a3a1b055",
+    "tests/appliance-care-repository.test.mjs": "9413ec55b9841403d1f91f9b0effd035874154819ec3051a57a2628553f8ed09"
+  }
+}

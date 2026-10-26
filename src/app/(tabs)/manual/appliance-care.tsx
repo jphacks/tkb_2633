@@ -9,6 +9,7 @@ import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-clien
 import type { ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
 import { automaticApplianceTasks, defaultApplianceCycles } from '@/features/appliance-care/auto-save-policy';
 import { applianceCategoryLabel, searchApplianceCategories } from '@/features/appliance-care/categories';
+import { applianceDisplayName } from '@/features/appliance-care/display-name';
 import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { loadApplianceCareReviewContext, saveReviewedApplianceCare } from '@/platform/storage/repository';
@@ -193,7 +194,7 @@ export default function ApplianceCareScreen() {
           <Text style={styles.body}>公式情報に複数の候補があります。候補を選ぶと製品名・型番を入力欄へ戻します。必要に応じて内容を編集して再検索してください。</Text>
           {result.candidates.map((candidate, index) => (
             <View key={`${candidate.officialProductUrl}-${index}`} style={styles.candidate}>
-              <Text style={styles.resultTitle}>{candidate.manufacturer} {candidate.productName}{candidate.modelNumber ? `（${candidate.modelNumber}）` : ''}</Text>
+              <Text style={styles.resultTitle}>{applianceDisplayName(candidate)}</Text>
               <AppButton title="この候補を入力して再検索" onPress={() => {
                 setManufacturer(candidate.manufacturer);
                 setProductName(candidate.productName);
@@ -212,7 +213,7 @@ export default function ApplianceCareScreen() {
         <>
           <Pressable accessibilityRole="button" accessibilityLabel="保存した家電のお手入れ詳細を開く" disabled={!analysisSaved}
             onPress={openSavedAppliance} style={styles.resultNavigation}>
-            <Text style={styles.resultTitle}>{verified.product.manufacturer} {verified.product.productName}（{verified.product.modelNumber}）</Text>
+            <Text style={styles.resultTitle}>{applianceDisplayName(verified.product)}</Text>
             <Text style={styles.link}>{analysisSaved ? '保存したお手入れ内容を見る ›' : '解析結果は未保存です。下の保存ボタンから再試行できます。'}</Text>
           </Pressable>
           <Card style={styles.verifiedCard}>

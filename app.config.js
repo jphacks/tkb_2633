@@ -1,4 +1,8 @@
 module.exports = ({ config }) => {
+  const appleTeamId = process.env.APPLE_TEAM_ID?.trim() || null;
+  if (appleTeamId && !/^[A-Z0-9]{10}$/.test(appleTeamId)) {
+    throw new Error('APPLE_TEAM_ID must be a 10-character Apple development team ID.');
+  }
   const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim()
     || process.env.GOOGLE_WEB_CLIENT_ID?.trim() || null;
   const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim()
@@ -22,6 +26,10 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
+    ios: {
+      ...config.ios,
+      ...(appleTeamId ? { appleTeamId } : {}),
+    },
     plugins,
     extra: {
       ...config.extra,

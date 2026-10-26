@@ -1,4 +1,4 @@
-# 家事お知らせアプリ
+# LiFlow
 
 > **家事を記録するだけではなく、家事を「いつ・何を・どうやるか考える負担」まで減らす。**
 
@@ -574,19 +574,20 @@ GPT-5.5を利用した3回のE2E検証：
 
 そのため状態遷移・UI契約・保存・同期を自動テストしています。
 
-## 現在の自動検証
+## 現在の検証結果
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **671 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **676 tests PASS（iOS・Androidの両条件）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **43機能** |
+| 保護対象feature contract | **44機能** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
+| iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |
 
 さらに天気・Calendarについては、**128種類の予報・busyパターン**を使い、
 
@@ -637,7 +638,7 @@ expo prebuild --platform android
 
 [保存・通知・家電APIなどの追加調査](docs/reliability-audit-2026-10-26.md)では、保存の終了経路、再入による同時書き込み、通知の部分失敗、iOSウィジェットの操作確認、古い履歴、APIの入力・受信上限、天気キャッシュを検査しました。100テストを追加し、既存の36保護項目を保持した上で43項目へ増やしています。Androidの初期設定・ゴミ・通知配信・家電AI登録と、iOSのXCTestによる8シナリオも確認しています。
 
-Android物理端末と、物理端末上のBackgroundTaskは未検証です。
+iPhone 12の署名付きRelease版で、開発サーバー停止中の起動、初期設定、無効家事の有効化、周期の自動保存、完了・取り消しを確認しました。[LiFlowの名前・アイコンと実機検査](docs/liflow-branding-2026-10-26.md)に記録しています。Android物理端末と、物理端末上でOSに長時間任せるBackgroundTaskは未検証です。
 
 ---
 
@@ -975,6 +976,10 @@ FreeBusyのみを利用し、Event内容を取得しません。
 Android native projectの生成はCIで確認しています。
 
 Android Emulator + 実GoogleアカウントのGoogle Tasks / Calendar Phase 3 E2Eは2026年10月26日にPASSしました。Android物理端末は未検証です。
+
+### iPhone実機
+
+iPhone 12のRelease版で基本操作を確認済みです。Google Tasks / Calendarの実アカウントE2Eと家電APIは今回の実機では未検証です。開発用プロビジョニングは2026年11月2日20:50頃（日本時間）まで有効で、その後は再ビルド・再インストールが必要です。
 
 ### BackgroundTask
 

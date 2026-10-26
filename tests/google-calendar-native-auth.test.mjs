@@ -4,15 +4,17 @@ import './helpers/typescript-loader.mjs';
 import { loadNativeModule } from './helpers/native-module.mjs';
 const availability = await import('../src/features/google-sync/calendar-availability.ts');
 const authorization = await import('../src/features/google-sync/calendar-authorization.ts');
+const accountBinding = await import('../src/features/google-sync/account-binding.ts');
 const tasksScope = 'https://www.googleapis.com/auth/tasks';
 const calendarScope = availability.GOOGLE_CALENDAR_FREEBUSY_SCOPE;
 
 function harness(platform, { scopes = [tasksScope, calendarScope], cold = false, state = 'active', deny = false } = {}) {
-  const events = []; let user = cold ? null : { scopes: [...scopes], user: { id: 'fixture-user' } };
+  const freshToken = `synthetic.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.synthetic`;
+  const events = []; let user = cold ? null : { scopes: [...scopes], user: { id: 'fixture-user' }, idToken: freshToken };
   const sdk = {
-    configure: async (options) => { events.push('configure'); assert.deepEqual(options.scopes, [tasksScope]); },
+    configure: async (options) => { events.push('configure'); assert.deepEqual(options.scopes, []); },
     getCurrentUser: () => user,
-    signIn: async () => { events.push('restore'); user = { scopes: [...scopes], user: { id: 'fixture-user' } }; return { type: 'success', data: user }; },
+    signIn: async () => { events.push('restore'); user = { scopes: [...scopes], user: { id: 'fixture-user' }, idToken: freshToken }; return { type: 'success', data: user }; },
     getTokens: async () => { events.push('tokens'); return { accessToken: 'fixture-access-token' }; },
     requestScopes: async (requested) => {
       events.push('consent'); assert.deepEqual(requested, [calendarScope]);
@@ -22,6 +24,7 @@ function harness(platform, { scopes = [tasksScope, calendarScope], cold = false,
     },
     createAccount: async () => assert.fail('noninteractive flow opened account creation'),
     presentExplicitSignIn: async () => assert.fail('noninteractive flow opened sign-in UI'),
+    checkPlayServices: async () => { events.push('check-services'); },
   };
   const appState = { currentState: state };
   const gateway = loadNativeModule('src/platform/google-tasks/google-sign-in-gateway.ts', {
@@ -30,12 +33,42 @@ function harness(platform, { scopes = [tasksScope, calendarScope], cold = false,
     './google-tasks-api': { GOOGLE_TASKS_SCOPE: tasksScope },
     '@/features/google-sync/calendar-availability': availability,
     '@/features/google-sync/calendar-authorization': authorization,
-    'react-native-nitro-google-signin': { GoogleOneTapSignIn: sdk, isSuccessResponse: (value) => value?.type === 'success' },
+    '@/features/google-sync/account-binding': accountBinding,
+    'react-native-nitro-google-signin': { GoogleOneTapSignIn: sdk, isSuccessResponse: (value) => value?.type === 'success',
+      isNoSavedCredentialFoundResponse: (value) => value?.type === 'noSavedCredentialFound', isCancelledResponse: (value) => value?.type === 'cancelled' },
   });
-  return { gateway, events, sdk, appState, setScopes: (next) => { user = { ...user, scopes: next }; } };
+  return { gateway, events, sdk, appState, setScopes: (next) => { user = { ...user, scopes: next }; },
+    changeAccount: (id) => { user = { ...user, user: { id } }; },
+    expireIdentity: () => { user = { ...user, idToken: 'synthetic.eyJleHAiOjF9.synthetic' }; } };
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} sharing identity never implicitly requests Tasks or Calendar permissions`, async () => {
+    const h = harness(platform, { scopes: [] });
+    h.sdk.getTokens = async () => { h.events.push('identity-token'); return { idToken: 'fixture-id-token' }; };
+    assert.deepEqual(await h.gateway.authorizeGoogleSharingIdentity(), { idToken: 'fixture-id-token', googleUserId: 'fixture-user' });
+    assert.deepEqual(h.events, ['configure', 'identity-token']); assert.equal(await h.gateway.hasGoogleTasksSession(), false);
+  });
+  test(`${platform} Tasks consent remains explicit after a sharing-only identity login`, async () => {
+    const h = harness(platform, { scopes: [] });
+    h.sdk.requestScopes = async (requested) => { assert.deepEqual(requested, [tasksScope]); h.setScopes([tasksScope]); h.events.push('tasks-consent');
+      return { accessToken: 'fixture-access-token' }; };
+    await h.gateway.authorizeGoogleTasks();
+    assert.equal(await h.gateway.getGoogleTasksAccessToken(), 'fixture-access-token');
+    assert.equal(h.events.filter((event) => event === 'tasks-consent').length, 1);
+  });
+  test(`${platform} sharing identity cannot open a login flow while the app is in the background`, async () => {
+    const h = harness(platform, { state: 'background', cold: true });
+    await assert.rejects(h.gateway.authorizeGoogleSharingIdentity(), h.gateway.GoogleSignInRequiredError);
+    assert.deepEqual(h.events, []);
+  });
+  test(`${platform} sharing identity refreshes an expired Android ID token without adding Tasks or Calendar consent`, async () => {
+    const h = harness(platform, { scopes: [] }); h.expireIdentity();
+    h.sdk.getTokens = async () => ({ idToken: 'fixture-fresh-id-token' });
+    await h.gateway.authorizeGoogleSharingIdentity();
+    assert.equal(h.events.filter((event) => event === 'restore').length, platform === 'android' ? 1 : 0);
+    assert.equal(h.events.includes('consent'), false);
+  });
   for (const state of ['active', 'background', 'inactive']) {
     test(`${platform} ${state} Calendar token acquisition does not request consent or open interactive login`, async () => {
       const h = harness(platform, { state });
@@ -76,6 +109,22 @@ for (const platform of ['ios', 'android']) {
     h.sdk.getTokens = async () => { h.setScopes([tasksScope]); return { accessToken: 'fixture-tasks-only' }; };
     await assert.rejects(h.gateway.getGoogleCalendarAccessToken(), availability.CalendarPermissionRequiredError);
     assert.equal(await h.gateway.getGoogleTasksAccessToken(), 'fixture-tasks-only');
+  });
+  test(`${platform} a revoked Tasks grant cannot return an identity-only token as a Tasks access token`, async () => {
+    const h = harness(platform);
+    h.sdk.getTokens = async () => { h.setScopes([]); return { accessToken: 'fixture-profile-only' }; };
+    await assert.rejects(h.gateway.getGoogleTasksAccessToken(), h.gateway.GoogleSignInRequiredError);
+  });
+  test(`${platform} an unexpected Google subject is rejected before token retrieval for both features`, async () => {
+    const h = harness(platform);
+    await assert.rejects(h.gateway.getGoogleTasksAccessToken('other-account'), accountBinding.GoogleAccountMismatchError);
+    await assert.rejects(h.gateway.getGoogleCalendarAccessToken('other-account'), accountBinding.GoogleAccountMismatchError);
+    assert.equal(h.events.includes('tokens'), false);
+  });
+  test(`${platform} changing accounts during native token retrieval cannot apply a token to old task mappings`, async () => {
+    const h = harness(platform);
+    h.sdk.getTokens = async () => { h.changeAccount('changed-account'); return { accessToken: 'synthetic-other-account' }; };
+    await assert.rejects(h.gateway.getGoogleTasksAccessToken('fixture-user'), accountBinding.GoogleAccountMismatchError);
   });
   test(`${platform} 100 concurrent session checks configure the native SDK once`, async () => {
     const h = harness(platform);

@@ -20,7 +20,7 @@ export function classifyGoogleSyncFailure(
   now: Date,
 ): GoogleSyncFailureClassification {
   const code = normalizeErrorCode(failure.code, failure.status);
-  if (failure.status === 401 || code === 'invalid_grant' || code === 'sign_in_required') {
+  if (failure.status === 401 || code === 'invalid_grant' || code === 'sign_in_required' || code === 'google_account_mismatch') {
     return { kind: 'authRequired', code };
   }
 

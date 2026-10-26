@@ -24,6 +24,7 @@ import { normalizeWasteSchedule } from '@/features/waste/schedule-policy';
 import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink, GoogleTaskStatus, GoogleTaskStatusChange } from '@/features/google-sync/contracts';
 import { parseGoogleCompletedAt } from '@/features/google-sync/google-completion-policy';
 import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
+import { GoogleAccountMismatchError } from '@/features/google-sync/account-binding';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
 import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-visibility';
 import type { Appliance, ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
@@ -1673,6 +1674,7 @@ async function loadGoogleSyncStateImpl(
     household_id: string;
     enabled: number;
     task_list_id: string | null;
+    account_subject: string | null;
     last_attempt_at: string | null;
     last_successful_sync_at: string | null;
     status: string;
@@ -1682,7 +1684,7 @@ async function loadGoogleSyncStateImpl(
     last_error_at: string | null;
     updated_at: string;
   }>(
-    `SELECT household_id, enabled, task_list_id, last_attempt_at, last_successful_sync_at,
+    `SELECT household_id, enabled, task_list_id, account_subject, last_attempt_at, last_successful_sync_at,
      status, retry_count, next_retry_at, last_error_code, last_error_at, updated_at
      FROM google_sync_state WHERE household_id = ?`,
     householdId,
@@ -1692,6 +1694,7 @@ async function loadGoogleSyncStateImpl(
     householdId: row.household_id,
     enabled: Boolean(row.enabled),
     ...(row.task_list_id ? { taskListId: row.task_list_id } : {}),
+    ...(row.account_subject ? { accountSubject: row.account_subject } : {}),
     ...(row.last_attempt_at ? { lastAttemptAt: row.last_attempt_at } : {}),
     ...(row.last_successful_sync_at ? { lastSuccessfulSyncAt: row.last_successful_sync_at } : {}),
     status: normalizeGoogleSyncStatus(row.status),
@@ -1704,17 +1707,23 @@ async function loadGoogleSyncStateImpl(
 }
 
 async function saveGoogleSyncStateImpl(database: SQLiteDatabase, state: GoogleSyncState): Promise<void> {
-  await database.runAsync(
+  if (state.accountSubject !== undefined && (typeof state.accountSubject !== 'string' || !state.accountSubject || state.accountSubject.length > 512)) {
+    throw new GoogleAccountMismatchError();
+  }
+  const result = await database.runAsync(
     `INSERT INTO google_sync_state
      (household_id, enabled, task_list_id, last_attempt_at, last_successful_sync_at, status,
-      retry_count, next_retry_at, last_error_code, last_error_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      retry_count, next_retry_at, last_error_code, last_error_at, updated_at, account_subject)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(household_id) DO UPDATE SET enabled = excluded.enabled,
      task_list_id = excluded.task_list_id, last_attempt_at = excluded.last_attempt_at,
      last_successful_sync_at = excluded.last_successful_sync_at, status = excluded.status,
      retry_count = excluded.retry_count, next_retry_at = excluded.next_retry_at,
      last_error_code = excluded.last_error_code, last_error_at = excluded.last_error_at,
-     updated_at = excluded.updated_at`,
+     updated_at = excluded.updated_at,
+     account_subject = COALESCE(google_sync_state.account_subject, excluded.account_subject)
+     WHERE excluded.account_subject IS NULL OR google_sync_state.account_subject IS NULL
+       OR google_sync_state.account_subject = excluded.account_subject`,
     state.householdId,
     state.enabled ? 1 : 0,
     state.taskListId ?? null,
@@ -1726,7 +1735,16 @@ async function saveGoogleSyncStateImpl(database: SQLiteDatabase, state: GoogleSy
     state.lastErrorCode ?? null,
     state.lastErrorAt ?? null,
     state.updatedAt,
+    state.accountSubject ?? null,
   );
+  if (state.accountSubject && result.changes === 0) throw new GoogleAccountMismatchError();
+}
+
+async function bindGoogleSyncAccountImpl(database: SQLiteDatabase, subject: string, householdId = LOCAL_HOUSEHOLD_ID): Promise<void> {
+  if (typeof subject !== 'string' || !subject || subject.length > 512) throw new GoogleAccountMismatchError();
+  const current = await loadGoogleSyncStateImpl(database, householdId);
+  await saveGoogleSyncStateImpl(database, { ...(current ?? { householdId, enabled: false, status: 'idle', retryCount: 0,
+    updatedAt: new Date().toISOString() }), accountSubject: subject });
 }
 
 async function listEntriesForGoogleSyncImpl(
@@ -2026,6 +2044,7 @@ export const commitCalendarAvailabilitySuccess = serializePlannerOperation(commi
 
 // Serialize reads and writes across screens and widget callbacks on this connection.
 export const initializeLocalDatabase = serializePlannerOperation(initializeLocalDatabaseImpl);
+export const bindGoogleSyncAccount = serializeDatabaseOperation(bindGoogleSyncAccountImpl);
 export const ensureLocalHousehold = serializePlannerOperation(ensureLocalHouseholdImpl);
 export const loadApplianceCareReviewContext = serializeDatabaseOperation(loadApplianceCareReviewContextImpl);
 export const loadPlannerSnapshot = serializePlannerOperation(loadPlannerSnapshotImpl);

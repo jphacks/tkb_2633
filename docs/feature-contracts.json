@@ -620,5 +620,189 @@
         "name": "local reminders do not require APNs, while widget App Groups remain configured"
       }
     ]
+  },
+  {
+    "feature": "shared-causal-events-and-targeted-undo",
+    "tests": [
+      {
+        "file": "tests/sharing-replica.test.mjs",
+        "name": "shared replicas converge for every arrival order"
+      },
+      {
+        "file": "tests/sharing-replica.test.mjs",
+        "name": "shared conflicting settings are retained without choosing a last writer"
+      },
+      {
+        "file": "tests/sharing-replica.test.mjs",
+        "name": "simultaneous completion is displayed once and undo targets only the observed completion"
+      },
+      {
+        "file": "tests/sharing-replica.test.mjs",
+        "name": "a descendant cannot make a received operation with missing causal context appear applied"
+      }
+    ]
+  },
+  {
+    "feature": "shared-transactional-bounded-outbox",
+    "tests": [
+      {
+        "file": "tests/sharing-ledger.test.mjs",
+        "name": "a shared local mutation commits its projection and outbox in one transaction"
+      },
+      {
+        "file": "tests/sharing-ledger.test.mjs",
+        "name": "shared receive commits the cursor only with all applied operations"
+      },
+      {
+        "file": "tests/sharing-ledger.test.mjs",
+        "name": "sharing batches stay bounded at 100"
+      },
+      {
+        "file": "tests/sharing-ledger.test.mjs",
+        "name": "adding the sharing ledger leaves all legacy SQLite tables and personal Google mappings intact"
+      }
+    ]
+  },
+  {
+    "feature": "shared-encryption-author-proof-and-key-rotation",
+    "tests": [
+      {
+        "file": "tests/sharing-crypto.test.mjs",
+        "name": "tampered ciphertext, metadata, group, author, nonce, signature and key version fail closed"
+      },
+      {
+        "file": "tests/sharing-crypto.test.mjs",
+        "name": "group key wrapping binds the authenticated sender, approved recipient, group and epoch"
+      },
+      {
+        "file": "tests/sharing-crypto.test.mjs",
+        "name": "a snapshot preserves the original author proof"
+      },
+      {
+        "file": "tests/sharing-crypto.test.mjs",
+        "name": "key rotation reencrypts an unsent operation without changing its identity"
+      }
+    ]
+  },
+  {
+    "feature": "shared-secure-store-crash-preservation",
+    "tests": [
+      {
+        "file": "tests/sharing-secure-vault.test.mjs",
+        "name": "large Firebase credentials remain entirely in protected chunks"
+      },
+      {
+        "file": "tests/sharing-secure-vault.test.mjs",
+        "name": "an interrupted secure-store update preserves the previous complete value"
+      },
+      {
+        "file": "tests/sharing-secure-vault.test.mjs",
+        "name": "a lost manifest response never deletes chunks already referenced by a successfully committed manifest"
+      }
+    ]
+  },
+  {
+    "feature": "shared-auth-without-personal-google-revocation",
+    "tests": [
+      {
+        "file": "tests/sharing-auth.test.mjs",
+        "name": "Google sharing sign-in uses only a basic ID token"
+      },
+      {
+        "file": "tests/sharing-auth.test.mjs",
+        "name": "a failed sharing authentication can be retried and sharing logout never revokes the existing Tasks session"
+      },
+      {
+        "file": "tests/sharing-auth.test.mjs",
+        "name": "sharing logout waits for an in-flight sign-in"
+      },
+      {
+        "file": "tests/google-calendar-native-auth.test.mjs",
+        "name": "sharing identity never implicitly requests Tasks or Calendar permissions"
+      }
+    ]
+  },
+  {
+    "feature": "shared-membership-authority-and-revocation",
+    "tests": [
+      {
+        "file": "tests/sharing-roster.test.mjs",
+        "name": "joining requires an existing owner signature"
+      },
+      {
+        "file": "tests/sharing-roster.test.mjs",
+        "name": "removal denies a former member and rejoining cannot replay edits"
+      },
+      {
+        "file": "tests/sharing-roster.test.mjs",
+        "name": "owner departure explicitly transfers control"
+      },
+      {
+        "file": "tests/sharing-roster.test.mjs",
+        "name": "tampering, owner substitution, rollback and skipping a roster revision"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-invitation-approval",
+    "tests": [
+      {
+        "file": "tests/sharing-invitations.test.mjs",
+        "name": "shared invitations keep their one-time secret in the app-link fragment and verify both possession and account-bound device signatures"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-snapshot-offline-recovery",
+    "tests": [
+      {
+        "file": "tests/sharing-snapshot.test.mjs",
+        "name": "shared snapshots compact superseded edits while preserving receipt collisions, causal frontiers and future offline edits"
+      },
+      {
+        "file": "tests/sharing-ledger.test.mjs",
+        "name": "applying an authenticated snapshot atomically preserves unpublished edits, proof history and the next device sequence"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-cloud-authorization",
+    "tests": [
+      {
+        "file": "tests/sharing-cloud-contract.test.mjs",
+        "name": "cloud ACL metadata cannot substitute a pinned signed account, device or membership epoch"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-private-mobile-storage",
+    "tests": [
+      {
+        "file": "tests/sharing-native-config.test.mjs",
+        "name": "shared database native directories exclude OS backups without changing personal SQLite backup or deleting business data"
+      },
+      {
+        "file": "tests/sharing-database-location.test.mjs",
+        "name": "shared databases require a confirmed native backup-excluded directory on both mobile OSes"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-apple-entitlement-opt-in",
+    "tests": [
+      {
+        "file": "tests/sharing-native-config.test.mjs",
+        "name": "Apple sharing capability follows the explicit flag even after Expo automatically reapplies installed plugins"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-owner-departure-key-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-roster.test.mjs",
+        "name": "a compromised old owner cannot combine their removal and a new-owner transition while generating the future key"
+      }
+    ]
   }
 ]

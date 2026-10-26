@@ -1,5 +1,6 @@
 module.exports = ({ config }) => {
   const appleTeamId = process.env.APPLE_TEAM_ID?.trim() || null;
+  const appleSharingEnabled = process.env.EXPO_PUBLIC_APPLE_SHARING_ENABLED === 'true';
   if (appleTeamId && !/^[A-Z0-9]{10}$/.test(appleTeamId)) {
     throw new Error('APPLE_TEAM_ID must be a 10-character Apple development team ID.');
   }
@@ -16,19 +17,25 @@ module.exports = ({ config }) => {
   const hasNativeGoogleConfiguration = Boolean(webClientId && iosClientId && iosUrlScheme);
   const plugins = (config.plugins ?? []).filter((plugin) => {
     const name = typeof plugin === 'string' ? plugin : plugin[0];
-    return name !== 'react-native-nitro-google-signin';
+    return name !== 'react-native-nitro-google-signin' && name !== 'expo-apple-authentication';
   });
 
   if (hasNativeGoogleConfiguration) {
     plugins.push(['react-native-nitro-google-signin', { iosUrlScheme }]);
     plugins.push('./plugins/with-google-sign-in-redirect');
   }
+  if (!plugins.some((plugin) => (typeof plugin === 'string' ? plugin : plugin[0]) === 'expo-secure-store')) {
+    plugins.push(['expo-secure-store', { configureAndroidBackup: false }]);
+  }
+  plugins.push(['./plugins/with-optional-apple-sign-in', { enabled: appleSharingEnabled }]);
+  plugins.push('./plugins/with-sharing-private-storage');
 
   return {
     ...config,
     ios: {
       ...config.ios,
       ...(appleTeamId ? { appleTeamId } : {}),
+      usesAppleSignIn: appleSharingEnabled,
     },
     plugins,
     extra: {

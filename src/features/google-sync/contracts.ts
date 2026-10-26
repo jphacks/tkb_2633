@@ -6,6 +6,8 @@ export interface GoogleSyncState {
   householdId: EntityId;
   enabled: boolean;
   taskListId?: string;
+  /** Device-local Google subject; never a shared group field or Firebase user ID. */
+  accountSubject?: string;
   lastAttemptAt?: ISODateTime;
   lastSuccessfulSyncAt?: ISODateTime;
   status: GoogleSyncStatus;

@@ -51,6 +51,7 @@ export async function refreshCalendarWithDependencies(
       const nativeUnavailable = nativeCode === 'NO_ACTIVITY' || nativeCode === 'IN_PROGRESS';
       const permission = error instanceof CalendarPermissionRequiredError || api?.code === 'calendar_permission_required'
         || nativeCode === 'SIGN_IN_REQUIRED'
+        || nativeCode === 'google_account_mismatch'
         || (error instanceof Error && error.name === 'GoogleSignInRequiredError');
       const failure = classifyGoogleSyncFailure({
         // Google Calendar can return rateLimitExceeded as either 403 or 429.
@@ -87,8 +88,8 @@ export async function refreshGoogleCalendarAvailability(
     loadState: () => loadCalendarAvailabilityState(database),
     saveState: (state) => saveCalendarAvailabilityState(database, state),
     getAccessToken: async () => {
-      const { getGoogleCalendarAccessToken } = await import('@/platform/google-tasks/google-sign-in-gateway');
-      return getGoogleCalendarAccessToken();
+      const { getBoundGoogleAccessToken } = await import('@/platform/google-tasks/bound-session');
+      return getBoundGoogleAccessToken(database, 'calendar');
     },
     client,
     commitSuccess: (days, state) => commitCalendarAvailabilitySuccess(database, days, state),

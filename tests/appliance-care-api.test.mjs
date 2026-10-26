@@ -458,10 +458,14 @@ test('HTTP API returns not_found, ambiguous candidates, and verified analysis sh
 
 test('analysis jobs expose product and official-manual stages, and stop at product-not-found', async () => {
   let manualCalls = 0;
+  let releaseProduct; let releaseAnalysis;
+  const productGate = new Promise((resolve) => { releaseProduct = resolve; });
+  const analysisGate = new Promise((resolve) => { releaseAnalysis = resolve; });
   const dependencies = {
     async resolveProduct(input) {
-      await new Promise((resolve) => setTimeout(resolve, 15));
       if (input.productName === '架空製品') return { status: 'not_found' };
+      // Observe the actual HTTP stage before advancing, independently of machine/CI load.
+      await productGate;
       return {
         status: 'verified', manufacturer: 'Dyson', productName: 'V12 Detect Slim', modelNumber: 'SV20',
         officialProductUrl: productUrl, allowedDomains: dysonDomains,
@@ -469,11 +473,10 @@ test('analysis jobs expose product and official-manual stages, and stop at produ
     },
     async resolveManual() {
       manualCalls += 1;
-      await new Promise((resolve) => setTimeout(resolve, 15));
       return { url: manualUrl, kind: 'pdf' };
     },
     async analyzeManual() {
-      await new Promise((resolve) => setTimeout(resolve, 15));
+      await analysisGate;
       return {
         manufacturer: 'Dyson', model: 'SV20', tasks: [validTask()],
         analyzedAt: '2026-10-24T00:00:00.000Z', requiresUserReview: true,
@@ -490,6 +493,8 @@ test('analysis jobs expose product and official-manual stages, and stop at produ
       const response = await fetch(`${baseUrl}/api/appliance-care/jobs/${jobId}`);
       const status = await response.json();
       stages.add(status.stage);
+      if (status.stage === 'product_verification') releaseProduct();
+      if (status.stage === 'official_manual_analysis') releaseAnalysis();
       if (status.done) return { status, stages };
       await new Promise((resolve) => setTimeout(resolve, 5));
     }

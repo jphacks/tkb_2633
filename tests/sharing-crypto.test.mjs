@@ -1,0 +1,100 @@
+import './helpers/typescript-loader.mjs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createPublicKey, verify as nodeVerify } from 'node:crypto';
+import { sharingTestCrypto as gateway } from './helpers/sharing-crypto.mjs';
+import { createDeviceIdentity, decryptSharedOperation, decryptAuthenticatedSharedOperation, encryptSharedOperation,
+  signSharedOperation, verifyAuthenticatedSharedOperation, unwrapGroupKey, wrapGroupKey,
+  validateDevicePublicIdentity } from '../src/features/sharing/crypto.ts';
+import { canonicalJson } from '../src/features/sharing/operations.ts';
+
+function operation(identity, overrides = {}) {
+  return { schemaVersion: 1, operationId: 'operation-1', groupId: 'group-test', authorUserId: 'user-a',
+    authorDeviceId: identity.deviceId, deviceSequence: 1, logicalClock: 1, context: {}, keyVersion: 1,
+    entityType: 'chore', entityId: 'floor', operationType: 'patch', payload: { name: '秘密の家事 🧹', enabled: true }, ...overrides };
+}
+
+test('shared authenticated encryption round trips Japanese data without exposing entity names or payloads', async () => {
+  const identity = await createDeviceIdentity(gateway); const key = await gateway.randomBytes(32); const op = operation(identity);
+  const envelope = await encryptSharedOperation(gateway, op, key, identity);
+  const encoded = JSON.stringify(envelope);
+  assert.equal(encoded.includes('秘密'), false); assert.equal(encoded.includes('floor'), false);
+  assert.equal(envelope.nonce.length, 24); assert.equal(envelope.salt.length, 64);
+  assert.deepEqual(await decryptSharedOperation(gateway, envelope, key, identity, 'group-test', 1), op);
+  const { signature, ...signed } = envelope;
+  const publicKey = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'),
+    Buffer.from(identity.signingPublicKey, 'hex')]), format: 'der', type: 'spki' });
+  assert.equal(nodeVerify(null, Buffer.from(canonicalJson(signed)), publicKey, Buffer.from(signature, 'hex')), true);
+});
+
+test('tampered ciphertext, metadata, group, author, nonce, signature and key version fail closed', async () => {
+  const identity = await createDeviceIdentity(gateway); const other = await createDeviceIdentity(gateway);
+  const key = await gateway.randomBytes(32); const envelope = await encryptSharedOperation(gateway, operation(identity), key, identity);
+  const flip = (hex) => `${hex[0] === '0' ? '1' : '0'}${hex.slice(1)}`;
+  for (const changed of [ { encryptedPayload: flip(envelope.encryptedPayload) }, { groupId: 'different' },
+    { authorUserId: 'user-other' }, { operationId: 'other-operation' }, { nonce: flip(envelope.nonce) },
+    { salt: flip(envelope.salt) }, { signature: flip(envelope.signature) }, { keyVersion: 2 },
+    { logicalClock: 2 }, { suite: 'unknown' }, { plaintext: 'unexpected' } ]) {
+    await assert.rejects(decryptSharedOperation(gateway, { ...envelope, ...changed }, key, identity, 'group-test', 1));
+  }
+  await assert.rejects(decryptSharedOperation(gateway, envelope, key, other, 'group-test', 1));
+  await assert.rejects(decryptSharedOperation(gateway, envelope, await gateway.randomBytes(32), identity, 'group-test', 1));
+  await assert.rejects(decryptSharedOperation(gateway, envelope, key, identity, 'group-test', 2));
+});
+
+test('the same content encrypted twice gets separate nonce and message keys while a saved retry envelope remains reusable', async () => {
+  const identity = await createDeviceIdentity(gateway); const key = await gateway.randomBytes(32);
+  const a = await encryptSharedOperation(gateway, operation(identity), key, identity);
+  const b = await encryptSharedOperation(gateway, operation(identity), key, identity);
+  assert.notEqual(a.nonce, b.nonce); assert.notEqual(a.salt, b.salt); assert.notEqual(a.encryptedPayload, b.encryptedPayload);
+  const retry = JSON.parse(JSON.stringify(a));
+  assert.deepEqual(await decryptSharedOperation(gateway, retry, key, identity, 'group-test', 1), operation(identity));
+});
+
+test('group key wrapping binds the authenticated sender, approved recipient, group and epoch', async () => {
+  const sender = await createDeviceIdentity(gateway); const recipient = await createDeviceIdentity(gateway);
+  const outsider = await createDeviceIdentity(gateway); const key = await gateway.randomBytes(32);
+  const wrapped = await wrapGroupKey(gateway, 'group-test', 2, key, sender, recipient, 'user-b');
+  assert.deepEqual(await unwrapGroupKey(gateway, wrapped, recipient, 'user-b', sender, 'group-test', 2), key);
+  assert.equal(JSON.stringify(wrapped).includes(Buffer.from(key).toString('hex')), false);
+  await assert.rejects(unwrapGroupKey(gateway, wrapped, outsider, 'user-b', sender, 'group-test', 2));
+  await assert.rejects(unwrapGroupKey(gateway, wrapped, recipient, 'wrong-user', sender, 'group-test', 2));
+  await assert.rejects(unwrapGroupKey(gateway, wrapped, recipient, 'user-b', outsider, 'group-test', 2));
+  await assert.rejects(unwrapGroupKey(gateway, wrapped, recipient, 'user-b', sender, 'wrong-group', 2));
+  await assert.rejects(unwrapGroupKey(gateway, wrapped, recipient, 'user-b', sender, 'group-test', 1));
+  await assert.rejects(unwrapGroupKey(gateway, { ...wrapped, encryptedKey: '0'.repeat(96) }, recipient, 'user-b', sender, 'group-test', 2));
+});
+
+test('public key substitutions cannot keep the same pinned device fingerprint', async () => {
+  const a = await createDeviceIdentity(gateway); const b = await createDeviceIdentity(gateway);
+  assert.throws(() => validateDevicePublicIdentity({ ...a, signingPublicKey: b.signingPublicKey }), /fingerprint/);
+  await assert.rejects(encryptSharedOperation(gateway, operation(a), await gateway.randomBytes(32), b), /identity mismatch/);
+});
+
+test('a snapshot preserves the original author proof and its owner cannot forge another members completion', async () => {
+  const author = await createDeviceIdentity(gateway); const snapshotOwner = await createDeviceIdentity(gateway);
+  const fact = signSharedOperation(operation(author), author);
+  assert.deepEqual(verifyAuthenticatedSharedOperation(fact, author, 'group-test'), fact);
+  assert.throws(() => verifyAuthenticatedSharedOperation({ ...fact,
+    operation: { ...fact.operation, payload: { name: 'forged' } } }, author, 'group-test'), /signature/);
+  assert.throws(() => verifyAuthenticatedSharedOperation(fact, snapshotOwner, 'group-test'), /identity mismatch/);
+  assert.throws(() => signSharedOperation(fact.operation, snapshotOwner), /identity mismatch/);
+});
+
+test('key rotation reencrypts an unsent operation without changing its identity, causality or author signature', async () => {
+  const author = await createDeviceIdentity(gateway); const original = operation(author);
+  const firstKey = await gateway.randomBytes(32); const secondKey = await gateway.randomBytes(32);
+  const first = await encryptSharedOperation(gateway, original, firstKey, author);
+  const rotated = await encryptSharedOperation(gateway, original, secondKey, author, 2);
+  assert.equal(first.operationId, rotated.operationId); assert.equal(rotated.keyVersion, 2);
+  const a = await decryptAuthenticatedSharedOperation(gateway, first, firstKey, author, 'group-test', 1);
+  const b = await decryptAuthenticatedSharedOperation(gateway, rotated, secondKey, author, 'group-test', 2);
+  assert.deepEqual(a, b); assert.equal(b.operation.keyVersion, 1);
+  await assert.rejects(decryptSharedOperation(gateway, rotated, firstKey, author, 'group-test', 2));
+  await assert.rejects(encryptSharedOperation(gateway, { ...original, keyVersion: 2 }, firstKey, author, 1), /older group key/);
+});
+
+test('cryptographic creation rejects unavailable or short randomness instead of using an insecure fallback', async () => {
+  await assert.rejects(createDeviceIdentity({ ...gateway, randomBytes: async () => new Uint8Array(1) }), /random source/);
+  await assert.rejects(createDeviceIdentity({ ...gateway, randomBytes: async () => { throw new Error('unavailable'); } }), /unavailable/);
+});

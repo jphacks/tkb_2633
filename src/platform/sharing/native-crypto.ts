@@ -1,0 +1,17 @@
+import { AESEncryptionKey, AESSealedData, aesDecryptAsync, aesEncryptAsync, getRandomBytesAsync } from 'expo-crypto';
+import type { SharingCryptoGateway } from '../../features/sharing/crypto.ts';
+
+/** The asynchronous RNG has no development-mode Math.random fallback. */
+export const nativeSharingCrypto: SharingCryptoGateway = {
+  randomBytes: getRandomBytesAsync,
+  async encrypt(key, nonce, plaintext, aad) {
+    const nativeKey = await AESEncryptionKey.import(key);
+    const sealed = await aesEncryptAsync(plaintext, nativeKey, { nonce: { bytes: nonce }, additionalData: aad, tagLength: 16 });
+    return sealed.ciphertext({ includeTag: true });
+  },
+  async decrypt(key, nonce, ciphertextWithTag, aad) {
+    const nativeKey = await AESEncryptionKey.import(key);
+    const sealed = AESSealedData.fromParts(nonce, ciphertextWithTag, 16);
+    return aesDecryptAsync(sealed, nativeKey, { additionalData: aad, output: 'bytes' });
+  },
+};

@@ -4,6 +4,7 @@ import { getGoogleSyncOAuthConfig } from '@/features/google-sync/google-oauth-co
 import { GOOGLE_TASKS_SCOPE } from './google-tasks-api';
 import { CalendarPermissionRequiredError, GOOGLE_CALENDAR_FREEBUSY_SCOPE } from '@/features/google-sync/calendar-availability';
 import { authorizeCalendarAvailability } from '@/features/google-sync/calendar-authorization';
+import { GoogleAccountMismatchError } from '@/features/google-sync/account-binding';
 
 export class GoogleOAuthConfigurationError extends Error {
   constructor() {
@@ -80,7 +81,9 @@ async function loadGoogleSignIn(): Promise<GoogleSignInModule> {
         webClientId,
         iosClientId,
         offlineAccess: false,
-        scopes: [GOOGLE_TASKS_SCOPE],
+        // Identity sign-in is also used by group sharing. Tasks/Calendar consent is
+        // requested explicitly by its own feature, never by checking a saved session.
+        scopes: [],
       })).then(() => { configuredModule = module; }).finally(() => { configuringModule = null; });
     }
     await configuringModule;
@@ -102,7 +105,7 @@ async function getCurrentGoogleUser(module: GoogleSignInModule): Promise<GoogleU
   return restoringSession;
 }
 
-export async function authorizeGoogleTasks(): Promise<void> {
+async function signInForUserAction(): Promise<GoogleSignInModule> {
   const module = await loadGoogleSignIn();
   const googleSignIn = module.GoogleOneTapSignIn;
   await authStep('check-services', () => googleSignIn.checkPlayServices());
@@ -118,6 +121,41 @@ export async function authorizeGoogleTasks(): Promise<void> {
   if (module.isCancelledResponse(response) || !module.isSuccessResponse(response)) {
     throw new GoogleAuthorizationCancelledError();
   }
+  return module;
+}
+
+/** Expiry is a refresh hint only. Firebase still verifies the signature, issuer and audience. */
+export function isGoogleIdentityTokenFresh(token: unknown, now = Date.now()): boolean {
+  if (typeof token !== 'string' || typeof atob !== 'function') return false;
+  try {
+    const payload = token.split('.')[1];
+    if (!payload || payload.length > 32_768) return false;
+    const base64 = payload.replace(/-/gu, '+').replace(/_/gu, '/');
+    const claims = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))) as { exp?: unknown };
+    return typeof claims.exp === 'number' && Number.isFinite(claims.exp) && claims.exp * 1000 > now + 60_000;
+  } catch { return false; }
+}
+
+/** Basic Google identity only. Firebase logout must not sign out or revoke this native Tasks session. */
+export async function authorizeGoogleSharingIdentity(): Promise<{ idToken: string; googleUserId: string }> {
+  if (AppState.currentState !== 'active') throw new GoogleSignInRequiredError();
+  let module = await loadGoogleSignIn();
+  let user = await getCurrentGoogleUser(module);
+  // Android getTokens refreshes the OAuth token but returns its saved ID token.
+  // Credential Manager must issue a fresh ID token after that token expires.
+  if (!user || (Platform.OS === 'android' && !isGoogleIdentityTokenFresh(user.idToken))) {
+    module = await signInForUserAction(); user = await getCurrentGoogleUser(module);
+  }
+  if (!user) throw new GoogleSignInRequiredError();
+  const tokens = await authStep('get-sharing-identity', () => module.GoogleOneTapSignIn.getTokens());
+  if (!tokens.idToken) throw new GoogleSignInRequiredError();
+  if ((await getCurrentGoogleUser(module))?.user.id !== user.user.id) throw new GoogleAccountMismatchError();
+  return { idToken: tokens.idToken, googleUserId: user.user.id };
+}
+
+export async function authorizeGoogleTasks(): Promise<void> {
+  const module = await signInForUserAction();
+  const googleSignIn = module.GoogleOneTapSignIn;
 
   const currentUser = await authStep('current-session', () => googleSignIn.getCurrentUser());
   if (!currentUser?.scopes.includes(GOOGLE_TASKS_SCOPE)) {
@@ -127,12 +165,21 @@ export async function authorizeGoogleTasks(): Promise<void> {
   await authStep('get-tokens', () => googleSignIn.getTokens());
 }
 
-export async function getGoogleTasksAccessToken(): Promise<string> {
+export async function getGoogleTasksAccessToken(expectedSubject?: string): Promise<string> {
   const module = await loadGoogleSignIn();
   const currentUser = await getCurrentGoogleUser(module);
   if (!currentUser) throw new GoogleSignInRequiredError();
+  if (expectedSubject && currentUser.user.id !== expectedSubject) throw new GoogleAccountMismatchError();
   if (!currentUser.scopes.includes(GOOGLE_TASKS_SCOPE)) throw new GoogleSignInRequiredError();
-  return (await authStep('get-tokens', () => module.GoogleOneTapSignIn.getTokens())).accessToken;
+  const tokens = await authStep('get-tokens', () => module.GoogleOneTapSignIn.getTokens());
+  const after = await getCurrentGoogleUser(module);
+  if (after?.user.id !== currentUser.user.id) throw new GoogleAccountMismatchError();
+  if (!after?.scopes.includes(GOOGLE_TASKS_SCOPE)) throw new GoogleSignInRequiredError();
+  return tokens.accessToken;
+}
+
+export async function getCurrentGoogleSubject(): Promise<string | null> {
+  return (await getCurrentGoogleUser(await loadGoogleSignIn()))?.user.id ?? null;
 }
 
 export async function hasGoogleTasksSession(): Promise<boolean> {
@@ -158,13 +205,16 @@ export async function authorizeGoogleCalendarAvailability(): Promise<void> {
 }
 
 /** Non-interactive: no requestScopes/createAccount/presentExplicitSignIn fallback. */
-export async function getGoogleCalendarAccessToken(): Promise<string> {
+export async function getGoogleCalendarAccessToken(expectedSubject?: string): Promise<string> {
   const module = await loadGoogleSignIn();
   const user = await getCurrentGoogleUser(module);
+  if (user && expectedSubject && user.user.id !== expectedSubject) throw new GoogleAccountMismatchError();
   if (!user?.scopes.includes(GOOGLE_CALENDAR_FREEBUSY_SCOPE)) throw new CalendarPermissionRequiredError();
   const tokens = await authStep('get-calendar-token', () => module.GoogleOneTapSignIn.getTokens());
   // Android can silently fall back to the still-granted Tasks scope after Calendar revocation.
-  if (!(await getCurrentGoogleUser(module))?.scopes.includes(GOOGLE_CALENDAR_FREEBUSY_SCOPE)) {
+  const after = await getCurrentGoogleUser(module);
+  if (after?.user.id !== user.user.id) throw new GoogleAccountMismatchError();
+  if (!after?.scopes.includes(GOOGLE_CALENDAR_FREEBUSY_SCOPE)) {
     throw new CalendarPermissionRequiredError();
   }
   return tokens.accessToken;

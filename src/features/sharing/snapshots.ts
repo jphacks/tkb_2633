@@ -1,0 +1,118 @@
+import { assertJsonRecord, assertSharedIdentifier, canonicalJson, SHARED_SCHEDULER_VERSION } from './operations.ts';
+import type { VersionVector } from './operations.ts';
+import { compactSharedReplica, validateSharedSnapshotBase } from './replica.ts';
+import type { SharedOperationReceipt, SharedReplica, SharedSnapshotBase } from './replica.ts';
+import { MAX_SHARED_SNAPSHOT_CHUNK_BYTES, openSharedSnapshotChunk, sealSharedSnapshotChunk, sharedDocumentDigest,
+  signSharedDocument, verifyAuthenticatedSharedOperation, verifySharedDocument } from './crypto.ts';
+import type { AuthenticatedSharedOperation, DevicePublicIdentity, DeviceSecretIdentity, EncryptedSharedSnapshotChunk, SharingCryptoGateway } from './crypto.ts';
+import { sharedRosterDigest } from './roster.ts';
+import type { VerifiedSharedRoster } from './roster.ts';
+
+export type SharedAuthorResolver = (userId: string, deviceId: string, keyVersion: number) => DevicePublicIdentity;
+interface SharedSnapshotManifestBody {
+  schemaVersion: 1; groupId: string; snapshotId: string; keyVersion: number; throughSequence: number;
+  ownerDeviceId: string; rosterDigest: string; schedulerVersion: string;
+  frontier: VersionVector; logicalClock: number; receiptCount: number; factCount: number;
+  chunks: { id: string; digest: string; bytes: number }[];
+}
+export interface SignedSharedSnapshotManifest { body: SharedSnapshotManifestBody; signature: string }
+export interface EncryptedSharedSnapshot { manifest: SignedSharedSnapshotManifest; chunks: EncryptedSharedSnapshotChunk[] }
+export interface VerifiedSharedSnapshot { base: SharedSnapshotBase; facts: AuthenticatedSharedOperation[]; snapshotId: string; throughSequence: number }
+type SnapshotRecord = { kind: 'receipt'; value: SharedOperationReceipt } | { kind: 'fact'; value: AuthenticatedSharedOperation };
+const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { fatal: true });
+
+function authenticate(fact: AuthenticatedSharedOperation, groupId: string, keyVersion: number, author: SharedAuthorResolver) {
+  const op = fact.operation;
+  if (op.keyVersion > keyVersion) throw new Error('Snapshot contains a future authoring epoch');
+  return verifyAuthenticatedSharedOperation(fact, author(op.authorUserId, op.authorDeviceId, op.keyVersion), groupId);
+}
+
+export async function createEncryptedSharedSnapshot(crypto: SharingCryptoGateway, replica: SharedReplica,
+  availableFacts: readonly AuthenticatedSharedOperation[], roster: VerifiedSharedRoster, owner: DeviceSecretIdentity,
+  key: Uint8Array, snapshotId: string, throughSequence: number, author: SharedAuthorResolver): Promise<EncryptedSharedSnapshot> {
+  assertSharedIdentifier(snapshotId);
+  if (snapshotId.length > 150 || roster.body.groupId !== replica.groupId || roster.body.ownerDeviceId !== owner.deviceId
+    || roster.body.closed || !Number.isSafeInteger(throughSequence) || throughSequence < 0) throw new Error('Invalid snapshot authority or delivery position');
+  const base = compactSharedReplica(replica); const facts = new Map(availableFacts.map((fact) => [fact.operation.operationId, fact]));
+  const retained = base.operations.map((operation) => {
+    const fact = facts.get(operation.operationId);
+    if (!fact || canonicalJson(fact.operation) !== canonicalJson(operation)) throw new Error('Snapshot is missing an original author proof');
+    return authenticate(fact, replica.groupId, roster.body.keyVersion, author);
+  });
+  const records: SnapshotRecord[] = [...base.operationIndex.map((value): SnapshotRecord => ({ kind: 'receipt', value })),
+    ...retained.map((value): SnapshotRecord => ({ kind: 'fact', value }))];
+  const chunks: EncryptedSharedSnapshotChunk[] = []; let page: SnapshotRecord[] = []; let bytes = 2;
+  const flush = async () => {
+    if (!page.length) return;
+    chunks.push(await sealSharedSnapshotChunk(crypto, encoder.encode(canonicalJson(page)),
+      { groupId: replica.groupId, snapshotId, chunkIndex: chunks.length, keyVersion: roster.body.keyVersion }, key, owner));
+    page = []; bytes = 2;
+  };
+  for (const record of records) {
+    const length = encoder.encode(canonicalJson(record)).length + (page.length ? 1 : 0);
+    if (length + 2 > MAX_SHARED_SNAPSHOT_CHUNK_BYTES) throw new Error('Snapshot record exceeds the encrypted chunk limit');
+    if (bytes + length > MAX_SHARED_SNAPSHOT_CHUNK_BYTES || page.length >= 1000) await flush();
+    page.push(record); bytes += length;
+  }
+  await flush();
+  const body: SharedSnapshotManifestBody = { schemaVersion: 1, groupId: replica.groupId, snapshotId, keyVersion: roster.body.keyVersion,
+    throughSequence, ownerDeviceId: owner.deviceId, rosterDigest: sharedRosterDigest(roster), schedulerVersion: roster.body.schedulerVersion,
+    frontier: base.frontier, logicalClock: base.logicalClock, receiptCount: base.operationIndex.length, factCount: retained.length,
+    chunks: chunks.map((chunk, index) => ({ id: `${snapshotId}.${index}`, digest: sharedDocumentDigest(chunk),
+      bytes: encoder.encode(canonicalJson(chunk)).length })) };
+  const manifest = { body, signature: signSharedDocument({ domain: 'liflow-shared-snapshot-v1', body }, owner) };
+  if (encoder.encode(canonicalJson(manifest)).length > 100_000) throw new Error('Snapshot manifest exceeds the cloud limit');
+  return { manifest, chunks };
+}
+
+export function verifySharedSnapshotManifest(input: SignedSharedSnapshotManifest, roster: VerifiedSharedRoster): SignedSharedSnapshotManifest {
+  assertJsonRecord(input);
+  if (Object.keys(input).sort().join(',') !== 'body,signature') throw new Error('Unknown snapshot manifest field');
+  const { body } = input; assertJsonRecord(body);
+  if (Object.keys(body).sort().join(',') !== 'chunks,factCount,frontier,groupId,keyVersion,logicalClock,ownerDeviceId,receiptCount,rosterDigest,schedulerVersion,schemaVersion,snapshotId,throughSequence'
+    || body.schemaVersion !== 1 || body.groupId !== roster.body.groupId || body.ownerDeviceId !== roster.body.ownerDeviceId
+    || body.keyVersion !== roster.body.keyVersion || body.rosterDigest !== sharedRosterDigest(roster)
+    || body.schedulerVersion !== SHARED_SCHEDULER_VERSION || !Array.isArray(body.chunks) || body.chunks.length > 512) throw new Error('Untrusted snapshot manifest');
+  assertSharedIdentifier(body.snapshotId);
+  for (const value of [body.throughSequence, body.logicalClock, body.receiptCount, body.factCount]) {
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid snapshot count');
+  }
+  if (body.factCount > body.receiptCount) throw new Error('Snapshot fact count exceeds causal receipts');
+  for (const [index, chunk] of body.chunks.entries()) {
+    assertJsonRecord(chunk);
+    if (Object.keys(chunk).sort().join(',') !== 'bytes,digest,id' || chunk.id !== `${body.snapshotId}.${index}`
+      || !/^[a-f0-9]{64}$/u.test(chunk.digest) || !Number.isSafeInteger(chunk.bytes) || chunk.bytes < 1 || chunk.bytes > 800_000) throw new Error('Invalid snapshot chunk descriptor');
+  }
+  const owner = roster.body.members.find((member) => member.userId === roster.body.ownerUserId)?.devices
+    .find((device) => device.identity.deviceId === roster.body.ownerDeviceId)?.identity;
+  if (!owner) throw new Error('Missing snapshot owner authority');
+  verifySharedDocument({ domain: 'liflow-shared-snapshot-v1', body }, input.signature, owner);
+  return input;
+}
+
+export async function openEncryptedSharedSnapshot(crypto: SharingCryptoGateway, input: EncryptedSharedSnapshot,
+  key: Uint8Array, roster: VerifiedSharedRoster, author: SharedAuthorResolver): Promise<VerifiedSharedSnapshot> {
+  const { body } = verifySharedSnapshotManifest(input.manifest, roster);
+  if (input.chunks.length !== body.chunks.length) throw new Error('Snapshot is missing encrypted chunks');
+  const owner = roster.body.members.flatMap((member) => member.devices).find((device) => device.identity.deviceId === body.ownerDeviceId)!.identity;
+  const operationIndex: SharedOperationReceipt[] = []; const facts: AuthenticatedSharedOperation[] = [];
+  for (const [index, chunk] of input.chunks.entries()) {
+    if (sharedDocumentDigest(chunk) !== body.chunks[index].digest || encoder.encode(canonicalJson(chunk)).length !== body.chunks[index].bytes) throw new Error('Snapshot chunk hash mismatch');
+    const plaintext = await openSharedSnapshotChunk(crypto, chunk, { groupId: body.groupId, snapshotId: body.snapshotId,
+      keyVersion: body.keyVersion, chunkIndex: index }, key, owner);
+    const records = JSON.parse(decoder.decode(plaintext)) as SnapshotRecord[];
+    if (!Array.isArray(records) || records.length > 1000) throw new Error('Invalid snapshot page');
+    for (const record of records) {
+      assertJsonRecord(record);
+      if (Object.keys(record).sort().join(',') !== 'kind,value') throw new Error('Unknown snapshot record field');
+      if (record.kind === 'receipt') operationIndex.push(record.value);
+      else if (record.kind === 'fact') facts.push(authenticate(record.value, body.groupId, body.keyVersion, author));
+      else throw new Error('Unknown snapshot record');
+    }
+  }
+  if (operationIndex.length !== body.receiptCount || facts.length !== body.factCount) throw new Error('Snapshot count mismatch');
+  const base = validateSharedSnapshotBase(body.groupId, { groupId: body.groupId, frontier: body.frontier,
+    logicalClock: body.logicalClock, operationIndex, operations: facts.map((fact) => fact.operation) });
+  return { base, facts, snapshotId: body.snapshotId, throughSequence: body.throughSequence };
+}

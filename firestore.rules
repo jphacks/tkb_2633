@@ -1,0 +1,200 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function groupPath(groupId) { return /databases/$(database)/documents/sharingGroups/$(groupId); }
+    function group(groupId) { return get(groupPath(groupId)).data; }
+    function afterGroup(groupId) { return getAfter(groupPath(groupId)).data; }
+    function memberOf(g) {
+      return signedIn() && request.auth.uid in g.memberIds && !(request.auth.uid in g.revokedUserIds) && !g.closed;
+    }
+    function ownerOf(g) { return memberOf(g) && request.auth.uid == g.ownerUserId; }
+    function safeId(id) { return id is string && id.matches('^[A-Za-z0-9_.:@-]{1,200}$'); }
+    function validRoot(g) {
+      return g.keys().hasOnly(['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds', 'deviceOwners',
+        'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
+        'headSequence', 'lastOperationId', 'snapshotId', 'snapshotThroughSequence', 'createdAt', 'updatedAt'])
+        && g.schemaVersion == 1 && safeId(g.ownerUserId) && safeId(g.ownerDeviceId)
+        && g.memberIds is list && g.memberIds.size() <= 16 && g.memberIds.toSet().size() == g.memberIds.size()
+        && g.deviceOwners is map && g.deviceOwners.size() <= 64
+        && g.deviceOwners.values().toSet().hasOnly(g.memberIds)
+        && g.keyVersion is int && g.keyVersion > 0 && g.rosterRevision == g.keyVersion
+        && g.rosterJson is string && g.rosterJson.size() <= 60000
+        && g.revokedUserIds is list && g.revokedUserIds.toSet().hasOnly(g.memberIds)
+        && g.revokedUserIds.toSet().size() == g.revokedUserIds.size()
+        && g.rotationRequired is bool && (g.revokedUserIds.size() == 0 || g.rotationRequired)
+        && g.closed is bool
+        && (g.closed ? g.memberIds.size() == 0 && g.deviceOwners.size() == 0
+          : g.ownerUserId in g.memberIds && g.deviceOwners[g.ownerDeviceId] == g.ownerUserId)
+        && g.headSequence is int && g.headSequence >= 0
+        && (g.lastOperationId == null || safeId(g.lastOperationId))
+        && (g.snapshotId == null || safeId(g.snapshotId))
+        && g.snapshotThroughSequence is int && g.snapshotThroughSequence >= 0 && g.snapshotThroughSequence <= g.headSequence
+        && g.createdAt is timestamp && g.updatedAt == request.time;
+    }
+    function rosterWritten(groupId, g) {
+      return getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/rosters/$(string(g.rosterRevision))).data.rosterJson == g.rosterJson;
+    }
+    function ownerForWrite(groupId) {
+      return exists(groupPath(groupId)) ? ownerOf(group(groupId)) : ownerOf(afterGroup(groupId));
+    }
+
+    match /sharingGroups/{groupId} {
+      allow get: if memberOf(resource.data);
+      allow list: if false;
+      allow create: if signedIn() && safeId(groupId) && validRoot(request.resource.data)
+        && request.resource.data.ownerUserId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.deviceOwners.size() == 1
+        && request.resource.data.keyVersion == 1 && request.resource.data.headSequence == 0
+        && request.resource.data.lastOperationId == null && request.resource.data.snapshotId == null
+        && request.resource.data.snapshotThroughSequence == 0 && request.resource.data.revokedUserIds == []
+        && !request.resource.data.rotationRequired && !request.resource.data.closed
+        && request.resource.data.createdAt == request.time && rosterWritten(groupId, request.resource.data);
+      allow update: if validRoot(request.resource.data) && (
+        // Each event and its consecutive delivery position commit together. No cursor holes.
+        (memberOf(resource.data) && !resource.data.rotationRequired
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['headSequence', 'lastOperationId', 'updatedAt'])
+          && request.resource.data.headSequence == resource.data.headSequence + 1
+          && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.uploadSequence == request.resource.data.headSequence
+          && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.authorUserId == request.auth.uid)
+        || (ownerOf(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerUserId', 'ownerDeviceId', 'memberIds',
+            'deviceOwners', 'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
+            'snapshotId', 'snapshotThroughSequence', 'updatedAt'])
+          && request.resource.data.keyVersion == resource.data.keyVersion + 1
+          && request.resource.data.revokedUserIds == [] && !request.resource.data.rotationRequired
+          && rosterWritten(groupId, request.resource.data)
+          && ((request.resource.data.snapshotId == resource.data.snapshotId && request.resource.data.snapshotThroughSequence == resource.data.snapshotThroughSequence)
+            || (request.resource.data.snapshotThroughSequence == resource.data.headSequence
+              && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion
+              && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.throughSequence == request.resource.data.snapshotThroughSequence))
+          && (request.resource.data.deviceOwners.keys().toSet().difference(resource.data.deviceOwners.keys().toSet()).size() == 0
+            || getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion))
+        // A non-owner can immediately revoke their own cloud access. Sending freezes until rekeyed.
+        || (memberOf(resource.data) && request.auth.uid != resource.data.ownerUserId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedUserIds', 'rotationRequired', 'updatedAt'])
+          && request.resource.data.revokedUserIds.toSet() == resource.data.revokedUserIds.toSet().union([request.auth.uid].toSet())
+          && request.resource.data.rotationRequired)
+        || (ownerOf(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snapshotId', 'snapshotThroughSequence', 'updatedAt'])
+          && request.resource.data.snapshotThroughSequence >= resource.data.snapshotThroughSequence
+          && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.throughSequence == request.resource.data.snapshotThroughSequence)
+      );
+      allow delete: if false;
+
+      match /rosters/{revision} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerForWrite(groupId)
+          && request.resource.data.keys().hasOnly(['rosterJson', 'createdAt'])
+          && request.resource.data.rosterJson == afterGroup(groupId).rosterJson
+          && revision == string(afterGroup(groupId).rosterRevision) && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+      match /events/{operationId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if memberOf(group(groupId)) && !group(groupId).rotationRequired
+          && safeId(operationId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'envelopeJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.authorUserId == request.auth.uid
+          && group(groupId).deviceOwners[request.resource.data.authorDeviceId] == request.auth.uid
+          && request.resource.data.keyVersion == group(groupId).keyVersion
+          && request.resource.data.envelopeJson is string && request.resource.data.envelopeJson.size() <= 800000
+          && request.resource.data.uploadSequence == group(groupId).headSequence + 1
+          && afterGroup(groupId).headSequence == request.resource.data.uploadSequence && afterGroup(groupId).lastOperationId == operationId
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && resource.data.uploadSequence <= group(groupId).snapshotThroughSequence;
+      }
+      match /keyEnvelopes/{keyId} {
+        allow read: if memberOf(group(groupId)) && resource.data.userId == request.auth.uid;
+        allow create: if ownerForWrite(groupId)
+          && request.resource.data.keys().hasOnly(['userId', 'deviceId', 'keyVersion', 'wrappedKeyJson', 'createdAt'])
+          && request.resource.data.keyVersion == afterGroup(groupId).keyVersion
+          && afterGroup(groupId).deviceOwners[request.resource.data.deviceId] == request.resource.data.userId
+          && keyId == string(request.resource.data.keyVersion) + '_' + request.resource.data.deviceId
+          && request.resource.data.wrappedKeyJson is string && request.resource.data.wrappedKeyJson.size() <= 10000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && resource.data.keyVersion < group(groupId).keyVersion
+          && get(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(group(groupId).snapshotId)).data.keyVersion == group(groupId).keyVersion;
+      }
+      match /acknowledgements/{deviceId} {
+        allow read: if memberOf(group(groupId));
+        allow create, update: if memberOf(group(groupId))
+          && group(groupId).deviceOwners[deviceId] == request.auth.uid
+          && request.resource.data.keys().hasOnly(['userId', 'sequence', 'updatedAt'])
+          && request.resource.data.userId == request.auth.uid && request.resource.data.sequence is int
+          && request.resource.data.sequence >= 0 && request.resource.data.sequence <= group(groupId).headSequence
+          && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/acknowledgements/$(deviceId)) || request.resource.data.sequence >= resource.data.sequence)
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if ownerOf(group(groupId));
+      }
+      match /snapshots/{snapshotId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && safeId(snapshotId)
+          && request.resource.data.keys().hasOnly(['keyVersion', 'throughSequence', 'manifestJson', 'createdAt'])
+          && request.resource.data.keyVersion == afterGroup(groupId).keyVersion
+          && (!group(groupId).rotationRequired || request.resource.data.keyVersion > group(groupId).keyVersion)
+          && request.resource.data.throughSequence is int && request.resource.data.throughSequence >= 0
+          && request.resource.data.throughSequence <= group(groupId).headSequence
+          && request.resource.data.manifestJson is string && request.resource.data.manifestJson.size() <= 100000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && snapshotId != group(groupId).snapshotId;
+      }
+      match /snapshotChunks/{chunkId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && safeId(chunkId)
+          && request.resource.data.keys().hasOnly(['snapshotId', 'keyVersion', 'envelopeJson', 'createdAt'])
+          && safeId(request.resource.data.snapshotId) && request.resource.data.keyVersion >= group(groupId).keyVersion
+          && request.resource.data.keyVersion <= group(groupId).keyVersion + 1
+          && (!group(groupId).rotationRequired || request.resource.data.keyVersion > group(groupId).keyVersion)
+          && request.resource.data.envelopeJson is string && request.resource.data.envelopeJson.size() <= 800000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && resource.data.snapshotId != group(groupId).snapshotId;
+      }
+    }
+    match /sharingUsers/{userId}/memberships/{groupId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && (ownerForWrite(groupId) || request.auth.uid == userId && memberOf(afterGroup(groupId)))
+        && userId in afterGroup(groupId).memberIds
+        && request.resource.data.keys().hasOnly(['groupId', 'createdAt']) && request.resource.data.groupId == groupId
+        && request.resource.data.createdAt == request.time;
+      allow delete: if signedIn() && (request.auth.uid == userId || ownerOf(group(groupId)));
+    }
+    match /sharingInvites/{inviteId} {
+      allow get: if signedIn();
+      allow list: if signedIn() && ownerOf(group(resource.data.groupId));
+      allow create: if signedIn() && safeId(inviteId) && ownerOf(group(request.resource.data.groupId))
+        && !group(request.resource.data.groupId).rotationRequired
+        && request.resource.data.keys().hasOnly(['groupId', 'ownerUserId', 'invitationPublicKey', 'pinJson', 'expiresAt', 'status', 'usedBy', 'createdAt'])
+        && request.resource.data.ownerUserId == request.auth.uid
+        && request.resource.data.invitationPublicKey is string && request.resource.data.invitationPublicKey.matches('^[a-f0-9]{64}$')
+        && request.resource.data.pinJson is string && request.resource.data.pinJson.size() <= 60000
+        && request.resource.data.status == 'open' && request.resource.data.usedBy == null
+        && request.resource.data.createdAt == request.time && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(24, 'h');
+      allow update: if ownerOf(group(resource.data.groupId)) && resource.data.status == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'usedBy'])
+        && (request.resource.data.status == 'revoked' && request.resource.data.usedBy == null
+          || request.resource.data.status == 'used' && resource.data.expiresAt > request.time
+            && request.resource.data.usedBy in afterGroup(resource.data.groupId).memberIds);
+      allow delete: if ownerOf(group(resource.data.groupId));
+      match /requests/{userId} {
+        function invitation() { return get(/databases/$(database)/documents/sharingInvites/$(inviteId)).data; }
+        allow read: if signedIn() && (request.auth.uid == userId || ownerOf(group(invitation().groupId)));
+        allow create: if signedIn() && request.auth.uid == userId && invitation().status == 'open'
+          && invitation().expiresAt > request.time && !group(invitation().groupId).rotationRequired
+          && request.resource.data.keys().hasOnly(['userId', 'deviceId', 'requestJson', 'createdAt'])
+          && request.resource.data.userId == userId && safeId(request.resource.data.deviceId)
+          && request.resource.data.requestJson is string && request.resource.data.requestJson.size() <= 15000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if signedIn() && (request.auth.uid == userId || ownerOf(group(invitation().groupId)));
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

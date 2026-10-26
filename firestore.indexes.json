@@ -1,0 +1,10 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "events", "fieldPath": "envelopeJson", "indexes": [] },
+    { "collectionGroup": "snapshotChunks", "fieldPath": "envelopeJson", "indexes": [] },
+    { "collectionGroup": "rosters", "fieldPath": "rosterJson", "indexes": [] },
+    { "collectionGroup": "keyEnvelopes", "fieldPath": "wrappedKeyJson", "indexes": [] },
+    { "collectionGroup": "sharingGroups", "fieldPath": "rosterJson", "indexes": [] }
+  ]
+}

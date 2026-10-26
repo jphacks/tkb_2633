@@ -153,3 +153,25 @@ test('manual recovery resumes an interrupted attempt while a live promise is sti
   assert.equal(interrupted.counters.api, 2);
   assert.equal(interrupted.currentState.status, 'idle');
 });
+
+test('different workspace syncs retain independent results while the native operation queue serializes them', async () => {
+  const a = setup(); const b = setup(); let release; let bStarted = false;
+  const gate = new Promise((resolve) => { release = resolve; });
+  a.dependencies.api.listTasks = async () => { a.counters.api++; await gate; return []; };
+  const read = b.dependencies.api.listTaskLists;
+  b.dependencies.api.listTaskLists = async () => { bStarted = true; return read(); };
+  const first = syncGoogleTasksWithDependencies(a.dependencies, { now, force: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = syncGoogleTasksWithDependencies(b.dependencies, { now, force: true });
+  await new Promise((resolve) => setImmediate(resolve)); assert.equal(bStarted, false);
+  release(); const results = await Promise.all([first, second]);
+  assert.ok(results.every((result) => result.kind === 'success' && !result.skipped));
+  assert.equal(a.counters.api, 2); assert.equal(b.counters.api, 2);
+});
+
+test('new dependency wrappers for the same SQLite scope still coalesce one hundred concurrent requests', async () => {
+  const h = setup(); const scope = {};
+  const pending = Array.from({ length: 100 }, () => syncGoogleTasksWithDependencies({ ...h.dependencies, syncScope: scope }, { now, force: true }));
+  const results = await Promise.all(pending);
+  assert.ok(results.every((result) => result.kind === 'success')); assert.equal(h.counters.api, 2);
+});

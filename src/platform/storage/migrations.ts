@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 17;
+const CURRENT_SCHEMA_VERSION = 18;
 
 const runningMigrations = new WeakMap<SQLiteDatabase, Promise<void>>();
 
@@ -343,6 +343,11 @@ async function migrateSchema(database: SQLiteDatabase): Promise<void> {
     await addColumnIfMissing(database, 'household_settings', 'built_in_chore_catalog_version', 'INTEGER NOT NULL DEFAULT 0');
     await database.execAsync('PRAGMA user_version = 17');
     version = 17;
+  }
+  if (version < 18) {
+    await addColumnIfMissing(database, 'google_sync_state', 'account_subject', 'TEXT');
+    await database.execAsync('PRAGMA user_version = 18');
+    version = 18;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

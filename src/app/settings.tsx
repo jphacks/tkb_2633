@@ -142,7 +142,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         ? result.skipped
           ? { text: 'Googleには接続しましたが、同期は実行されていません。同期設定を確認してください。', kind: 'error' }
           : { text: 'Google Tasksに接続し、同期しました。', kind: 'success' }
-        : { text: syncFailureMessage(result.kind), kind: 'error' });
+        : { text: syncFailureMessage(result.kind, result.code), kind: 'error' });
     } catch (cause) {
       setGoogleMessage({ text: cause instanceof Error && cause.name === 'GoogleAuthorizationCancelledError'
         ? 'Googleとの接続をキャンセルしました。'
@@ -191,7 +191,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           ? result.skipped
             ? { text: '同期を有効にしましたが、同期は実行されていません。同期状態を確認してください。', kind: 'error' }
             : { text: 'Google Tasksとの同期を有効にしました。', kind: 'success' }
-          : { text: syncFailureMessage(result.kind), kind: 'error' });
+          : { text: syncFailureMessage(result.kind, result.code), kind: 'error' });
       } else {
         await unregisterGoogleSyncBackgroundTask().catch(() => undefined);
         await refreshGoogleState();
@@ -218,7 +218,7 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
         ? result.skipped
           ? { text: '同期は実行されていません。同期状態を確認してから再試行してください。', kind: 'error' }
           : { text: `同期しました（新規 ${result.created ?? 0}件・更新 ${result.updated ?? 0}件${result.imported ? `・Googleから完了 ${result.imported}件` : ''}）。`, kind: 'success' }
-        : { text: syncFailureMessage(result.kind), kind: 'error' });
+        : { text: syncFailureMessage(result.kind, result.code), kind: 'error' });
     } catch {
       setGoogleMessage({ text: '同期できませんでした。Googleとの再接続をお試しください。', kind: 'error' });
       await refreshGoogleState().catch(() => undefined);
@@ -727,7 +727,8 @@ function formatSyncTimestamp(value: string | undefined): string {
   return Number.isFinite(date.getTime()) ? date.toLocaleString('ja-JP') : 'まだありません';
 }
 
-function syncFailureMessage(kind: 'retry' | 'authRequired' | 'error'): string {
+function syncFailureMessage(kind: 'retry' | 'authRequired' | 'error', code?: string): string {
+  if (code === 'google_account_mismatch') return '以前連携したGoogleアカウントを選んで再接続してください。保存済みの家事との紐付けは保持しています。';
   if (kind === 'retry') return '一時的な通信エラーです。約1時間後に再試行します。';
   if (kind === 'authRequired') return 'Googleへの再認証が必要です。Googleと再接続してください。';
   return '同期できませんでした。同期状態を確認し、OAuth設定を見直してください。';

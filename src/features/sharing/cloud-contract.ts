@@ -1,0 +1,92 @@
+import { assertJsonRecord, assertSharedIdentifier, canonicalJson } from './operations.ts';
+import { sharedRosterDigest, validateSharedRoster } from './roster.ts';
+import type { SignedSharedRoster, VerifiedSharedRoster } from './roster.ts';
+import type { EncryptedSharedOperation } from './crypto.ts';
+
+export interface SharedCloudGroup {
+  schemaVersion: 1;
+  ownerUserId: string;
+  ownerDeviceId: string;
+  memberIds: string[];
+  deviceOwners: Record<string, string>;
+  keyVersion: number;
+  rosterRevision: number;
+  rosterJson: string;
+  revokedUserIds: string[];
+  rotationRequired: boolean;
+  closed: boolean;
+  headSequence: number;
+  lastOperationId: string | null;
+  snapshotId: string | null;
+  snapshotThroughSequence: number;
+}
+export interface SharedCloudEvent {
+  operationId: string;
+  uploadSequence: number;
+  envelope: EncryptedSharedOperation;
+  envelopeJson: string;
+}
+export class SharingAccessError extends Error { readonly code = 'sharing/access-denied'; }
+export class SharingKeyVersionError extends Error { readonly code = 'sharing/key-version-changed'; }
+export class SharingSnapshotRequiredError extends Error { readonly code = 'sharing/snapshot-required'; }
+export class SharingCloudChangedError extends Error { readonly code = 'sharing/cloud-changed'; }
+
+export function rosterCloudFields(input: VerifiedSharedRoster) {
+  const roster = validateSharedRoster(input);
+  return { schemaVersion: 1 as const, ownerUserId: roster.body.ownerUserId, ownerDeviceId: roster.body.ownerDeviceId,
+    memberIds: roster.body.members.map((member) => member.userId),
+    deviceOwners: Object.fromEntries(roster.body.members.flatMap((member) => member.devices.map((device) => [device.identity.deviceId, member.userId]))),
+    keyVersion: roster.body.keyVersion, rosterRevision: roster.body.revision, rosterJson: canonicalJson(roster),
+    revokedUserIds: [] as string[], rotationRequired: false, closed: roster.body.closed };
+}
+
+/** The cloud ACL is useful only when it agrees with the pinned, signed membership. */
+export function parseSharedCloudGroup(raw: unknown, groupId: string): { group: SharedCloudGroup; roster: SignedSharedRoster } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Missing shared group');
+  const { createdAt: _created, updatedAt: _updated, ...value } = raw as Record<string, unknown>;
+  if (Object.keys(value).sort().join(',') !== ['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds', 'deviceOwners',
+    'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed', 'headSequence',
+    'lastOperationId', 'snapshotId', 'snapshotThroughSequence'].sort().join(',')) throw new Error('Unknown shared cloud metadata');
+  if (typeof value.rosterJson !== 'string' || value.rosterJson.length > 60_000) throw new Error('Invalid public roster');
+  const roster = validateSharedRoster(JSON.parse(value.rosterJson));
+  if (roster.body.groupId !== groupId) throw new Error('Shared group mismatch');
+  const expected = rosterCloudFields(roster as VerifiedSharedRoster);
+  for (const key of ['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds', 'deviceOwners', 'keyVersion',
+    'rosterRevision', 'closed'] as const) {
+    if (canonicalJson(value[key]) !== canonicalJson(expected[key])) throw new Error('Cloud access metadata differs from the signed roster');
+  }
+  if (!Array.isArray(value.revokedUserIds) || value.revokedUserIds.some((uid) => typeof uid !== 'string' || !expected.memberIds.includes(uid))
+    || new Set(value.revokedUserIds).size !== value.revokedUserIds.length
+    || typeof value.rotationRequired !== 'boolean' || (value.revokedUserIds.length > 0 && !value.rotationRequired)) {
+    throw new Error('Invalid revocation metadata');
+  }
+  for (const key of ['headSequence', 'snapshotThroughSequence'] as const) {
+    if (typeof value[key] !== 'number' || !Number.isSafeInteger(value[key]) || value[key] < 0) throw new Error('Invalid shared delivery position');
+  }
+  if ((value.snapshotThroughSequence as number) > (value.headSequence as number)) throw new Error('Snapshot is ahead of the log');
+  for (const key of ['lastOperationId', 'snapshotId'] as const) if (value[key] !== null) assertSharedIdentifier(value[key]);
+  return { group: value as unknown as SharedCloudGroup, roster };
+}
+
+export function assertSharedCloudAccess(group: SharedCloudGroup, userId: string, deviceId?: string): void {
+  if (group.closed || !group.memberIds.includes(userId) || group.revokedUserIds.includes(userId)
+    || (deviceId && group.deviceOwners[deviceId] !== userId)) throw new SharingAccessError('この共有グループへのアクセス権がありません。');
+}
+
+export function parseSharedCloudEvent(operationId: string, value: unknown, groupId: string): SharedCloudEvent {
+  assertSharedIdentifier(operationId);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid cloud event');
+  const { createdAt: _created, ...fields } = value as Record<string, unknown>;
+  assertJsonRecord(fields);
+  if (Object.keys(fields).sort().join(',') !== 'authorDeviceId,authorUserId,envelopeJson,keyVersion,schemaVersion,uploadSequence'
+    || fields.schemaVersion !== 1 || !Number.isSafeInteger(fields.uploadSequence) || (fields.uploadSequence as number) < 1
+    || typeof fields.envelopeJson !== 'string' || fields.envelopeJson.length > 800_000) throw new Error('Invalid cloud event metadata');
+  const envelope = JSON.parse(fields.envelopeJson) as EncryptedSharedOperation;
+  if (envelope.operationId !== operationId || envelope.groupId !== groupId || envelope.authorUserId !== fields.authorUserId
+    || envelope.authorDeviceId !== fields.authorDeviceId || envelope.keyVersion !== fields.keyVersion) throw new Error('Cloud event header mismatch');
+  return { operationId, uploadSequence: fields.uploadSequence as number, envelope, envelopeJson: fields.envelopeJson };
+}
+
+export function sameSharedRoster(left: SignedSharedRoster, right: SignedSharedRoster): boolean {
+  return sharedRosterDigest(left) === sharedRosterDigest(right);
+}

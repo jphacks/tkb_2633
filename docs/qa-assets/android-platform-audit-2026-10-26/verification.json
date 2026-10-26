@@ -1,0 +1,122 @@
+{
+  "status": "in_progress_waiting_for_mac_unlock",
+  "generatedAtUtc": "2026-10-26T01:24:28.717549+00:00",
+  "baseCommit": "13553029baeaa7af3d8535316d031ebb973f3291",
+  "runtime": {
+    "expo": "58.0.19",
+    "reactNative": "0.88.0",
+    "androidApi": 37,
+    "architecture": "arm64-v8a"
+  },
+  "automated": {
+    "npm run check": {
+      "status": "pass",
+      "tests": 376,
+      "failed": 0,
+      "skipped": 0,
+      "lint": "pass",
+      "typecheck": "pass"
+    },
+    "HOUSEWORK_TEST_PLATFORM=android npm test": {
+      "status": "pass",
+      "tests": 376,
+      "failed": 0,
+      "skipped": 0
+    },
+    "npx expo-doctor": {
+      "status": "pass",
+      "checks": 20
+    },
+    "featureContracts": {
+      "status": "pass",
+      "count": 32,
+      "previousContractsRetained": 29
+    },
+    "readmeVideoAndImageReferencesRetained": true,
+    "githubCi": "pending"
+  },
+  "nativeBuild": {
+    "status": "pass",
+    "command": "./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a",
+    "lastInteractiveApkSha256": "e61e2e18209164182f6c0022e83e6291b561ac1b98f0790d16b5adda728dc337",
+    "durationSeconds": 151,
+    "apkSha256": "fd2c65dabe143210645abb001a1fee1ea37fe97320fb8d79fa61648331d0a295",
+    "latestApkInteractiveInstall": "pending_mac_unlock"
+  },
+  "manualChecks": [
+    {
+      "case": "fresh_interrupted_sync_completion_and_undo",
+      "status": "pass",
+      "method": "Android UI and real Google Tasks; persisted interrupted marker was a DB fixture",
+      "sameGoogleTaskId": true,
+      "todayChoreStateUnaffected": true
+    },
+    {
+      "case": "process_stopped_widget_completion_and_undo",
+      "status": "pass",
+      "method": "Android native widget, app UI, SQLite snapshots and real Google Tasks"
+    },
+    {
+      "case": "romanized_municipality_search",
+      "status": "pass",
+      "method": "Android keyboard and live provider"
+    },
+    {
+      "case": "japanese_waste_candidate_selection",
+      "status": "pass",
+      "method": "Android Japanese Gboard QWERTY composing input"
+    },
+    {
+      "case": "fresh_setup_all_disabled_unknown_previous_date",
+      "status": "partial",
+      "remaining": "Complete setup, enable a chore, edit cycle, restart and confirm"
+    },
+    {
+      "case": "weekly_biweekly_monthly_waste_calendar_and_hiding",
+      "status": "partial",
+      "remaining": "Monthly registration and home/calendar hide/restore"
+    },
+    {
+      "case": "native_notification_permission_and_delivery",
+      "status": "pending"
+    },
+    {
+      "case": "native_settings_help_motion_and_appliance_registration",
+      "status": "pending"
+    },
+    {
+      "case": "live_appliance_analysis_service",
+      "status": "pass",
+      "method": "HTTP API, not native UI",
+      "product": "Dyson V12 Detect Slim / SV20",
+      "result": "verified",
+      "tasks": 10,
+      "durationSeconds": 78
+    },
+    {
+      "case": "physical_device_long_running_background_execution",
+      "status": "not_verified"
+    }
+  ],
+  "dataNotes": {
+    "rawDatabasesPublished": false,
+    "googleLinkCountBefore": 600,
+    "googleLinkCountAfter": 575,
+    "linkChangeReason": "Normal reconciliation of legacy long-horizon tasks after cycle-anchor changes; exact original Task ID set was not restored"
+  },
+  "sha256": {
+    "src/domain/scheduling/dependency-matching.ts": "d8dc911bd1aa6c4c1ca6b8735f1eaf93287df529ae6078e3e12dc3ee2b20d562",
+    "src/domain/scheduling/engine.ts": "70118d671c2cb6fb952679ffb90231c03a2404f92e5af4b2533a776ccceeb97b",
+    "src/features/weather/laundry-policy.ts": "272fce3ddfa7e2974205e3eb5342bc8eb9add87a25bb8e25593f7bb1a93906e0",
+    "src/features/google-sync/coordinator.ts": "8cce0e9751abb4c119256f55be0b7faf54dd5920adf17c74289d2972914ecb9c",
+    "src/features/google-sync/sync-policy.ts": "0e361a46108431d7328b1dd008045955d9373b25bba670a50616d28562a1447b",
+    "src/platform/storage/repository.ts": "f934ff3e3f86b8c04bb1af0372b3bc1777342f7e5085ec2843a769ea1a703c6c",
+    "plugins/android/WidgetCompletionDatabase.kt": "9c91e12f68892856fe472bd9f426400b11a31e3095851c22936f9c4af43d3ff0",
+    "index.ts": "89723b4a5b6f133dc08c595348682ddf2928e93c026184154b336f0b57ef0bf4"
+  },
+  "screenshots": {
+    "interrupted-completion.png": "592e0dc6d5e20b6e5b1c921273627304eb13e9fc5cfa0ca7306b15d2dd00fb3e",
+    "japanese-waste-search.png": "bbd081c77fdbd09f82993efe5af3e99596015dff65b6cc7dfd05e92898e67736",
+    "municipality-search.png": "7130e987ee2ec949d7b92f837994869033e0374bd94a7ce99fca09b5eeadfd41"
+  }
+}

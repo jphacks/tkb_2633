@@ -260,6 +260,19 @@ test('Open-Meteo geocoder sends the entered region and validates failures', asyn
   await assert.rejects(() => timeout.search('東京'), /request aborted/);
 });
 
+test('romanized municipality queries do not acquire a Japanese suffix on an English Android keyboard', async () => {
+  const queries = [];
+  const provider = new OpenMeteoGeocodingProvider(async (url) => {
+    queries.push(new URL(url).searchParams.get('name'));
+    return { ok: true, json: async () => ({ results: [{ id: 1, name: '横浜市', admin1: '神奈川県',
+      country_code: 'JP', feature_code: 'PPLA', latitude: 35.4, longitude: 139.6 }] }) };
+  });
+  for (const input of ['Yokohama', 'Ｙｏｋｏｈａｍａ', '横浜', '横浜市']) {
+    assert.equal((await provider.search(input))[0].name, '横浜市');
+  }
+  assert.deepEqual(queries, ['Yokohama', 'Yokohama', '横浜市', '横浜市']);
+});
+
 test('laundry policy selects a nearby suitable day only for laundry chores', () => {
   const chores = [
     chore('laundry', { category: '洗濯', laundryDryingPreference: 'either', load: 'normal' }),
@@ -342,7 +355,8 @@ test('policy respects movement range, completion, initial pending status, load l
     }),
     schedule: [
       entry('laundry'),
-      entry('predecessor', { suggestedDate: '2026-10-27', cycleBaseDate: '2026-10-27' }),
+      // The predecessor belongs to this cycle but was suggested a day later.
+      entry('predecessor', { suggestedDate: '2026-10-27', cycleBaseDate: '2026-10-26' }),
     ],
   }), []);
 

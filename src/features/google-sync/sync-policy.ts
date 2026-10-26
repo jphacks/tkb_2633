@@ -12,6 +12,22 @@ export const GOOGLE_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const GOOGLE_SYNC_RETRY_INTERVAL_MS = 60 * 60 * 1000;
 export const GOOGLE_SYNC_STALE_ATTEMPT_MS = 10 * 60 * 1000;
 
+export interface GoogleSyncTriggerOptions {
+  force?: boolean;
+  trigger?: 'manual' | 'completion';
+}
+
+/** Keep task forcing, Calendar cadence and interrupted-attempt recovery independent. */
+export function googleSyncRunOptions(options: GoogleSyncTriggerOptions) {
+  return {
+    force: options.force ?? false,
+    forceCalendar: options.force === true && options.trigger !== 'completion',
+    // Live attempts are joined by the coordinator's in-memory promise/operation
+    // queue. A persisted marker on a forced run may belong to a killed process.
+    recoverInterruptedAttempt: options.force === true,
+  };
+}
+
 /** The clock is injected so the 24-hour and retry boundaries are deterministic in tests. */
 export function shouldSyncGoogleTasks(state: GoogleSyncPolicyState | null, now: Date): boolean {
   if (!state?.enabled) return false;

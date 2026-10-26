@@ -459,5 +459,35 @@
         "name": "HTTP 403 quota limits retry while genuine permission failures remain permanent"
       }
     ]
+  },
+  {
+    "feature": "dependency-cycle-date-matching",
+    "tests": [
+      { "file": "tests/scheduling-dependency-dates.test.mjs", "name": "a daily successor of a monthly predecessor retains every due date after their last completion" },
+      { "file": "tests/scheduling-dependency-dates.test.mjs", "name": "dependency date matching retains all occurrences for 25 different cycle pairs" },
+      { "file": "tests/scheduling-dependency-dates.test.mjs", "name": "weather constrains a predecessor only against successors bound to its cycle" }
+    ]
+  },
+  {
+    "feature": "google-completion-and-native-widget-recovery",
+    "tests": [
+      { "file": "tests/google-sync-completion-recovery.test.mjs", "name": "completion-triggered sync recovers a fresh interrupted marker and updates the same task without forcing Calendar" },
+      { "file": "tests/google-sync-completion-recovery.test.mjs", "name": "startup recovers durable widget changes from" },
+      { "file": "tests/google-sync-completion-recovery.test.mjs", "name": "foreground recovery retains retry backoff and permanent failures with pending local changes" },
+      { "file": "tests/google-sync-completion-recovery.test.mjs", "name": "Android native completion SQL keeps a revision so an older network response cannot acknowledge a new action" },
+      { "file": "tests/google-sync-completion-recovery.test.mjs", "name": "widget completion written before the v16 migration survives upgrade and syncs by its timestamp" },
+      { "file": "tests/google-sync-completion-recovery.test.mjs", "name": "Android native completion ignores a stale widget entry after its chore was disabled" }
+    ]
+  },
+  {
+    "feature": "native-gateway-platform-parity",
+    "tests": [
+      { "file": "tests/native-platform-gateways.test.mjs", "name": "notification gateway coalesces permission requests and creates Android channels before asking" },
+      { "file": "tests/native-platform-gateways.test.mjs", "name": "notification schedule round trip retains date, identity, subtitle and metadata without duplicates" },
+      { "file": "tests/native-platform-gateways.test.mjs", "name": "appliance API uses the reachable emulator host while preserving an explicit deployment URL" },
+      { "file": "tests/native-platform-gateways.test.mjs", "name": "native entry defines background work before Router can mount any screens" },
+      { "file": "tests/native-platform-gateways.test.mjs", "name": "background tasks close their SQLite connection after a sync failure without mounting UI" },
+      { "file": "tests/weather.test.mjs", "name": "romanized municipality queries do not acquire a Japanese suffix on an English Android keyboard" }
+    ]
   }
 ]

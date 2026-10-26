@@ -39,7 +39,7 @@ export function screenHarness(filename, options = {}) {
       ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
       FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
         ...(props.data ?? []).slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index }))] }),
-      Platform: { OS: options.platform ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
+      Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
       AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
     },

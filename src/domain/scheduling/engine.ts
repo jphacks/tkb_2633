@@ -8,6 +8,7 @@ import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import type { EntityId, LocalDate, Weekday } from '@/domain/shared/types';
 import { calendarPenaltyForChore } from './calendar-penalty.ts';
 import { completionCycleDate, completionWasRecordedBeforeWindow } from './completion-matching.ts';
+import { dependencyPredecessorForDate } from './dependency-matching.ts';
 import { addDays, daysBetween, weekdayOf } from './local-date.ts';
 
 interface DayLoad {
@@ -127,7 +128,6 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
         radius,
         maxShift,
         firstBaseDate: addDays(initialDate, cycleDays),
-        firstOccurrence: 1,
         cycleAnchorDate: initialDate,
         overdueCyclesBeforeFirst: initialExpired ? 1 : 0,
         assignment,
@@ -139,7 +139,7 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
         choreEntries,
       });
     } else if (state?.initialPending || !lastCompleted) {
-      const dependencyDate = latestDependencyDate(chore.id, input.dependencies, entriesByChore, 0);
+      const dependencyDate = latestDependencyDate(chore.id, input.dependencies, entriesByChore, input.from);
       const candidate = findCandidate({
         chore,
         baseDate: input.from,
@@ -174,7 +174,6 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
           radius,
           maxShift,
           firstBaseDate: addDays(candidate.suggestedDate, cycleDays),
-          firstOccurrence: 1,
           cycleAnchorDate: candidate.suggestedDate,
           overdueCyclesBeforeFirst: 0,
           assignment,
@@ -193,7 +192,6 @@ export function generateHouseworkScheduleResult(input: ScheduleGenerationInput):
         radius,
         maxShift,
         firstBaseDate: addDays(lastCompleted, cycleDays),
-        firstOccurrence: 1,
         cycleAnchorDate: lastCompleted,
         overdueCyclesBeforeFirst: 0,
         assignment,
@@ -254,7 +252,6 @@ function appendRecurringEntries(options: {
   radius: number;
   maxShift: number;
   firstBaseDate: LocalDate;
-  firstOccurrence: number;
   cycleAnchorDate: LocalDate;
   overdueCyclesBeforeFirst: number;
   assignment: EntityId[];
@@ -266,7 +263,6 @@ function appendRecurringEntries(options: {
   choreEntries: ChoreScheduleEntry[];
 }): void {
   let baseDate = options.firstBaseDate;
-  let occurrence = options.firstOccurrence;
   let overdueCycles = options.overdueCyclesBeforeFirst;
   let cycleAnchorDate = options.cycleAnchorDate;
   let visitedCycles = 0;
@@ -295,7 +291,6 @@ function appendRecurringEntries(options: {
       cycleAnchorDate = suggestedDate > minimumAnchor ? suggestedDate : minimumAnchor;
       options.onSimulatedCompletion(cycleAnchorDate);
       baseDate = addDays(cycleAnchorDate, options.cycleDays);
-      occurrence += 1;
       continue;
     }
 
@@ -314,7 +309,6 @@ function appendRecurringEntries(options: {
         input: options.input,
       }));
       baseDate = addDays(baseDate, options.cycleDays);
-      occurrence += 1;
       continue;
     }
 
@@ -322,7 +316,7 @@ function appendRecurringEntries(options: {
       options.chore.id,
       options.input.dependencies,
       options.entriesByChore,
-      occurrence,
+      baseDate,
     );
     const candidate = findCandidate({
       chore: options.chore,
@@ -358,7 +352,6 @@ function appendRecurringEntries(options: {
     } else {
       baseDate = addDays(baseDate, options.cycleDays);
     }
-    occurrence += 1;
   }
 }
 
@@ -484,12 +477,12 @@ function latestDependencyDate(
   choreId: EntityId,
   dependencies: readonly ChoreDependency[],
   entriesByChore: ReadonlyMap<EntityId, readonly ChoreScheduleEntry[]>,
-  occurrenceIndex: number,
+  cycleBaseDate: LocalDate,
 ): LocalDate | undefined {
   let latest: LocalDate | undefined;
   for (const dependency of dependencies.filter((item) => item.successorChoreId === choreId)) {
     const entries = entriesByChore.get(dependency.predecessorChoreId) ?? [];
-    const predecessor = entries[Math.min(occurrenceIndex, entries.length - 1)];
+    const predecessor = dependencyPredecessorForDate(entries, cycleBaseDate);
     if (predecessor && (!latest || predecessor.suggestedDate > latest)) latest = predecessor.suggestedDate;
   }
   return latest;

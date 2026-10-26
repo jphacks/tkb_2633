@@ -25,7 +25,10 @@ internal object WidgetCompletionDatabase {
       database.beginTransaction()
       try {
         val entry = database.rawQuery(
-          "SELECT household_id, chore_id, window_start, window_end, suggested_date FROM chore_schedule_entries WHERE id = ?",
+          """SELECT e.household_id, e.chore_id, e.window_start, e.window_end, e.suggested_date
+            FROM chore_schedule_entries e JOIN chore_definitions d
+              ON d.id = e.chore_id AND d.household_id = e.household_id
+            WHERE e.id = ? AND d.enabled = 1""",
           arrayOf(scheduleEntryId)
         ).use { cursor ->
           if (!cursor.moveToFirst()) return false
@@ -90,14 +93,29 @@ internal object WidgetCompletionDatabase {
           )
         }
 
-        database.execSQL(
-          """INSERT INTO chore_state
-            (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
-            VALUES (?, ?, 0, 0, NULL)
-            ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
-            last_completed_estimated = 0, initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL""",
-          arrayOf(entry.choreId, localDate())
-        )
+        // The broadcast may run before any JS listener exists. Keep the same
+        // durable local-intent marker as in-app completion/undo, in this transaction.
+        // A widget can be tapped after an APK update but before JS migrates an
+        // older database. The completion timestamp also supports recovery then.
+        if (hasPendingStatusColumns(database)) {
+          database.execSQL(
+            "UPDATE google_task_links SET pending_status = 'completed', pending_status_revision = ? WHERE schedule_entry_id = ?",
+            arrayOf("google-status-${UUID.randomUUID()}", scheduleEntryId)
+          )
+        }
+
+        val completedDate = localDate()
+        val previousCompletedDate = currentState?.optString("lastCompletedDate")?.takeIf { it.isNotEmpty() }
+        if (completedDate >= entry.windowStart && (previousCompletedDate == null || completedDate >= previousCompletedDate)) {
+          database.execSQL(
+            """INSERT INTO chore_state
+              (chore_id, last_completed_date, last_completed_estimated, initial_pending, unknown_reason)
+              VALUES (?, ?, 0, 0, NULL)
+              ON CONFLICT(chore_id) DO UPDATE SET last_completed_date = excluded.last_completed_date,
+              last_completed_estimated = 0, initial_pending = 0, initial_scheduled_date = NULL, unknown_reason = NULL""",
+            arrayOf(entry.choreId, completedDate)
+          )
+        }
         database.setTransactionSuccessful()
       } finally {
         database.endTransaction()
@@ -107,6 +125,14 @@ internal object WidgetCompletionDatabase {
     }
     return true
   }
+
+  private fun hasPendingStatusColumns(database: SQLiteDatabase): Boolean =
+    database.rawQuery("PRAGMA table_info(google_task_links)", null).use { cursor ->
+      val nameIndex = cursor.getColumnIndexOrThrow("name")
+      val columns = mutableSetOf<String>()
+      while (cursor.moveToNext()) columns.add(cursor.getString(nameIndex))
+      columns.containsAll(listOf("pending_status", "pending_status_revision"))
+    }
 
   private fun utcTimestamp(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
     timeZone = TimeZone.getTimeZone("UTC")

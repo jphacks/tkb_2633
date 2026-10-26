@@ -1284,6 +1284,18 @@ async function markPendingGoogleStatus(database: SQLiteDatabase, scheduleEntryId
   );
 }
 
+async function hasPendingGoogleTaskChangesImpl(
+  database: SQLiteDatabase, lastSuccessfulSyncAt?: string, householdId = LOCAL_HOUSEHOLD_ID,
+): Promise<boolean> {
+  const row = await database.getFirstAsync<{ pending: number }>(
+    `SELECT EXISTS(SELECT 1 FROM google_task_links WHERE household_id = ? AND pending_status IS NOT NULL)
+       OR EXISTS(SELECT 1 FROM chore_completions WHERE household_id = ? AND source = 'widget'
+         AND outcome = 'completed' AND completed_at > ?) AS pending`,
+    householdId, householdId, lastSuccessfulSyncAt ?? '',
+  );
+  return Boolean(row?.pending);
+}
+
 async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
   let undone = false;
   await database.withTransactionAsync(async () => {
@@ -2023,6 +2035,7 @@ export const saveWeeklyWasteSchedule = serializePlannerOperation(saveWeeklyWaste
 export const setWasteOccurrenceHidden = serializePlannerOperation(setWasteOccurrenceHiddenImpl);
 export const deleteWeeklyWasteSchedule = serializePlannerOperation(deleteWeeklyWasteScheduleImpl);
 export const loadGoogleSyncState = serializeDatabaseOperation(loadGoogleSyncStateImpl);
+export const hasPendingGoogleTaskChanges = serializeDatabaseOperation(hasPendingGoogleTaskChangesImpl);
 export const saveGoogleSyncState = serializeDatabaseOperation(saveGoogleSyncStateImpl);
 export const listEntriesForGoogleSync = serializeDatabaseOperation(listEntriesForGoogleSyncImpl);
 export const listGoogleTaskLinks = serializeDatabaseOperation(listGoogleTaskLinksImpl);

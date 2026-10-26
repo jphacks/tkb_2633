@@ -26,4 +26,4 @@
 
 Androidでは最初、QRの枠だけが表示される問題を実機で発見した。Expo ImageのAndroid data URI loaderがpercent-encoded SVGを処理しないため、端末内生成のbase64 GIFへ変更。実画面の1080×2520 PNGを独立したjsQRで読み取り、元の招待リンクと完全一致した。リンク本文やQRそのものは公開記録へ含めない。
 
-残る検査は、実Googleアカウントを使う共有画面全体、iOSの招待QRの目視・独立読取り、OSが自然に起動するBackgroundTask、Apple実サービス認証、独立したセキュリティ監査。直近のAndroid GoogleログインはPlay servicesの `Account reauth failed`、iPhoneの画面操作はMacロックのため保留している。
+残る検査は、実Googleアカウントを使う共有画面全体、iOSの招待QRの目視・独立読取り、OSが自然に起動するBackgroundTask、Apple実サービス認証、独立したセキュリティ監査。直近のAndroidはインターネット未接続で、通常・明示の両GoogleログインがPlay servicesの `Account reauth failed` となった。接続復旧後の実Google認証は未検証。iPhoneの画面操作もMacロックのため保留している。

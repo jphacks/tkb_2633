@@ -94,7 +94,7 @@ Google Tasksへの出力はユーザー・グループごとの別リストと�
 
 - SQLiteの既存データ保持、設定の競合、完了/取り消し、重複・逆順、100件ページング、送信途中の失敗、再起動、Snapshot復旧、鍵更新、所有権の引き継ぎ、同一アカウントの別端末承認、除名・再参加を自動検査する。
 - ローカルFirestoreの**実際のSecurity Rules**を使う20件の結合テストを通過した。これはFirebase本番の実アカウントE2Eの代わりではない。
-- 両物理端末の暗号・安全な保存・SQLite・タイムゾーン計算は確認済み。さらに、ローカルFirestoreとテスト用アカウントを使い、同時完了・取り消し・周期の競合・競合解決・Snapshot適用・プロセス再起動・空の保護SQLiteへの復元の7シナリオでiOS/Androidの共有状態一致を確認した。個人DBの11業務テーブルは検査前後で全行一致した。これは共有画面全体の実Googleアカウント検査ではない。詳細は[実機相互運用の記録](shared-native-interoperability-2026-10-27.md)。共有画面全体の実アカウント検査は未完了。直近のAndroid再認証はGoogle Play servicesが `Account reauth failed` を返している。MacのロックでiPhoneの画面操作も保留中。
+- 両物理端末の暗号・安全な保存・SQLite・タイムゾーン計算は確認済み。さらに、ローカルFirestoreとテスト用アカウントを使い、同時完了・取り消し・周期の競合・競合解決・Snapshot適用・プロセス再起動・空の保護SQLiteへの復元の7シナリオでiOS/Androidの共有状態一致を確認した。個人DBの11業務テーブルは検査前後で全行一致した。これは共有画面全体の実Googleアカウント検査ではない。詳細は[実機相互運用の記録](shared-native-interoperability-2026-10-27.md)。共有画面全体の実アカウント検査は未完了。直近のAndroidはインターネット未接続の状態で、Google Play servicesが `Account reauth failed` を返していた。通常・明示の両ログイン方式で確認した。周囲に保存済みの接続先がないため、接続復旧後に実Google認証を再検査する。MacのロックでiPhoneの画面操作も保留中。
 - 物理端末でOSに長時間任せるBackgroundTask、Apple実アカウント認証、有料Apple Developer Programの設定、外部による独立した暗号監査は未実施。
 - 不正な暗号文・署名は拒否して同期を停止する。承認済みの悪意あるメンバーが不正なイベントを送って同期を妨げる場合の、所有者による隔離・修復フローは未実装。検出できることと、その状態から復旧できることを分ける。
 - 開発依存の監査ではExpo CLI経由のnode-forge/zodのadvisoryが残る。Expoと互換性のないzodのメジャー強制更新は行っていない。共有暗号にはnode-forgeを使用しない。

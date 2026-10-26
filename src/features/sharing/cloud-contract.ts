@@ -30,6 +30,22 @@ export class SharingAccessError extends Error { readonly code = 'sharing/access-
 export class SharingKeyVersionError extends Error { readonly code = 'sharing/key-version-changed'; }
 export class SharingSnapshotRequiredError extends Error { readonly code = 'sharing/snapshot-required'; }
 export class SharingCloudChangedError extends Error { readonly code = 'sharing/cloud-changed'; }
+export class SharingSchedulerVersionError extends Error { readonly code = 'sharing/scheduler-version-mismatch';
+  constructor() { super('この共有グループの計算ルールに対応するLiFlowへ更新してください。'); } }
+export const MAX_SHARED_CLOUD_BATCH_BYTES = 8 * 1024 * 1024;
+
+/** Firestore also caps request bytes: 100 large snapshot chunks cannot share one write batch. */
+export function boundedSharingCloudBatches<T>(items: readonly T[], encodedSize: (item: T) => number): T[][] {
+  const result: T[][] = []; let page: T[] = []; let bytes = 0;
+  for (const item of items) {
+    const size = encodedSize(item);
+    if (!Number.isSafeInteger(size) || size < 1 || size > MAX_SHARED_CLOUD_BATCH_BYTES) throw new Error('Shared cloud record exceeds request size');
+    if (page.length >= 100 || bytes + size > MAX_SHARED_CLOUD_BATCH_BYTES) { result.push(page); page = []; bytes = 0; }
+    page.push(item); bytes += size;
+  }
+  if (page.length) result.push(page);
+  return result;
+}
 
 export function rosterCloudFields(input: VerifiedSharedRoster) {
   const roster = validateSharedRoster(input);

@@ -28,12 +28,22 @@ function authenticate(fact: AuthenticatedSharedOperation, groupId: string, keyVe
   return verifyAuthenticatedSharedOperation(fact, author(op.authorUserId, op.authorDeviceId, op.keyVersion), groupId);
 }
 
+function snapshotSigner(roster: VerifiedSharedRoster, deviceId: string): DevicePublicIdentity {
+  // A handover snapshot is atomically committed by the outgoing owner who signed this transition.
+  if (deviceId !== roster.body.ownerDeviceId && deviceId !== roster.signer.deviceId) throw new Error('Untrusted snapshot owner');
+  const identity = roster.body.members.flatMap((member) => member.devices).find((device) => device.identity.deviceId === deviceId)?.identity;
+  if (!identity || (deviceId === roster.signer.deviceId && canonicalJson(identity) !== canonicalJson(roster.signer))) throw new Error('Missing snapshot owner authority');
+  return identity;
+}
+
 export async function createEncryptedSharedSnapshot(crypto: SharingCryptoGateway, replica: SharedReplica,
   availableFacts: readonly AuthenticatedSharedOperation[], roster: VerifiedSharedRoster, owner: DeviceSecretIdentity,
   key: Uint8Array, snapshotId: string, throughSequence: number, author: SharedAuthorResolver): Promise<EncryptedSharedSnapshot> {
   assertSharedIdentifier(snapshotId);
-  if (snapshotId.length > 150 || roster.body.groupId !== replica.groupId || roster.body.ownerDeviceId !== owner.deviceId
+  if (snapshotId.length > 150 || roster.body.groupId !== replica.groupId
     || roster.body.closed || !Number.isSafeInteger(throughSequence) || throughSequence < 0) throw new Error('Invalid snapshot authority or delivery position');
+  if (canonicalJson(snapshotSigner(roster, owner.deviceId)) !== canonicalJson({ deviceId: owner.deviceId, signingPublicKey: owner.signingPublicKey,
+    agreementPublicKey: owner.agreementPublicKey })) throw new Error('Invalid snapshot signing identity');
   const base = compactSharedReplica(replica); const facts = new Map(availableFacts.map((fact) => [fact.operation.operationId, fact]));
   const retained = base.operations.map((operation) => {
     const fact = facts.get(operation.operationId);
@@ -71,7 +81,7 @@ export function verifySharedSnapshotManifest(input: SignedSharedSnapshotManifest
   if (Object.keys(input).sort().join(',') !== 'body,signature') throw new Error('Unknown snapshot manifest field');
   const { body } = input; assertJsonRecord(body);
   if (Object.keys(body).sort().join(',') !== 'chunks,factCount,frontier,groupId,keyVersion,logicalClock,ownerDeviceId,receiptCount,rosterDigest,schedulerVersion,schemaVersion,snapshotId,throughSequence'
-    || body.schemaVersion !== 1 || body.groupId !== roster.body.groupId || body.ownerDeviceId !== roster.body.ownerDeviceId
+    || body.schemaVersion !== 1 || body.groupId !== roster.body.groupId
     || body.keyVersion !== roster.body.keyVersion || body.rosterDigest !== sharedRosterDigest(roster)
     || body.schedulerVersion !== SHARED_SCHEDULER_VERSION || !Array.isArray(body.chunks) || body.chunks.length > 512) throw new Error('Untrusted snapshot manifest');
   assertSharedIdentifier(body.snapshotId);
@@ -84,9 +94,7 @@ export function verifySharedSnapshotManifest(input: SignedSharedSnapshotManifest
     if (Object.keys(chunk).sort().join(',') !== 'bytes,digest,id' || chunk.id !== `${body.snapshotId}.${index}`
       || !/^[a-f0-9]{64}$/u.test(chunk.digest) || !Number.isSafeInteger(chunk.bytes) || chunk.bytes < 1 || chunk.bytes > 800_000) throw new Error('Invalid snapshot chunk descriptor');
   }
-  const owner = roster.body.members.find((member) => member.userId === roster.body.ownerUserId)?.devices
-    .find((device) => device.identity.deviceId === roster.body.ownerDeviceId)?.identity;
-  if (!owner) throw new Error('Missing snapshot owner authority');
+  const owner = snapshotSigner(roster, body.ownerDeviceId);
   verifySharedDocument({ domain: 'liflow-shared-snapshot-v1', body }, input.signature, owner);
   return input;
 }
@@ -95,7 +103,7 @@ export async function openEncryptedSharedSnapshot(crypto: SharingCryptoGateway, 
   key: Uint8Array, roster: VerifiedSharedRoster, author: SharedAuthorResolver): Promise<VerifiedSharedSnapshot> {
   const { body } = verifySharedSnapshotManifest(input.manifest, roster);
   if (input.chunks.length !== body.chunks.length) throw new Error('Snapshot is missing encrypted chunks');
-  const owner = roster.body.members.flatMap((member) => member.devices).find((device) => device.identity.deviceId === body.ownerDeviceId)!.identity;
+  const owner = snapshotSigner(roster, body.ownerDeviceId);
   const operationIndex: SharedOperationReceipt[] = []; const facts: AuthenticatedSharedOperation[] = [];
   for (const [index, chunk] of input.chunks.entries()) {
     if (sharedDocumentDigest(chunk) !== body.chunks[index].digest || encoder.encode(canonicalJson(chunk)).length !== body.chunks[index].bytes) throw new Error('Snapshot chunk hash mismatch');

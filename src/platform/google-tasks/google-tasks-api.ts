@@ -9,6 +9,7 @@ export interface GoogleTaskList {
 export interface GoogleTask {
   id: string;
   title: string;
+  notes?: string;
   due?: string;
   status: 'needsAction' | 'completed';
   completed?: string;
@@ -19,6 +20,7 @@ export interface GoogleTask {
 export interface GoogleTaskDraft {
   title: string;
   due: string;
+  notes?: string;
 }
 
 export interface GoogleTasksBatchTaskResult {
@@ -42,6 +44,7 @@ export interface GoogleTaskPatch {
   due?: string;
   status?: 'needsAction' | 'completed';
   completed?: string | null;
+  notes?: string;
 }
 
 export interface GoogleTaskUpdate {

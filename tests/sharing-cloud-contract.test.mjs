@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDeviceIdentity } from '../src/features/sharing/crypto.ts';
 import { createSharedRoster } from '../src/features/sharing/roster.ts';
-import { assertSharedCloudAccess, parseSharedCloudEvent, parseSharedCloudGroup, rosterCloudFields } from '../src/features/sharing/cloud-contract.ts';
+import { assertSharedCloudAccess, boundedSharingCloudBatches, MAX_SHARED_CLOUD_BATCH_BYTES,
+  parseSharedCloudEvent, parseSharedCloudGroup, rosterCloudFields } from '../src/features/sharing/cloud-contract.ts';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 
 test('cloud ACL metadata cannot substitute a pinned signed account, device or membership epoch', async () => {
@@ -18,6 +19,16 @@ test('cloud ACL metadata cannot substitute a pinned signed account, device or me
   assertSharedCloudAccess(data, 'owner', owner.deviceId);
   assert.throws(() => assertSharedCloudAccess(data, 'attacker'), { code: 'sharing/access-denied' });
   assert.throws(() => assertSharedCloudAccess({ ...data, revokedUserIds: ['owner'], rotationRequired: true }, 'owner'), { code: 'sharing/access-denied' });
+});
+
+test('large encrypted snapshot batches respect both the 100-document limit and the Firestore request byte limit', () => {
+  const small = boundedSharingCloudBatches(Array.from({ length: 250 }, (_, index) => index), () => 1000);
+  assert.deepEqual(small.map((page) => page.length), [100, 100, 50]);
+  const sizes = Array.from({ length: 40 }, (_, index) => 640000 + index);
+  const large = boundedSharingCloudBatches(sizes, (size) => size);
+  assert.ok(large.length > 1); assert.deepEqual(large.flat(), sizes);
+  assert.ok(large.every((page) => page.length <= 100 && page.reduce((sum, size) => sum + size, 0) <= MAX_SHARED_CLOUD_BATCH_BYTES));
+  assert.throws(() => boundedSharingCloudBatches([MAX_SHARED_CLOUD_BATCH_BYTES + 1], (size) => size));
 });
 
 test('cloud event positions and author metadata must bind the encrypted envelope and never accept extra plaintext fields', () => {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSQLiteContext } from 'expo-sqlite';
+import { router } from 'expo-router';
+import { usePlannerData } from '@/hooks/use-planner-data';
 
 import { AppButton, BackButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
@@ -35,7 +36,7 @@ const setupStepCount = 6;
 type PreviousChoice = 'today' | 'week' | 'month' | 'unknown';
 
 export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: PlannerSnapshot; onComplete: () => Promise<void>; loadError?: string | null }) {
-  const database = useSQLiteContext();
+  const { database } = usePlannerData();
   const availableChores = snapshot.chores.filter((chore) => !chore.archived);
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState(snapshot.settings.frequencyMode);
@@ -157,6 +158,7 @@ export function FirstRunSetup({ snapshot, onComplete, loadError }: { snapshot: P
         {step === 0 ? (
           <>
             <Text style={styles.body}>いつもの家事頻度を教えてください。あとからいつでも変更できます。</Text>
+            <AppButton title="共有グループを使う" variant="quiet" onPress={() => router.push('/sharing')} />
             <View style={styles.modeList}>
               {modeOptions.map((option) => (
                 <Pressable

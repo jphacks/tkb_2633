@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { NumberInputField } from '@/components/number-input-field';
 
@@ -22,12 +23,15 @@ export default function ChoreSettingsScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const choreId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { snapshot, loading, error, refresh, database } = usePlannerData();
+  const [reloadVersion, setReloadVersion] = useState(0);
   const chore = snapshot?.chores.find((item) => item.id === choreId);
 
   if (loading || !snapshot) return <PlannerLoadState title="家事ごとの設定" message="設定を読み込んでいます。" error={error} retry={refresh} />;
   if (!chore) return <Page><BackButton onPress={() => router.back()} /><ScreenHeading title="家事が見つかりません" /></Page>;
 
-  return <ChoreSettingsContent key={chore.id} chore={chore} snapshot={snapshot} error={error} savePatch={async (patch) => { if (await updateChoreSettings(database, chore.id, patch)) await refresh(); }} />;
+  return <ChoreSettingsContent key={`${chore.id}:${reloadVersion}`} chore={chore} snapshot={snapshot} error={error}
+    onReload={async () => { await refresh(); setReloadVersion((version) => version + 1); }}
+    savePatch={async (patch, base) => { if (await updateChoreSettings(database, chore.id, patch, base)) await refresh(); }} />;
 }
 
 function ChoreSettingsContent({
@@ -35,11 +39,13 @@ function ChoreSettingsContent({
   snapshot,
   error,
   savePatch,
+  onReload,
 }: {
   chore: ChoreDefinition;
   snapshot: PlannerSnapshot;
   error: string | null;
-  savePatch: (patch: ChoreSettingsPatch) => Promise<void>;
+  savePatch: (patch: ChoreSettingsPatch, displayedBase: ChoreDefinition) => Promise<void>;
+  onReload: () => Promise<void>;
 }) {
   const autosave = useChoreSettingsAutosave(chore, snapshot.settings.frequencyMode, savePatch);
   const { cycleText, radiusText, load, holidayPriority, dryingPreference, enabled } = autosave.draft;
@@ -128,6 +134,7 @@ function ChoreSettingsContent({
           {autosave.status.error ?? (autosave.status.phase === 'saving' || autosave.status.phase === 'pending' ? '保存中…' : autosave.status.phase === 'saved' ? '保存しました' : '変更は自動で保存されます。')}
         </Text>
         {autosave.status.phase === 'error' ? <AppButton title="保存を再試行" onPress={() => void autosave.flush()} variant="secondary" /> : null}
+        {autosave.status.phase === 'error' && snapshot.sharing ? <AppButton title="最新の設定を読み直す" onPress={() => void onReload().catch(() => undefined)} variant="secondary" /> : null}
         <AppButton title="この家事の履歴を見る" onPress={() => void autosave.navigateAfterSave(() => router.push({ pathname: '/history', params: { choreId: chore.id } }))} variant="secondary" />
       </Card>
     </Page>

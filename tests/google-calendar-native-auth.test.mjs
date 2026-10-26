@@ -37,7 +37,7 @@ function harness(platform, { scopes = [tasksScope, calendarScope], cold = false,
     'react-native-nitro-google-signin': { GoogleOneTapSignIn: sdk, isSuccessResponse: (value) => value?.type === 'success',
       isNoSavedCredentialFoundResponse: (value) => value?.type === 'noSavedCredentialFound', isCancelledResponse: (value) => value?.type === 'cancelled' },
   });
-  return { gateway, events, sdk, appState, setScopes: (next) => { user = { ...user, scopes: next }; },
+  return { gateway, events, sdk, appState, identityToken: freshToken, setScopes: (next) => { user = { ...user, scopes: next }; },
     changeAccount: (id) => { user = { ...user, user: { id } }; },
     expireIdentity: () => { user = { ...user, idToken: 'synthetic.eyJleHAiOjF9.synthetic' }; } };
 }
@@ -46,8 +46,8 @@ for (const platform of ['ios', 'android']) {
   test(`${platform} sharing identity never implicitly requests Tasks or Calendar permissions`, async () => {
     const h = harness(platform, { scopes: [] });
     h.sdk.getTokens = async () => { h.events.push('identity-token'); return { idToken: 'fixture-id-token' }; };
-    assert.deepEqual(await h.gateway.authorizeGoogleSharingIdentity(), { idToken: 'fixture-id-token', googleUserId: 'fixture-user' });
-    assert.deepEqual(h.events, ['configure', 'identity-token']); assert.equal(await h.gateway.hasGoogleTasksSession(), false);
+    assert.deepEqual(await h.gateway.authorizeGoogleSharingIdentity(), { idToken: platform === 'android' ? h.identityToken : 'fixture-id-token', googleUserId: 'fixture-user' });
+    assert.deepEqual(h.events, platform === 'android' ? ['configure'] : ['configure', 'identity-token']); assert.equal(await h.gateway.hasGoogleTasksSession(), false);
   });
   test(`${platform} Tasks consent remains explicit after a sharing-only identity login`, async () => {
     const h = harness(platform, { scopes: [] });
@@ -146,6 +146,13 @@ for (const platform of ['ios', 'android']) {
     assert.equal(await h.gateway.getGoogleCalendarAccessToken(), 'fixture-access-token'); assert.equal(attempts, 2);
   });
 }
+
+test('Android sharing succeeds with a fresh Credential Manager ID token even when OAuth authorization requires resolution', async () => {
+  const h = harness('android', { scopes: [] });
+  h.sdk.getTokens = async () => { throw new Error('Additional authorization requires an explicit foreground action.'); };
+  assert.deepEqual(await h.gateway.authorizeGoogleSharingIdentity(), { idToken: h.identityToken, googleUserId: 'fixture-user' });
+  assert.deepEqual(h.events, ['configure']);
+});
 
 test('iOS cold session restores Keychain once for 100 concurrent Calendar checks', async () => {
   const h = harness('ios', { cold: true });

@@ -1,12 +1,13 @@
-import { collection, doc, getDocFromServer, getDocsFromServer, limit, onSnapshot, orderBy, query,
+import { collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, startAfter, where, writeBatch } from 'firebase/firestore';
-import type { Firestore } from 'firebase/firestore';
+import type { Firestore, QueryDocumentSnapshot } from 'firebase/firestore';
 import { assertSharedIdentifier, canonicalJson } from '../../features/sharing/operations.ts';
 import { assertSharedCloudAccess, parseSharedCloudEvent, parseSharedCloudGroup, rosterCloudFields,
   SharingAccessError, SharingKeyVersionError, SharingSnapshotRequiredError } from '../../features/sharing/cloud-contract.ts';
 import type { EncryptedSharedOperation, WrappedGroupKey } from '../../features/sharing/crypto.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
 import { createSharingManagement } from './firestore-management.ts';
+import { sharingCloudWithDeadline } from './network-deadline.ts';
 
 /** All reads use the server; Firestore's memory cache cannot acknowledge delivery. */
 export function createSharingCloud(firestore: Firestore, userId: string, currentUserId: () => string | null) {
@@ -18,12 +19,24 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
     const parsed = parseSharedCloudGroup(response.data(), groupId); assertSharedCloudAccess(parsed.group, userId);
     return parsed;
   };
-  return {
+  return sharingCloudWithDeadline({
     ...createSharingManagement({ firestore, userId, checkAccount, reference, readGroup }),
     readGroup,
     async listMemberships(): Promise<string[]> {
-      checkAccount(); const result = await getDocsFromServer(query(collection(firestore, 'sharingUsers', userId, 'memberships'), limit(32)));
-      checkAccount(); return result.docs.map((item) => { assertSharedIdentifier(item.id); return item.id; });
+      const memberships: string[] = []; let cursor: QueryDocumentSnapshot | undefined;
+      do {
+        checkAccount(); const page = await getDocsFromServer(query(collection(firestore, 'sharingUsers', userId, 'memberships'),
+          orderBy(documentId()), limit(100), ...(cursor ? [startAfter(cursor)] : [])));
+        checkAccount(); memberships.push(...page.docs.map((item) => { assertSharedIdentifier(item.id); return item.id; }));
+        if (page.size < 100) return memberships;
+        cursor = page.docs.at(-1);
+      } while (cursor);
+      return memberships;
+    },
+    async hasMembership(groupId: string): Promise<boolean> {
+      assertSharedIdentifier(groupId); checkAccount();
+      const result = await getDocFromServer(doc(firestore, 'sharingUsers', userId, 'memberships', groupId));
+      checkAccount(); return result.exists();
     },
     async createGroup(roster: VerifiedSharedRoster, wrapped: WrappedGroupKey): Promise<void> {
       checkAccount();
@@ -117,5 +130,5 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
         catch (error) { failed(error); }
       }, failed);
     },
-  };
+  });
 }

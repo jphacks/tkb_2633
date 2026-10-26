@@ -116,8 +116,18 @@ service cloud.firestore {
           && request.resource.data.wrappedKeyJson is string && request.resource.data.wrappedKeyJson.size() <= 10000
           && request.resource.data.createdAt == request.time;
         allow update: if false;
-        allow delete: if ownerOf(group(groupId)) && resource.data.keyVersion < group(groupId).keyVersion
-          && get(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(group(groupId).snapshotId)).data.keyVersion == group(groupId).keyVersion;
+        allow delete: if ownerOf(group(groupId))
+          && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/keyEnvelopes/$(keyId))
+            || (resource.data.keyVersion < group(groupId).keyVersion
+              && get(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(group(groupId).snapshotId)).data.keyVersion == group(groupId).keyVersion));
+      }
+      match /maintenance/{maintenanceId} {
+        allow read: if ownerOf(group(groupId));
+        allow create, update: if ownerOf(group(groupId)) && maintenanceId == 'keyCleanup'
+          && request.resource.data.keys().hasOnly(['throughKeyVersion']) && request.resource.data.throughKeyVersion is int
+          && request.resource.data.throughKeyVersion >= 0 && request.resource.data.throughKeyVersion < group(groupId).keyVersion
+          && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/maintenance/$(maintenanceId)) || request.resource.data.throughKeyVersion >= resource.data.throughKeyVersion);
+        allow delete: if false;
       }
       match /acknowledgements/{deviceId} {
         allow read: if memberOf(group(groupId));

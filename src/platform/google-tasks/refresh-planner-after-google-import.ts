@@ -9,6 +9,7 @@ import { expoLocalNotificationGateway } from '@/platform/notifications/expo-loca
 /** Refresh the same widget and digest outputs used after ordinary planner completion. */
 export async function refreshPlannerAfterGoogleImport(database: SQLiteDatabase, today: LocalDate, savedSnapshot?: PlannerSnapshot): Promise<void> {
   const snapshot = savedSnapshot ?? await loadPlannerSnapshot(database, today);
+  if (snapshot.sharing) return;
   publishTodayWidgetSnapshot(snapshot);
   await syncDailyHouseworkDigest(expoLocalNotificationGateway, snapshot).catch(() => undefined);
 }

@@ -160,10 +160,14 @@ export function approveSharedDevice(previous: VerifiedSharedRoster, owner: Devic
 export function removeSharedMember(
   previous: VerifiedSharedRoster, owner: DeviceSecretIdentity, userId: string,
 ): VerifiedSharedRoster {
+  return removeSharedMembers(previous, owner, [userId]);
+}
+export function removeSharedMembers(previous: VerifiedSharedRoster, owner: DeviceSecretIdentity, userIds: readonly string[]): VerifiedSharedRoster {
+  if (!userIds.length || new Set(userIds).size !== userIds.length) throw new Error('Choose members to remove');
   return updateRoster(previous, owner, (body) => {
-    if (!body.members.some((member) => member.userId === userId)) throw new Error('Unknown group member');
-    body.members = body.members.filter((member) => member.userId !== userId);
-    if (userId === body.ownerUserId) {
+    if (userIds.some((uid) => !body.members.some((member) => member.userId === uid))) throw new Error('Unknown group member');
+    body.members = body.members.filter((member) => !userIds.includes(member.userId));
+    if (userIds.includes(body.ownerUserId)) {
       if (!body.members.length) body.closed = true;
       else throw new Error('Choose the next owner before leaving; they must create the post-departure key');
     }

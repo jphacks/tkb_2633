@@ -5,6 +5,8 @@ import type { GoogleSyncStatus } from './sync-policy';
 export interface GoogleSyncState {
   householdId: EntityId;
   enabled: boolean;
+  /** A paused connection remains bound; a disconnected workspace requires an explicit reconnect. */
+  disconnected?: boolean;
   taskListId?: string;
   /** Device-local Google subject; never a shared group field or Firebase user ID. */
   accountSubject?: string;

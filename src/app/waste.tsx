@@ -74,7 +74,7 @@ export default function WasteScreen() {
   };
 
   const nextSevenDays = snapshot.upcomingWasteDates
-    .filter((occurrence) => occurrence.date >= localDateFromDate(new Date()))
+    .filter((occurrence) => occurrence.date >= (snapshot.today ?? localDateFromDate(new Date())))
     .sort((left, right) => left.date.localeCompare(right.date))
     .slice(0, 8);
 

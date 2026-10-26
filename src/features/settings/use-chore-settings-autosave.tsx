@@ -4,10 +4,10 @@ import { AppState } from 'react-native';
 
 import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
 import type { ChoreSettingsPatch } from '@/domain/chores/settings-patch';
-import { parseSettingInteger } from '@/domain/chores/settings-patch';
+import { applyChoreSettingsPatch, parseSettingInteger } from '@/domain/chores/settings-patch';
 import { createAutosaveQueue } from './autosave-queue';
 
-export function useChoreSettingsAutosave(chore: ChoreDefinition, mode: FrequencyMode, savePatch: (patch: ChoreSettingsPatch) => Promise<void>) {
+export function useChoreSettingsAutosave(chore: ChoreDefinition, mode: FrequencyMode, savePatch: (patch: ChoreSettingsPatch, displayedBase: ChoreDefinition) => Promise<void>) {
   const [draft, setDraft] = useState(() => ({
     cycleText: chore.requiresCycleSelection ? '' : String(chore.userIntervalDays ?? chore.recommendedCycleDays ?? chore.manufacturerRecommendedIntervalDays ?? chore.frequencyDaysByMode[mode]),
     radiusText: String(chore.windowRadiusDays), load: chore.load, enabled: chore.enabled,
@@ -17,7 +17,13 @@ export function useChoreSettingsAutosave(chore: ChoreDefinition, mode: Frequency
   const enabledTouched = useRef(false);
   const emptyCyclePending = useRef(false);
   const leaving = useRef(false);
-  const [queue] = useState(() => createAutosaveQueue<ChoreSettingsPatch>({ save: savePatch }));
+  const [queue] = useState(() => {
+    let displayedBase = chore;
+    return createAutosaveQueue<ChoreSettingsPatch>({ save: async (patch) => {
+      await savePatch(patch, displayedBase);
+      displayedBase = applyChoreSettingsPatch(displayedBase, patch);
+    } });
+  });
   const status = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
   const updateDraft = useCallback((patch: Partial<typeof draft>) => {
     latest.current = { ...latest.current, ...patch };

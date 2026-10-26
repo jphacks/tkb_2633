@@ -86,13 +86,13 @@ export default function ChoreGuideScreen() {
   const matchingTriviaItems = query
     ? triviaItems.filter((item) => normalizeChoreSearchText(item.trivia.title).includes(query))
     : triviaItems;
-  const today = localDateFromDate(new Date());
+  const today = snapshot.today ?? localDateFromDate(new Date());
   const todayTask = selectedChore
     ? selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3).find((task) => task.choreId === selectedChore.id)
     : undefined;
   const currentEntry = todayTask ? todayTask.entry
     : snapshot.scheduleEntries.find((entry) => entry.choreId === selectedChore?.id && entry.suggestedDate >= today);
-  const canRecordIncomplete = Boolean(currentEntry && currentEntry.windowStart <= localDateFromDate(new Date()));
+  const canRecordIncomplete = Boolean(currentEntry && currentEntry.windowStart <= today);
 
   if (selectedTriviaId) {
     return (

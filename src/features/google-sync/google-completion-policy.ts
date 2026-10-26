@@ -14,3 +14,15 @@ export function parseGoogleCompletedAt(value: unknown): string | null {
   const instant = Date.parse(value);
   return Number.isFinite(instant) ? new Date(instant).toISOString() : null;
 }
+
+/** A network response may not undo a local edit that happened while the request was running. */
+export function googleTaskImportAction(link: { pendingStatus?: string | null; lastSyncedStatus?: string | null },
+  currentOutcome: string | undefined, remoteStatus: 'completed' | 'needsAction'): 'complete' | 'undo' | 'ignore' {
+  if (link.pendingStatus) return 'ignore';
+  const localStatus = currentOutcome === 'completed' ? 'completed' : 'needsAction';
+  if (link.lastSyncedStatus && localStatus !== link.lastSyncedStatus) return 'ignore';
+  if (!link.lastSyncedStatus && currentOutcome === 'incomplete') return 'ignore';
+  if (remoteStatus === 'completed' && localStatus !== 'completed') return 'complete';
+  if (remoteStatus === 'needsAction' && link.lastSyncedStatus === 'completed' && currentOutcome === 'completed') return 'undo';
+  return 'ignore';
+}

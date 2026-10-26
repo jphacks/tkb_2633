@@ -12,6 +12,16 @@ Google Tasksとも連携し、Plannerが決めた予定を普段使うGoogle側�
 
 ---
 
+## 暗号化共有グループ（開発中）
+
+個人データを残したまま、共有グループを別の作業領域として追加する機能を実装中です。家事・完了/取り消し・ゴミ・確認済み家電情報を端末で暗号化し、Firestoreには暗号文を保存します。招待には所有者の明示的な承認が必要です。個人利用にログインは不要です。
+
+SQLiteと送信待ち操作の同時保存、競合の確認、鍵更新、Snapshotによる復旧、共通タイムゾーンの予定計算、共有画面と既存の単一workerへの接続を実装しました。Google Tasks/Calendar・通知・Widget・APIキーは個人用と区別します。
+
+実アカウントを使う共有画面全体のiOS/Android E2E、OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
+
+---
+
 ## 🎬 デモ動画
 
 [▶ YouTubeでデモ動画を見る（約3分22秒）](https://youtu.be/RIMiwtUhU-I)
@@ -578,13 +588,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **683 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **825 tests PASS（iOS・Androidの両条件）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **44機能** |
+| 保護対象feature contract | **67機能（既存44を保持）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |
@@ -1210,8 +1220,7 @@ docs/
 - 家事・家電データの拡充
 - Android物理端末でのTasks双方向変更・Calendarによる家事移動E2E
 - Android / iOS物理端末でのBackgroundTask検証
-- Plannerの複数端末同期
-- 家族単位での共有
+- 暗号化共有グループの実機E2E・復旧フロー・セキュリティ監査の完了
 - ゴミ収集日の自治体別例外対応
 - 家電AI解析結果の再利用・共有cache
 

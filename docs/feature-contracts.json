@@ -804,5 +804,104 @@
         "name": "a compromised old owner cannot combine their removal and a new-owner transition while generating the future key"
       }
     ]
+  },
+  {
+    "feature": "sharing-workspace-screen",
+    "tests": [
+      {
+        "file": "tests/sharing-screens.test.mjs",
+        "name": "sharing screen preserves anonymous personal mode, explicit Google login, collapsed creation and separate group switching"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-atomic-planner-and-outbox",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "existing repository controls dispatch to a bound group and sign atomic outbox changes without personal catalog seeding"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-stale-settings-preservation",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "saving a stale full settings form changes only edited fields and rejects overwriting an intervening same-field edit"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-cross-os-clock-contract",
+    "tests": [
+      {
+        "file": "tests/sharing-compatibility.test.mjs",
+        "name": "older Android Intl data cannot change shared civil dates in zones whose rules changed after Android 10"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-scheduler-version-guard",
+    "tests": [
+      {
+        "file": "tests/sharing-compatibility.test.mjs",
+        "name": "shared scheduler and timezone source changes require a versioned compatibility contract"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-private-google-and-reminders",
+    "tests": [
+      {
+        "file": "tests/sharing-compatibility.test.mjs",
+        "name": "personal and shared reminders use separate namespaces"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-notification-workspace-routing",
+    "tests": [
+      {
+        "file": "tests/sharing-screens.test.mjs",
+        "name": "notification workspace lookup never crosses accounts, removed groups or unrelated notification types"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-rejoin-archive",
+    "tests": [
+      {
+        "file": "tests/sharing-registry.test.mjs",
+        "name": "a fresh rejoin generation is allowed only after departure and must retain the original local database reference"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-identity-without-oauth-grants",
+    "tests": [
+      {
+        "file": "tests/google-calendar-native-auth.test.mjs",
+        "name": "Android sharing succeeds with a fresh Credential Manager ID token even when OAuth authorization requires resolution"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-network-deadline-idempotency",
+    "tests": [
+      {
+        "file": "tests/sharing-synchronizer.test.mjs",
+        "name": "a stalled cloud response times out without losing local edits and a late successful write is acknowledged once on retry"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-autosave-stale-form-protection",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "shared chore autosave advances its own displayed baseline, rejects a stale remote overwrite and can explicitly reload the current settings"
+      }
+    ]
   }
 ]

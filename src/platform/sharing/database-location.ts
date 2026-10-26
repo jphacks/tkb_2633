@@ -29,12 +29,13 @@ export async function sharingDatabaseDirectory(): Promise<string> {
   return validateSharingDatabaseLocation(JSON.parse(await marker.text()), defaultDatabaseDirectory, Platform.OS);
 }
 
-export function sharingDatabaseFilename(userId: string, groupId: string): string {
+export function sharingDatabaseFilename(userId: string, groupId: string, localGeneration?: string): string {
   assertSharedIdentifier(userId); assertSharedIdentifier(groupId);
-  return `group-${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify([userId, groupId]))))}.db`;
+  if (localGeneration) assertSharedIdentifier(localGeneration);
+  return `group-${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(localGeneration ? [userId, groupId, localGeneration] : [userId, groupId]))))}.db`;
 }
 
 /** The account is part of the filename: private Google mappings cannot cross Firebase accounts. */
-export async function openSharingDatabase(userId: string, groupId: string) {
-  return openDatabaseAsync(sharingDatabaseFilename(userId, groupId), { useNewConnection: true }, await sharingDatabaseDirectory());
+export async function openSharingDatabase(userId: string, groupId: string, localGeneration?: string) {
+  return openDatabaseAsync(sharingDatabaseFilename(userId, groupId, localGeneration), { useNewConnection: true }, await sharingDatabaseDirectory());
 }

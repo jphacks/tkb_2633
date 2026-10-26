@@ -22,7 +22,7 @@ import type { CalendarCountColors, CalendarCountDisplayMode, EntityId, Household
 import type { WasteRecurrence, WasteScheduleInput, WeeklyWasteSchedule } from '@/features/waste/contracts';
 import { normalizeWasteSchedule } from '@/features/waste/schedule-policy';
 import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink, GoogleTaskStatus, GoogleTaskStatusChange } from '@/features/google-sync/contracts';
-import { parseGoogleCompletedAt } from '@/features/google-sync/google-completion-policy';
+import { googleTaskImportAction, parseGoogleCompletedAt } from '@/features/google-sync/google-completion-policy';
 import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
 import { GoogleAccountMismatchError } from '@/features/google-sync/account-binding';
 import { generateWeeklyCollectionDates } from '@/features/waste/weekly-scheduler';
@@ -30,13 +30,16 @@ import { splitWasteOccurrencesByVisibility } from '@/features/waste/occurrence-v
 import type { Appliance, ApplianceCareAnalysisDraft } from '@/features/appliance-care/contracts';
 import { applianceDisplayName } from '@/features/appliance-care/display-name';
 import type { ApprovedApplianceCareTask, ApplianceCareProductIdentity } from '@/features/appliance-care/to-chore-definition';
-import { buildReviewedApplianceChore, hasExactChoreNameDuplicate, retireApplianceTaskSnapshot } from '@/features/appliance-care/persistence-policy';
+import { planReviewedApplianceSave } from '@/features/appliance-care/persistence-policy';
 import type { WeatherScheduleOutcome } from '@/features/weather/optimize-laundry-schedule';
 import { optimizeLaundryScheduleForWeather } from '@/features/weather/optimize-laundry-schedule';
 import { WEATHER_FORECAST_CACHE_TTL_MS } from '@/features/weather/contracts';
 import { migrateLocalDatabase } from '@/platform/storage/migrations';
 import type { CalendarAvailabilityDay, CalendarAvailabilityState, CalendarQueryRange } from '@/features/google-sync/calendar-availability';
 import { CALENDAR_AVAILABILITY_MAX_AGE_MS, calendarAvailabilitySignature, freshCalendarAvailability, getDeviceTimeZone } from '@/features/google-sync/calendar-availability';
+import { sharedRepositoryAdapter } from './shared-repository-adapter';
+import type { SharedRepositoryMutation } from './shared-repository-adapter';
+import { stagePendingGoogleTaskStatus } from './google-task-link-state';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
@@ -69,6 +72,7 @@ const cachedPlannerSnapshots = new WeakMap<SQLiteDatabase, {
 
 /** Pure cache read. Recalculation stays explicit at the caller when inputs, date, timezone or freshness changed. */
 export function readCachedPlannerSnapshot(database: SQLiteDatabase, now = new Date()): PlannerSnapshot | null {
+  if (sharedRepositoryAdapter(database)) return null;
   const cached = cachedPlannerSnapshots.get(database);
   if (!cached || cached.today !== localDateFromDate(now) || cached.timeZone !== getDeviceTimeZone()
     || now.getTime() < cached.savedAt || now.getTime() > cached.expiresAt
@@ -89,20 +93,40 @@ function runDatabaseOperation<T>(database: SQLiteDatabase, operation: () => Prom
 
 function serializePlannerOperation<Args extends unknown[], Result>(
   operation: (database: SQLiteDatabase, ...args: Args) => Promise<Result>,
+  sharedMutation?: SharedRepositoryMutation,
 ): (database: SQLiteDatabase, ...args: Args) => Promise<Result> {
   return (database, ...args) => runDatabaseOperation(database, () => {
     plannerVersions.set(database, (plannerVersions.get(database) ?? 0) + 1);
+    const adapter = sharedMutation ? sharedRepositoryAdapter(database) : undefined;
+    if (adapter) return adapter.mutate(sharedMutation!, args) as Promise<Result>;
     return operation(database, ...args);
   });
 }
 
 function serializeDatabaseOperation<Args extends unknown[], Result>(
   operation: (database: SQLiteDatabase, ...args: Args) => Promise<Result>,
+  sharedMutation?: SharedRepositoryMutation,
 ): (database: SQLiteDatabase, ...args: Args) => Promise<Result> {
-  return (database, ...args) => runDatabaseOperation(database, () => operation(database, ...args));
+  return (database, ...args) => runDatabaseOperation(database, () => {
+    const adapter = sharedMutation ? sharedRepositoryAdapter(database) : undefined;
+    if (adapter) {
+      plannerVersions.set(database, (plannerVersions.get(database) ?? 0) + 1);
+      return adapter.mutate(sharedMutation!, args) as Promise<Result>;
+    }
+    return operation(database, ...args);
+  });
 }
 
+export function withPlannerDatabaseOperation<T>(database: SQLiteDatabase, work: () => Promise<T>): Promise<T> {
+  return runDatabaseOperation(database, work);
+}
+export async function drainPlannerDatabaseOperations(database: SQLiteDatabase): Promise<void> { await operationTails.get(database); }
+
 export interface PlannerSnapshot {
+  /** Shared mode uses one civil date/timezone across all devices. Personal snapshots omit these fields. */
+  today?: LocalDate;
+  timeZone?: string;
+  sharing?: { groupId: string; activeMemberIds: string[]; issues: { entityType: string; entityId: string; fields: string[]; kind: string }[] };
   household: Household;
   settings: HouseholdPlannerSettings;
   chores: ChoreDefinition[];
@@ -239,7 +263,11 @@ async function initializeLocalDatabaseImpl(database: SQLiteDatabase): Promise<vo
 }
 
 async function ensureLocalHouseholdImpl(database: SQLiteDatabase): Promise<void> {
+  if (sharedRepositoryAdapter(database)) return;
   if (initializedHouseholds.has(database)) return;
+  if (await database.getFirstAsync("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sharing_workspace_metadata'")) {
+    throw new Error('共有DBはアカウントとグループを確認してから開いてください。');
+  }
   const now = new Date().toISOString();
   const definitions = createHouseholdChoreDefinitions(LOCAL_HOUSEHOLD_ID);
   await database.withTransactionAsync(async () => {
@@ -381,6 +409,8 @@ async function loadPlannerSnapshotImpl(
   calendarNow = new Date(),
   timeZone = getDeviceTimeZone(),
 ): Promise<PlannerSnapshot> {
+  const shared = sharedRepositoryAdapter(database);
+  if (shared) return shared.readSnapshot(calendarNow);
   await ensureLocalHouseholdImpl(database);
   const householdRow = await database.getFirstAsync<HouseholdRow>(
     'SELECT id, name, created_at FROM households WHERE id = ?', LOCAL_HOUSEHOLD_ID,
@@ -845,6 +875,7 @@ async function completeFirstSetupImpl(database: SQLiteDatabase, submission: Setu
 async function updatePlannerSettingsImpl(
   database: SQLiteDatabase,
   settings: Pick<HouseholdPlannerSettings, 'frequencyMode' | 'restDays' | 'heavyDailyLimit' | 'normalDailyLimit'>,
+  _displayedBase?: Pick<HouseholdPlannerSettings, 'frequencyMode' | 'restDays' | 'heavyDailyLimit' | 'normalDailyLimit'>,
 ): Promise<void> {
   if (!['frequent', 'balanced', 'relaxed'].includes(settings.frequencyMode)
     || settings.restDays.some((day) => !Number.isInteger(day) || day < 1 || day > 7)
@@ -915,7 +946,7 @@ async function clearWeatherLocationImpl(database: SQLiteDatabase): Promise<void>
   );
 }
 
-async function updateChoreSettingsImpl(database: SQLiteDatabase, choreId: EntityId, patch: ChoreSettingsPatch): Promise<boolean> {
+async function updateChoreSettingsImpl(database: SQLiteDatabase, choreId: EntityId, patch: ChoreSettingsPatch, _displayedBase?: ChoreDefinition): Promise<boolean> {
   const row = await database.getFirstAsync<{ enabled: number; definition_json: string }>(
     'SELECT enabled, definition_json FROM chore_definitions WHERE id = ? AND household_id = ?', choreId, LOCAL_HOUSEHOLD_ID,
   );
@@ -978,141 +1009,35 @@ async function saveReviewedApplianceCareImpl(
   analysis: ApplianceCareAnalysisDraft,
   approvedTasks: readonly ApprovedApplianceCareTask[],
 ): Promise<SaveReviewedApplianceResult> {
-  if (approvedTasks.length > 40 || analysis.tasks.length === 0 || analysis.tasks.length > 40) {
-    throw new RangeError('お手入れ項目は1〜40件の範囲で保存してください。');
-  }
   await ensureLocalHouseholdImpl(database);
-  const now = new Date().toISOString();
   const applianceId = product.applianceId ?? createId('appliance');
-  const existingAppliance = await database.getFirstAsync<{
-    created_at: string;
-    manufacturer: string;
-    product_name: string;
-    model_number: string;
-  }>(
-    'SELECT created_at, manufacturer, product_name, model_number FROM appliances WHERE id = ? AND household_id = ?',
-    applianceId, LOCAL_HOUSEHOLD_ID,
-  );
-  if (existingAppliance && (existingAppliance.manufacturer !== product.manufacturer
-    || existingAppliance.product_name !== product.productName
-    || existingAppliance.model_number !== product.modelNumber)) {
-    throw new Error('保存済み家電のメーカー・製品名・型番は再解析で変更できません。別の家電として登録してください。');
-  }
-  const existingRows = await database.getAllAsync<DefinitionRow>(
-    'SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id = ?', LOCAL_HOUSEHOLD_ID,
-  );
-  const allChores = existingRows.map((row) => ({
-    ...(JSON.parse(row.definition_json) as ChoreDefinition),
-    id: row.id,
-    enabled: Boolean(row.enabled),
-  }));
-  const legacyApplianceChores = allChores.filter((chore) => !chore.applianceId
-    && chore.applianceCareSource?.manufacturer === product.manufacturer
-    && chore.applianceCareSource.productName === product.productName
-    && chore.applianceCareSource.modelNumber === product.modelNumber);
-  const existingApplianceChores = allChores.filter((chore) => chore.applianceId === applianceId || legacyApplianceChores.includes(chore));
-  const matchedIds = new Set<EntityId>();
-  let scheduledTaskCount = 0;
-  let duplicateTaskCount = 0;
-  let noCycleTaskCount = 0;
-  const displayName = applianceDisplayName(product);
-  const approvedByTaskName = new Map(approvedTasks.map((approved) => [approved.task.name, approved]));
-  const currentTaskNames = new Set(analysis.tasks.map((task) => task.name));
-
+  const existing = await database.getFirstAsync<{ created_at: string; manufacturer: string; product_name: string; model_number: string }>(
+    'SELECT created_at, manufacturer, product_name, model_number FROM appliances WHERE id=? AND household_id=?', applianceId, LOCAL_HOUSEHOLD_ID);
+  const rows = await database.getAllAsync<DefinitionRow>('SELECT id, enabled, definition_json FROM chore_definitions WHERE household_id=?', LOCAL_HOUSEHOLD_ID);
+  const plan = planReviewedApplianceSave({ householdId: LOCAL_HOUSEHOLD_ID, applianceId, now: new Date().toISOString(), product, analysis, approvedTasks,
+    ...(existing ? { existingAppliance: { createdAt: existing.created_at, manufacturer: existing.manufacturer, productName: existing.product_name, modelNumber: existing.model_number } } : {}),
+    allChores: rows.map((row) => ({ ...JSON.parse(row.definition_json) as ChoreDefinition, id: row.id, enabled: Boolean(row.enabled) })),
+    newChoreId: () => createId('appliance-care') });
   await database.withTransactionAsync(async () => {
-    await database.runAsync(
-      `INSERT INTO appliances
-       (id, household_id, manufacturer, product_name, model_number, category, display_name,
-        official_product_url, official_manual_url, analysis_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET manufacturer = excluded.manufacturer, product_name = excluded.product_name,
-       model_number = excluded.model_number, category = excluded.category, display_name = excluded.display_name,
-       official_product_url = excluded.official_product_url, official_manual_url = excluded.official_manual_url,
-       analysis_json = excluded.analysis_json, updated_at = excluded.updated_at`,
-      applianceId, LOCAL_HOUSEHOLD_ID, product.manufacturer, product.productName, product.modelNumber,
-      product.category ?? null, displayName, product.officialProductUrl ?? null, product.manualUrl,
-      JSON.stringify(analysis), existingAppliance?.created_at ?? now, now,
-    );
-
-    for (const task of analysis.tasks) {
-      const approved = approvedByTaskName.get(task.name);
-      const matched = existingApplianceChores.find((chore) =>
-        !matchedIds.has(chore.id)
-        && (chore.applianceTaskName === task.name
-          || (!chore.applianceTaskName && chore.name === task.name)),
-      );
-      if (!approved && !matched) continue;
-      const { definition, hasCycle } = buildReviewedApplianceChore({
-        id: matched?.id ?? createId('appliance-care'),
-        householdId: LOCAL_HOUSEHOLD_ID,
-        applianceId,
-        product,
-        analysis,
-        approved: approved ?? { task },
-        ...(matched ? { existing: matched } : {}),
-      });
-
-      if (matched) matchedIds.add(matched.id);
-      if (!approved || !hasCycle) {
-        if (approved && !hasCycle) noCycleTaskCount += 1;
-        if (matched) {
-          const updated = { ...definition, enabled: false };
-          await database.runAsync(
-            'UPDATE chore_definitions SET name = ?, enabled = 0, definition_json = ? WHERE id = ?',
-            updated.name, JSON.stringify(updated), updated.id,
-          );
-        }
-        continue;
+    const appliance = plan.appliance;
+    await database.runAsync(`INSERT INTO appliances (id, household_id, manufacturer, product_name, model_number, category, display_name,
+      official_product_url, official_manual_url, analysis_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET manufacturer=excluded.manufacturer, product_name=excluded.product_name, model_number=excluded.model_number,
+      category=excluded.category, display_name=excluded.display_name, official_product_url=excluded.official_product_url,
+      official_manual_url=excluded.official_manual_url, analysis_json=excluded.analysis_json, updated_at=excluded.updated_at`, appliance.id, appliance.householdId,
+      appliance.manufacturer, appliance.productName, appliance.modelNumber, appliance.category ?? null, appliance.displayName,
+      appliance.officialProductUrl ?? null, appliance.officialManualUrl, JSON.stringify(appliance.analysis), appliance.createdAt, appliance.updatedAt);
+    for (const chore of plan.definitions) {
+      await database.runAsync(`INSERT INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, definition_json=excluded.definition_json`,
+        chore.id, chore.householdId, chore.name, chore.enabled ? 1 : 0, JSON.stringify(chore));
+      if (plan.newChoreIds.has(chore.id)) {
+        await database.runAsync('INSERT INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)', chore.id, 'skipped');
+        await database.runAsync('INSERT INTO chore_assignments (chore_id, member_id) VALUES (?, ?)', chore.id, LOCAL_MEMBER_ID);
       }
-
-      if (hasExactChoreNameDuplicate(allChores, definition.name, matched?.id)) {
-        duplicateTaskCount += 1;
-        if (matched) {
-          const retained = { ...definition, name: matched.name, enabled: false };
-          await database.runAsync(
-            'UPDATE chore_definitions SET enabled = 0, definition_json = ? WHERE id = ?',
-            JSON.stringify(retained), retained.id,
-          );
-        }
-        continue;
-      }
-
-      const readyDefinition = definition;
-      if (matched) {
-        await database.runAsync(
-          'UPDATE chore_definitions SET name = ?, enabled = ?, definition_json = ? WHERE id = ?',
-          readyDefinition.name, readyDefinition.enabled ? 1 : 0, JSON.stringify(readyDefinition), readyDefinition.id,
-        );
-      } else {
-        await database.runAsync(
-          'INSERT INTO chore_definitions (id, household_id, name, enabled, definition_json) VALUES (?, ?, ?, ?, ?)',
-          readyDefinition.id, readyDefinition.householdId, readyDefinition.name, readyDefinition.enabled ? 1 : 0, JSON.stringify(readyDefinition),
-        );
-        await database.runAsync(
-          'INSERT INTO chore_state (chore_id, initial_pending, unknown_reason) VALUES (?, 1, ?)',
-          readyDefinition.id, 'skipped',
-        );
-        await database.runAsync(
-          'INSERT INTO chore_assignments (chore_id, member_id) VALUES (?, ?)', readyDefinition.id, LOCAL_MEMBER_ID,
-        );
-      }
-      scheduledTaskCount += 1;
-    }
-
-    for (const previous of existingApplianceChores) {
-      if (matchedIds.has(previous.id)) continue;
-      const isCurrentAnalysisTask = currentTaskNames.has(previous.applianceTaskName ?? previous.name);
-      const retired = isCurrentAnalysisTask
-        ? { ...previous, enabled: false }
-        : retireApplianceTaskSnapshot(previous);
-      await database.runAsync(
-        'UPDATE chore_definitions SET enabled = 0, definition_json = ? WHERE id = ?',
-        JSON.stringify(retired), previous.id,
-      );
     }
   });
-
-  return { applianceId, scheduledTaskCount, duplicateTaskCount, noCycleTaskCount };
+  return plan.result;
 }
 
 async function setChoreEnabledImpl(database: SQLiteDatabase, choreId: EntityId, enabled: boolean): Promise<void> {
@@ -1269,13 +1194,11 @@ async function importGoogleTaskChangesImpl(
       const current = await database.getFirstAsync<{ id: string; outcome: string }>(
         'SELECT id, outcome FROM chore_completions WHERE schedule_entry_id = ?', entry.id,
       );
-      const localStatus = current?.outcome === 'completed' ? 'completed' : 'needsAction';
-      if (currentLink.last_synced_status && localStatus !== currentLink.last_synced_status) continue;
-      if (!currentLink.last_synced_status && current?.outcome === 'incomplete') continue;
-      if (change.status === 'completed') {
+      const action = googleTaskImportAction({ pendingStatus: currentLink.pending_status, lastSyncedStatus: currentLink.last_synced_status }, current?.outcome, change.status);
+      if (action === 'complete' && change.status === 'completed') {
         if (await persistChoreCompletion(database, entry, change.completedAt, 'googleTasks')) imported += 1;
-      } else if (currentLink.last_synced_status === 'completed' && current?.outcome === 'completed') {
-        if (await undoCompletionInTransaction(database, current.id, 'googleTasks', today)) imported += 1;
+      } else if (action === 'undo') {
+        if (await undoCompletionInTransaction(database, current!.id, 'googleTasks', today)) imported += 1;
       }
     }
   });
@@ -1285,10 +1208,7 @@ async function importGoogleTaskChangesImpl(
 }
 
 async function markPendingGoogleStatus(database: SQLiteDatabase, scheduleEntryId: string, status: GoogleTaskStatus): Promise<void> {
-  await database.runAsync(
-    'UPDATE google_task_links SET pending_status = ?, pending_status_revision = ? WHERE schedule_entry_id = ?',
-    status, createId('google-status'), scheduleEntryId,
-  );
+  await stagePendingGoogleTaskStatus(database, scheduleEntryId, status, createId('google-status'));
 }
 
 async function hasPendingGoogleTaskChangesImpl(
@@ -1675,6 +1595,7 @@ async function loadGoogleSyncStateImpl(
     enabled: number;
     task_list_id: string | null;
     account_subject: string | null;
+    connection_active: number;
     last_attempt_at: string | null;
     last_successful_sync_at: string | null;
     status: string;
@@ -1684,7 +1605,7 @@ async function loadGoogleSyncStateImpl(
     last_error_at: string | null;
     updated_at: string;
   }>(
-    `SELECT household_id, enabled, task_list_id, account_subject, last_attempt_at, last_successful_sync_at,
+    `SELECT household_id, enabled, task_list_id, account_subject, connection_active, last_attempt_at, last_successful_sync_at,
      status, retry_count, next_retry_at, last_error_code, last_error_at, updated_at
      FROM google_sync_state WHERE household_id = ?`,
     householdId,
@@ -1693,6 +1614,7 @@ async function loadGoogleSyncStateImpl(
   return {
     householdId: row.household_id,
     enabled: Boolean(row.enabled),
+    ...(!row.connection_active ? { disconnected: true } : {}),
     ...(row.task_list_id ? { taskListId: row.task_list_id } : {}),
     ...(row.account_subject ? { accountSubject: row.account_subject } : {}),
     ...(row.last_attempt_at ? { lastAttemptAt: row.last_attempt_at } : {}),
@@ -1707,20 +1629,21 @@ async function loadGoogleSyncStateImpl(
 }
 
 async function saveGoogleSyncStateImpl(database: SQLiteDatabase, state: GoogleSyncState): Promise<void> {
+  if (state.enabled && state.disconnected) throw new Error('Googleと再接続してから同期を有効にしてください。');
   if (state.accountSubject !== undefined && (typeof state.accountSubject !== 'string' || !state.accountSubject || state.accountSubject.length > 512)) {
     throw new GoogleAccountMismatchError();
   }
   const result = await database.runAsync(
     `INSERT INTO google_sync_state
      (household_id, enabled, task_list_id, last_attempt_at, last_successful_sync_at, status,
-      retry_count, next_retry_at, last_error_code, last_error_at, updated_at, account_subject)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      retry_count, next_retry_at, last_error_code, last_error_at, updated_at, account_subject, connection_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(household_id) DO UPDATE SET enabled = excluded.enabled,
      task_list_id = excluded.task_list_id, last_attempt_at = excluded.last_attempt_at,
      last_successful_sync_at = excluded.last_successful_sync_at, status = excluded.status,
      retry_count = excluded.retry_count, next_retry_at = excluded.next_retry_at,
      last_error_code = excluded.last_error_code, last_error_at = excluded.last_error_at,
-     updated_at = excluded.updated_at,
+     updated_at = excluded.updated_at, connection_active = excluded.connection_active,
      account_subject = COALESCE(google_sync_state.account_subject, excluded.account_subject)
      WHERE excluded.account_subject IS NULL OR google_sync_state.account_subject IS NULL
        OR google_sync_state.account_subject = excluded.account_subject`,
@@ -1736,6 +1659,7 @@ async function saveGoogleSyncStateImpl(database: SQLiteDatabase, state: GoogleSy
     state.lastErrorAt ?? null,
     state.updatedAt,
     state.accountSubject ?? null,
+    state.disconnected ? 0 : 1,
   );
   if (state.accountSubject && result.changes === 0) throw new GoogleAccountMismatchError();
 }
@@ -2034,7 +1958,7 @@ async function commitCalendarAvailabilitySuccessImpl(
 
 export const loadCalendarAvailabilityState = serializeDatabaseOperation(loadCalendarAvailabilityStateImpl);
 export const saveCalendarAvailabilityState = serializeDatabaseOperation(saveCalendarAvailabilityStateImpl);
-export const setCalendarAvailabilityEnabled = serializePlannerOperation(setCalendarAvailabilityEnabledImpl);
+export const setCalendarAvailabilityEnabled = serializePlannerOperation(setCalendarAvailabilityEnabledImpl, 'setCalendarAvailabilityEnabled');
 export const listCalendarAvailabilityDays = serializeDatabaseOperation(listCalendarAvailabilityDaysImpl);
 export const getFreshCalendarAvailabilityDays = serializeDatabaseOperation(getFreshCalendarAvailabilityDaysImpl);
 export const readCalendarPlanningSignatures = serializeDatabaseOperation(readCalendarPlanningSignaturesImpl);
@@ -2048,27 +1972,27 @@ export const bindGoogleSyncAccount = serializeDatabaseOperation(bindGoogleSyncAc
 export const ensureLocalHousehold = serializePlannerOperation(ensureLocalHouseholdImpl);
 export const loadApplianceCareReviewContext = serializeDatabaseOperation(loadApplianceCareReviewContextImpl);
 export const loadPlannerSnapshot = serializePlannerOperation(loadPlannerSnapshotImpl);
-export const completeFirstSetup = serializePlannerOperation(completeFirstSetupImpl);
-export const updatePlannerSettings = serializePlannerOperation(updatePlannerSettingsImpl);
+export const completeFirstSetup = serializePlannerOperation(completeFirstSetupImpl, 'completeFirstSetup');
+export const updatePlannerSettings = serializePlannerOperation(updatePlannerSettingsImpl, 'updatePlannerSettings');
 export const updateCalendarCountDisplay = serializePlannerOperation(updateCalendarCountDisplayImpl);
 export const setNotificationsEnabled = serializePlannerOperation(setNotificationsEnabledImpl);
 export const saveWeatherLocation = serializePlannerOperation(saveWeatherLocationImpl);
 export const clearWeatherLocation = serializePlannerOperation(clearWeatherLocationImpl);
-export const updateChoreDefinition = serializePlannerOperation(updateChoreDefinitionImpl);
-export const updateChoreSettings = serializeDatabaseOperation(updateChoreSettingsImpl);
-export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl);
-export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl);
-export const completeChore = serializePlannerOperation(completeChoreImpl);
-export const importGoogleTaskCompletions = serializePlannerOperation(importGoogleTaskCompletionsImpl);
-export const importGoogleTaskChanges = serializePlannerOperation(importGoogleTaskChangesImpl);
-export const undoCompletedChore = serializePlannerOperation(undoCompletedChoreImpl);
-export const recordIncompleteChore = serializePlannerOperation(recordIncompleteChoreImpl);
-export const setChoreAssignments = serializePlannerOperation(setChoreAssignmentsImpl);
-export const addHouseholdMember = serializePlannerOperation(addHouseholdMemberImpl);
-export const replaceChoreDependencies = serializePlannerOperation(replaceChoreDependenciesImpl);
-export const saveWeeklyWasteSchedule = serializePlannerOperation(saveWeeklyWasteScheduleImpl);
-export const setWasteOccurrenceHidden = serializePlannerOperation(setWasteOccurrenceHiddenImpl);
-export const deleteWeeklyWasteSchedule = serializePlannerOperation(deleteWeeklyWasteScheduleImpl);
+export const updateChoreDefinition = serializePlannerOperation(updateChoreDefinitionImpl, 'updateChoreDefinition');
+export const updateChoreSettings = serializeDatabaseOperation(updateChoreSettingsImpl, 'updateChoreSettings');
+export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl, 'saveReviewedApplianceCare');
+export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl, 'setChoreEnabled');
+export const completeChore = serializePlannerOperation(completeChoreImpl, 'completeChore');
+export const importGoogleTaskCompletions = serializePlannerOperation(importGoogleTaskCompletionsImpl, 'importGoogleTaskCompletions');
+export const importGoogleTaskChanges = serializePlannerOperation(importGoogleTaskChangesImpl, 'importGoogleTaskChanges');
+export const undoCompletedChore = serializePlannerOperation(undoCompletedChoreImpl, 'undoCompletedChore');
+export const recordIncompleteChore = serializePlannerOperation(recordIncompleteChoreImpl, 'recordIncompleteChore');
+export const setChoreAssignments = serializePlannerOperation(setChoreAssignmentsImpl, 'setChoreAssignments');
+export const addHouseholdMember = serializePlannerOperation(addHouseholdMemberImpl, 'addHouseholdMember');
+export const replaceChoreDependencies = serializePlannerOperation(replaceChoreDependenciesImpl, 'replaceChoreDependencies');
+export const saveWeeklyWasteSchedule = serializePlannerOperation(saveWeeklyWasteScheduleImpl, 'saveWeeklyWasteSchedule');
+export const setWasteOccurrenceHidden = serializePlannerOperation(setWasteOccurrenceHiddenImpl, 'setWasteOccurrenceHidden');
+export const deleteWeeklyWasteSchedule = serializePlannerOperation(deleteWeeklyWasteScheduleImpl, 'deleteWeeklyWasteSchedule');
 export const loadGoogleSyncState = serializeDatabaseOperation(loadGoogleSyncStateImpl);
 export const hasPendingGoogleTaskChanges = serializeDatabaseOperation(hasPendingGoogleTaskChangesImpl);
 export const saveGoogleSyncState = serializeDatabaseOperation(saveGoogleSyncStateImpl);

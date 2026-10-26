@@ -1,0 +1,115 @@
+import './helpers/typescript-loader.mjs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createDatabase } from './helpers/sqlite.mjs';
+import { buildSharedReplica } from '../src/features/sharing/replica.ts';
+import { buildSharedPlannerSnapshot, sharedGroupBootstrap, sharedPlanningSignature } from '../src/features/sharing/planning.ts';
+import { millisecondsUntilNextSharedDay, sharedLocalDate } from '../src/features/sharing/group-clock.ts';
+import { createLocalSharedOperations, initializeSharingLedger, loadSharedReplica, listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
+import { completionCycleDate } from '../src/domain/scheduling/completion-matching.ts';
+const options = { groupId: 'group-test', ownerUserId: 'owner', ownerDisplayName: '自分', name: '家族', timeZone: 'Asia/Tokyo', anchorDate: '2026-10-27' };
+function fixture() {
+  const drafts = sharedGroupBootstrap(options);
+  return drafts.map((draft, index) => ({ ...draft, schemaVersion: 1, groupId: 'group-test', authorUserId: 'owner', authorDeviceId: 'device-a',
+    deviceSequence: index + 1, logicalClock: index + 1, context: index ? { 'device-a': index } : {}, keyVersion: 1 }));
+}
+function next(ops, draft, device = 'device-a') {
+  const replica = buildSharedReplica('group-test', ops);
+  return { ...draft, operationId: draft.operationId ?? `edit-${device}-${replica.logicalClock + 1}`, schemaVersion: 1,
+    groupId: 'group-test', authorUserId: device === 'device-a' ? 'owner' : 'member', authorDeviceId: device,
+    deviceSequence: (replica.frontier[device] ?? 0) + 1, logicalClock: replica.logicalClock + 1,
+    context: replica.frontier, keyVersion: 1 };
+}
+const plan = (ops, extra = {}) => buildSharedPlannerSnapshot(buildSharedReplica('group-test', ops),
+  { householdId: 'local-household', now: new Date('2026-10-26T16:00:00Z'), ...extra });
+
+test('a separate shared workspace starts with 20 disabled built-ins and never imports private settings or external availability', () => {
+  const ops = fixture(); const snapshot = plan(ops, { privateSettings: { frequencyMode: 'relaxed', restDays: [],
+    heavyDailyLimit: 99, weatherLocation: { latitude: 0, longitude: 0, displayName: '個人用', region: 'private' },
+    notificationHour: 7, calendarCountDisplayMode: 'dots' } });
+  assert.equal(snapshot.chores.length, 20); assert.ok(snapshot.chores.every((chore) => !chore.enabled && chore.id.startsWith('group-test.')));
+  assert.equal(snapshot.scheduleEntries.length, 0); assert.equal(snapshot.settings.frequencyMode, 'balanced');
+  assert.equal(snapshot.settings.notificationHour, 7); assert.equal(snapshot.settings.calendarCountDisplayMode, 'dots');
+  assert.equal(snapshot.settings.weatherLocation, undefined); assert.equal(snapshot.externalAvailabilityByDate, undefined);
+  assert.equal(snapshot.today, '2026-10-27'); assert.equal(snapshot.timeZone, 'Asia/Tokyo');
+});
+
+test('unknown disabled shared chores activate from a canonical date and retain one card through interval edits, completion, undo and deletion', () => {
+  const ops = fixture(); const id = 'group-test.builtin-chore-08';
+  const edit = (draft) => { ops.push(next(ops, draft)); return plan(ops); };
+  edit({ entityType: 'chore', entityId: id, operationType: 'patch', payload: { enabled: true, recommendedCycleDays: 17 } });
+  let snapshot = edit({ entityType: 'baseline', entityId: id, operationType: 'patch', payload: { initialScheduledDate: '2026-10-27', initialPending: true } });
+  const first = snapshot.scheduleEntries.find((entry) => entry.choreId === id); assert.ok(first); assert.equal(first.id, `${id}:initial`);
+  const completion = next(ops, { entityType: 'completion', entityId: first.id, operationType: 'complete',
+    payload: { choreId: id, completedAt: '2026-10-26T16:00:00Z', completedLocalDate: '2026-10-27', outcome: 'completed',
+      scheduledDate: first.suggestedDate, scheduledWindowStart: first.windowStart, scheduledWindowEnd: first.windowEnd } });
+  ops.push(completion); snapshot = plan(ops);
+  assert.equal(snapshot.states.find((state) => state.choreId === id).lastCompletedDate, '2026-10-27');
+  assert.equal(snapshot.completions.filter((entry) => entry.outcome === 'completed').length, 1);
+  snapshot = edit({ entityType: 'completion', entityId: first.id, operationType: 'undo', payload: { targetOperationId: completion.operationId } });
+  assert.equal(snapshot.completions[0].outcome, 'incomplete'); assert.equal(snapshot.scheduleEntries[0].id, first.id);
+  snapshot = edit({ entityType: 'chore', entityId: id, operationType: 'delete', payload: {} });
+  assert.equal(snapshot.scheduleEntries.length, 0); assert.ok(snapshot.chores.find((chore) => chore.id === id).archived);
+  assert.equal(snapshot.completions.length, 1); assert.equal(snapshot.chores.find((chore) => chore.id === id).name, 'フローリングを掃除する');
+});
+
+test('shared planning is identical across device timezones, arrival orders and private Calendar/weather input', () => {
+  const ops = fixture(); const id = 'group-test.builtin-chore-08';
+  ops.push(next(ops, { entityType: 'chore', entityId: id, operationType: 'patch', payload: { enabled: true } }));
+  ops.push(next(ops, { entityType: 'baseline', entityId: id, operationType: 'patch', payload: { initialScheduledDate: '2026-10-27', initialPending: true } }));
+  const oldZone = process.env.TZ; const signatures = [];
+  try {
+    for (const zone of ['Asia/Tokyo', 'America/New_York', 'Pacific/Honolulu', 'UTC']) {
+      process.env.TZ = zone;
+      signatures.push(sharedPlanningSignature(plan([...ops].reverse(), { privateSettings: { weatherLocation: { region: 'private', displayName: 'private', latitude: 40, longitude: 130 } } })));
+    }
+  } finally { if (oldZone === undefined) delete process.env.TZ; else process.env.TZ = oldZone; }
+  assert.ok(signatures.every((signature) => signature === signatures[0]));
+});
+
+test('concurrent shared settings remain visible as conflicts and pause the affected chore until an observed resolution', () => {
+  const ops = fixture(); const id = 'group-test.builtin-chore-08';
+  const left = next(ops, { entityType: 'chore', entityId: id, operationType: 'patch', payload: { enabled: true, recommendedCycleDays: 7 } });
+  const right = next(ops, { entityType: 'chore', entityId: id, operationType: 'patch', payload: { enabled: true, recommendedCycleDays: 17 } }, 'device-b');
+  ops.push(left, right); let snapshot = plan(ops);
+  assert.ok(snapshot.sharing.issues.some((issue) => issue.entityId === id && issue.kind === 'conflict'));
+  assert.equal(snapshot.chores.find((chore) => chore.id === id).enabled, false);
+  ops.push(next(ops, { entityType: 'chore', entityId: id, operationType: 'patch', payload: { recommendedCycleDays: 17 } }));
+  snapshot = plan(ops); assert.equal(snapshot.sharing.issues.length, 0); assert.ok(snapshot.scheduleEntries.length > 0);
+});
+
+test('shared weekly, biweekly, monthly waste and one-time hiding preserve the same dates and labels', () => {
+  const ops = fixture(); const edit = (draft) => ops.push(next(ops, draft));
+  for (const [id, fields] of [['weekly', { label: '可燃ごみ', recurrence: 'weekly', collectionWeekdays: [2] }],
+    ['biweekly', { label: 'びん', recurrence: 'biweekly', collectionWeekdays: [4], anchorDate: '2026-10-29' }],
+    ['monthly', { label: '粗大ごみ', recurrence: 'monthly', collectionWeekdays: [], monthlyDay: 31 }]]) {
+    edit({ entityType: 'waste', entityId: id, operationType: 'patch', payload: fields });
+  }
+  edit({ entityType: 'wasteVisibility', entityId: 'weekly.2026-10-27', operationType: 'patch', payload: { scheduleId: 'weekly', date: '2026-10-27', hidden: true } });
+  const snapshot = plan(ops); assert.equal(snapshot.wasteSchedules.length, 3); assert.equal(snapshot.hiddenWasteDates[0].label, '可燃ごみ');
+  assert.ok(snapshot.upcomingWasteDates.some((date) => date.scheduleId === 'monthly' && date.date === '2026-11-30'));
+});
+
+test('shared batch edits roll back together, project once and allocate consecutive clocks without uploading generated schedules', async () => {
+  const h = createDatabase(); await initializeSharingLedger(h.database); let projections = 0;
+  try {
+    const author = { groupId: 'group-test', userId: 'owner', deviceId: 'device-a', keyVersion: 1 };
+    await assert.rejects(createLocalSharedOperations(h.database, author, sharedGroupBootstrap(options), async () => { throw new Error('projection'); }), /projection/);
+    assert.equal((await listSharingOutbox(h.database, 'group-test')).length, 0);
+    const saved = await createLocalSharedOperations(h.database, author, sharedGroupBootstrap(options), async () => { projections++; });
+    assert.equal(saved.length, 42); assert.equal(projections, 1); assert.equal(saved.at(-1).deviceSequence, 42);
+    assert.equal((await loadSharedReplica(h.database, 'group-test')).pendingOperationIds.length, 0);
+    assert.equal((await listSharingOutbox(h.database, 'group-test')).length, 42);
+  } finally { h.connection.close(); }
+});
+
+test('group civil dates and midnight timers handle DST and completion timing without depending on the device zone', () => {
+  assert.equal(sharedLocalDate(new Date('2026-10-26T16:00:00Z'), 'Asia/Tokyo'), '2026-10-27');
+  assert.equal(millisecondsUntilNextSharedDay(new Date('2026-03-08T05:00:00Z'), 'America/New_York'), 23 * 3600000);
+  assert.equal(millisecondsUntilNextSharedDay(new Date('2026-11-01T04:00:00Z'), 'America/New_York'), 25 * 3600000);
+  const old = process.env.TZ;
+  try {
+    process.env.TZ = 'Pacific/Honolulu';
+    assert.equal(completionCycleDate({ completedAt: '2026-10-26T16:00:00Z', completedLocalDate: '2026-10-27', scheduledDate: '2026-10-27' }), '2026-10-27');
+  } finally { if (old === undefined) delete process.env.TZ; else process.env.TZ = old; }
+});

@@ -1,7 +1,10 @@
 import type { PropsWithChildren, ReactNode } from 'react';
+import { useContext } from 'react';
+import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { typography } from './planner-typography';
+import { WorkspaceContext } from '../contexts/workspace-context';
 
 export { typography } from './planner-typography';
 
@@ -20,9 +23,13 @@ export const palette = {
 };
 
 export function Page({ children, contentStyle }: PropsWithChildren<{ contentStyle?: object }>) {
+  const workspace = useContext(WorkspaceContext);
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.page, contentStyle]}>
+        {workspace?.active ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
+          style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><Text style={styles.workspaceSwitch}>切り替え ›</Text></Pressable> : null}
+        {workspace?.error ? <Text accessibilityRole="alert" style={styles.workspaceError}>{workspace.error}</Text> : null}
         {children}
       </ScrollView>
     </SafeAreaView>
@@ -147,6 +154,10 @@ export function MutedText({ children }: PropsWithChildren) {
 }
 
 const styles = StyleSheet.create({
+  workspaceBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: palette.accentSoft },
+  workspaceName: { ...typography.label, color: palette.ink, fontWeight: '700', flex: 1 },
+  workspaceSwitch: { ...typography.caption, color: palette.muted },
+  workspaceError: { ...typography.caption, color: palette.warning },
   safeArea: { flex: 1, backgroundColor: palette.background },
   page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 12 },
   heading: { gap: 5, marginBottom: 2 },

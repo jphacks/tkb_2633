@@ -40,6 +40,9 @@ test('group SQLite filenames are stable, opaque and independent for each user an
   assert.match(one, /^group-[a-f0-9]{64}\.db$/); assert.equal(h.module.sharingDatabaseFilename('user-a', 'group-a'), one);
   assert.notEqual(h.module.sharingDatabaseFilename('user-b', 'group-a'), one);
   assert.notEqual(h.module.sharingDatabaseFilename('user-a', 'group-b'), one);
+  assert.notEqual(h.module.sharingDatabaseFilename('user-a', 'group-a', 'rejoin-1'), one);
+  assert.notEqual(h.module.sharingDatabaseFilename('user-a', 'group-a', 'rejoin-1'), h.module.sharingDatabaseFilename('user-a', 'group-a', 'rejoin-2'));
+  assert.equal(h.module.sharingDatabaseFilename('user-a', 'group-a', undefined), one, 'pre-existing group paths must not change');
   assert.throws(() => h.module.sharingDatabaseFilename('../escape', 'group-a'));
 });
 

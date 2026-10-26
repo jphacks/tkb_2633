@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -23,13 +23,20 @@ const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function CalendarScreen() {
   const { snapshot, loading, error, refresh, database } = usePlannerData();
-  const today = localDateFromDate(new Date());
+  const today = snapshot?.today ?? localDateFromDate(new Date());
   const [month, setMonth] = useState(() => ({ year: new Date().getFullYear(), monthIndex: new Date().getMonth() }));
   const [selectedDate, setSelectedDate] = useState<LocalDate>(today);
   const [periodsExpanded, setPeriodsExpanded] = useState(false);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
+  const initializedDay = useRef(false);
+  useEffect(() => {
+    if (snapshot && !initializedDay.current) {
+      initializedDay.current = true; const [year, month] = today.split('-').map(Number);
+      setSelectedDate(today); setMonth({ year, monthIndex: month - 1 });
+    }
+  }, [snapshot, today]);
 
   if (loading || !snapshot) return <PlannerLoadState title="カレンダー" message="予定を読み込んでいます。" error={error} retry={refresh} />;
 

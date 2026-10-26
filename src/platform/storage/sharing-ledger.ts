@@ -5,6 +5,7 @@ import { buildSharedReplica } from '../../features/sharing/replica.ts';
 import type { SharedReplica } from '../../features/sharing/replica.ts';
 import type { AuthenticatedSharedOperation } from '../../features/sharing/crypto.ts';
 import type { VerifiedSharedSnapshot } from '../../features/sharing/snapshots.ts';
+import { withIsolatedSqliteTransaction as atomic } from './isolated-transaction.ts';
 
 export interface SharingOutboxItem {
   operation: SharedOperation;
@@ -13,12 +14,6 @@ export interface SharingOutboxItem {
   nextAttemptAt: number;
 }
 const tails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
-
-/** Native exclusive transactions cannot accidentally absorb Google/private writes from another connection. */
-async function atomic(db: SQLiteDatabase, work: (transaction: SQLiteDatabase) => Promise<void>): Promise<void> {
-  if (db.withExclusiveTransactionAsync) await db.withExclusiveTransactionAsync(work);
-  else await db.withTransactionAsync(() => work(db)); // Portable SQLite test adapter.
-}
 
 /** Shared ledger operations serialize on their own connection; never wrap a personal repository transaction. */
 function serial<T>(db: SQLiteDatabase, operation: () => Promise<T>): Promise<T> {
@@ -77,7 +72,7 @@ async function loadOperations(db: SQLiteDatabase, groupId: string): Promise<Shar
 }
 
 export function loadSharedReplica(db: SQLiteDatabase, groupId: string): Promise<SharedReplica> {
-  return serial(db, () => loadReplicaInside(db, groupId));
+  return serial(db, () => atomic(db, (transaction) => loadReplicaInside(transaction, groupId)));
 }
 
 async function loadSnapshotInside(db: SQLiteDatabase, groupId: string): Promise<VerifiedSharedSnapshot | null> {
@@ -133,31 +128,50 @@ export function createLocalSharedOperation(
   apply: (db: SQLiteDatabase, replica: SharedReplica) => Promise<void>,
   sign?: (operation: SharedOperation) => string,
 ): Promise<SharedOperation> {
+  return createLocalSharedOperations(db, author, [draft], apply, sign).then((operations) => operations[0]);
+}
+
+export type SharedOperationDraft = Pick<SharedOperation, 'operationId' | 'entityType' | 'entityId' | 'operationType' | 'payload'>;
+
+/** One user action can update a chore and its baseline atomically; upload pages remain capped at 100. */
+export function createLocalSharedOperations(
+  db: SQLiteDatabase,
+  author: { groupId: string; userId: string; deviceId: string; keyVersion: number },
+  input: readonly SharedOperationDraft[] | ((transaction: SQLiteDatabase, replica: SharedReplica) => Promise<readonly SharedOperationDraft[]>),
+  apply: (db: SQLiteDatabase, replica: SharedReplica) => Promise<void>,
+  sign?: (operation: SharedOperation) => string,
+): Promise<SharedOperation[]> {
+  if (Array.isArray(input) && input.length > 256) return Promise.reject(new Error('Shared local transaction exceeds 256 changes'));
   return serial(db, async () => {
-    let created!: SharedOperation;
+    const created: SharedOperation[] = [];
     await atomic(db, async (db) => {
       const before = await loadReplicaInside(db, author.groupId);
-      const existingRow = await db.getFirstAsync<{ operation_json: string }>('SELECT operation_json FROM sharing_operations WHERE operation_id = ?', draft.operationId);
-      const existing = existingRow ? validateSharedOperation(JSON.parse(existingRow.operation_json), author.groupId) : before.operations.find((op) => op.operationId === draft.operationId);
-      if (existing) {
-        if (existing.authorUserId !== author.userId || existing.authorDeviceId !== author.deviceId
-          || existing.entityType !== draft.entityType || existing.entityId !== draft.entityId
-          || existing.operationType !== draft.operationType || canonicalJson(existing.payload) !== canonicalJson(draft.payload)) {
-          throw new Error('Operation ID reused with different content');
-        }
-        created = existing;
-        return;
-      }
+      const drafts = typeof input === 'function' ? await input(db, before) : input;
+      if (drafts.length > 256) throw new Error('Shared local transaction exceeds 256 changes');
       if (before.operations.some((op) => op.authorDeviceId === author.deviceId && before.pendingOperationIds.includes(op.operationId))) {
         throw new Error('Recover missing local history before editing on this device');
       }
-      created = validateSharedOperation({ ...draft, schemaVersion: 1, groupId: author.groupId, authorUserId: author.userId,
-        authorDeviceId: author.deviceId, keyVersion: author.keyVersion, deviceSequence: (before.frontier[author.deviceId] ?? 0) + 1,
-        logicalClock: before.logicalClock + 1, context: before.frontier }, author.groupId);
-      await insertOperation(db, created, sign?.(created));
-      const after = await loadReplicaInside(db, author.groupId);
-      await apply(db, after);
-      await db.runAsync('INSERT INTO sharing_outbox (operation_id) VALUES (?)', created.operationId);
+      const frontier = { ...before.frontier }; let clock = before.logicalClock; let changed = false;
+      const retained = new Map(before.operations.map((op) => [op.operationId, op]));
+      const receipts = new Set(before.operationIndex.map((item) => item.operationId));
+      for (const draft of drafts) {
+        const existingRow = await db.getFirstAsync<{ operation_json: string }>('SELECT operation_json FROM sharing_operations WHERE operation_id = ?', draft.operationId);
+        const existing = existingRow ? validateSharedOperation(JSON.parse(existingRow.operation_json), author.groupId) : retained.get(draft.operationId);
+        if (existing) {
+          if (existing.authorUserId !== author.userId || existing.authorDeviceId !== author.deviceId
+            || existing.entityType !== draft.entityType || existing.entityId !== draft.entityId
+            || existing.operationType !== draft.operationType || canonicalJson(existing.payload) !== canonicalJson(draft.payload)) throw new Error('Operation ID reused with different content');
+          created.push(existing); continue;
+        }
+        if (receipts.has(draft.operationId)) throw new Error('Operation ID already belongs to compacted history');
+        const op = validateSharedOperation({ ...draft, schemaVersion: 1, groupId: author.groupId, authorUserId: author.userId,
+          authorDeviceId: author.deviceId, keyVersion: author.keyVersion, deviceSequence: (frontier[author.deviceId] ?? 0) + 1,
+          logicalClock: clock + 1, context: frontier }, author.groupId);
+        await insertOperation(db, op, sign?.(op));
+        await db.runAsync('INSERT INTO sharing_outbox (operation_id) VALUES (?)', op.operationId);
+        frontier[author.deviceId] = op.deviceSequence; clock = op.logicalClock; changed = true; created.push(op);
+      }
+      if (changed) await apply(db, await loadReplicaInside(db, author.groupId));
     });
     return created;
   });
@@ -258,7 +272,7 @@ export function saveSharedAuthorProof(db: SQLiteDatabase, fact: AuthenticatedSha
 }
 
 export function loadSharedFacts(db: SQLiteDatabase, groupId: string): Promise<AuthenticatedSharedOperation[]> {
-  return serial(db, async () => {
+  return serial(db, () => atomic(db, async (db) => {
     const snapshot = await loadSnapshotInside(db, groupId);
     const facts = new Map(snapshot?.facts.map((fact) => [fact.operation.operationId, fact]));
     const rows = await db.getAllAsync<{ operation_json: string; author_signature: string | null }>(
@@ -269,21 +283,21 @@ export function loadSharedFacts(db: SQLiteDatabase, groupId: string): Promise<Au
       facts.set(operation.operationId, { operation, authorSignature: row.author_signature });
     }
     return [...facts.values()];
-  });
+  }));
 }
 
 /** Membership snapshots include published facts only; pending offline edits stay in the outbox and merge after rekeying. */
 export function loadPublishedSharedReplica(db: SQLiteDatabase, groupId: string): Promise<SharedReplica> {
-  return serial(db, async () => {
+  return serial(db, () => atomic(db, async (db) => {
     const rows = await db.getAllAsync<{ operation_json: string }>(`SELECT operation_json FROM sharing_operations
       WHERE group_id = ? AND operation_id NOT IN (SELECT operation_id FROM sharing_outbox) ORDER BY operation_id`, groupId);
     return buildSharedReplica(groupId, rows.map((row) => validateSharedOperation(JSON.parse(row.operation_json), groupId)),
       (await loadSnapshotInside(db, groupId))?.base);
-  });
+  }));
 }
 
 export function readSharingCheckpoint(db: SQLiteDatabase, groupId: string): Promise<{
-  cursor: string | null; sequence: number; lastSuccessfulSyncAt: number | null; pendingCount: number;
+  cursor: string | null; sequence: number; snapshotId: string | null; lastSuccessfulSyncAt: number | null; pendingCount: number;
 }> {
   return serial(db, async () => {
     const row = await db.getFirstAsync<{ cursor: string; last_successful_sync_at: number | null }>(
@@ -292,7 +306,8 @@ export function readSharingCheckpoint(db: SQLiteDatabase, groupId: string): Prom
     if (!Number.isSafeInteger(sequence) || sequence < 0) throw new Error('Invalid saved sharing position');
     const pending = await db.getFirstAsync<{ count: number }>(`SELECT count(*) AS count FROM sharing_outbox
       JOIN sharing_operations USING(operation_id) WHERE group_id = ?`, groupId);
-    return { cursor: row?.cursor ?? null, sequence, lastSuccessfulSyncAt: row?.last_successful_sync_at ?? null, pendingCount: pending?.count ?? 0 };
+    const snapshot = await db.getFirstAsync<{ snapshot_id: string }>('SELECT snapshot_id FROM sharing_snapshot_state WHERE group_id=?', groupId);
+    return { cursor: row?.cursor ?? null, sequence, snapshotId: snapshot?.snapshot_id ?? null, lastSuccessfulSyncAt: row?.last_successful_sync_at ?? null, pendingCount: pending?.count ?? 0 };
   });
 }
 
@@ -305,7 +320,7 @@ export function applySharingSnapshot(db: SQLiteDatabase, groupId: string, snapsh
     let result!: SharedReplica;
     await atomic(db, async (db) => {
       const cursor = await db.getFirstAsync<{ cursor: string }>('SELECT cursor FROM sharing_cursors WHERE group_id = ?', groupId);
-      if ((cursor?.cursor ?? null) !== expectedCursor || Number(cursor?.cursor ?? 0) > snapshot.throughSequence) throw new Error('Shared receive position changed concurrently');
+      if ((cursor?.cursor ?? null) !== expectedCursor) throw new Error('Shared receive position changed concurrently');
       const prior = await loadSnapshotInside(db, groupId);
       if (Object.entries(prior?.base.frontier ?? {}).some(([device, count]) => count > (snapshot.base.frontier[device] ?? 0))) throw new Error('Snapshot causal rollback');
       // Validate collisions and replay unpublished changes before replacing or deleting any old rows.
@@ -320,7 +335,7 @@ export function applySharingSnapshot(db: SQLiteDatabase, groupId: string, snapsh
       }
       await apply(db, result);
       await db.runAsync(`INSERT INTO sharing_cursors (group_id, cursor, last_successful_sync_at) VALUES (?, ?, ?)
-        ON CONFLICT(group_id) DO UPDATE SET cursor=excluded.cursor, last_successful_sync_at=excluded.last_successful_sync_at`, groupId, String(snapshot.throughSequence), now);
+        ON CONFLICT(group_id) DO UPDATE SET cursor=excluded.cursor, last_successful_sync_at=excluded.last_successful_sync_at`, groupId, String(Math.max(Number(cursor?.cursor ?? 0), snapshot.throughSequence)), now);
     });
     return result;
   });

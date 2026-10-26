@@ -111,6 +111,8 @@ export interface ChoreCompletion {
   householdId: EntityId;
   choreId: EntityId;
   completedAt: ISODateTime;
+  /** Shared workspaces freeze the recording day in the group's common timezone. */
+  completedLocalDate?: LocalDate;
   completedByMemberId?: EntityId;
   outcome: 'completed' | 'incomplete';
   source?: 'inApp' | 'notification' | 'widget' | 'googleTasks';

@@ -17,9 +17,9 @@ export default function HistoryScreen() {
   const completions = requestedChoreId
     ? snapshot.completions.filter((item) => item.choreId === requestedChoreId)
     : snapshot.completions;
-  const thisMonth = monthKey(localDateFromDate(new Date()));
+  const thisMonth = monthKey(snapshot.today ?? localDateFromDate(new Date()));
   const completedThisMonth = completions.filter((item) =>
-    item.outcome === 'completed' && monthKey(localDateFromISODateTime(item.completedAt)) === thisMonth,
+    item.outcome === 'completed' && monthKey(item.completedLocalDate ?? localDateFromISODateTime(item.completedAt)) === thisMonth,
   ).length;
 
   return (
@@ -41,7 +41,7 @@ export default function HistoryScreen() {
         </Card>
       ) : completions.slice(0, 100).map((completion) => {
         const chore = choresById.get(completion.choreId);
-        const date = localDateFromISODateTime(completion.completedAt);
+        const date = completion.completedLocalDate ?? localDateFromISODateTime(completion.completedAt);
         const isCompleted = completion.outcome === 'completed';
         return (
           <Card key={completion.id} style={styles.historyCard}>

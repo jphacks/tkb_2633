@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const INITIAL_SCHEMA_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 18;
+const CURRENT_SCHEMA_VERSION = 19;
 
 const runningMigrations = new WeakMap<SQLiteDatabase, Promise<void>>();
 
@@ -348,6 +348,12 @@ async function migrateSchema(database: SQLiteDatabase): Promise<void> {
     await addColumnIfMissing(database, 'google_sync_state', 'account_subject', 'TEXT');
     await database.execAsync('PRAGMA user_version = 18');
     version = 18;
+  }
+  if (version < 19) {
+    // Disconnecting one workspace must not revoke the native Google session used by another.
+    await addColumnIfMissing(database, 'google_sync_state', 'connection_active', 'INTEGER NOT NULL DEFAULT 1');
+    await database.execAsync('PRAGMA user_version = 19');
+    version = 19;
   }
   if (startingVersion < CURRENT_SCHEMA_VERSION) {
     await database.execAsync(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);

@@ -15,6 +15,7 @@ export function createPlannerRefreshController<Snapshot>(dependencies: {
   load(widgetIds: readonly string[], force: boolean): Promise<{ snapshot: Snapshot; canPublishWidget: boolean }>;
   weather(snapshot: Snapshot, canCommit: () => boolean): Promise<Snapshot | null>;
   publish(snapshot: Snapshot, canPublishWidget: boolean): void | Promise<void>;
+  discardSnapshotOnError?: (error: unknown) => boolean;
 }) {
   let state: PlannerViewState<Snapshot> = { snapshot: null, loading: true, error: null };
   const listeners = new Set<() => void>();
@@ -56,7 +57,7 @@ export function createPlannerRefreshController<Snapshot>(dependencies: {
         });
         if (request.waitForWeather) await weather;
       } catch (error) {
-        if (current === revision) update({ ...state, loading: false,
+        if (current === revision) update({ ...state, ...(dependencies.discardSnapshotOnError?.(error) ? { snapshot: null } : {}), loading: false,
           error: error instanceof Error ? error.message : 'データを読み込めませんでした' });
       }
     }

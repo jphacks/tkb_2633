@@ -16,11 +16,12 @@ export const sharingSecureVault = createSecureVault({
 }, nativeSharingCrypto.randomBytes);
 
 const pendingIdentities = new Map<string, Promise<DeviceSecretIdentity>>();
-export function loadOrCreateSharingDeviceIdentity(userId: string): Promise<DeviceSecretIdentity> {
+export function loadOrCreateSharingDeviceIdentity(userId: string, localGeneration?: string): Promise<DeviceSecretIdentity> {
   assertSharedIdentifier(userId);
-  const existing = pendingIdentities.get(userId); if (existing) return existing;
+  if (localGeneration) assertSharedIdentifier(localGeneration);
+  const key = localGeneration ? `device-identity:${userId}:${localGeneration}` : `device-identity:${userId}`;
+  const existing = pendingIdentities.get(key); if (existing) return existing;
   const pending = (async () => {
-    const key = `device-identity:${userId}`;
     const saved = await sharingSecureVault.getItem(key);
     if (saved) return validateDeviceSecretIdentity(JSON.parse(saved));
     const identity = await createDeviceIdentity(nativeSharingCrypto);
@@ -28,8 +29,8 @@ export function loadOrCreateSharingDeviceIdentity(userId: string): Promise<Devic
     await sharingSecureVault.setItem(key, JSON.stringify(identity));
     return identity;
   })();
-  pendingIdentities.set(userId, pending);
-  void pending.finally(() => { if (pendingIdentities.get(userId) === pending) pendingIdentities.delete(userId); }).catch(() => undefined);
+  pendingIdentities.set(key, pending);
+  void pending.finally(() => { if (pendingIdentities.get(key) === pending) pendingIdentities.delete(key); }).catch(() => undefined);
   return pending;
 }
 

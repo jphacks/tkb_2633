@@ -21,7 +21,7 @@ export default function ApplianceCareScreen() {
   const requestedProductName = Array.isArray(params.productName) ? params.productName[0] : params.productName;
   const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const returnTo = returnToParam === '/chores' ? '/chores' : returnToParam === '/manual' ? '/manual' : undefined;
-  const { database, refresh } = usePlannerData();
+  const { database, refresh, snapshot } = usePlannerData();
   const [manufacturer, setManufacturer] = useState('');
   const [productName, setProductName] = useState(requestedProductName ?? '');
   const [modelNumber, setModelNumber] = useState('');
@@ -90,7 +90,9 @@ export default function ApplianceCareScreen() {
       if (nextResult.status === 'verified') {
         const values = defaultApplianceCycles(nextResult.analysis, savedContext?.chores);
         setCycleValues(values);
-        try {
+        if (snapshot?.sharing) {
+          setMessage('内容を確認してから、共有グループへ保存してください。');
+        } else try {
           await persistAnalysis(nextResult, values);
         } catch (cause) {
           setMessage(cause instanceof Error ? `解析結果を保存できませんでした：${cause.message}` : '解析結果を保存できませんでした。');
@@ -235,7 +237,7 @@ export default function ApplianceCareScreen() {
               manufacturer={verified.product.manufacturer}
             />
           ))}
-          <AppButton title={working ? '保存中…' : analysisSaved ? '周期の変更を保存' : '解析結果の保存を再試行'} onPress={() => void saveChanges()} disabled={working} />
+          <AppButton title={working ? '保存中…' : analysisSaved ? '周期の変更を保存' : snapshot?.sharing ? '内容を確認して共有グループへ保存' : '解析結果の保存を再試行'} onPress={() => void saveChanges()} disabled={working} />
           <Text style={styles.note}>具体的なメーカー周期がない項目は周期なしのまま家電詳細に保存し、自動予定には追加しません。周期を入力した項目だけ予定に登録します。</Text>
         </>
       ) : null}

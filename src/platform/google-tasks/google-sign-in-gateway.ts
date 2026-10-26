@@ -147,10 +147,15 @@ export async function authorizeGoogleSharingIdentity(): Promise<{ idToken: strin
     module = await signInForUserAction(); user = await getCurrentGoogleUser(module);
   }
   if (!user) throw new GoogleSignInRequiredError();
-  const tokens = await authStep('get-sharing-identity', () => module.GoogleOneTapSignIn.getTokens());
-  if (!tokens.idToken) throw new GoogleSignInRequiredError();
+  // Credential Manager already returned an audience-bound ID token. Android's
+  // getTokens also authorizes OAuth scopes and can require separate consent even
+  // for a successful identity-only sign-in. Firebase does not need that token.
+  // iOS getTokens refreshes its ID token through the existing native session.
+  const idToken = Platform.OS === 'android' ? user.idToken
+    : (await authStep('get-sharing-identity', () => module.GoogleOneTapSignIn.getTokens())).idToken;
+  if (!idToken || (Platform.OS === 'android' && !isGoogleIdentityTokenFresh(idToken))) throw new GoogleSignInRequiredError();
   if ((await getCurrentGoogleUser(module))?.user.id !== user.user.id) throw new GoogleAccountMismatchError();
-  return { idToken: tokens.idToken, googleUserId: user.user.id };
+  return { idToken, googleUserId: user.user.id };
 }
 
 export async function authorizeGoogleTasks(): Promise<void> {

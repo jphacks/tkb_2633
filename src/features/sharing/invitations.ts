@@ -20,6 +20,7 @@ export interface SharedJoinRequest {
   invitationProof: string; deviceProof: string;
 }
 const PREFIX = 'houseworkplanner://sharing/join#v1=';
+const COMPACT_PREFIX = 'houseworkplanner://sharing/join#v2=';
 function exact(input: unknown, keys: string[]): void {
   assertJsonRecord(input);
   if (Object.keys(input).sort().join(',') !== keys.sort().join(',')) throw new Error('Unknown invitation field');
@@ -64,9 +65,23 @@ export function encodeSharedInvitation(link: SharedInvitationLink): string {
   if (bytesToHex(ed25519.getPublicKey(seedBytes(link.seed))) !== invitation.body.invitationPublicKey) throw new Error('Invitation secret does not match');
   return PREFIX + encodeURIComponent(canonicalJson({ invitation, seed: link.seed }));
 }
+/** A compact wire tuple improves QR readability; signatures still cover the full original contract. */
+export function encodeCompactSharedInvitation(link: SharedInvitationLink): string {
+  encodeSharedInvitation(link);
+  const { body, signature } = link.invitation; const { pin } = body; const owner = pin.ownerIdentity;
+  return COMPACT_PREFIX + encodeURIComponent(canonicalJson([body.inviteId, body.groupId, body.invitationPublicKey, body.expiresAt,
+    pin.digest, pin.revision, pin.ownerUserId, owner.deviceId, owner.signingPublicKey, owner.agreementPublicKey, signature, link.seed]));
+}
 export function parseSharedInvitation(value: string, now: number): SharedInvitationLink {
-  if (typeof value !== 'string' || value.length > 12000 || !value.startsWith(PREFIX)) throw new Error('LiFlowの有効な招待リンクを入力してください。');
-  const result = JSON.parse(decodeURIComponent(value.slice(PREFIX.length))) as SharedInvitationLink;
+  if (typeof value !== 'string' || value.length > 12000 || (!value.startsWith(PREFIX) && !value.startsWith(COMPACT_PREFIX))) throw new Error('LiFlowの有効な招待リンクを入力してください。');
+  let result: SharedInvitationLink;
+  if (value.startsWith(COMPACT_PREFIX)) {
+    const tuple = JSON.parse(decodeURIComponent(value.slice(COMPACT_PREFIX.length)));
+    if (!Array.isArray(tuple) || tuple.length !== 12 || tuple.some((part, index) => typeof part !== ([3, 5].includes(index) ? 'number' : 'string'))) throw new Error('Invalid compact invitation');
+    const [inviteId, groupId, invitationPublicKey, expiresAt, digest, revision, ownerUserId, deviceId, signingPublicKey, agreementPublicKey, signature, seed] = tuple;
+    result = { invitation: { body: { schemaVersion: 1, inviteId, groupId, invitationPublicKey, expiresAt,
+      pin: { groupId, digest, revision, ownerUserId, ownerIdentity: { deviceId, signingPublicKey, agreementPublicKey } } }, signature }, seed };
+  } else result = JSON.parse(decodeURIComponent(value.slice(PREFIX.length))) as SharedInvitationLink;
   exact(result, ['invitation', 'seed']); validateSharedInvitation(result.invitation); encodeSharedInvitation(result);
   if (result.invitation.body.expiresAt <= now) throw new Error('この招待リンクは期限が切れています。');
   return result;

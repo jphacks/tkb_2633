@@ -1,9 +1,9 @@
-import { collection, deleteDoc, doc, getDocFromServer, getDocsFromServer, limit, query, runTransaction, serverTimestamp,
-  setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp,
+  setDoc, startAfter, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import type { DocumentReference, Firestore } from 'firebase/firestore';
 import { assertSharedIdentifier, canonicalJson } from '../../features/sharing/operations.ts';
-import { parseSharedCloudGroup, rosterCloudFields, SharingCloudChangedError } from '../../features/sharing/cloud-contract.ts';
-import { sharedRosterDigest, verifySharedRosterTransition } from '../../features/sharing/roster.ts';
+import { boundedSharingCloudBatches, parseSharedCloudGroup, rosterCloudFields, SharingCloudChangedError } from '../../features/sharing/cloud-contract.ts';
+import { sharedRosterDigest, validateSharedRoster, verifySharedRosterTransition } from '../../features/sharing/roster.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
 import { validateSharedInvitation, verifySharedJoinRequest } from '../../features/sharing/invitations.ts';
 import type { SharedJoinRequest, SignedSharedInvitation } from '../../features/sharing/invitations.ts';
@@ -31,6 +31,7 @@ function snapshotFields(manifest: SignedSharedSnapshotManifest) {
 }
 
 export function createSharingManagement({ firestore, userId, checkAccount, reference, readGroup }: ManagementContext) {
+  const cleanupPositions = new Map<string, { createdAt: Timestamp; id: string }>();
   const inviteRef = (id: string) => { assertSharedIdentifier(id); return doc(firestore, 'sharingInvites', id); };
   const readInvitation = async (inviteId: string) => {
     checkAccount(); const result = await getDocFromServer(inviteRef(inviteId)); checkAccount();
@@ -87,6 +88,18 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
       assertSharedIdentifier(requestUserId); checkAccount();
       await deleteDoc(doc(inviteRef(inviteId), 'requests', requestUserId)); checkAccount();
     },
+    async cancelOwnJoinRequest(invitation: SignedSharedInvitation, request: SharedJoinRequest): Promise<boolean> {
+      if (request.body.userId !== userId || request.body.inviteId !== invitation.body.inviteId) throw new Error('Invalid request cancellation');
+      checkAccount();
+      const cancelled = await runTransaction(firestore, async (transaction) => {
+        checkAccount(); const ref = inviteRef(invitation.body.inviteId);
+        const actual = invitationData((await transaction.get(ref)).data());
+        const requestRef = doc(ref, 'requests', userId); const stored = await transaction.get(requestRef);
+        if (actual.status === 'used' && actual.usedBy === userId) return false;
+        if (stored.exists() && stored.data().requestJson !== canonicalJson(request)) throw new Error('Join request changed during cancellation');
+        if (stored.exists()) transaction.delete(requestRef); return true;
+      }); checkAccount(); return cancelled;
+    },
     async revokeInvitation(inviteId: string): Promise<void> {
       checkAccount(); await updateDoc(inviteRef(inviteId), { status: 'revoked', usedBy: null }); checkAccount();
     },
@@ -94,10 +107,11 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
     async prepareSnapshot(input: EncryptedSharedSnapshot, roster: VerifiedSharedRoster): Promise<void> {
       verifySharedSnapshotManifest(input.manifest, roster); const { body } = input.manifest;
       if (input.chunks.length !== body.chunks.length) throw new Error('Snapshot chunk count mismatch');
-      for (let offset = 0; offset < input.chunks.length; offset += 100) {
+      const pages = boundedSharingCloudBatches(input.chunks.map((chunk, index) => ({ chunk, index })),
+        ({ chunk }) => new TextEncoder().encode(canonicalJson(chunk)).length + 2048);
+      for (const page of pages) {
         checkAccount(); const batch = writeBatch(firestore); let count = 0;
-        for (let index = offset; index < Math.min(input.chunks.length, offset + 100); index++) {
-          const chunk = input.chunks[index];
+        for (const { chunk, index } of page) {
           if (sharedDocumentDigest(chunk) !== body.chunks[index].digest) throw new Error('Snapshot chunk hash mismatch');
           const ref = doc(reference(body.groupId), 'snapshotChunks', body.chunks[index].id);
           const existing = await getDocFromServer(ref); const envelopeJson = canonicalJson(chunk);
@@ -196,6 +210,62 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
         chunks.push(JSON.parse(data.envelopeJson));
       }
       return { manifest, chunks };
+    },
+    /** Bounded retention: offline devices recover from the current snapshot after a seven-day grace period. */
+    async compactHistory(groupId: string, now = Date.now()): Promise<{ deleted: number; waitingForDevices: boolean }> {
+      if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid compaction clock');
+      checkAccount(); const { group } = await readGroup(groupId);
+      if (group.ownerUserId !== userId || group.rotationRequired || !group.snapshotId) return { deleted: 0, waitingForDevices: false };
+      const ref = reference(groupId);
+      const current = (await getDocFromServer(doc(ref, 'snapshots', group.snapshotId))).data(); checkAccount();
+      if (current?.keyVersion !== group.keyVersion || current.throughSequence !== group.snapshotThroughSequence || !(current.createdAt instanceof Timestamp)) throw new Error('Compaction requires a current-epoch snapshot');
+      const acknowledgements = await getDocsFromServer(collection(ref, 'acknowledgements')); checkAccount();
+      const received = new Map(acknowledgements.docs.map((item) => [item.id, item.data()]));
+      const acknowledged = Object.keys(group.deviceOwners).every((device) => received.get(device)?.sequence >= group.snapshotThroughSequence);
+      const grace = 7 * 24 * 60 * 60_000;
+      const oldEnough = (data: Record<string, unknown>) => data.createdAt instanceof Timestamp && now - data.createdAt.toMillis() >= grace;
+      const snapshots = await getDocsFromServer(query(collection(ref, 'snapshots'), orderBy('createdAt', 'desc'), limit(100))); checkAccount();
+      const keepIds = new Set([group.snapshotId]);
+      const fallback = snapshots.docs.find((item) => item.id !== group.snapshotId);
+      if (fallback) keepIds.add(fallback.id);
+      const keepKeyVersions = new Set([group.keyVersion, ...(fallback ? [fallback.data().keyVersion] : [])]);
+      const removals: DocumentReference[] = [];
+      const maintenanceRef = doc(ref, 'maintenance', 'keyCleanup'); let nextKeyProgress: number | undefined;
+      const covered = await getDocsFromServer(query(collection(ref, 'events'), where('uploadSequence', '<=', group.snapshotThroughSequence), orderBy('uploadSequence'), limit(100)));
+      checkAccount(); removals.push(...covered.docs.filter((item) => acknowledged || oldEnough(item.data())).map((item) => item.ref));
+      if (removals.length < 100 && group.keyVersion > 1) {
+        const progress = (await getDocFromServer(maintenanceRef)).data()?.throughKeyVersion ?? 0; checkAccount();
+        if (!Number.isSafeInteger(progress) || progress < 0 || progress >= group.keyVersion) throw new Error('Invalid key cleanup position');
+        const version = progress + 1;
+        if (version < Math.min(...keepKeyVersions)) {
+          const stored = (await getDocFromServer(doc(ref, 'rosters', String(version)))).data(); checkAccount();
+          if (!stored || typeof stored.rosterJson !== 'string') throw new Error('Missing key cleanup membership');
+          const epoch = validateSharedRoster(JSON.parse(stored.rosterJson));
+          if (epoch.body.groupId !== groupId || epoch.body.keyVersion !== version) throw new Error('Invalid key cleanup membership');
+          // Derive IDs from public signed membership; the owner never lists another recipient's key ciphertexts.
+          const keyRefs = epoch.body.members.flatMap((member) => member.devices.map((device) => doc(ref, 'keyEnvelopes', `${version}_${device.identity.deviceId}`)));
+          if ((acknowledged || oldEnough(stored)) && keyRefs.length + removals.length + 1 <= 100) { removals.push(...keyRefs); nextKeyProgress = version; }
+        }
+      }
+      const deleteLimit = nextKeyProgress === undefined ? 100 : 99;
+      removals.push(...snapshots.docs.filter((item) => !keepIds.has(item.id)).slice(0, deleteLimit - removals.length).map((item) => item.ref));
+      if (removals.length < deleteLimit) {
+        const position = cleanupPositions.get(groupId);
+        const chunks = await getDocsFromServer(query(collection(ref, 'snapshotChunks'), where('createdAt', '<=', Timestamp.fromMillis(now - grace)),
+          orderBy('createdAt'), orderBy(documentId()), ...(position ? [startAfter(position.createdAt, position.id)] : []), limit(25))); checkAccount();
+        const last = chunks.docs.at(-1);
+        if (chunks.size === 25 && last?.data().createdAt instanceof Timestamp) cleanupPositions.set(groupId, { createdAt: last.data().createdAt, id: last.id });
+        else cleanupPositions.delete(groupId);
+        removals.push(...chunks.docs.filter((item) => !keepIds.has(item.data().snapshotId)).slice(0, deleteLimit - removals.length).map((item) => item.ref));
+      }
+      if (removals.length) {
+        const actual = await readGroup(groupId);
+        if (actual.group.snapshotId !== group.snapshotId || actual.group.keyVersion !== group.keyVersion) return { deleted: 0, waitingForDevices: false };
+        const batch = writeBatch(firestore); for (const item of removals) batch.delete(item);
+        if (nextKeyProgress !== undefined) batch.set(maintenanceRef, { throughKeyVersion: nextKeyProgress });
+        checkAccount(); await batch.commit(); checkAccount();
+      }
+      return { deleted: removals.length, waitingForDevices: !acknowledged };
     },
   };
 }

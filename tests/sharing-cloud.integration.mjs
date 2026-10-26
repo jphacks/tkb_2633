@@ -39,6 +39,18 @@ function operation(identity, sequence = 1, overrides = {}) {
 }
 const refs = (store) => doc(store.firestore, 'sharingGroups', 'group-test');
 
+test('membership discovery paginates beyond 100 groups and removal checks read the exact group rather than a truncated list', async () => {
+  const h = await fixture(); const ids = Array.from({ length: 250 }, (_, i) => `group-${String(i).padStart(3, '0')}`);
+  await env.withSecurityRulesDisabled(async (context) => {
+    await Promise.all(ids.map((id) => setDoc(doc(context.firestore(), 'sharingUsers', 'owner', 'memberships', id), { groupId: id, createdAt: serverTimestamp() })));
+  });
+  assert.deepEqual(await h.store.cloud.listMemberships(), [...ids, 'group-test']);
+  assert.equal(await h.store.cloud.hasMembership('group-249'), true);
+  assert.equal(await h.store.cloud.hasMembership('absent-group'), false);
+  assert.equal(await client('other-user').cloud.hasMembership('group-249'), false);
+  h.store.switch('other-user'); await assert.rejects(h.store.cloud.hasMembership('group-test'), /切り替わり/);
+});
+
 test('cloud transport bounds 250 encrypted edits into 100/100/50 pages and retries a create or lost upload response without duplicates', async () => {
   const h = await fixture(); await h.store.cloud.createGroup(h.roster, h.wrapped);
   assert.deepEqual(await h.store.cloud.listMemberships(), ['group-test']);

@@ -1,3 +1,4 @@
+import { isSharedTimeZone } from './group-clock.ts';
 /** The wire payload is deliberately independent of Expo, Firebase and personal Google state. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type VersionVector = Record<string, number>;
@@ -46,7 +47,7 @@ const FIELDS: Record<SharedEntityType, Set<string>> = {
     'officialProductUrl', 'officialManualUrl', 'analysis', 'reviewed', 'createdAt', 'updatedAt']),
   member: new Set(['displayName', 'userId']),
   completion: new Set(['choreId', 'completedAt', 'completedByMemberId', 'scheduledDate', 'scheduledWindowStart',
-    'scheduledWindowEnd', 'completionNote', 'estimatedDate', 'outcome', 'targetOperationId']),
+    'scheduledWindowEnd', 'completedLocalDate', 'completionNote', 'estimatedDate', 'outcome', 'targetOperationId']),
 };
 
 export function assertSharedIdentifier(value: unknown): asserts value is string {
@@ -90,12 +91,18 @@ function validatePatchValues(entityType: SharedEntityType, patch: Record<string,
     'successorChoreId', 'completedByMemberId', 'targetOperationId']);
   const stringArrays = new Set(['manufacturerRecommendedConditions', 'instructions', 'tools', 'cautions', 'sourceNotes']);
   const dates = new Set(['lastCompletedDate', 'initialScheduledDate', 'anchorDate', 'date', 'scheduledDate',
-    'scheduledWindowStart', 'scheduledWindowEnd']);
+    'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate']);
+  const optionalFields = new Set(['recommendedCycleDays', 'userIntervalDays', 'manufacturerRecommendedIntervalDays',
+    'manufacturerRecommendedConditions', 'schedulingNotes', 'locationOrAppliance', 'laundryDryingPreference', 'procedureSections',
+    'trivia', 'sourceNotes', 'estimatedMinutes', 'applianceCareSource', 'applianceId', 'applianceTaskName', 'unknownReason',
+    'officialProductUrl', 'officialManualUrl', 'monthlyDay', 'policyData']);
   const enums: Record<string, string[]> = { load: ['light', 'normal', 'heavy'],
     frequencyMode: ['frequent', 'balanced', 'relaxed'], laundryDryingPreference: ['indoors', 'outdoors', 'either'],
     recurrence: ['weekly', 'biweekly', 'monthly'], unknownReason: ['unknown', 'skipped'],
     outcome: ['completed', 'incomplete'], completionNote: ['completedNow', 'alreadyDone'] };
   for (const [field, value] of Object.entries(patch)) {
+    if (entityType === 'waste' && field === 'anchorDate' && value === null) continue;
+    if (value === null && optionalFields.has(field)) continue;
     let valid = true;
     if (booleans.has(field)) valid = typeof value === 'boolean';
     else if (cycles.has(field)) valid = value === null || integer(value, 1, 3650);
@@ -121,8 +128,7 @@ function validatePatchValues(entityType: SharedEntityType, patch: Record<string,
       valid = Array.isArray(value) && value.length <= 64 && new Set(value).size === value.length;
       if (valid) for (const id of value as JsonValue[]) assertSharedIdentifier(id);
     } else if (field === 'timeZone') {
-      if (typeof value !== 'string' || value.length > 100) valid = false;
-      else try { new Intl.DateTimeFormat('en-US', { timeZone: value }).format(0); } catch { valid = false; }
+      valid = isSharedTimeZone(value);
     } else if (['completedAt', 'createdAt', 'updatedAt'].includes(field)) valid = typeof value === 'string'
       && /^\d{4}-\d{2}-\d{2}T/u.test(value) && Number.isFinite(Date.parse(value));
     else if (field === 'procedureSections' || field === 'trivia') valid = Array.isArray(value) && value.every((item) => {

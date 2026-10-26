@@ -29,6 +29,7 @@ export function screenHarness(filename, options = {}) {
     useRef: (value) => hook(() => ({ current: value }))[0],
     useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+    useContext: (context) => context._currentValue ?? null,
     createElement: (type, props, ...children) => jsx(type, { ...props, children }),
   };
   const transition = { duration: () => transition, springify: () => transition };
@@ -61,6 +62,7 @@ export function screenHarness(filename, options = {}) {
     '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
     '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },
     '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: () => {} },
+    '@/platform/sharing/workspaces': { hasOtherGoogleWorkspaceConnections: async () => false },
     ...options.mocks,
   };
 

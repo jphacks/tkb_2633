@@ -3,11 +3,15 @@ import { selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import type { LocalNotificationGateway, LocalNotificationRequest } from '@/features/notifications/contracts';
+import { sharedDateAtTime, sharedLocalDate } from '../sharing/group-clock';
 
 const DAILY_DIGEST_KEY_PREFIX = 'housework-digest:';
 const SCHEDULE_HORIZON_DAYS = 30;
 
 export interface DailyDigestSnapshot {
+  timeZone?: string;
+  notificationScope?: string;
+  notificationTitle?: string;
   scheduleEntries: readonly ChoreScheduleEntry[];
   chores: readonly (Pick<ChoreDefinition, 'id' | 'name'> & Partial<Pick<ChoreDefinition, 'enabled' | 'archived'>>)[];
   completions: readonly ChoreCompletion[];
@@ -18,12 +22,14 @@ export function createDailyHouseworkDigestRequests(
   snapshot: DailyDigestSnapshot,
   now = new Date(),
 ): LocalNotificationRequest[] {
-  const today = localDateFromDate(now);
+  const today = snapshot.timeZone ? sharedLocalDate(now, snapshot.timeZone) : localDateFromDate(now);
+  const prefix = notificationPrefix(snapshot);
   const requests: LocalNotificationRequest[] = [];
 
   for (let offset = 0; offset <= SCHEDULE_HORIZON_DAYS; offset += 1) {
     const date = addDays(today, offset);
-    const fireAt = localDateAtTime(date, snapshot.settings.notificationHour, snapshot.settings.notificationMinute);
+    const fireAt = snapshot.timeZone ? sharedDateAtTime(date, snapshot.settings.notificationHour, snapshot.settings.notificationMinute, snapshot.timeZone)
+      : localDateAtTime(date, snapshot.settings.notificationHour, snapshot.settings.notificationMinute);
     if (fireAt <= now) continue;
 
     const dueEntries = selectDateTasks(snapshot.scheduleEntries.filter((entry) => isNotificationDay(entry, date)), snapshot.completions, date, 1, snapshot.chores)
@@ -38,12 +44,12 @@ export function createDailyHouseworkDigestRequests(
     const visibleNames = names.slice(0, 4).join('、');
     const remaining = names.length - Math.min(names.length, 4);
     requests.push({
-      key: `${DAILY_DIGEST_KEY_PREFIX}${date}`,
-      title: '今日の家事',
+      key: `${prefix}${date}`,
+      title: snapshot.notificationTitle ?? '今日の家事',
       subtitle: `${names.length}件の未完了タスク`,
       body: `${visibleNames}${remaining > 0 ? `、ほか${remaining}件` : ''}`,
       fireAt: fireAt.toISOString() as LocalNotificationRequest['fireAt'],
-      data: { kind: 'daily-housework-digest', date },
+      data: { kind: 'daily-housework-digest', date, ...(snapshot.notificationScope ? { workspace: snapshot.notificationScope } : {}) },
     });
   }
 
@@ -89,7 +95,7 @@ async function performSync(
     }
   }
   for (const request of existing) {
-    if (request.key.startsWith(DAILY_DIGEST_KEY_PREFIX) && !desiredKeys.has(request.key)) {
+    if (request.key.startsWith(notificationPrefix(snapshot)) && !desiredKeys.has(request.key)) {
       try { await gateway.cancel(request.key); }
       catch (error) { failures.push(error); }
     }
@@ -97,6 +103,12 @@ async function performSync(
   // Keep reminders whose replacements failed, but do not leave unrelated obsolete
   // reminders active just because another operation failed.
   if (failures.length > 0) throw failures[0];
+}
+
+function notificationPrefix(snapshot: DailyDigestSnapshot): string {
+  if (!snapshot.notificationScope) return DAILY_DIGEST_KEY_PREFIX;
+  if (!/^[a-f0-9]{64}$/u.test(snapshot.notificationScope)) throw new Error('Invalid notification workspace');
+  return `liflow-group-digest:${snapshot.notificationScope}:`;
 }
 
 function requestSignature(request: LocalNotificationRequest): string {

@@ -23,6 +23,8 @@ import { reconcileGoogleTasks } from './reconcile-google-tasks';
 import type { GoogleSyncRepositoryPort } from './reconcile-google-tasks';
 import { notifyGooglePlannerChanges } from './planner-change-events';
 import { withGoogleSyncOperation } from './operation-lock';
+import { sharedRepositoryAdapter } from '@/platform/storage/shared-repository-adapter';
+import { sharedGoogleNamespace, sharedPlannerChangeScope } from './workspace-policy';
 
 export type GoogleSyncRunResult =
   | { kind: 'success'; skipped?: boolean; created?: number; updated?: number; removed?: number; imported?: number; remoteTasksRead?: number; hiddenCompletionsRead?: number; invalidCompletions?: number }
@@ -33,6 +35,7 @@ export type GoogleSyncRunResult =
 export interface GoogleSyncCoordinatorDependencies extends GoogleSyncRepositoryPort {
   /** The actual SQLite connection/workspace for native calls; injected ports use their own identity. */
   syncScope?: object;
+  today?: LocalDate;
   loadState(): Promise<GoogleSyncState | null>;
   saveState(state: GoogleSyncState): Promise<void>;
   getAccessToken(): Promise<string>;
@@ -51,12 +54,17 @@ export async function syncGoogleTasks(
 ): Promise<GoogleSyncRunResult> {
   const now = options.now ?? new Date();
   const householdId = 'local-household';
+  const shared = sharedRepositoryAdapter(database);
+  const sharedSnapshot = shared ? await shared.readSnapshot(now) : null;
+  if (sharedSnapshot?.sharing?.issues.some((issue) => issue.kind === 'conflict' || issue.kind === 'dependencyCycle')) return { kind: 'success', skipped: true };
+  const sharedToday = sharedSnapshot?.today;
   const startedAt = Date.now();
   let readRequests = 0;
   let writeRequests = 0;
   let writeOperations = 0;
   const result = await syncGoogleTasksWithDependencies({
     syncScope: database,
+    ...(shared ? { taskNamespace: sharedGoogleNamespace(shared.userId, shared.groupId), today: sharedToday } : {}),
     loadState: () => loadGoogleSyncState(database, householdId),
     hasPendingLocalChanges: (lastSuccess) => hasPendingGoogleTaskChanges(database, lastSuccess, householdId),
     saveState: (state) => saveGoogleSyncState(database, state),
@@ -64,7 +72,7 @@ export async function syncGoogleTasks(
       const { getBoundGoogleAccessToken } = await import('@/platform/google-tasks/bound-session');
       return getBoundGoogleAccessToken(database, 'tasks');
     },
-    refreshCalendar: async (calendarOptions) => {
+    refreshCalendar: shared ? undefined : async (calendarOptions) => {
       const { refreshGoogleCalendarAvailability } = await import('./calendar-coordinator');
       return refreshGoogleCalendarAvailability(database, calendarOptions);
     },
@@ -78,7 +86,7 @@ export async function syncGoogleTasks(
     importGoogleTaskChanges: async (changes, today) => {
       const imported = await importGoogleTaskChanges(database, changes, today as LocalDate, now);
       if (imported > 0) {
-        const handled = notifyGooglePlannerChanges();
+        const handled = notifyGooglePlannerChanges(shared ? sharedPlannerChangeScope(shared.userId, shared.groupId) : 'personal');
         if (!handled) try {
           const { refreshPlannerAfterGoogleImport } = await import('@/platform/google-tasks/refresh-planner-after-google-import');
           await refreshPlannerAfterGoogleImport(database, today as LocalDate);
@@ -199,7 +207,7 @@ async function runSync(
       repository: dependencies,
       api: dependencies.api,
       now,
-      today: localDateFromDate(now),
+      today: dependencies.today ?? localDateFromDate(now),
     });
     if (result.invalidCompletions > 0) {
       console.warn('[google-sync]', { code: 'invalid_remote_completion_timestamp', count: result.invalidCompletions });

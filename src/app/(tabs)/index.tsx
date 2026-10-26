@@ -28,7 +28,7 @@ export default function HomeScreen() {
   const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
   const [actionError, setActionError] = useState<string | null>(null);
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
-  const today = localDateFromDate(new Date());
+  const today = snapshot?.today ?? localDateFromDate(new Date());
   const thisWeekEnd = addDays(today, 7 - weekdayOf(today));
   const nextWeekStart = addDays(thisWeekEnd, 1);
   const nextWeekEnd = addDays(nextWeekStart, 6);

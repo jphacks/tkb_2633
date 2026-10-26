@@ -12,22 +12,33 @@ TaskManager.defineTask(GOOGLE_SYNC_BACKGROUND_TASK, async ({ error }) => {
   if (error) return BackgroundTask.BackgroundTaskResult.Failed;
 
   let database: SQLite.SQLiteDatabase | null = null;
+  let failed = false;
   try {
-    database = await SQLite.openDatabaseAsync('housework.db');
+    database = await SQLite.openDatabaseAsync('housework.db', { useNewConnection: true });
     await initializeLocalDatabase(database);
     const state = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
-    if (!state?.enabled) return BackgroundTask.BackgroundTaskResult.Success;
-    await syncGoogleTasks(database);
-    // Retry times are persisted locally; OS-level retries are reserved for execution/storage failures.
-    return BackgroundTask.BackgroundTaskResult.Success;
+    if (state?.enabled) await syncGoogleTasks(database);
   } catch {
-    return BackgroundTask.BackgroundTaskResult.Failed;
+    failed = true;
   } finally {
     await database?.closeAsync().catch(() => undefined);
   }
+  try {
+    const { syncKnownSharingWorkspaces } = await import('@/platform/sharing/workspaces');
+    await syncKnownSharingWorkspaces(30_000);
+  } catch { failed = true; }
+  // Each domain keeps its own retries. One storage failure cannot prevent the other domain from running.
+  return failed ? BackgroundTask.BackgroundTaskResult.Failed : BackgroundTask.BackgroundTaskResult.Success;
 });
 
-export async function registerGoogleSyncBackgroundTask(): Promise<boolean> {
+let registrationTail: Promise<unknown> = Promise.resolve();
+function serializeRegistration<T>(work: () => Promise<T>): Promise<T> {
+  const next = registrationTail.then(work, work); registrationTail = next.catch(() => undefined); return next;
+}
+export function registerGoogleSyncBackgroundTask(): Promise<boolean> {
+  return serializeRegistration(registerWorker);
+}
+async function registerWorker(): Promise<boolean> {
   if (!(await TaskManager.isAvailableAsync())) return false;
   if (await BackgroundTask.getStatusAsync() !== BackgroundTask.BackgroundTaskStatus.Available) return false;
   const registered = await TaskManager.getRegisteredTasksAsync();
@@ -37,7 +48,14 @@ export async function registerGoogleSyncBackgroundTask(): Promise<boolean> {
   return true;
 }
 
-export async function unregisterGoogleSyncBackgroundTask(): Promise<void> {
+export function unregisterGoogleSyncBackgroundTask(): Promise<void> {
+  return serializeRegistration(async () => {
+    const { isSharedWorkerNeeded } = await import('@/platform/sharing/workspaces');
+    if (await isSharedWorkerNeeded()) { await registerWorker(); return; }
+    await unregisterWorker();
+  });
+}
+async function unregisterWorker(): Promise<void> {
   if (!(await TaskManager.isAvailableAsync())) return;
   const registered = await TaskManager.getRegisteredTasksAsync();
   if (registered.some((task) => task.taskName === GOOGLE_SYNC_BACKGROUND_TASK)) {

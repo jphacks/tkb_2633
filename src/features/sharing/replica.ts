@@ -213,7 +213,9 @@ export function compactSharedReplica(replica: SharedReplica): SharedSnapshotBase
   const retained = new Set(replica.entities.flatMap((entity) => Object.values(entity.revisions).flat()));
   const last = new Map<string, SharedOperation>();
   for (const op of replica.operations) {
-    if (op.entityType === 'completion') retained.add(op.operationId);
+    // V2 authority is evaluated at each operation's causal cut. Earlier grants and
+    // policies remain evidence even after a later value supersedes them.
+    if (op.entityType === 'completion' || op.schemaVersion === 2) retained.add(op.operationId);
     if ((last.get(op.authorDeviceId)?.deviceSequence ?? 0) < op.deviceSequence) last.set(op.authorDeviceId, op);
   }
   for (const op of last.values()) retained.add(op.operationId);

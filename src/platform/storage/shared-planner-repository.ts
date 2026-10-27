@@ -14,6 +14,7 @@ import { createLocalSharedOperations, loadSharedReplica } from './sharing-ledger
 import { cacheSharedScheduleIfCurrent, persistSharedProjection, readSharedPrivateSettings, sharedProjectionToken } from './sharing-projection.ts';
 import type { SharedRepositoryAdapter } from './shared-repository-adapter.ts';
 import { sharedLocalDate } from '../../features/sharing/group-clock.ts';
+import { SharingSchedulerVersionError } from '../../features/sharing/cloud-contract.ts';
 
 /** Every DB handle is permanently bound to its Firebase account and group. */
 export function createSharedPlannerRepository(database: SQLiteDatabase, options: {
@@ -23,6 +24,8 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
   const clock = options.now ?? (() => new Date());
   let cached: { token: string; privateSettings: string; rosterDigest: string; snapshot: PlannerSnapshot } | undefined;
   function build(replica: SharedReplica, now: Date, privateSettings?: Parameters<typeof buildSharedPlannerSnapshot>[1]['privateSettings']) {
+    // This is the v1 projection. Schema2 needs its explicit workspace upgrade and its own planner.
+    if (replica.operations.some((operation) => operation.schemaVersion !== 1)) throw new SharingSchedulerVersionError();
     return buildSharedPlannerSnapshot(replica, { householdId: options.householdId, now, privateSettings,
       activeMemberIds: options.roster().body.members.map((member) => member.userId) });
   }

@@ -41,7 +41,7 @@ export async function verifyCloudMembership(deps: SharedSyncDependencies, curren
     const latest = archive.at(-1)!;
     if (sharedRosterDigest(latest) !== sharedRosterDigest(current)) throw new Error('Shared membership changed at an existing revision');
     if (record.join && sharedRosterDigest(archive[record.join.invitation.body.pin.revision - 1]) !== record.join.invitation.body.pin.digest) throw new Error('Invitation does not reach the previously trusted membership chain');
-    if (latest.body.schedulerVersion !== SHARED_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
+    if (latest.body.schemaVersion !== 1 || latest.body.schedulerVersion !== SHARED_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
     await deps.saveArchive(archive); verifiedArchives.set(deps, { pin: pin.digest, archive }); return archive;
   }
   const inputs = [...record.rosterArchive];
@@ -52,7 +52,7 @@ export async function verifyCloudMembership(deps: SharedSyncDependencies, curren
   if (record.join && sharedRosterDigest(archive[record.join.invitation.body.pin.revision - 1]) !== record.join.invitation.body.pin.digest) throw new Error('Invitation does not reach the previously trusted membership chain');
   const latest = archive.at(-1)!;
   if (sharedRosterDigest(latest) !== sharedRosterDigest(current)) throw new Error('Shared membership changed at an existing revision');
-  if (latest.body.schedulerVersion !== SHARED_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
+  if (latest.body.schemaVersion !== 1 || latest.body.schedulerVersion !== SHARED_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
   await deps.saveArchive(archive); verifiedArchives.set(deps, { pin: pin.digest, archive }); return archive;
 }
 
@@ -121,6 +121,7 @@ export function createSharedSynchronizer(deps: SharedSyncDependencies) {
             if (event.envelope.keyVersion !== roster.body.keyVersion) throw new SharingKeyVersionError('共有履歴を最新の鍵で再取得する必要があります。');
             const author = sharedAuthorIdentity(roster, event.envelope.authorUserId, event.envelope.authorDeviceId, event.envelope.keyVersion);
             const fact = await decryptAuthenticatedSharedOperation(deps.crypto, event.envelope, await getKey(roster), author, deps.groupId, roster.body.keyVersion);
+            if (fact.operation.schemaVersion !== roster.body.schemaVersion) throw new SharingSchedulerVersionError();
             sharedAuthorIdentity(roster, fact.operation.authorUserId, fact.operation.authorDeviceId, fact.operation.keyVersion); facts.push(fact);
           }
           if (facts.length) {
@@ -138,6 +139,7 @@ export function createSharedSynchronizer(deps: SharedSyncDependencies) {
         for (const item of items) {
           if (now() >= deadline) break;
           const op = item.operation;
+          if (op.schemaVersion !== roster.body.schemaVersion) throw new SharingSchedulerVersionError();
           if (op.authorUserId !== deps.userId || op.authorDeviceId !== deps.identity.deviceId) throw new Error('共有の未送信操作が別の端末に属しています。');
           sharedAuthorIdentity(roster, op.authorUserId, op.authorDeviceId, op.keyVersion);
           let encoded = item.encryptedEnvelope;

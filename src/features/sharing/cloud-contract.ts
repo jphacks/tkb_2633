@@ -4,7 +4,7 @@ import type { SignedSharedRoster, VerifiedSharedRoster } from './roster.ts';
 import type { EncryptedSharedOperation } from './crypto.ts';
 
 export interface SharedCloudGroup {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   ownerUserId: string;
   ownerDeviceId: string;
   memberIds: string[];
@@ -49,7 +49,7 @@ export function boundedSharingCloudBatches<T>(items: readonly T[], encodedSize: 
 
 export function rosterCloudFields(input: VerifiedSharedRoster) {
   const roster = validateSharedRoster(input);
-  return { schemaVersion: 1 as const, ownerUserId: roster.body.ownerUserId, ownerDeviceId: roster.body.ownerDeviceId,
+  return { schemaVersion: roster.body.schemaVersion, ownerUserId: roster.body.ownerUserId, ownerDeviceId: roster.body.ownerDeviceId,
     memberIds: roster.body.members.map((member) => member.userId),
     deviceOwners: Object.fromEntries(roster.body.members.flatMap((member) => member.devices.map((device) => [device.identity.deviceId, member.userId]))),
     keyVersion: roster.body.keyVersion, rosterRevision: roster.body.revision, rosterJson: canonicalJson(roster),
@@ -95,10 +95,10 @@ export function parseSharedCloudEvent(operationId: string, value: unknown, group
   const { createdAt: _created, ...fields } = value as Record<string, unknown>;
   assertJsonRecord(fields);
   if (Object.keys(fields).sort().join(',') !== 'authorDeviceId,authorUserId,envelopeJson,keyVersion,schemaVersion,uploadSequence'
-    || fields.schemaVersion !== 1 || !Number.isSafeInteger(fields.uploadSequence) || (fields.uploadSequence as number) < 1
+    || ![1, 2].includes(fields.schemaVersion as number) || !Number.isSafeInteger(fields.uploadSequence) || (fields.uploadSequence as number) < 1
     || typeof fields.envelopeJson !== 'string' || fields.envelopeJson.length > 800_000) throw new Error('Invalid cloud event metadata');
   const envelope = JSON.parse(fields.envelopeJson) as EncryptedSharedOperation;
-  if (envelope.operationId !== operationId || envelope.groupId !== groupId || envelope.authorUserId !== fields.authorUserId
+  if (envelope.schemaVersion !== fields.schemaVersion || envelope.operationId !== operationId || envelope.groupId !== groupId || envelope.authorUserId !== fields.authorUserId
     || envelope.authorDeviceId !== fields.authorDeviceId || envelope.keyVersion !== fields.keyVersion) throw new Error('Cloud event header mismatch');
   return { operationId, uploadSequence: fields.uploadSequence as number, envelope, envelopeJson: fields.envelopeJson };
 }

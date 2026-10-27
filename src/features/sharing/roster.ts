@@ -3,11 +3,12 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 import { assertJsonRecord, assertSharedIdentifier, canonicalJson, compareOperationIds, SHARED_SCHEDULER_VERSION } from './operations.ts';
 import { signSharedDocument, validateDevicePublicIdentity, verifySharedDocument } from './crypto.ts';
 import type { DevicePublicIdentity, DeviceSecretIdentity } from './crypto.ts';
+import { V2_SCHEDULER_VERSION } from './v2/payload-schema.ts';
 
 export interface SharedDeviceMembership { identity: DevicePublicIdentity; joinedKeyVersion: number }
 export interface SharedGroupMember { userId: string; joinedKeyVersion: number; devices: SharedDeviceMembership[] }
 export interface SharedRosterBody {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   groupId: string;
   revision: number;
   keyVersion: number;
@@ -42,7 +43,7 @@ export function validateSharedRoster(input: SignedSharedRoster): SignedSharedRos
   const { body } = input;
   exactKeys(body, ['schemaVersion', 'groupId', 'revision', 'keyVersion', 'ownerUserId', 'ownerDeviceId',
     'schedulerVersion', 'previousDigest', 'closed', 'members']);
-  if (body.schemaVersion !== 1 || typeof body.closed !== 'boolean') throw new Error('Unsupported roster schema');
+  if (![1, 2].includes(body.schemaVersion) || typeof body.closed !== 'boolean') throw new Error('Unsupported roster schema');
   for (const id of [body.groupId, body.ownerUserId, body.ownerDeviceId]) assertSharedIdentifier(id);
   positive(body.revision); positive(body.keyVersion);
   if (body.keyVersion !== body.revision) throw new Error('Membership revisions must rotate the group key');
@@ -85,9 +86,10 @@ function signRoster(body: SharedRosterBody, identity: DeviceSecretIdentity): Sig
     signature: signSharedDocument({ domain: 'liflow-shared-roster-v1', body: normalized }, identity) });
 }
 
-export function createSharedRoster(groupId: string, ownerUserId: string, identity: DeviceSecretIdentity): VerifiedSharedRoster {
-  return signRoster({ schemaVersion: 1, groupId, revision: 1, keyVersion: 1, ownerUserId,
-    ownerDeviceId: identity.deviceId, schedulerVersion: SHARED_SCHEDULER_VERSION, previousDigest: null, closed: false,
+export function createSharedRoster(groupId: string, ownerUserId: string, identity: DeviceSecretIdentity,
+  options: { schemaVersion: 1 | 2 } = { schemaVersion: 1 }): VerifiedSharedRoster {
+  return signRoster({ schemaVersion: options.schemaVersion, groupId, revision: 1, keyVersion: 1, ownerUserId,
+    ownerDeviceId: identity.deviceId, schedulerVersion: options.schemaVersion === 2 ? V2_SCHEDULER_VERSION : SHARED_SCHEDULER_VERSION, previousDigest: null, closed: false,
     members: [{ userId: ownerUserId, joinedKeyVersion: 1, devices: [{ identity: validateDevicePublicIdentity(identity), joinedKeyVersion: 1 }] }] }, identity) as VerifiedSharedRoster;
 }
 
@@ -110,6 +112,13 @@ export function verifySharedRosterTransition(previousInput: VerifiedSharedRoster
     || next.body.groupId !== previous.body.groupId || next.body.previousDigest !== sharedRosterDigest(previous)
     || next.body.revision !== previous.body.revision + 1 || next.body.keyVersion !== previous.body.keyVersion + 1) {
     throw new Error('Untrusted roster transition or rollback');
+  }
+  if (next.body.schemaVersion < previous.body.schemaVersion) throw new Error('Shared protocol cannot be downgraded');
+  if (next.body.schemaVersion !== previous.body.schemaVersion && (next.body.schemaVersion !== 2
+    || next.body.schedulerVersion !== V2_SCHEDULER_VERSION || next.body.closed
+    || next.body.ownerUserId !== previous.body.ownerUserId || next.body.ownerDeviceId !== previous.body.ownerDeviceId
+    || canonicalJson(next.body.members) !== canonicalJson(previous.body.members))) {
+    throw new Error('A protocol upgrade must preserve the owner and every approved member device');
   }
   if (!next.body.closed && (next.body.ownerUserId !== previous.body.ownerUserId || next.body.ownerDeviceId !== previous.body.ownerDeviceId)
     && !next.body.members.some((member) => member.userId === previous.body.ownerUserId
@@ -144,6 +153,12 @@ function updateRoster(previous: VerifiedSharedRoster, owner: DeviceSecretIdentit
   body.revision++; body.keyVersion++; body.previousDigest = sharedRosterDigest(previous);
   change(body);
   return verifySharedRosterTransition(previous, signRoster(body, owner));
+}
+
+/** Prepare a signed local upgrade. Activation, new keys and migration data are a separate transaction. */
+export function upgradeSharedRoster(previous: VerifiedSharedRoster, owner: DeviceSecretIdentity): VerifiedSharedRoster {
+  if (previous.body.schemaVersion !== 1) throw new Error('Only a v1 group can prepare a v2 upgrade');
+  return updateRoster(previous, owner, (body) => { body.schemaVersion = 2; body.schedulerVersion = V2_SCHEDULER_VERSION; });
 }
 
 export function approveSharedDevice(previous: VerifiedSharedRoster, owner: DeviceSecretIdentity, userId: string, publicIdentity: DevicePublicIdentity): VerifiedSharedRoster {

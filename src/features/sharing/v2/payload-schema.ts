@@ -1,0 +1,139 @@
+import { assertSharedIdentifier } from '../identifier.ts';
+import { parseLocalDate } from '../../../domain/scheduling/local-date.ts';
+import { instantMilliseconds, normalizeDateTarget, validateDesignationTarget } from './date-target.ts';
+import { createGroupPolicy } from './model.ts';
+import type { DateTarget } from './model.ts';
+import type { JsonValue } from '../operations.ts';
+import type { LocalDate } from '../../../domain/shared/types.ts';
+
+export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 'assignmentRule', 'claim', 'claimRelease',
+  'claimResolution', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
+export type V2EntityType = typeof V2_ENTITY_TYPES[number];
+export const V2_SCHEMA_VERSION = 2;
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2';
+type RecordValue = Record<string, JsonValue>;
+
+function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new Error('Expected a v2 object');
+  const data = value as RecordValue;
+  if (Object.keys(data).some((key) => !allowed.includes(key)) || required.some((key) => !Object.hasOwn(data, key))) throw new Error('Unknown or missing v2 field');
+  return data;
+}
+function integer(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): void {
+  if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw new Error('Invalid v2 integer');
+}
+function flag(value: unknown): void { if (typeof value !== 'boolean') throw new Error('Invalid v2 boolean'); }
+function idOrNull(value: unknown): void { if (value !== null) assertSharedIdentifier(value); }
+function ids(value: unknown, allowEmpty = true, limit = 64): string[] {
+  if (!Array.isArray(value) || !allowEmpty && !value.length || value.length > limit || new Set(value).size !== value.length) throw new Error('Invalid v2 identifiers');
+  value.forEach(assertSharedIdentifier); return value as string[];
+}
+function day(value: unknown): void { if (typeof value !== 'string') throw new Error('Invalid v2 date'); parseLocalDate(value as LocalDate); }
+function timestamp(value: unknown): void { if (typeof value !== 'string') throw new Error('Invalid v2 timestamp'); instantMilliseconds(value); }
+function choice(value: unknown, values: readonly string[]): void { if (typeof value !== 'string' || !values.includes(value)) throw new Error('Invalid v2 choice'); }
+function target(value: unknown): void { normalizeDateTarget(value as DateTarget); }
+function selector(value: unknown): void {
+  const data = record(value, ['scope', 'occurrenceId', 'anchorDate', 'range', 'from'], ['scope']);
+  if (data.scope === 'once') { record(data, ['scope', 'occurrenceId', 'anchorDate']); assertSharedIdentifier(data.occurrenceId); day(data.anchorDate); }
+  else if (data.scope === 'ongoing') { record(data, ['scope', 'from']); day(data.from); }
+  else if (data.scope === 'period') {
+    record(data, ['scope', 'range']); const range = record(data.range, ['from', 'through']); day(range.from);
+    if (range.through !== null) { day(range.through); if ((range.from as string) > (range.through as string)) throw new Error('Invalid v2 period'); }
+  } else throw new Error('Invalid v2 selector');
+}
+function groupPolicy(value: unknown): void {
+  const names = Object.keys(createGroupPolicy('family')); const data = record(value, names);
+  choice(data.kind, ['family', 'roommates']);
+  for (const name of names.filter((key) => key !== 'kind')) flag(data[name]);
+}
+function chorePolicy(value: unknown): void {
+  const data = record(value, ['policy', 'anchorDate', 'intervalDays', 'windowBeforeDays', 'windowAfterDays', 'ruleVersion']);
+  day(data.anchorDate); integer(data.intervalDays, 1, 3650); integer(data.windowBeforeDays, 0, 14); integer(data.windowAfterDays, 0, 14); integer(data.ruleVersion, 1);
+  const policy = record(data.policy, ['completion', 'assignment']); choice(policy.completion, ['one', 'perMember']);
+  const assignment = record(policy.assignment, ['mode', 'memberIds']); choice(assignment.mode, ['open', 'all', 'selected']);
+  const members = ids(assignment.memberIds, assignment.mode !== 'selected', 16);
+  if (assignment.mode !== 'selected' && members.length) throw new Error('Non-selected assignment cannot hide member IDs');
+  if (policy.completion === 'perMember' && assignment.mode === 'open') throw new Error('Per-member chores require defined subjects');
+}
+
+/** Explicit schema2 records; private Calendar, credentials and arbitrary extension fields are never accepted. */
+export function validateV2EntityPayload(entityType: V2EntityType, payload: RecordValue, binding: {
+  operationId: string; entityId: string; authorUserId: string; operationType: string;
+}): void {
+  if (binding.operationType !== 'patch') throw new Error('V2 facts and policy history cannot be deleted or restored');
+  if (entityType === 'groupPolicy' || entityType === 'chorePolicy') {
+    record(payload, ['configuration']);
+    if (entityType === 'groupPolicy') { if (binding.entityId !== 'policy') throw new Error('Invalid group policy ID'); groupPolicy(payload.configuration); }
+    else chorePolicy(payload.configuration);
+    return;
+  }
+  if (entityType === 'datePermission') {
+    record(payload, ['choreId', 'userId', 'enabled', 'rights']); assertSharedIdentifier(payload.choreId); assertSharedIdentifier(payload.userId); flag(payload.enabled);
+    const rights = record(payload.rights, ['changeDate', 'changeOthers', 'changeBeforeWindow']); Object.values(rights).forEach(flag);
+    if (!rights.changeDate && (rights.changeOthers || rights.changeBeforeWindow)) throw new Error('Date permission rights require changeDate');
+    return;
+  }
+  // Each append-only business fact has its own identity. A patch cannot rewrite an older fact entity.
+  if (binding.entityId !== binding.operationId) throw new Error('V2 fact identity must equal its operation ID');
+  if (entityType === 'assignmentRule') {
+    record(payload, ['choreId', 'memberIds', 'fromOccurrenceId', 'fromAnchorDate', 'scope', 'fixed', 'ruleVersion']);
+    assertSharedIdentifier(payload.choreId); ids(payload.memberIds, true, 16); assertSharedIdentifier(payload.fromOccurrenceId); day(payload.fromAnchorDate);
+    choice(payload.scope, ['once', 'from']); flag(payload.fixed); integer(payload.ruleVersion, 1); return;
+  }
+  if (entityType === 'claim' || entityType === 'claimRelease') {
+    record(payload, entityType === 'claim' ? ['choreId', 'anchorDate', 'occurrenceId', 'userId'] : ['choreId', 'anchorDate', 'occurrenceId', 'userId', 'targetOperationIds']);
+    assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId);
+    if (payload.userId !== binding.authorUserId) throw new Error('A claim cannot impersonate another member');
+    if (entityType === 'claimRelease') ids(payload.targetOperationIds, false); return;
+  }
+  if (entityType === 'claimResolution') {
+    record(payload, ['choreId', 'anchorDate', 'occurrenceId', 'claimOperationIds', 'assigneeIds', 'fixed']);
+    assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId);
+    ids(payload.claimOperationIds, false); ids(payload.assigneeIds, false, 16); flag(payload.fixed); return;
+  }
+  if (entityType === 'designation') {
+    record(payload, ['configuration']);
+    const data = record(payload.configuration, ['id', 'choreId', 'subjectUserId', 'selector', 'referenceAnchorDate', 'mode', 'target', 'strict', 'adminLocked', 'forbidEarlier', 'issuerUserId', 'ruleVersion']);
+    if (data.id !== binding.operationId || data.issuerUserId !== binding.authorUserId) throw new Error('A designation cannot impersonate another issuer');
+    assertSharedIdentifier(data.choreId); idOrNull(data.subjectUserId); selector(data.selector); day(data.referenceAnchorDate); choice(data.mode, ['deadline', 'day', 'fixed']);
+    if ((data.selector as RecordValue).scope === 'once' && (data.selector as RecordValue).anchorDate !== data.referenceAnchorDate) throw new Error('One-off designation anchor mismatch');
+    validateDesignationTarget(data.mode as 'deadline' | 'day' | 'fixed', data.target as DateTarget);
+    flag(data.strict); flag(data.adminLocked); flag(data.forbidEarlier); integer(data.ruleVersion, 1); return;
+  }
+  if (entityType === 'designationCancel') { record(payload, ['targetOperationIds']); ids(payload.targetOperationIds, false); return; }
+  if (entityType === 'changeRequest') {
+    record(payload, ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'selector', 'extensionScope']);
+    if (payload.requesterUserId !== binding.authorUserId) throw new Error('Request author mismatch');
+    assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId); idOrNull(payload.subjectUserId); idOrNull(payload.originalDesignationId);
+    target(payload.original); target(payload.proposed); selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;
+  }
+  if (entityType === 'requestDecision') {
+    record(payload, ['requestId', 'decision', 'target', 'referenceDecisionId']); assertSharedIdentifier(payload.requestId);
+    choice(payload.decision, ['approve', 'reject', 'counteroffer', 'acceptCounteroffer']); idOrNull(payload.referenceDecisionId);
+    if (payload.decision === 'counteroffer') target(payload.target); else if (payload.target !== null) throw new Error('Only a counteroffer supplies a target');
+    if ((payload.decision === 'acceptCounteroffer') !== (payload.referenceDecisionId !== null)) throw new Error('Counteroffer acceptance needs exactly its proposal reference'); return;
+  }
+  if (entityType === 'completionApproval') { record(payload, ['completionOperationId', 'decision']); assertSharedIdentifier(payload.completionOperationId); choice(payload.decision, ['approve', 'reject']); return; }
+  if (entityType === 'migration') {
+    record(payload, ['legacyFrontier', 'sourceSnapshotDigest', 'groupKind', 'schedulerVersion']);
+    const frontier = record(payload.legacyFrontier, Object.keys(payload.legacyFrontier as object));
+    if (Object.keys(frontier).length > 256) throw new Error('Invalid migration frontier');
+    for (const [device, count] of Object.entries(frontier)) { assertSharedIdentifier(device); integer(count); }
+    if (typeof payload.sourceSnapshotDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(payload.sourceSnapshotDigest) || payload.schedulerVersion !== V2_SCHEDULER_VERSION) throw new Error('Invalid migration proof');
+    choice(payload.groupKind, ['family', 'roommates']); return;
+  }
+  throw new Error('Unknown v2 entity');
+}
+
+export function validateV2CompletionPayload(payload: RecordValue, operationType: string, recordedAt: string): void {
+  if (operationType === 'undo') { record(payload, ['targetOperationId']); assertSharedIdentifier(payload.targetOperationId); return; }
+  if (operationType !== 'complete') throw new Error('V2 completion facts are immutable');
+  const required = ['choreId', 'anchorDate', 'completedAt', 'completedByMemberId', 'subjectUserId', 'originalAssigneeIds', 'ruleVersion', 'outcome'];
+  record(payload, [...required, 'scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate', 'completionNote'], required);
+  assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.completedByMemberId); idOrNull(payload.subjectUserId);
+  ids(payload.originalAssigneeIds, true, 16); integer(payload.ruleVersion, 1); choice(payload.outcome, ['completed', 'incomplete']); timestamp(payload.completedAt);
+  if (instantMilliseconds(payload.completedAt as string) > instantMilliseconds(recordedAt)) throw new Error('Actual work cannot be recorded before it took place');
+  for (const field of ['scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate']) if (field in payload) day(payload[field]);
+  if ('completionNote' in payload) choice(payload.completionNote, ['completedNow', 'alreadyDone']);
+  if (payload.scheduledWindowStart && payload.scheduledWindowEnd && payload.scheduledWindowStart > payload.scheduledWindowEnd) throw new Error('Invalid completion window');
+}

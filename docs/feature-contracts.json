@@ -1352,5 +1352,26 @@
         "name": "v2 expired home visibility is exactly five civil days independently of recurrence consumption"
       }
     ]
+  },
+  {
+    "feature": "sharing-v2-versioned-storage",
+    "tests": [
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 event allowlists retain explicit versions and original times while schema1 rejects all v2 fields and entities" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 events refuse private information, impersonated claims, rewritten facts and unknown policy extensions" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 policy, date rule, request and completion payloads validate their dependent fields together" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 encryption authenticates the business schema and preserves original signatures and operation time" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 SQLite operations allocate clocks, original times, signatures and outbox atomically and survive snapshot compaction" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 failed projection rolls back its operations and outbox without consuming the next device sequence" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-explicit-protocol-boundary",
+    "tests": [
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v1 projection refuses schema2 before writing derived state and leaves its original SQLite and outbox intact" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 signed roster upgrades preserve every approved device, rotate epochs and cannot downgrade or hide behind schema1 metadata" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v1 synchronization stops before saving or processing a correctly signed schema2 roster" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 compaction retains superseded policies and permissions needed to audit authority at the original causal cut" },
+      { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 occurrence identities bind group, chore and anchor while subjects remain independent of recommendation and rule revisions" }
+    ]
   }
 ]

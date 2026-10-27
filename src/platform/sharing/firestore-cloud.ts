@@ -3,7 +3,7 @@ import { collection, doc, documentId, getDocFromServer, getDocsFromServer, limit
 import type { Firestore, QueryDocumentSnapshot } from 'firebase/firestore';
 import { assertSharedIdentifier, canonicalJson } from '../../features/sharing/operations.ts';
 import { assertSharedCloudAccess, parseSharedCloudEvent, parseSharedCloudGroup, rosterCloudFields,
-  SharingAccessError, SharingKeyVersionError, SharingSnapshotRequiredError } from '../../features/sharing/cloud-contract.ts';
+  SharingAccessError, SharingKeyVersionError, SharingSchedulerVersionError, SharingSnapshotRequiredError } from '../../features/sharing/cloud-contract.ts';
 import type { EncryptedSharedOperation, WrappedGroupKey } from '../../features/sharing/crypto.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
 import { createSharingManagement } from './firestore-management.ts';
@@ -91,6 +91,7 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
         const root = await transaction.get(ref);
         const { group } = parseSharedCloudGroup(root.data(), envelope.groupId);
         assertSharedCloudAccess(group, userId, envelope.authorDeviceId);
+        if (envelope.schemaVersion !== group.schemaVersion) throw new SharingSchedulerVersionError();
         // A successful response may have been lost. Never create a second event or nonce.
         const old = await transaction.get(event);
         if (old.exists()) {
@@ -102,7 +103,7 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
         if (group.rotationRequired || group.keyVersion !== envelope.keyVersion) throw new SharingKeyVersionError('共有鍵を更新してから再送します。');
         const sequence = group.headSequence + 1;
         if (!Number.isSafeInteger(sequence)) throw new Error('Shared log sequence exhausted');
-        const fields = { schemaVersion: 1, authorUserId: userId, authorDeviceId: envelope.authorDeviceId,
+        const fields = { schemaVersion: envelope.schemaVersion, authorUserId: userId, authorDeviceId: envelope.authorDeviceId,
           keyVersion: envelope.keyVersion, uploadSequence: sequence, envelopeJson };
         transaction.set(event, { ...fields, createdAt: serverTimestamp() });
         transaction.update(ref, { headSequence: sequence, lastOperationId: envelope.operationId, updatedAt: serverTimestamp() });

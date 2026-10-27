@@ -14,7 +14,7 @@ export interface DevicePublicIdentity { deviceId: string; signingPublicKey: stri
 export interface DeviceSecretIdentity extends DevicePublicIdentity { signingSecretKey: string; agreementSecretKey: string }
 export interface AuthenticatedSharedOperation { operation: SharedOperation; authorSignature: string }
 export interface EncryptedSharedOperation {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   suite: 'liflow-aes256gcm-hkdfsha256-ed25519-v1';
   operationId: string;
   groupId: string;
@@ -170,7 +170,7 @@ export async function encryptSharedOperation(
   if (transportKeyVersion < op.keyVersion) throw new Error('Cannot encrypt an operation under an older group key');
   const salt = await crypto.randomBytes(32); const nonce = await crypto.randomBytes(12);
   if (salt.length !== 32 || nonce.length !== 12) throw new Error('Secure random source failed');
-  const header = { schemaVersion: 1 as const, suite: 'liflow-aes256gcm-hkdfsha256-ed25519-v1' as const,
+  const header = { schemaVersion: op.schemaVersion, suite: 'liflow-aes256gcm-hkdfsha256-ed25519-v1' as const,
     operationId: op.operationId, groupId: op.groupId, authorUserId: op.authorUserId, authorDeviceId: op.authorDeviceId,
     keyVersion: transportKeyVersion, logicalClock: op.logicalClock, salt: bytesToHex(salt), nonce: bytesToHex(nonce) };
   const aad = utf8(header);
@@ -190,7 +190,7 @@ export async function decryptAuthenticatedSharedOperation(
   if (Object.keys(envelope).sort().join(',') !== 'authorDeviceId,authorUserId,encryptedPayload,groupId,keyVersion,logicalClock,nonce,operationId,salt,schemaVersion,signature,suite') {
     throw new Error('Unknown encrypted envelope field');
   }
-  if (header.schemaVersion !== 1 || header.suite !== 'liflow-aes256gcm-hkdfsha256-ed25519-v1'
+  if (![1, 2].includes(header.schemaVersion) || header.suite !== 'liflow-aes256gcm-hkdfsha256-ed25519-v1'
     || header.groupId !== expectedGroupId || header.keyVersion !== expectedKeyVersion
     || header.authorDeviceId !== trusted.deviceId || groupKey.length !== 32) throw new Error('Shared encryption context mismatch');
   for (const id of [header.operationId, header.groupId, header.authorUserId, header.authorDeviceId]) assertSharedIdentifier(id);
@@ -203,6 +203,7 @@ export async function decryptAuthenticatedSharedOperation(
     const plaintext = await crypto.decrypt(key, nonce, bytes(encryptedPayload), aad);
     const fact = verifyAuthenticatedSharedOperation(JSON.parse(decoder.decode(plaintext)), trusted, expectedGroupId);
     const op = fact.operation;
+    if (op.schemaVersion !== header.schemaVersion) throw new Error('Operation schema differs from its authenticated envelope');
     if (op.keyVersion > header.keyVersion) throw new Error('Operation authoring epoch is newer than its transport key');
     for (const name of ['operationId', 'authorUserId', 'authorDeviceId', 'logicalClock'] as const) {
       if (op[name] !== header[name]) throw new Error('Decrypted operation header mismatch');

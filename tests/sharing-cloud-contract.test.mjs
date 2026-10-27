@@ -32,7 +32,7 @@ test('large encrypted snapshot batches respect both the 100-document limit and t
 });
 
 test('cloud event positions and author metadata must bind the encrypted envelope and never accept extra plaintext fields', () => {
-  const envelope = { operationId: 'operation-test', groupId: 'group-test', authorUserId: 'owner', authorDeviceId: 'owner-device', keyVersion: 1 };
+  const envelope = { schemaVersion: 1, operationId: 'operation-test', groupId: 'group-test', authorUserId: 'owner', authorDeviceId: 'owner-device', keyVersion: 1 };
   const data = { schemaVersion: 1, authorUserId: 'owner', authorDeviceId: 'owner-device', keyVersion: 1, uploadSequence: 1, envelopeJson: JSON.stringify(envelope) };
   assert.equal(parseSharedCloudEvent('operation-test', data, 'group-test').uploadSequence, 1);
   for (const change of [{ uploadSequence: 0 }, { uploadSequence: 1.5 }, { authorUserId: 'attacker' },
@@ -40,4 +40,5 @@ test('cloud event positions and author metadata must bind the encrypted envelope
     assert.throws(() => parseSharedCloudEvent('operation-test', { ...data, ...change }, 'group-test'));
   }
   assert.throws(() => parseSharedCloudEvent('other-operation', data, 'group-test'));
+  assert.throws(() => parseSharedCloudEvent('operation-test', { ...data, envelopeJson: JSON.stringify({ ...envelope, schemaVersion: 2 }) }, 'group-test'));
 });

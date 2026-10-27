@@ -28,7 +28,7 @@ export interface InstantRange { start: number; end: number }
 export interface CausalStamp {
   operationId: string; authorDeviceId: string; deviceSequence: number; context: VersionVector;
 }
-export type RuleSelector = { scope: 'once'; occurrenceId: string }
+export type RuleSelector = { scope: 'once'; occurrenceId: string; anchorDate: LocalDate }
   | { scope: 'period'; range: CivilRange }
   | { scope: 'ongoing'; from: LocalDate };
 export interface ManualRule {
@@ -36,6 +36,7 @@ export interface ManualRule {
   choreId: string;
   subjectUserId: string | null;
   selector: RuleSelector;
+  referenceAnchorDate: LocalDate;
   mode: DesignationMode;
   target: DateTarget;
   strict: boolean;

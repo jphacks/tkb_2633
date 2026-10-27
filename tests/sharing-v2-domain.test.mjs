@@ -15,7 +15,7 @@ const interval = (start, end) => ({ precision: 'interval', start, end });
 const occurrence = { id: 'occurrence-a', choreId: 'chore-a', anchorDate: '2026-10-27', windowStart: '2026-10-25', windowEnd: '2026-10-29', ruleVersion: 1 };
 function rule(operationId, target, selector = { scope: 'ongoing', from: '2026-01-01' }, clock = {}) {
   return { operationId, authorDeviceId: operationId, deviceSequence: 1, context: {}, ...clock,
-    rule: { id: operationId, choreId: 'chore-a', subjectUserId: null, selector, mode: 'day', target,
+    rule: { id: operationId, choreId: 'chore-a', subjectUserId: null, selector, referenceAnchorDate: '2026-10-27', mode: 'day', target,
       strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'owner', ruleVersion: 1 } };
 }
 
@@ -122,7 +122,7 @@ test('v2 two-week and calendar-month validity have explicit inclusive endings ra
 test('v2 manual rule priority and causal replacement preserve old ranges and independent same-time edits as conflicts', () => {
   const ongoing = rule('ongoing', date('2026-10-27'));
   const period = rule('period', date('2026-10-28'), { scope: 'period', range: { from: '2026-10-20', through: '2026-11-01' } });
-  const once = rule('once', date('2026-10-29'), { scope: 'once', occurrenceId: occurrence.id });
+  const once = rule('once', date('2026-10-29'), { scope: 'once', occurrenceId: occurrence.id, anchorDate: occurrence.anchorDate });
   assert.equal(selectManualRule([ongoing, period, once], occurrence, null).fact.operationId, 'once');
   assert.equal(selectManualRule([period, ongoing], occurrence, null).fact.operationId, 'period');
   const later = rule('later', date('2026-10-30'), period.rule.selector, { context: { period: 1 } });

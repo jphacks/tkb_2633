@@ -1,15 +1,21 @@
 import { isSharedTimeZone } from './group-clock.ts';
 import { assertSharedIdentifier } from './identifier.ts';
+import { V2_ENTITY_TYPES, validateV2CompletionPayload, validateV2EntityPayload } from './v2/payload-schema.ts';
+import type { V2EntityType } from './v2/payload-schema.ts';
+import { instantMilliseconds } from './v2/date-target.ts';
 export { assertSharedIdentifier } from './identifier.ts';
 /** The wire payload is deliberately independent of Expo, Firebase and personal Google state. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type VersionVector = Record<string, number>;
-export type SharedEntityType = 'chore' | 'baseline' | 'settings' | 'assignment' | 'dependency'
+export type LegacySharedEntityType = 'chore' | 'baseline' | 'settings' | 'assignment' | 'dependency'
   | 'waste' | 'wasteVisibility' | 'appliance' | 'member' | 'completion';
+export type SharedEntityType = LegacySharedEntityType | V2EntityType;
 export type SharedOperationType = 'patch' | 'delete' | 'restore' | 'complete' | 'undo';
 
 export interface SharedOperation {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
+  /** Schema2 records the original operation time. Delivery time is an independent server receipt. */
+  recordedAt?: string;
   operationId: string;
   groupId: string;
   authorUserId: string;
@@ -31,8 +37,8 @@ const FORBIDDEN_FIELDS = new Set(['proto', 'constructor', 'prototype', 'accessto
   'idtoken', 'apikey', 'privatekey', 'clientsecret', 'signingsecretkey', 'agreementsecretkey', 'groupkey',
   'recoverysecret', 'authorization', 'googletaskid', 'googletasklistid', 'freebusy', 'pdfbase64']);
 const OPERATION_FIELDS = new Set(['schemaVersion', 'operationId', 'groupId', 'authorUserId', 'authorDeviceId',
-  'deviceSequence', 'logicalClock', 'context', 'keyVersion', 'entityType', 'entityId', 'operationType', 'payload']);
-const FIELDS: Record<SharedEntityType, Set<string>> = {
+  'deviceSequence', 'logicalClock', 'context', 'keyVersion', 'entityType', 'entityId', 'operationType', 'payload', 'recordedAt']);
+const FIELDS: Record<LegacySharedEntityType, Set<string>> = {
   chore: new Set(['name', 'category', 'description', 'enabled', 'recommendedCycleDays', 'userIntervalDays',
     'manufacturerRecommendedIntervalDays', 'manufacturerRecommendedConditions', 'requiresCycleSelection',
     'frequencyDaysByMode', 'schedulingNotes', 'windowRadiusDays', 'maxShiftDays', 'load', 'holidayPriority',
@@ -78,7 +84,7 @@ function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER)
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 }
 
-function validatePatchValues(entityType: SharedEntityType, patch: Record<string, JsonValue>): void {
+function validatePatchValues(entityType: LegacySharedEntityType, patch: Record<string, JsonValue>): void {
   const booleans = new Set(['enabled', 'requiresCycleSelection', 'holidayPriority', 'everyday', 'archived',
     'lastCompletedEstimated', 'initialPending', 'hidden', 'reviewed', 'estimatedDate']);
   const cycles = new Set(['recommendedCycleDays', 'userIntervalDays', 'manufacturerRecommendedIntervalDays']);
@@ -161,8 +167,12 @@ function validatePatchValues(entityType: SharedEntityType, patch: Record<string,
 
 export function validateSharedOperation(value: unknown, expectedGroupId?: string): SharedOperation {
   assertJsonRecord(value);
-  if (Object.keys(value).some((key) => !OPERATION_FIELDS.has(key))) throw new Error('Unknown operation field');
-  if (value.schemaVersion !== SHARED_SCHEMA_VERSION) throw new Error('Unsupported shared schema version');
+  if (Object.keys(value).some((key) => !OPERATION_FIELDS.has(key)) || value.schemaVersion === 1 && Object.hasOwn(value, 'recordedAt')) throw new Error('Unknown operation field');
+  if (value.schemaVersion !== SHARED_SCHEMA_VERSION && value.schemaVersion !== 2) throw new Error('Unsupported shared schema version');
+  if (value.schemaVersion === 2) {
+    if (typeof value.recordedAt !== 'string') throw new Error('Schema2 needs its original operation time');
+    instantMilliseconds(value.recordedAt);
+  }
   for (const key of ['operationId', 'groupId', 'authorUserId', 'authorDeviceId', 'entityId']) assertSharedIdentifier(value[key]);
   if (expectedGroupId && value.groupId !== expectedGroupId) throw new Error('Shared group mismatch');
   if (!integer(value.deviceSequence, 1) || !integer(value.logicalClock, 1) || !integer(value.keyVersion, 1)) {
@@ -177,13 +187,20 @@ export function validateSharedOperation(value: unknown, expectedGroupId?: string
   if ((value.context[value.authorDeviceId as string] ?? 0) !== value.deviceSequence - 1) {
     throw new Error('Invalid author sequence');
   }
-  if (typeof value.entityType !== 'string' || !Object.hasOwn(FIELDS, value.entityType)) throw new Error('Unknown shared entity type');
+  const legacy = typeof value.entityType === 'string' && Object.hasOwn(FIELDS, value.entityType);
+  const version2 = value.schemaVersion === 2 && typeof value.entityType === 'string' && (V2_ENTITY_TYPES as readonly string[]).includes(value.entityType);
+  if (!legacy && !version2) throw new Error('Unknown shared entity type');
   const entityType = value.entityType as SharedEntityType;
   if (!['patch', 'delete', 'restore', 'complete', 'undo'].includes(value.operationType as string)) throw new Error('Unknown shared operation');
   assertJsonRecord(value.payload);
   const fields = Object.keys(value.payload);
-  if (fields.some((field) => !FIELDS[entityType].has(field))) throw new Error('Field is not shared');
-  validatePatchValues(entityType, value.payload);
+  if (version2) validateV2EntityPayload(entityType as V2EntityType, value.payload, { operationId: value.operationId as string,
+    entityId: value.entityId as string, authorUserId: value.authorUserId as string, operationType: value.operationType as string });
+  else if (value.schemaVersion === 2 && entityType === 'completion') validateV2CompletionPayload(value.payload, value.operationType as string, value.recordedAt as string);
+  else {
+    if (fields.some((field) => !FIELDS[entityType as LegacySharedEntityType].has(field))) throw new Error('Field is not shared');
+    validatePatchValues(entityType as LegacySharedEntityType, value.payload);
+  }
   if (entityType === 'completion') {
     if (value.operationType === 'complete') {
       assertSharedIdentifier(value.payload.choreId);

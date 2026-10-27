@@ -13,6 +13,10 @@ export interface SharingOutboxItem {
   attempts: number;
   nextAttemptAt: number;
 }
+export interface SharedLocalAuthor {
+  groupId: string; userId: string; deviceId: string; keyVersion: number;
+  schemaVersion?: 1 | 2; recordedAt?: string;
+}
 const tails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
 
 /** Shared ledger operations serialize on their own connection; never wrap a personal repository transaction. */
@@ -123,7 +127,7 @@ export function commitLocalSharedOperation(
 /** Allocate clocks inside the write transaction so failed edits never leave an unrecoverable sequence hole. */
 export function createLocalSharedOperation(
   db: SQLiteDatabase,
-  author: { groupId: string; userId: string; deviceId: string; keyVersion: number },
+  author: SharedLocalAuthor,
   draft: Pick<SharedOperation, 'operationId' | 'entityType' | 'entityId' | 'operationType' | 'payload'>,
   apply: (db: SQLiteDatabase, replica: SharedReplica) => Promise<void>,
   sign?: (operation: SharedOperation) => string,
@@ -136,12 +140,14 @@ export type SharedOperationDraft = Pick<SharedOperation, 'operationId' | 'entity
 /** One user action can update a chore and its baseline atomically; upload pages remain capped at 100. */
 export function createLocalSharedOperations(
   db: SQLiteDatabase,
-  author: { groupId: string; userId: string; deviceId: string; keyVersion: number },
+  author: SharedLocalAuthor,
   input: readonly SharedOperationDraft[] | ((transaction: SQLiteDatabase, replica: SharedReplica) => Promise<readonly SharedOperationDraft[]>),
   apply: (db: SQLiteDatabase, replica: SharedReplica) => Promise<void>,
   sign?: (operation: SharedOperation) => string,
 ): Promise<SharedOperation[]> {
   if (Array.isArray(input) && input.length > 256) return Promise.reject(new Error('Shared local transaction exceeds 256 changes'));
+  const schemaVersion = author.schemaVersion ?? 1;
+  const recordedAt = schemaVersion === 2 ? author.recordedAt ?? new Date().toISOString() : undefined;
   return serial(db, async () => {
     const created: SharedOperation[] = [];
     await atomic(db, async (db) => {
@@ -159,12 +165,13 @@ export function createLocalSharedOperations(
         const existing = existingRow ? validateSharedOperation(JSON.parse(existingRow.operation_json), author.groupId) : retained.get(draft.operationId);
         if (existing) {
           if (existing.authorUserId !== author.userId || existing.authorDeviceId !== author.deviceId
+            || existing.schemaVersion !== schemaVersion || (schemaVersion === 2 && author.recordedAt !== undefined && existing.recordedAt !== author.recordedAt)
             || existing.entityType !== draft.entityType || existing.entityId !== draft.entityId
             || existing.operationType !== draft.operationType || canonicalJson(existing.payload) !== canonicalJson(draft.payload)) throw new Error('Operation ID reused with different content');
           created.push(existing); continue;
         }
         if (receipts.has(draft.operationId)) throw new Error('Operation ID already belongs to compacted history');
-        const op = validateSharedOperation({ ...draft, schemaVersion: 1, groupId: author.groupId, authorUserId: author.userId,
+        const op = validateSharedOperation({ ...draft, schemaVersion, ...(recordedAt ? { recordedAt } : {}), groupId: author.groupId, authorUserId: author.userId,
           authorDeviceId: author.deviceId, keyVersion: author.keyVersion, deviceSequence: (frontier[author.deviceId] ?? 0) + 1,
           logicalClock: clock + 1, context: frontier }, author.groupId);
         await insertOperation(db, op, sign?.(op));

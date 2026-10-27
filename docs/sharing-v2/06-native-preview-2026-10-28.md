@@ -142,3 +142,13 @@ iPhoneは個別ルート化後も入力欄にキーボードフォーカスを�
 - `phase4o-scopedFuturePreserved.png`：SHA-256 `01a912e3b34671d0f7c31880a7c78c2f47eb3bc68d5a859ecdddfaaee23e4104`。次回の入力欄が11月5日を保持することを確認した。
 
 公開アクセシビリティAPIでの実表示・端末内保存であり、座標タップ・ソフトウェアキーボード・実サービスの本人承認E2Eとは区別する。iPhoneは入力確認待ちのまま操作していない。両OS条件各1290件、Emulator25件、機能契約169件が通過した。
+
+## Phase 4p追記：解除申請を追加した後のAndroid端末内回帰
+
+基点`925dcf7`へのPhase 4p差分、未公開v2 draft23。`phase4p-android-scoped-regression.log`は`scopedRemovalPreservesFuture=true`、61.602秒。一般メンバー向けの申請を追加した後も、既存の管理者による2週間指定→今回だけ解除→再表示→次回の11月5日の指定保持が動くことを確認した。独立した合成検査DBを使用し、旧検査領域・primary DB・実グループを保持した。
+
+- `phase4p-scopedCancellationChoices.png`：SHA-256 `7dafee71b6a7ad7a945f7454ba15274d1deeaaf6ea60f645dd985a0945d6bf72`。
+- `phase4p-scopedCurrentRemoved.png`：SHA-256 `ff5f7d9218335ef1f084ada92c5f8ee22ab8b86c445d069bffc87e4f0a631622`。今回の入力欄が10月28日に戻ることを確認した。
+- `phase4p-scopedFuturePreserved.png`：SHA-256 `f35228292367b0dd25bea6bdd75c99c48bcce2124736c912ac4c4531a2ef33e6`。
+
+公開アクセシビリティAPIの検査であり、今回の一般メンバーの解除申請・本人承認は実TSX、署名付きSQLiteとFirestore Emulatorでの検査である。物理端末の実サービス承認E2Eへ数えない。iPhoneは手動確認待ちで操作していない。

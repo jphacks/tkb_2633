@@ -13,8 +13,9 @@ import type { ClaimFact, ClaimRelease, ClaimResolution } from './claims.ts';
 import { evaluateDateChangePermission, mayUndoCompletion, v2DateDecisionAudience } from './permissions.ts';
 import type { DatePermissionFact, DateChangePermission } from './permissions.ts';
 import { normalizeDateTarget, targetCivilDate, targetReferenceTime, validateDesignationTarget } from './date-target.ts';
-import type { DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, RuleSelector, SharedChoreConfiguration } from './model.ts';
+import type { DateRuleCancellation, DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, RuleSelector, SharedChoreConfiguration } from './model.ts';
 import { cancellationScopeMatches } from './date-cancellations.ts';
+import { v2CancellationProposal, v2CancellationSelector } from './cancellation-proposal.ts';
 import { selectManualRule } from './period-rules.ts';
 import { v2DateChangeOriginal } from './date-change-original.ts';
 import { fixedConflictAtOperation } from './fixed-conflict.ts';
@@ -79,12 +80,14 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   const requestDecisions = new Map<string, SharedOperation[]>();
   const dirtyRequests = new Set<string>();
   const causalRequestStates = new Map<string, Map<string, V2DateRequestState>>();
+  const cancellationRequestIds = new Set<string>();
+  const causalCancellations = new Map<string, DateRuleCancellation[]>(); let cancellationGeneration = -1;
   let confirmedServerTime = 0;
   for (const receipt of evidence?.receipts.values() ?? []) confirmedServerTime = Math.max(confirmedServerTime, receipt.receivedAtMs);
   const unconfirmedFrontier = new Map<string, number>();
   const dots = new Map(replica.operations.map((op) => [`${op.authorDeviceId}:${op.deviceSequence}`, op]));
   let assignmentsAt!: ReturnType<typeof createV2AssignmentHistory>;
-  const { view, accept } = createV2AuthorityIndex(replica.groupId, (at) => assignmentsAt(at), () => v2ConfirmedReceiptContext(view.ready, evidence?.receipts ?? new Map()));
+  const { view, accept } = createV2AuthorityIndex(replica.groupId, (at) => assignmentsAt(at), () => v2ConfirmedReceiptContext(view.ready, evidence?.receipts ?? new Map()), cancellationsAt);
   assignmentsAt = createV2AssignmentHistory(view, archive, evidence);
   const ready = replica.operations.filter((op) => !pending.has(op.operationId))
     .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
@@ -124,7 +127,10 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
         ? dateContext(view, archive, op, undefined, undefined, receiptEpochs.get(op.operationId), formal, reviews, { receipts: evidence.receipts, epochs: receiptEpochs }) : undefined;
       accept(op);
       if (evidence?.pendingLocalIds.has(op.operationId) && !evidence.receipts.has(op.operationId)) provisionalOperationIds.push(op.operationId);
-      if (originalContext) { requestContexts.set(op.operationId, originalContext); dirtyRequests.add(op.operationId); }
+      if (originalContext) {
+        requestContexts.set(op.operationId, originalContext); dirtyRequests.add(op.operationId);
+        if (op.payload.cancellation) cancellationRequestIds.add(op.operationId);
+      }
       if (evidence && op.entityType === 'requestDecision') {
         const id = op.payload.requestId as string; const decisions = requestDecisions.get(id) ?? [];
         decisions.push(op); requestDecisions.set(id, decisions); dirtyRequests.add(id);
@@ -166,6 +172,19 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
       if (rule) rules.push(rule);
     }
     return rules;
+  }
+  function cancellationsAt(point?: SharedOperation): DateRuleCancellation[] {
+    if (!cancellationRequestIds.size) return [];
+    if (cancellationGeneration !== view.ready.length) { causalCancellations.clear(); cancellationGeneration = view.ready.length; }
+    const at = point ?? v2ReadPoint(view, archive.at(-1)!); const result: DateRuleCancellation[] = [];
+    const key = canonicalJson([at.keyVersion, at.context, at.receiptContext ?? null]); const known = causalCancellations.get(key); if (known) return known;
+    for (const id of cancellationRequestIds) {
+      const state = requestAt(id, at);
+      if (state?.kind === 'approved' && state.formalAction === 'cancel' && state.proposal.cancellation) result.push(state.proposal.cancellation);
+    }
+    causalCancellations.set(key, result);
+    while (causalCancellations.size > 256) causalCancellations.delete(causalCancellations.keys().next().value!);
+    return result;
   }
 
   function flushRequests(except?: string): void {
@@ -285,6 +304,19 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     const context = requestContexts?.get(request.operationId)
       ?? dateContext(view, archive, request, undefined, undefined, requestEpochs?.get(request.operationId), formalRules, reviewedRequests, receipts ? { receipts, epochs: requestEpochs ?? new Map() } : undefined);
     const audience = v2DateDecisionAudience(context.permission, context.assigneeIds, request.authorUserId);
+    let automaticCancellation = false;
+    if (request.payload.cancellation && op.payload.decision !== 'reject') {
+      const current = frameAtOperation(view, archive, op, request.payload.choreId as string, request.payload.anchorDate as LocalDate, context.config.ruleVersion);
+      const currentZone = view.field('settings', 'settings', 'timeZone', op)?.value;
+      const subject = request.payload.subjectUserId as string | null;
+      const currentAssignees = subject === null ? current.assigneeIds : current.subjectUserIds.includes(subject) ? [subject] : [];
+      requireAuthority(currentZone === context.zone && canonicalJson(currentAssignees) === canonicalJson(context.assigneeIds), 'Review the changed timezone or assignees before accepting this removal');
+      const removal = v2CancellationProposal(observedDateRules(view, op, formalRules), current.frame, request.payload.subjectUserId as string | null,
+        context.zone, request.payload.cancellation as unknown as DateRuleCancellation);
+      requireAuthority(canonicalJson(removal.target) === canonicalJson(context.proposed) && removal.mode === context.mode
+        && canonicalJson(removal.options) === canonicalJson(context.proposedOptions), 'Review the changed date remaining after this removal');
+      automaticCancellation = op.payload.decision === 'approve' && removal.automatic;
+    }
     let answerTarget: DateTarget | null = op.payload.decision === 'approve' ? context.proposed
       : op.payload.decision === 'counteroffer' ? op.payload.target as unknown as DateTarget : null;
     if (op.payload.decision === 'acceptCounteroffer') {
@@ -304,7 +336,7 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
       const answerLabel = op.payload.decision === 'counteroffer' ? 'Counteroffer' : 'Date answer';
       requireAuthority(!fixedConflictAtOperation(view, archive, op, target, assignees,
         { occurrenceId: current.frame.id, subjectUserId: subject }, formalRules), `${answerLabel} conflicts with a fixed shared assignment`);
-      requireAuthority(!violatesV2RequiredOrder({ view, archive, operation: op, frame: current.frame, subjectUserId: subject,
+      requireAuthority(automaticCancellation || !violatesV2RequiredOrder({ view, archive, operation: op, frame: current.frame, subjectUserId: subject,
         target, mode: context.mode, timeZone: context.zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])], receiptEpochs: requestEpochs ?? new Map(), receipts }), `${answerLabel} violates a required chore order`);
     }
     return;
@@ -472,6 +504,17 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
     : rule ? { strict: rule.strict, adminLocked: rule.adminLocked, forbidEarlier: rule.forbidEarlier,
       ...(rule.allowDuringCooldown === undefined ? {} : { allowDuringCooldown: rule.allowDuringCooldown }) } : op.payload.proposedOptions as unknown as DesignationOptions;
   if (!proposedOverride) validateDesignationTarget(mode, proposed);
+  let automaticCancellation = false;
+  if (op.entityType === 'changeRequest' && op.payload.cancellation) {
+    const cancellation = op.payload.cancellation as unknown as DateRuleCancellation;
+    const selector = op.payload.selector as unknown as RuleSelector;
+    requireAuthority(canonicalJson(v2CancellationSelector(rules, cancellation)) === canonicalJson(selector),
+    'Removal scope must match the requested common occurrence and period');
+    const removal = v2CancellationProposal(rules, context.frame, subject, zone, cancellation);
+    requireAuthority(canonicalJson(removal.target) === canonicalJson(proposed) && removal.mode === mode && canonicalJson(removal.options) === canonicalJson(proposedOptions),
+      'Removal reference must come from the remaining observed common rules');
+    automaticCancellation = removal.automatic;
+  }
   if (op.entityType === 'changeRequest') {
     requireAuthority(canonicalJson(op.payload.original === null ? null : normalizeDateTarget(op.payload.original as unknown as DateTarget)) === canonicalJson(original)
       && op.payload.originalDesignationId === (current.kind === 'selected' ? current.fact.operationId : null), 'Request must reference the formal date observed by its author');
@@ -488,12 +531,17 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
     || previous.adminLocked && mode !== previous.mode || previous.mode === 'fixed' && mode !== 'fixed');
   const extendsFutureWindow = op.entityType === 'changeRequest' && op.payload.extensionScope === 'future'
     && (date < context.frame.windowStart || date > context.frame.windowEnd);
-  if (permission.kind !== 'denied' && op.authorUserId !== epoch.body.ownerUserId && (weakensInstruction || current.kind === 'conflict' || source.unresolved || reviewIds.length > 0 || proposedOptions.allowDuringCooldown || extendsFutureWindow)) {
+  const removesLockedInstruction = op.entityType === 'changeRequest' && op.payload.cancellation && originals.some((previous) => previous.adminLocked || previous.strict || previous.mode === 'fixed');
+  if (permission.kind !== 'denied' && op.authorUserId !== epoch.body.ownerUserId && (weakensInstruction || removesLockedInstruction || current.kind === 'conflict' || source.unresolved || reviewIds.length > 0 || proposedOptions.allowDuringCooldown || extendsFutureWindow)) {
     permission = { kind: 'approvalRequired', approver: permission.kind === 'approvalRequired' && permission.approver !== 'admin' ? 'adminAndAssignee' : 'admin',
       reason: extendsFutureWindow ? 'outsideWindow' : originalOptions.adminLocked || fixedTime ? 'fixed' : 'strict' };
   }
+  if (permission.kind !== 'denied' && op.entityType === 'changeRequest' && op.payload.cancellation && !policy.adminCanFixWithoutConsent
+    && assigneeIds.length && !assigneeIds.includes(op.authorUserId) && op.authorUserId !== epoch.body.ownerUserId) {
+    permission = { kind: 'approvalRequired', approver: permission.kind === 'approvalRequired' && permission.approver !== 'assignee' ? 'adminAndAssignee' : 'assignee', reason: 'othersAssignment' };
+  }
   if (source.unresolved && permission.kind === 'allowed') permission = { ...permission, needsRequest: true };
-  if (!cancelling && permission.kind !== 'denied' && violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame,
+  if (!cancelling && !automaticCancellation && permission.kind !== 'denied' && violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame,
     subjectUserId: subject, target: proposed, mode, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],
     receiptEpochs: dependencyEvidence?.epochs ?? new Map(), receipts: dependencyEvidence?.receipts })) permission = { kind: 'denied', reason: 'dependency' };
   return { ...context, assigneeIds, mode, original, proposed, proposedOptions, originalRule, originalOptions, zone, permission,

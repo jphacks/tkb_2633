@@ -119,8 +119,10 @@ function DateEditor(props: Props) {
       selector = current.validity === 'source' ? undefined : v2RuleSelectorFromForm(current.validity, round, current.through);
     } catch (cause) { setError(cause instanceof Error ? cause.message : '解除する範囲を確認してください。'); return; }
     inFlight.current = true; setSaving(true);
-    try { await run(async () => { await actions.cancelDates(displayed.ref, displayed.ruleIds, { expectedRuleIds: displayed.ruleIds, selector });
-      setSuccess('選択した範囲の日時指定を解除しました。実施履歴は保持されています。'); setConfirmation(null); }); }
+    try { await run(async () => { const created = await actions.cancelDates(displayed.ref, displayed.ruleIds, { expectedRuleIds: displayed.ruleIds, selector,
+      expectedAssigneeIds: displayed.assignees, expectedAssignmentIds: displayed.assignmentIds, expectedConflictIds: displayed.conflictIds });
+      setSuccess(created[0]?.entityType === 'changeRequest' ? '解除申請を端末に保存しました。受付と必要な承認の確認まで正式予定は変わりません。'
+        : '選択した範囲の日時指定を解除しました。実施履歴は保持されています。'); setConfirmation(null); }); }
     finally { inFlight.current = false; setSaving(false); }
   };
   if (success) return <Card><Text accessibilityLiveRegion="polite" style={styles.body}>{success}</Text></Card>;
@@ -152,7 +154,7 @@ function DateEditor(props: Props) {
         confirmed.current[confirmation.kind] = true; setConfirmation(null); return submit(); }}
       onCancel={() => { setConfirmation(null); confirmed.current = { recentWork: false, highLoad: false, calendar: false }; }} />
       : <AppButton title="日時を指定・申請する" disabled={disabled} onPress={submit} />}
-    {admin && displayed.rules.length ? <View style={{ gap: 8 }}>
+    {displayed.rules.length ? <View style={{ gap: 8 }}>
       {confirmation?.kind === 'cancel' ? <><Text style={styles.error}>次の元指定から、選択した範囲だけを解除します。実施履歴は残ります。ほかの指定が残る場合はそちらを適用します。</Text>
         {displayed.rules.map((fact) => <Text key={fact.operationId} style={styles.caption}>{fact.rule.selector.scope === 'once' ? `今回だけ：${fact.rule.selector.anchorDate}`
           : fact.rule.selector.scope === 'ongoing' ? `${fact.rule.selector.from}から無期限` : `${fact.rule.selector.range.from}〜${fact.rule.selector.range.through ?? '無期限'}`}</Text>)}
@@ -161,7 +163,8 @@ function DateEditor(props: Props) {
             { value: 'endDate', label: '解除の終了日を指定' }, { value: 'ongoing', label: '今回以降を解除' }, { value: 'source', label: '元指定の全期間' }]} />
         {cancelScope.validity === 'endDate' ? <V2TextField label="解除する最後の基準日" placeholder="YYYY-MM-DD" value={cancelScope.through} editable={!disabled}
           onChangeText={(through) => editCancelScope({ through })} /> : null}
-        {cancelScope.validity === 'source' ? <Text style={styles.error}>表示した元指定を適用期間全体から解除します。今回以外の回にも影響します。</Text> : null}
+        {cancelScope.validity === 'source' ? <Text style={styles.error}>表示した元指定を適用期間全体から解除する操作です。今回以外の回にも影響します。</Text> : null}
+        <Text style={styles.caption}>承認が必要な場合は解除申請を保存します。承認確認までは正式予定を維持します。</Text>
         <AppButton title={cancelScope.validity === 'source' ? '表示した適用期間の指定を解除する' : '選択した範囲の指定を解除する'} disabled={disabled} onPress={() => cancel(confirmation.revision)} />
         <AppButton title="解除せず戻る" variant="quiet" disabled={disabled} onPress={() => setConfirmation(null)} /></>
         : <AppButton title="適用中の日時指定を解除…" variant="quiet" disabled={disabled} onPress={() => askConfirmation('cancel')} />}

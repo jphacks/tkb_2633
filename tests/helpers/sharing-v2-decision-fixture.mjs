@@ -10,7 +10,7 @@ import { sharingTestCrypto } from './sharing-crypto.mjs';
 export const ref = { choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null };
 export const range = { from: '2026-10-20', through: '2026-11-10', asOfDate: '2026-10-27' };
 const day = (date) => ({ precision: 'date', date });
-export async function decisionFixture({ fixed = false, secondOwner = false, timeZone = 'Asia/Tokyo', intervalDays = 7, anchorDate = ref.anchorDate } = {}) {
+export async function decisionFixture({ fixed = false, secondOwner = false, timeZone = 'Asia/Tokyo', intervalDays = 7, anchorDate = ref.anchorDate, cancellation = false } = {}) {
   const f = await fixture(); let extra;
   if (secondOwner) { extra = await createDeviceIdentity(sharingTestCrypto); f.archive.push(approveSharedDevice(f.archive.at(-1), f.owner, 'owner', extra)); }
   const owner = await f.device(); const member = await f.device('member', f.member); const owner2 = extra ? await f.device('owner', extra) : null;
@@ -27,9 +27,11 @@ export async function decisionFixture({ fixed = false, secondOwner = false, time
   if (fixed) initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['member']);
   await owner.repository.commit(initial);
   const interval = (start, end) => ({ precision: 'interval', start: `2026-10-27T${start}:00.000Z`, end: `2026-10-27T${end}:00.000Z` });
-  await a.actions.changeDate(ref, { mode: fixed ? 'fixed' : 'day', target: fixed ? interval('10:00', '10:30') : day('2026-10-30'), options: { strict: true, adminLocked: true } });
+  const [source] = await a.actions.changeDate(ref, { mode: fixed ? 'fixed' : 'day', target: fixed ? interval('10:00', '10:30') : day('2026-10-30'), options: { strict: true, adminLocked: true } });
   await deliver(owner);
-  const [request] = await b.actions.changeDate(ref, { mode: fixed ? 'fixed' : 'day', target: fixed ? interval('11:00', '11:30') : day('2026-10-31') }); await deliver(member);
+  const round = (await b.readModel(range)).plan.occurrences[0];
+  const [request] = cancellation ? await b.actions.cancelDates(ref, [source.operationId], { selector: { scope: 'once', occurrenceId: round.id, anchorDate: ref.anchorDate } })
+    : await b.actions.changeDate(ref, { mode: fixed ? 'fixed' : 'day', target: fixed ? interval('11:00', '11:30') : day('2026-10-31') }); await deliver(member);
   assert.equal((await a.readModel(range)).requests[0].kind, 'awaiting');
   if (owner2) await deliver(owner, [owner2]);
   return { ...f, owner, member, owner2, a, b, c: owner2 ? controller(owner2) : null, request, deliver,

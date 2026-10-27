@@ -95,22 +95,29 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
     inputRevision.current++; resetConfirmation();
     input.current = { offerOpen: false, reviewed: false, fields: v2InitialTargetFields(liveRequest.proposal.proposed, liveRequest.timeZone) }; setDraft(input.current);
   };
-  const selector = request.proposal.selector;
+  const removal = request.proposal.cancellation;
+  const selector = removal ? removal.selector : request.proposal.selector;
+  const removalSources = removal ? (model.dateRuleSources ?? model.dateRules).filter((fact) => removal.targetOperationIds.includes(fact.operationId)) : [];
   const label = (target: DateTarget) => v2TargetLabel(target, request.timeZone, { includeYear: true });
   return <Card><SectionHeading title={model.plan.chores.find((chore) => chore.id === request.proposal.choreId)?.name ?? '日時変更の申請'} />
+    {removal ? <Text style={styles.body}>日時指定の解除申請</Text> : null}
     <Text style={styles.caption}>申請者：{nameOf(request.proposal.requesterUserId)} · 日時の地域：{request.timeZone}</Text>
     <Text style={styles.body}>{request.kind === 'approved' ? '変更前の日時' : '正式な日時'}：{request.original ? label(request.original) : '元の時刻が存在しないため未確定'}</Text>
-    <Text style={styles.body}>申請した日時：{label(request.proposal.proposed)}</Text>
-    <Text style={styles.caption}>指定の種類：{request.proposal.proposedMode === 'fixed' ? '固定日時に実施' : request.proposal.proposedMode === 'deadline' ? '期限までに実施' : 'この日に実施'}</Text>
-    <Text style={styles.caption}>適用範囲：{selector.scope === 'once' ? `今回だけ（基準日 ${selector.anchorDate}）` : selector.scope === 'ongoing' ? `${selector.from}から無期限` : `${selector.range.from}〜${selector.range.through ?? '無期限'}`}</Text>
-    <Text style={styles.caption}>承認後の期間拡張：{request.proposal.extensionScope === 'future' ? '今後の家事回にも適用' : '今回の家事回だけ'}</Text>
-    <Text style={styles.caption}>申請した条件：{[
+    <Text style={styles.body}>{removal ? '解除後の期限計算の基準' : '申請した日時'}：{label(request.proposal.proposed)}</Text>
+    {removal ? <Text style={styles.caption}>この申請で新しい手動日時は指定しません。解除後は残る指定、または自動計算した予定を適用します。</Text>
+      : <Text style={styles.caption}>指定の種類：{request.proposal.proposedMode === 'fixed' ? '固定日時に実施' : request.proposal.proposedMode === 'deadline' ? '期限までに実施' : 'この日に実施'}</Text>}
+    <Text style={styles.caption}>適用範囲：{!selector ? '表示した元指定の全期間' : selector.scope === 'once' ? `今回だけ（基準日 ${selector.anchorDate}）` : selector.scope === 'ongoing' ? `${selector.from}から無期限` : `${selector.range.from}〜${selector.range.through ?? '無期限'}`}</Text>
+    {removalSources.map((fact) => <Text key={fact.operationId} style={styles.caption}>解除する元指定：{fact.rule.selector.scope === 'once' ? fact.rule.selector.anchorDate
+      : fact.rule.selector.scope === 'period' ? `${fact.rule.selector.range.from}〜${fact.rule.selector.range.through ?? '無期限'}` : `${fact.rule.selector.from}から無期限`}</Text>)}
+    {!removal ? <Text style={styles.caption}>承認後の期間拡張：{request.proposal.extensionScope === 'future' ? '今後の家事回にも適用' : '今回の家事回だけ'}</Text> : null}
+    <Text style={styles.caption}>{removal ? '解除後に残る条件' : '申請した条件'}：{[
       request.proposal.proposedOptions.strict ? '指定日時を厳守' : null, request.proposal.proposedOptions.adminLocked ? '管理者による固定' : null,
       request.proposal.proposedOptions.forbidEarlier ? '前倒しを禁止' : null, request.proposal.proposedOptions.allowDuringCooldown ? '最近の実施があっても再指定' : null,
     ].filter(Boolean).join('・') || '追加条件なし'}</Text>
     <Text style={styles.body}>{labels[request.kind]}</Text>
     {request.deadline.kind === 'open' ? <Text style={styles.caption}>回答期限：{label({ precision: 'instant', at: new Date(request.deadline.expiresAt).toISOString() })}</Text> : null}
-    {request.kind === 'approved' && request.formal ? <><Text style={styles.body}>確定した日時：{label(request.formal)}</Text>
+    {request.kind === 'approved' && request.formalAction === 'cancel' ? <Text style={styles.body}>選択した範囲の日時指定を解除しました。実施履歴は保持されています。</Text>
+      : request.kind === 'approved' && request.formal ? <><Text style={styles.body}>確定した日時：{label(request.formal)}</Text>
       {request.formalOptions?.allowDuringCooldown ? <Text style={styles.caption}>確定した条件：最近の実施があっても再指定します。</Text> : null}</>
       : <Text style={styles.caption}>必要な承認の受付確認までは元の正式予定を維持します。端末時計による自動承認はしません。</Text>}
     {review.answers.map((item) => <Text key={item.operationId} style={styles.caption}>{nameOf(item.authorUserId)}：{answerLabels[item.decision]}
@@ -125,8 +132,8 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
     {request.kind === 'conflict' ? <><Text style={styles.error}>異なる回答を保持しています。表示した回答を確認してから解決してください。到着順では決めません。</Text>
       <V2Flag label="競合している回答を確認した" value={draft.reviewed} disabled={disabled} onChange={(reviewed) => edit({ reviewed })} /></> : null}
     {review.canVote ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      <AppButton title="日時変更を承認" compact disabled={!canAnswer} onPress={() => answer('approve')} />
-      <AppButton title="日時変更を拒否" compact variant="secondary" disabled={!canAnswer} onPress={() => answer('reject')} />
+      <AppButton title={removal ? '日時指定の解除を承認' : '日時変更を承認'} compact disabled={!canAnswer} onPress={() => answer('approve')} />
+      <AppButton title={removal ? '解除申請を拒否' : '日時変更を拒否'} compact variant="secondary" disabled={!canAnswer} onPress={() => answer('reject')} />
     </View> : null}
     {request.counteroffers.map((offer) => <View key={offer.operationId} style={{ gap: 8 }}>
       <Text style={styles.body}>代替日時：{label(offer.target)}</Text>
@@ -135,7 +142,7 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
       {review.acceptableCounterofferIds.includes(offer.operationId) ? <AppButton title={`この代替日時を承諾（${label(offer.target)}）`} disabled={!canAnswer} onPress={() => answer('acceptCounteroffer', offer.operationId)} /> : null}
     </View>)}
     {review.canCounteroffer ? draft.offerOpen ? <View style={{ gap: 10 }}><SectionHeading title="代替日時を提案" />
-      <Text style={styles.caption}>指定の種類・適用範囲・条件は上記の申請を引き継ぎます。入力だけでは保存しません。</Text>
+      <Text style={styles.caption}>{removal ? '解除の代わりに手動日時を指定する提案です。本人が承諾すると、その日時指定が残ります。' : '指定の種類・適用範囲・条件は上記の申請を引き継ぎます。'}入力だけでは保存しません。</Text>
       <V2DateTargetFields mode={request.proposal.proposedMode} fields={draft.fields} timeZone={request.timeZone} disabled={disabled} onChange={field} />
       <AppButton title="この日時を代替案として送る" disabled={!canAnswer} onPress={() => answer('counteroffer')} />
       <AppButton title="代替案を送らず戻る" variant="quiet" disabled={disabled} onPress={() => edit({ offerOpen: false })} />

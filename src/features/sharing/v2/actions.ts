@@ -10,6 +10,7 @@ import { maximalCausalFacts } from './causal-facts.ts';
 import { frameAtOperation } from './authority-context.ts';
 import { nextV2CommonOccurrence } from './next-occurrence.ts';
 import { cancellationScopeMatches } from './date-cancellations.ts';
+import { v2CancellationProposal, v2CancellationSelector } from './cancellation-proposal.ts';
 import { v2DatePermissionId, v2SubjectOccurrenceId } from './occurrence-id.ts';
 import { recordedInstructionAt } from './recorded-instruction.ts';
 import { buildV2CommonPlan } from './common-plan.ts';
@@ -322,7 +323,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
           || edit.expectedReviewRevision !== undefined && edit.expectedReviewRevision !== review.revision) throw new V2StaleSettingsError();
         if (['approved', 'rejected', 'expired', 'tooLate', 'blocked'].includes(current.kind)) return [];
         let allowDuringCooldown = false;
-        if (decision !== 'reject') {
+        if (decision !== 'reject' && !(decision === 'approve' && current.proposal.cancellation)) {
           const offer = decision === 'acceptCounteroffer' ? current.counteroffers.find((entry) => entry.operationId === referenceDecisionId) : null;
           const chosen = decision === 'approve' ? current.proposal.proposed : decision === 'counteroffer' ? target : offer?.target;
           if (!chosen) throw new Error('最新の代替日時を確認してください。');
@@ -341,18 +342,37 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         return [draft('requestDecision', null, { requestId, decision, target, referenceDecisionId, ...(allowDuringCooldown ? { allowDuringCooldown: true } : {}) })];
       }),
     approveSubstitution: (completionOperationId: string, decision: 'approve' | 'reject') => repository.commit([draft('completionApproval', null, { completionOperationId, decision })]),
-    cancelDates: (ref: V2RoundReference, targetOperationIds: string[], edit: { expectedRuleIds?: readonly string[]; selector?: RuleSelector } = {}) => repository.commitCurrent(async (state) => {
-      const context = frame(state, ref); const rules = observedDateRules(state.assessment.view, point(state), state.assessment.formalRulesAt(point(state)), true);
+    cancelDates: (ref: V2RoundReference, targetOperationIds: string[], edit: V2AssignmentEdit & { expectedRuleIds?: readonly string[]; selector?: RuleSelector; expectedAssigneeIds?: readonly string[] } = {}) => repository.commitCurrent(async (state) => {
+      const context = frame(state, ref); expectAssignment(context, edit);
+      if (edit.expectedAssigneeIds && !sameIds(edit.expectedAssigneeIds, ref.subjectUserId === null ? context.assigneeIds : [ref.subjectUserId])) throw new V2StaleSettingsError();
+      const at = point(state); const view = state.assessment.view; const formal = state.assessment.formalRulesAt(at);
+      const rules = observedDateRules(view, at, formal, true); const active = observedDateRules(view, at, formal);
+      const zone = view.field('settings', 'settings', 'timeZone', at)?.value as string;
+      const selected = selectManualRule(active, context.frame, ref.subjectUserId, zone);
+      const currentIds = selected.kind === 'selected' ? selected.equivalentOperationIds : selected.kind === 'conflict' ? selected.candidates.map((fact) => fact.operationId) : [];
       if (edit.expectedRuleIds) {
-        const selected = selectManualRule(observedDateRules(state.assessment.view, point(state), state.assessment.formalRulesAt(point(state))), context.frame, ref.subjectUserId, state.assessment.view.field('settings', 'settings', 'timeZone', point(state))?.value as string);
-        const currentIds = selected.kind === 'selected' ? selected.equivalentOperationIds : selected.kind === 'conflict' ? selected.candidates.map((fact) => fact.operationId) : [];
         if (!sameIds(edit.expectedRuleIds, currentIds)) throw new V2StaleSettingsError();
       }
       if (targetOperationIds.some((id) => !rules.some((fact) => fact.operationId === id && fact.rule.choreId === context.frame.choreId && fact.rule.subjectUserId === ref.subjectUserId))) throw new Error('取り消す日時指定を確認してください。');
       if (edit.selector && targetOperationIds.some((id) => !cancellationScopeMatches(rules.find((fact) => fact.operationId === id)!.rule, edit.selector!, context.frame))) {
         throw new Error('解除する範囲は、表示した家事回から指定してください。周期が変わった元指定は適用期間全体の解除で確認してください。');
       }
-      return [draft('designationCancel', null, { targetOperationIds, ...(edit.selector ? { selector: edit.selector } : {}) })];
+      const direct = () => [draft('designationCancel', null, { targetOperationIds, ...(edit.selector ? { selector: edit.selector } : {}) })];
+      // Preserve the legacy administrator API for explicitly named obsolete source rules.
+      if (!edit.selector && !edit.expectedRuleIds && scope.userId === state.archive.at(-1)!.body.ownerUserId && !sameIds(targetOperationIds, currentIds)) return direct();
+      const cancellation = { targetOperationIds, selector: edit.selector ?? null };
+      const remaining = v2CancellationProposal(active, context.frame, ref.subjectUserId, zone, cancellation);
+      const originals = selected.kind === 'conflict' ? selected.candidates : selected.kind === 'selected' ? [selected.fact] : [];
+      const source = v2DateChangeOriginal(originals.map((fact) => fact.rule), context.frame, zone);
+      const request = draft('changeRequest', null, { requesterUserId: scope.userId, choreId: ref.choreId, anchorDate: ref.anchorDate,
+        occurrenceId: context.frame.id, subjectUserId: ref.subjectUserId, originalDesignationId: selected.kind === 'selected' ? selected.fact.operationId : null,
+        original: source.original, proposed: remaining.target, proposedMode: remaining.mode, proposedOptions: remaining.options,
+        selector: v2CancellationSelector(active, cancellation), extensionScope: 'once',
+        basisRuleIds: currentIds, cancellation });
+      const permission = dateChangeContextAtOperation(view, state.archive, { ...at, ...request }, undefined, formal,
+        new Map(state.assessment.requestStates.map((entry) => [entry.requestId, entry])), { receipts: state.receipts, epochs: state.assessment.receiptEpochs }).permission;
+      if (permission.kind === 'denied') throw new Error('この指定を解除する権限と残る予定を確認してください。');
+      return scope.userId === state.archive.at(-1)!.body.ownerUserId && permission.kind === 'allowed' && !permission.needsRequest ? direct() : [request];
     }),
   };
 }

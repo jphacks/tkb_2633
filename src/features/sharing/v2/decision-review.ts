@@ -35,7 +35,7 @@ function createReviewer(state: State, viewerUserId: string) {
     }
   }
   const commonRevision = sharedDocumentDigest({ roster: sharedRosterDigest(epoch), contextIds: globalIds.sort(),
-    approvedDates: state.assessment.approvedRules, assignmentStates: state.assessment.assignmentRequests });
+    approvedDates: state.assessment.approvedRules, approvedDateCancellations: view.dateCancellationsAt(), assignmentStates: state.assessment.assignmentRequests });
   const choreRevisions = new Map([...choreIds].map((id) => [id, sharedDocumentDigest((contextIds.get(id) ?? []).sort())]));
   const active = epoch.body.members.some((member) => member.userId === viewerUserId);
   const admin = viewerUserId === epoch.body.ownerUserId;

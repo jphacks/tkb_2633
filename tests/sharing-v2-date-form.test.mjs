@@ -27,6 +27,18 @@ async function flag(screen, label, value) {
   const node = screen.nodes().find((n) => n.type === 'Switch' && n.props.accessibilityLabel === label); assert.ok(node); assert.equal(node.props.disabled, false); node.props.onValueChange(value); await screen.flush();
 }
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 members can explicitly request a locked date removal while the form retains the original formal schedule`, async () => {
+    const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+    try {
+      const initial = seeds(); initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['member']); await owner.repository.commit(initial);
+      const source = await form(owner, platform); await source.controller.actions.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-28' }, options: { strict: true, adminLocked: true } });
+      const facts = await loadSharedFacts(owner.database, groupId);
+      await applyReceivedSharedFacts(member.database, groupId, facts, '1', member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(facts)));
+      const { screen, props } = await form(member, platform); await screen.press('適用中の日時指定を解除…'); await screen.press('選択した範囲の指定を解除する');
+      assert.ok(screen.text().includes('解除申請を端末に保存')); assert.equal(props.model.requests[0].kind, 'pendingDelivery');
+      assert.equal(props.subject.formalDate.target.date, '2026-10-28'); assert.ok(props.model.requests[0].proposal.cancellation);
+    } finally { owner.connection.close(); member.connection.close(); }
+  });
   test(`${platform} v2 date form saves only an explicit designation and defaults to one round without changing the common cadence`, async () => {
     const f = await fixture(); const d = await f.device();
     try {

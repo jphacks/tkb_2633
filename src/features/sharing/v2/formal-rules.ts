@@ -12,6 +12,7 @@ export function approvedRequestRule(request: SharedOperation, state: V2DateReque
   if (state.requestId !== request.operationId || request.entityType !== 'changeRequest' || request.schemaVersion !== 2
     || canonicalJson(state.proposal) !== canonicalJson(request.payload)) throw new Error('Approved state does not belong to this source request');
   if (state.kind !== 'approved') return null;
+  if (state.formalAction === 'cancel') return null;
   if (!state.formal) throw new Error('Approved request must contain an actual formal date');
   if (!state.confirmation) throw new Error('Missing source confirmation evidence');
   const proposal = state.proposal;

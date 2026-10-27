@@ -260,6 +260,28 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
       .occurrences.filter((round) => round.choreId === 'partial-cancel');
     const expectedCancellation = await cancellationPlan(owner.repository); assert.deepEqual(await cancellationPlan(member.repository), expectedCancellation);
     assert.deepEqual(expectedCancellation.map((round) => round.subjects[0].formalDate.kind), ['manual', 'manual', 'automatic', 'automatic', 'automatic', 'manual', 'manual', 'manual']);
+    await owner.repository.commit([
+      change('removal-request-chore', 'chore', 'removal-request', { name: '固定指定の解除申請検査', enabled: true }),
+      change('removal-request-cfg', 'chorePolicy', 'removal-request', { configuration: { policy: chorePolicyFromPreset('assigned', ['member']), anchorDate,
+        intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
+    ]);
+    const removalRef = { ...assignmentRef, choreId: 'removal-request' };
+    const [lockedRemoval] = await ownerActions.changeDate(removalRef, { mode: 'day', target: day(addLocalDays(anchorDate, 1)),
+      options: { strict: true, adminLocked: true }, selector: { scope: 'ongoing', from: anchorDate }, confirmHighLoad: true });
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    const [removalRequest] = await memberActions.cancelDates(removalRef, [lockedRemoval.operationId], {
+      selector: { scope: 'period', range: { from: anchorDate, through: addLocalDays(anchorDate, 7) } }, expectedRuleIds: [lockedRemoval.operationId],
+    });
+    const removalState = async (repository) => (await repository.readState()).assessment.requestStates.find((state) => state.requestId === removalRequest.operationId);
+    assert.equal((await removalState(member.repository)).kind, 'pendingDelivery');
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true }); assert.equal((await removalState(owner.repository)).kind, 'awaiting');
+    await ownerActions.decide(removalRequest.operationId, 'approve'); assert.equal((await removalState(owner.repository)).kind, 'awaiting');
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    assert.equal((await removalState(member.repository)).formalAction, 'cancel'); assert.equal(hash(owner), hash(member));
+    const removalPlan = async (repository) => buildV2CommonPlan(await repository.readState(), { from: anchorDate, through: addLocalDays(anchorDate, 14), asOfDate: anchorDate })
+      .occurrences.filter((round) => round.choreId === 'removal-request');
+    const expectedRemoval = await removalPlan(owner.repository);
+    assert.deepEqual(expectedRemoval.map((round) => round.subjects[0].formalDate.kind), ['automatic', 'automatic', 'manual']);
     const sequence = (await getDocFromServer(f.root)).data().headSequence;
     const approvedSnapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
       next, f.identity, key2, 'approved-requests-v2', sequence, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
@@ -276,6 +298,7 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     assert.equal(restoredAssignment.payload.fromAnchorDate, nextAnchor); assert.equal(restoredAssignment.payload.ruleVersion, 2);
     assert.deepEqual(await historicalRound(restored.repository), await historicalRound(owner.repository));
     assert.deepEqual(await cancellationPlan(restored.repository), expectedCancellation);
+    assert.deepEqual(await removalPlan(restored.repository), expectedRemoval); assert.equal((await removalState(restored.repository)).formalAction, 'cancel');
     await member.repository.commit([change('next-date-request', 'changeRequest', 'next-date-request', {
       requesterUserId: 'member', choreId: 'approval-floor', anchorDate, occurrenceId: requestOccurrence, subjectUserId: null,
       originalDesignationId: firstRule.operationId, original: firstRule.rule.target, proposed: day(addLocalDays(anchorDate, 5)), proposedMode: 'day',

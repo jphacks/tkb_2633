@@ -2621,5 +2621,85 @@
         "name": "v2 date cancellation names the entire source period and preserves real history until explicit confirmation"
       }
     ]
+  },
+  {
+    "feature": "v2-cancellation-receipt-deadline-and-work-history",
+    "tests": [
+      {
+        "name": "v2 common planning reuses its read boundary instead of rescanning every event for each cancellation window",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 a member requests removal of a locked date without changing the formal schedule before receipt-backed approval",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 an offline cancellation approval received after its server deadline stays expired and keeps its original date and answer history",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 work recorded while a removal awaits approval retains its actual original instruction after cancellation",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      }
+    ]
+  },
+  {
+    "feature": "v2-cancellation-consent-and-source-authority",
+    "tests": [
+      {
+        "name": "v2 a third members locked-date removal in a consent-based group requires both the administrator and actual assignee",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 roommate administrators request an assignees consent for removal and cannot approve their own request",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 a cancellation cannot forge its fallback, target source, scope or window extension and never adds those attempts to the outbox",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 a cancellation answer cannot clear a different date source that changed after the request was displayed",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 a per-member cancellation approval affects only the requested subject while keeping the other members instruction",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      }
+    ]
+  },
+  {
+    "feature": "v2-cancellation-counteroffer-action-and-scope",
+    "tests": [
+      {
+        "name": "v2 concurrent cancellation approval and accepted same-date designation retain an explicit action conflict on every device",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 a cancellation counteroffer at the same baseline is still an explicit date and needs its own acceptance",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 a whole-rule cancellation counteroffer retains the original repeating scope when requested from a later round",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      },
+      {
+        "name": "v2 removing a manual date lets the automatic planner respect required order without allowing an earlier manual counteroffer",
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs"
+      }
+    ]
+  },
+  {
+    "feature": "v2-member-cancellation-forms-and-approval-ui",
+    "tests": [
+      {
+        "name": "v2 members can explicitly request a locked date removal while the form retains the original formal schedule",
+        "file": "tests/sharing-v2-date-form.test.mjs"
+      },
+      {
+        "name": "v2 cancellation review shows its actual intent and keeps the manual date until receipt-backed removal",
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs"
+      }
+    ]
   }
 ]

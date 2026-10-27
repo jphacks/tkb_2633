@@ -71,7 +71,10 @@ export interface DateChangeRequest {
   proposedMode: DesignationMode; proposedOptions: DesignationOptions; selector: RuleSelector; extensionScope: 'once' | 'future';
   basisRuleIds?: string[];
   reviewedRequestIds?: string[];
+  /** Approval removes only these observed sources; null means their complete source periods. */
+  cancellation?: DateRuleCancellation;
 }
+export interface DateRuleCancellation { targetOperationIds: string[]; selector: RuleSelector | null }
 export interface AssignmentChangeRequest {
   requesterUserId: string; choreId: string; anchorDate: LocalDate; occurrenceId: string; ruleVersion: number;
   originalMemberIds: string[]; originalAssignmentIds: string[]; originalClaimOperationIds: string[];

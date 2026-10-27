@@ -3,7 +3,7 @@ import type { JsonValue, SharedEntityType, SharedOperation, VersionVector } from
 import type { SharedReplica } from '../replica.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { normalizeV2Configuration } from './configuration-normalization.ts';
-import type { SharedChoreConfiguration } from './model.ts';
+import type { DateRuleCancellation, SharedChoreConfiguration } from './model.ts';
 import type { V2AssignmentProjection } from './assignment-state.ts';
 
 export class V2HistoryConflictError extends Error { readonly code = 'sharing/v2-history-conflict'; }
@@ -17,7 +17,8 @@ export function createV2HistoryView(replica: SharedReplica) {
 }
 
 /** The receiver adds only authenticated, authorized facts; invalid writes never establish later privileges. */
-export function createV2AuthorityIndex(groupId: string, assignmentProjection?: (at: SharedOperation) => V2AssignmentProjection, confirmedContext?: () => VersionVector) {
+export function createV2AuthorityIndex(groupId: string, assignmentProjection?: (at: SharedOperation) => V2AssignmentProjection, confirmedContext?: () => VersionVector,
+  cancellationProjection?: (at?: SharedOperation) => DateRuleCancellation[]) {
   const ready: SharedOperation[] = []; const byId = new Map<string, SharedOperation>();
   const topics = new Map<string, SharedOperation[]>(); const types = new Map<SharedEntityType, SharedOperation[]>();
   const occurrences = new Map<string, SharedOperation[]>();
@@ -52,6 +53,7 @@ export function createV2AuthorityIndex(groupId: string, assignmentProjection?: (
     forOccurrence: (id: string) => occurrences.get(id) ?? [],
     completionFactsForRound: (choreId: string, anchorDate: string) => completionRounds.get(`${choreId}\0${anchorDate}`) ?? [],
     assignmentsAt: (at: SharedOperation) => assignmentProjection?.(at),
+    dateCancellationsAt: (at?: SharedOperation) => cancellationProjection?.(at) ?? [],
     confirmedReceiptContext: () => confirmedContext?.(),
     observed,
     field(type: SharedEntityType, id: string, field: string, at: SharedOperation, filter: (op: SharedOperation) => boolean = () => true):

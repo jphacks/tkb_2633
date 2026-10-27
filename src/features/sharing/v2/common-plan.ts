@@ -262,7 +262,7 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       } catch { issue('assignmentNeedsReview', chore.id, frame.id); continue; }
       if (context.assignmentConflictIds.length) issue('assignmentNeedsReview', chore.id, frame.id, null, context.assignmentConflictIds);
       const records = historyByFrame.get(frame.id) ?? []; const actual = records.filter(usable);
-      const window = expandedCommonWindow({ frame, timeZone, view, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
+      const window = expandedCommonWindow({ frame, timeZone, view, at, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
       if (window.reviews.length) issue('windowExtensionNeedsReview', chore.id, frame.id, null, window.reviews);
       const past = frame.anchorDate < range.asOfDate;
       const originalSubjects = context.subjectUserIds;
@@ -369,7 +369,7 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       if (subjects.length && completed.every(Boolean)) {
         const instant = Math.max(...completed.map((record) => Date.parse(record.performedAt))); result = { day: sharedLocalDate(new Date(instant), timeZone), instant, occurrenceId: frame.id, completed: true };
       } else if (subjects.length) {
-        const window = expandedCommonWindow({ frame, timeZone, view, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
+        const window = expandedCommonWindow({ frame, timeZone, view, at, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
         const endings: { day: LocalDate; instant: number | null }[] = [];
         for (const uid of subjects) {
           const selected = selectManualRule(allRules, frame, uid, timeZone);

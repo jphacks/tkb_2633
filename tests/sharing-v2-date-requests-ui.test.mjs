@@ -19,6 +19,18 @@ async function ui(f, who, platform, extra = {}) {
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 cancellation review shows its actual intent and keeps the manual date until receipt-backed removal`, async () => {
+    const f = await decisionFixture({ cancellation: true });
+    try {
+      const { screen, update } = await ui(f, 'owner', platform); assert.ok(screen.text().includes('日時指定の解除申請'));
+      assert.ok(screen.text().includes('解除後の期限計算の基準')); assert.ok(!screen.text().includes('申請した日時'));
+      await screen.press('日時指定の解除を承認'); assert.ok(screen.text().includes('回答を端末に保存'));
+      assert.equal((await f.a.readModel(range)).plan.occurrences[0].subjects[0].formalDate.kind, 'manual');
+      await f.deliver(f.owner); await update(); await screen.press('最新の申請内容を表示');
+      assert.ok(screen.text().includes('選択した範囲の日時指定を解除しました')); assert.ok(!screen.text().includes('確定した日時'));
+      assert.equal((await f.b.readModel(range)).plan.occurrences[0].subjects[0].formalDate.kind, 'automatic');
+    } finally { f.close(); }
+  });
   test(`${platform} v2 request approval is explicitly saved and remains awaiting until its server receipt arrives`, async () => {
     const f = await decisionFixture();
     try {

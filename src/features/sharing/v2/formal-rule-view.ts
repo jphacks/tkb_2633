@@ -1,5 +1,6 @@
 import type { SharedOperation } from '../operations.ts';
 import type { ManualRule, ManualRuleFact, RuleSelector } from './model.ts';
+import { observedDateCancellations } from './date-cancellations.ts';
 import type { V2HistoryView } from './history-view.ts';
 import { observedManualRule } from './formal-rules.ts';
 
@@ -8,13 +9,13 @@ export function observedDateRules(view: V2HistoryView, operation: SharedOperatio
     .map((fact) => ({ ...fact, rule: fact.payload.configuration as unknown as ManualRule }) as ManualRuleFact),
   ...approved.filter((fact) => observedManualRule(fact, operation))];
   if (includeCancelled) return rules;
-  const cancellations = view.observed(view.ofType('designationCancel'), operation);
-  const cancelled = new Set(cancellations.filter((fact) => !fact.payload.selector).flatMap((fact) => fact.payload.targetOperationIds as string[]));
+  const cancellations = observedDateCancellations(view, operation);
+  const cancelled = new Set(cancellations.filter((fact) => !fact.selector).flatMap((fact) => fact.targetOperationIds));
   const excluded = new Map<string, RuleSelector[]>();
   for (const fact of cancellations) {
-    if (!fact.payload.selector) continue;
-    for (const id of fact.payload.targetOperationIds as string[]) {
-      const selectors = excluded.get(id) ?? []; selectors.push(fact.payload.selector as unknown as RuleSelector); excluded.set(id, selectors);
+    if (!fact.selector) continue;
+    for (const id of fact.targetOperationIds) {
+      const selectors = excluded.get(id) ?? []; selectors.push(fact.selector); excluded.set(id, selectors);
     }
   }
   return rules.filter((fact) => !cancelled.has(fact.operationId))

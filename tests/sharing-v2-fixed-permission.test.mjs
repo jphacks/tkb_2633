@@ -51,9 +51,16 @@ test('v2 an earlier fixed-time change keeps the permitted automatic-approval pat
 test('v2 cancelling a fixed time or dropping its time meaning cannot bypass consent through an unlocked flag or earlier automatic approval', async () => {
   const f = await fixedFixture();
   try {
-    await assert.rejects(f.b.cancelDates(ref, [f.source.operationId]), { code: 'sharing/v2-authority-denied' });
+    const outboxBefore = (await listSharingOutbox(f.member.database, groupId)).length;
+    await assert.rejects(f.member.repository.commit([draft('direct-fixed-cancel', 'designationCancel', 'direct-fixed-cancel', { targetOperationIds: [f.source.operationId] })]), { code: 'sharing/v2-authority-denied' });
+    assert.equal((await listSharingOutbox(f.member.database, groupId)).length, outboxBefore);
+    const [removal] = await f.b.cancelDates(ref, [f.source.operationId]); assert.equal(removal.entityType, 'changeRequest');
+    assert.equal((await f.member.repository.readState()).assessment.requestStates[0].kind, 'pendingDelivery');
+    await f.deliver(await loadSharedFacts(f.member.database, groupId), 6);
+    assert.equal((await f.member.repository.readState()).assessment.requestStates[0].kind, 'awaiting');
+    assert.deepEqual((await f.b.readPlan(range)).occurrences[0].subjects[0].formalDate.target, target('10:00', '10:30'));
     const [change] = await f.b.changeDate(ref, { mode: 'deadline', target: { precision: 'instant', at: '2026-10-27T09:00:00.000Z' } });
-    assert.equal(change.entityType, 'changeRequest'); await f.deliver(await loadSharedFacts(f.member.database, groupId), 6);
+    assert.equal(change.entityType, 'changeRequest'); await f.deliver(await loadSharedFacts(f.member.database, groupId), 7);
     assert.equal((await f.member.repository.readState()).assessment.requestStates[0].kind, 'awaiting');
     const before = (await listSharingOutbox(f.member.database, groupId)).length;
     await assert.rejects(f.member.repository.commit([draft('direct-fixed-bypass', 'designation', 'direct-fixed-bypass', { configuration: {

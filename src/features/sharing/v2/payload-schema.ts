@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-22';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-23';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -135,7 +135,7 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   }
   if (entityType === 'changeRequest') {
     const required = ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'proposedMode', 'proposedOptions', 'selector', 'extensionScope'];
-    record(payload, [...required, 'basisRuleIds', 'reviewedRequestIds'], required);
+    record(payload, [...required, 'basisRuleIds', 'reviewedRequestIds', 'cancellation'], required);
     if ('basisRuleIds' in payload) ids(payload.basisRuleIds);
     if ('reviewedRequestIds' in payload) ids(payload.reviewedRequestIds, false);
     if (payload.requesterUserId !== binding.authorUserId) throw new Error('Request author mismatch');
@@ -143,7 +143,13 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
     if (payload.original !== null) target(payload.original); choice(payload.proposedMode, ['deadline', 'day', 'fixed']);
     validateDesignationTarget(payload.proposedMode as 'deadline' | 'day' | 'fixed', payload.proposed as unknown as DateTarget);
     Object.values(record(payload.proposedOptions, ['strict', 'adminLocked', 'forbidEarlier', 'allowDuringCooldown'], ['strict', 'adminLocked', 'forbidEarlier'])).forEach(flag);
-    selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;
+    selector(payload.selector); choice(payload.extensionScope, ['once', 'future']);
+    if ('cancellation' in payload) {
+      const cancellation = record(payload.cancellation, ['targetOperationIds', 'selector']); ids(cancellation.targetOperationIds, false);
+      if (cancellation.selector !== null) selector(cancellation.selector);
+      if (payload.extensionScope !== 'once') throw new Error('A cancellation cannot extend a common execution window');
+    }
+    return;
   }
   if (entityType === 'requestDecision') {
     const required = ['requestId', 'decision', 'target', 'referenceDecisionId'];

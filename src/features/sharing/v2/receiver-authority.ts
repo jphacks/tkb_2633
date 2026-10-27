@@ -452,6 +452,7 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
     ?? { precision: 'date' as const, date: anchorDate };
   const originalOptions: DesignationOptions = { adminLocked: originals.some((previous) => previous.adminLocked),
     strict: originals.some((previous) => previous.strict), forbidEarlier: originals.some((previous) => previous.forbidEarlier) };
+  const fixedTime = originals.some((previous) => previous.mode === 'fixed');
   const proposed = proposedOverride ?? rule?.target ?? op.payload.proposed as unknown as DateTarget;
   const mode: DesignationMode = proposedOverride ? 'day' : rule?.mode ?? op.payload.proposedMode as DesignationMode;
   const proposedOptions: DesignationOptions = op.entityType === 'designationCancel' ? { strict: false, adminLocked: false, forbidEarlier: false }
@@ -467,16 +468,16 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   let permission: DateChangePermission = evaluateDateChangePermission({ actorUserId: op.authorUserId, adminUserId: epoch.body.ownerUserId,
       activeMemberIds: epoch.body.members.map((member) => member.userId), choreId, assigneeIds, policy, grants,
       movingEarlier: targetReferenceTime(proposed, zone) < Math.max(...(originalTargets.length ? originalTargets : [original]).map((target) => targetReferenceTime(target, zone))), beforeWindow: date < context.frame.windowStart,
-      afterWindow: date > context.frame.windowEnd, ...originalOptions,
+      afterWindow: date > context.frame.windowEnd, ...originalOptions, adminLocked: originalOptions.adminLocked || fixedTime,
       fixedConflict: fixedConflictAtOperation(view, archive, op, proposed, assigneeIds, { occurrenceId: context.frame.id, subjectUserId: subject }, formalRules), operation: op });
   const weakensInstruction = originals.some((previous) => previous.adminLocked && !proposedOptions.adminLocked
     || previous.strict && !proposedOptions.strict || previous.forbidEarlier && !proposedOptions.forbidEarlier
-    || previous.adminLocked && mode !== previous.mode);
+    || previous.adminLocked && mode !== previous.mode || previous.mode === 'fixed' && mode !== 'fixed');
   const extendsFutureWindow = op.entityType === 'changeRequest' && op.payload.extensionScope === 'future'
     && (date < context.frame.windowStart || date > context.frame.windowEnd);
   if (permission.kind !== 'denied' && op.authorUserId !== epoch.body.ownerUserId && (weakensInstruction || current.kind === 'conflict' || reviewIds.length > 0 || proposedOptions.allowDuringCooldown || extendsFutureWindow)) {
     permission = { kind: 'approvalRequired', approver: permission.kind === 'approvalRequired' && permission.approver !== 'admin' ? 'adminAndAssignee' : 'admin',
-      reason: extendsFutureWindow ? 'outsideWindow' : originalOptions.adminLocked ? 'fixed' : 'strict' };
+      reason: extendsFutureWindow ? 'outsideWindow' : originalOptions.adminLocked || fixedTime ? 'fixed' : 'strict' };
   }
   if (!cancelling && permission.kind !== 'denied' && violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame,
     subjectUserId: subject, target: proposed, mode, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],

@@ -1993,5 +1993,26 @@
         "name": "v2 history does not offer another member a cancellation control for work recorded by someone else"
       }
     ]
+  },
+  {
+    "feature": "v2-fixed-time-consent-independent-of-extra-lock",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-fixed-permission.test.mjs",
+        "name": "v2 a fixed-time designation requires consent for a later change even when no extra administrator-lock or strict flag was set"
+      },
+      {
+        "file": "tests/sharing-v2-fixed-permission.test.mjs",
+        "name": "v2 an earlier fixed-time change keeps the permitted automatic-approval path but waits for its immutable request receipt"
+      },
+      {
+        "file": "tests/sharing-v2-fixed-permission.test.mjs",
+        "name": "v2 cancelling a fixed time or dropping its time meaning cannot bypass consent through an unlocked flag or earlier automatic approval"
+      },
+      {
+        "file": "tests/sharing-v2-fixed-permission.test.mjs",
+        "name": "v2 fixed-time automatic approval remains disabled by strict instructions, an earlier-change prohibition or the explicit group setting"
+      }
+    ]
   }
 ]

@@ -2364,5 +2364,136 @@
         "name": "v2 stale own Calendar remains unknown instead of claiming that an accepted fixed target is free"
       }
     ]
+  },
+  {
+    "feature": "v2-next-assignment-real-recurrence",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 next assignment follows the next real cadence segment instead of adding the old interval"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 next assignment skips a disabled period and binds the future active rule revision"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 a members next assignment request uses the same actual future occurrence and leaves this rounds assignees intact"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 a displayed next occurrence is read without mutation and cannot be reused after a future cadence change"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 a next assignment does not invent a future occurrence after an indefinite disable"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 next assignment stops for a disputed future configuration instead of choosing an arbitrary cadence"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-targets.test.mjs",
+        "name": "v2 a one-off next assignment affects that actual occurrence without rewriting this or later rounds"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-answer-current-review",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-answer-review.test.mjs",
+        "name": "v2 assignment answers report a stale displayed answer set before applying a changed terminal-state shortcut"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-answer-review.test.mjs",
+        "name": "v2 a displayed assignment review becomes stale when its fixed date changes and a fresh review can still approve"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-answer-review.test.mjs",
+        "name": "v2 combined date and assignment reviews share one source index and match their single-request guards"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-explicit-form",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 assignment selection does not autosave and an explicit one-off change preserves other rounds"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 assignment form shows the actual next date after a scheduled cadence change"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 member assignment edits remain requests and the administrators explicit answer waits for its receipt"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 assignment save uses edits received before another render and preserves stale input after a conflicting change"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-form-history-and-mapping",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 formal resolution of simultaneous claims retains the actual worker and original assignees"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 assignment remapping requires review of the old scope and atomically keeps its signed source"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 a member cannot submit another members assignment through the form"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-request-review-ui",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-requests-ui.test.mjs",
+        "name": "v2 an explicit assignment rejection preserves the original assignees and records its receipt"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests-ui.test.mjs",
+        "name": "v2 a changed assignment answer cannot be overwritten by a stale screen callback"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests-ui.test.mjs",
+        "name": "v2 assignment answer conflicts route into an explicit formal resolution without discarding the old answers"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests-ui.test.mjs",
+        "name": "v2 expired assignment requests retain their offline answers without showing an approval control"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-form-route",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 assignment routes preserve the group round identity through explicit save and request-list navigation"
+      }
+    ]
+  },
+  {
+    "feature": "v2-identical-member-labels",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-member-labels.test.mjs",
+        "name": "v2 identical shared profile names remain distinguishable across source order without exposing account IDs"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-form.test.mjs",
+        "name": "v2 unnamed members have distinct assignment controls whose saved identities remain correct"
+      }
+    ]
   }
 ]

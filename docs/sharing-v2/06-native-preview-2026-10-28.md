@@ -104,3 +104,17 @@ Androidの座標操作では画面が切り替わらない失敗が残ったた�
 iPhoneは個別ルート化後も入力欄にキーボードフォーカスを得られず、`phase4k-iphone-distinct-date`と`phase4k-iphone-native-inset`は失敗として保持した。フォーム容器の試験変更は改善しなかったため元へ戻した。映像と要素情報が一致しない状態で入力を続けず、本人へ手動タップでキーボードが出るか確認を依頼した。端末のロック状態情報だけから入力可能と断定せず、原因をOS・Compiler・アプリに特定したとは扱わない。
 
 コード検査は`phase4k-complete-ios.log`・`phase4k-complete-android.log`各1209件成功、lint・型検査成功、`phase4k-cloud.log`のEmulator25件成功。実TSXの15ルート検査、申請回答UI20件、別SQLite間の受信と期限・権限・固定重複・必須依存関係を含む。実機の空一覧の成功を、複数アカウントによる申請回答E2Eの成功として扱わない。証拠は引き続き`/tmp/liflow-v2-20261027/`に保持する。
+
+## Phase 4m追記：Androidの担当指定と申請入口
+
+基点`8bb6383`へのPhase 4m差分、未公開v2 draft20。Sony I4293（Android10/API29）で、一人の合成グループを使い、実際のSQLite・署名付きOutboxへ保存した。iPhoneの操作は確認待ちのため再開していない。
+
+- `phase4m-android-assignment-switch.log`：`assignmentSaveReopenAndRequestList=true`、31.653秒。家事回から担当フォームを開き、次回の基準日を確認して今回だけへ戻す。本人を選択・明示保存し、戻ったカードと再表示したSwitchの選択状態を確認した。ホームから担当申請一覧へ移動し、空状態を表示した。
+- `android-phase4m-assignment/assignmentReopened.png`：SHA-256 `889b22d5ffd304e752508adb17b85a1d38b2da6a3cab46779717f89fc6ef0ddb`。選択が保持され、今回だけの適用範囲と現在の担当を実表示で確認した。
+- `android-phase4m-assignment/assignmentRequestsEmpty.png`：SHA-256 `9bbf93b3359e8473b69007857097a92088ddf4038a7437964ca1a4b5fbd0c5f8`。ダミー申請を作らず空状態を確認した。
+
+最初の`phase4m-android-assignment-native.log`は検査ヘルパーの新モードが反映されておらず、従来の家事回表示の検査だけだった。担当指定の成功に数えない。続く`confirmed`と`ready`の実行は、同じ名前のTextとSwitchを取り違えて停止した。ヘルパーを、表示中で操作可能なネイティブ要素を選んで待機するように修正してから上記の成功を得た。失敗分は保持し、LiFlow側の処理変更で検査を通したものではない。
+
+標準UiAutomationのアクセシビリティ操作であり、座標タップ・ソフトウェアキーボード・Googleアカウント間承認・バックグラウンド実行のPASSではない。所要時間は画面待ち・操作・画像保存を含み、描画速度の測定ではない。再インストールしたのは独立した検査APKのみで、LiFlowのデータを初期化・置換していない。
+
+`phase4m-full-ios.log`・`phase4m-full-android.log`はCIと同じ`HOUSEWORK_TEST_PLATFORM`指定で各1261件成功、失敗0・スキップ0。lint・型検査通過。`phase4m-final-cloud.log`はEmulator25件成功で、将来の周期に対応した担当指定とSnapshot復元を含む。コード検査、端末内操作、実サービス同期の範囲を混同しない。

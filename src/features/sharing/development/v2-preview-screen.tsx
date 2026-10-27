@@ -9,15 +9,18 @@ import { V2ConfigurationEditor } from '../v2-ui/configuration-editor';
 import { V2DateForm } from '../v2-ui/date-form';
 import { V2CompletionForm } from '../v2-ui/completion-form';
 import { V2DateRequests } from '../v2-ui/date-requests';
+import { V2AssignmentForm } from '../v2-ui/assignment-form';
+import { V2AssignmentRequests } from '../v2-ui/assignment-requests';
 import { V2CompletionHistoryCard } from '../v2-ui/completion-history-card';
 import { V2FormScrollView } from '../v2-ui/form-controls';
 import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2DevelopmentPreview, V2DevelopmentPreviewModel } from './v2-preview-session';
 
 interface PreviewProps {
-  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests'; choreId?: string;
+  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests'; choreId?: string;
   occurrenceId?: string; subjectId?: string; onRound?: (occurrenceId: string, subjectId: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void; onRequests?: () => void;
+  onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
 }
 
 /** This UI exercises real local persistence, not cloud synchronization or account authorization. */
@@ -26,7 +29,7 @@ export function V2DevelopmentPreviewScreen(props: PreviewProps) {
   return <LivePreview {...props} />;
 }
 
-function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate }: PreviewProps) {
+function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests }: PreviewProps) {
   const [session, setSession] = useState<V2DevelopmentPreview | null>(null); const [model, setModel] = useState<V2DevelopmentPreviewModel | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
@@ -56,6 +59,11 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
   if (!model?.personal || !session) return <SafeAreaView style={styles.safe}>{notice}<ActivityIndicator color={palette.accent} />
     <AppButton title="読み込みを再試行" variant="quiet" onPress={() => void refresh()} /></SafeAreaView>;
   const controller = session.controller;
+  if (view === 'assignmentRequests') return <SafeAreaView style={styles.safe} edges={['top']}>
+    <V2AssignmentRequests model={model} actions={controller.actions} busy={busy} run={run}
+      onResolve={onAssignment ? (id) => { const round = model.plan.occurrences.find((entry) => entry.id === id); if (round?.subjects[0]) onAssignment(id, round.subjects[0].id); } : undefined}
+      header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="担当の変更申請" /></View>} />
+  </SafeAreaView>;
   if (view === 'requests') return <SafeAreaView style={styles.safe} edges={['top']}>
     <V2DateRequests model={model} actions={controller.actions} busy={busy} run={run}
       header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="日時の変更申請" /></View>} />
@@ -67,13 +75,16 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
         : <><BackButton onPress={onBack} /><Text style={styles.body}>検査する家事を選んでください。</Text></>}
     </V2FormScrollView>
   </SafeAreaView>;
-  if (view === 'round' || view === 'date') {
+  if (view === 'round' || view === 'date' || view === 'assignment') {
     const round = model.plan.occurrences.find((entry) => entry.id === occurrenceId); const subject = round?.subjects.find((entry) => entry.id === subjectId);
     return <SafeAreaView style={styles.safe} edges={['top']}><V2FormScrollView contentContainerStyle={styles.page}>
       {notice}<BackButton onPress={onBack} disabled={busy} />
       {round && subject ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === round.choreId)?.name ?? '共有家事'} />
-        {view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
+        {view === 'assignment' ? <V2AssignmentForm model={model} round={round} actions={controller.actions} busy={busy} run={run} />
+          : view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
           onDate={onDate ? () => onDate(round.id, subject.id) : undefined}
+          onAssignment={onAssignment ? () => onAssignment(round.id, subject.id) : undefined}
+          onAssignmentRequest={onAssignment ? () => onAssignment(round.id, subject.id) : undefined}
           recommendation={model.personal.recommendations.find((entry) => entry.subjectOccurrenceId === subject.id)} onOpen={() => onConfiguration(round.choreId)} />
         <V2CompletionForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} /></>}
         <AppButton title="共通の設定を開く" variant="quiet" disabled={busy} onPress={() => onConfiguration(round.choreId)} /></>
@@ -105,6 +116,7 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
         </AccordionSection> : null}
         <AppButton title="実施履歴" variant="secondary" disabled={busy} onPress={onHistory} />
         {onRequests ? <AppButton title="日時の変更申請" variant="secondary" disabled={busy} onPress={onRequests} /> : null}
+        {onAssignmentRequests ? <AppButton title="担当の変更申請" variant="secondary" disabled={busy} onPress={onAssignmentRequests} /> : null}
         <Card><SectionHeading title="設定を検査" />{model.configurations.filter((entry) => entry.configuration).map((entry) =>
           <AppButton key={entry.choreId} title={`「${model.plan.chores.find((chore) => chore.id === entry.choreId)?.name ?? '家事'}」の設定`} variant="quiet" disabled={busy} onPress={() => onConfiguration(entry.choreId)} />)}</Card>
       </View>} />

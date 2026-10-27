@@ -1,3 +1,4 @@
+import { v2MemberLabels } from './member-labels';
 import { useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { FlatList, Platform, Text, View } from 'react-native';
@@ -50,7 +51,7 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
   const zoneChanged = request.timeZone !== model.plan.timeZone;
   const disabled = busy || saving || stale || saved || !model.plan.initialized || zoneChanged;
   const canAnswer = !disabled && (request.kind !== 'conflict' || draft.reviewed);
-  const nameOf = (uid: string) => model.plan.members.find((member) => member.userId === uid)?.displayName ?? '以前のメンバー';
+  const nameOf = v2MemberLabels(model.plan.members);
   const resetConfirmation = () => { setConfirmation(null); setCalendarStatus(null); confirmedFor.current = null; confirmed.current = { recentWork: false, highLoad: false, calendar: false }; };
   const edit = (patch: Partial<typeof draft>) => { if (inFlight.current) return; inputRevision.current++; input.current = { ...input.current, ...patch }; setDraft(input.current); setError(null); resetConfirmation(); };
   const field = (name: keyof typeof draft.fields, value: string) => edit({ fields: { ...input.current.fields, [name]: value,

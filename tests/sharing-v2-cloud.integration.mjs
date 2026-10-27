@@ -222,6 +222,16 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     await ownerActions.remapAssignments([assignmentRequest.operationId], { ...assignmentRef, anchorDate: addLocalDays(anchorDate, 7) }, ['owner'], 'once', false);
     await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
     assert.equal((await member.repository.readState()).assessment.assignmentRequests[0].cancelled, true); assert.equal(hash(owner), hash(member));
+    await owner.repository.commit([
+      change('future-assignment-chore', 'chore', 'future-assignment', { name: '次回担当の検査', enabled: true }),
+      change('future-assignment-cfg', 'chorePolicy', 'future-assignment', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate,
+        intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
+    ]);
+    const nextAnchor = addLocalDays(anchorDate, 2);
+    await ownerActions.patchChoreConfiguration('future-assignment', 1, { intervalDays: 3, anchorDate: nextAnchor }, nextAnchor);
+    const [futureAssignment] = await ownerActions.assign({ ...assignmentRef, choreId: 'future-assignment' }, ['member'], 'next', true);
+    assert.equal(futureAssignment.payload.fromAnchorDate, nextAnchor); assert.equal(futureAssignment.payload.ruleVersion, 2);
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); assert.equal(hash(owner), hash(member));
     const sequence = (await getDocFromServer(f.root)).data().headSequence;
     const approvedSnapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
       next, f.identity, key2, 'approved-requests-v2', sequence, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
@@ -234,6 +244,8 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     const rules = (d) => JSON.parse(d.connection.prepare('SELECT formal_rules_json FROM sharing_v2_projection').get().formal_rules_json);
     const firstRule = rules(owner)[0]; assert.ok(firstRule.confirmation); assert.deepEqual(rules(restored), rules(owner));
     assert.equal(firstRule.rule.allowDuringCooldown, true);
+    const restoredAssignment = (await restored.repository.readState()).assessment.view.byId(futureAssignment.operationId);
+    assert.equal(restoredAssignment.payload.fromAnchorDate, nextAnchor); assert.equal(restoredAssignment.payload.ruleVersion, 2);
     await member.repository.commit([change('next-date-request', 'changeRequest', 'next-date-request', {
       requesterUserId: 'member', choreId: 'approval-floor', anchorDate, occurrenceId: requestOccurrence, subjectUserId: null,
       originalDesignationId: firstRule.operationId, original: firstRule.rule.target, proposed: day(addLocalDays(anchorDate, 5)), proposedMode: 'day',

@@ -19,7 +19,7 @@ async function openRoute(preview, platform, file, params, navigation, readyText)
 
 test('v2 every isolated preview route denies release execution before opening the fixture', () => {
   let opened = 0; let focused = 0;
-  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests']) {
+  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests', 'assignment', 'assignment-requests']) {
     const screen = screenHarness(`src/app/development/sharing-v2-preview/${file}.tsx`, { platform, params: {},
       focusEffect: () => focused++, transformSource: (path, source) => path.endsWith('/v2-preview-route.tsx') ? source.replaceAll('__DEV__', 'false') : source,
       mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: () => { opened++; throw new Error('Release must not open synthetic storage'); } } } });
@@ -129,6 +129,24 @@ for (const platform of ['ios', 'android']) {
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 assignment routes preserve the group round identity through explicit save and request-list navigation`, async () => {
+    const f = await screenFixture(platform); let cleanup;
+    try {
+      const model = await f.preview.readModel(); const round = model.plan.occurrences.find((r) => r.anchorDate === model.plan.range.asOfDate && r.configuration.policy.completion === 'one');
+      const subject = round.subjects[0]; const navigation = [];
+      let { screen, leave } = await openRoute(f.preview, platform, 'round', { occurrenceId: round.id, subjectId: subject.id }, navigation, '実施を記録'); cleanup = leave;
+      await screen.press('担当を変更'); assert.deepEqual(navigation.at(-1), ['push', { pathname: '/development/sharing-v2-preview/assignment', params: { occurrenceId: round.id, subjectId: subject.id } }]);
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'assignment', { occurrenceId: round.id, subjectId: subject.id }, navigation, '担当変更を保存')); cleanup = leave;
+      const before = await f.preview.readModel(); const control = screen.nodes().find((node) => node.type === 'Switch' && node.props.accessibilityLabel === '担当：検査ユーザー');
+      assert.ok(control); control.props.onValueChange(true); await screen.flush(); assert.equal((await f.preview.readModel()).pendingChanges, before.pendingChanges);
+      await screen.press('担当変更を保存'); assert.ok(screen.text().includes('担当変更を端末に保存しました'));
+      assert.deepEqual((await f.preview.readModel()).plan.occurrences.find((entry) => entry.id === round.id).assigneeIds, [model.viewerUserId]);
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'index', {}, navigation, '今日の共有家事')); cleanup = leave;
+      await screen.press('担当の変更申請'); assert.deepEqual(navigation.at(-1), ['push', '/development/sharing-v2-preview/assignment-requests']);
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'assignment-requests', {}, navigation, '担当の変更申請はありません')); cleanup = leave;
+      assert.equal((await f.preview.readModel()).assignmentRequests.length, 0);
+    } finally { cleanup?.(); f.leave(); await f.preview.close(); }
+  });
   test(`${platform} v2 request route stays in the isolated group and shows a truthful empty state without creating a request`, async () => {
     const f = await screenFixture(platform); let cleanup;
     try {

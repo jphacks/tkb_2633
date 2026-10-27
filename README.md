@@ -598,18 +598,18 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **1224 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む）** |
+| 自動テスト | **1261 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **156機能（従来153を保持、元の44を含む）** |
+| 保護対象feature contract | **163機能（従来156を保持、元の44を含む）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |
 | Sony I4293 / Android 10 + Release版（初期設定・保存・完了/取消・ゴミ・Calendar取得） | **PASS（2026-10-26）** |
-| 未公開v2の開発画面・独立した検査DB（iPhone / Android 10） | **引き受け・完了/取消・自動保存・過去の実施入力と履歴を確認。最新の日時フォームはAndroidのアクセシビリティ操作で保存・再表示を確認、iPhoneの入力再検査は継続中（2026-10-28）。v2実サービス同期は未検査** |
+| 未公開v2の開発画面・独立した検査DB（iPhone / Android 10） | **引き受け・完了/取消・自動保存・過去の実施入力と履歴を確認。最新の日時・担当フォームはAndroidのアクセシビリティ操作で保存・再表示を確認、iPhoneの入力再検査は継続中（2026-10-28）。v2実サービス同期は未検査** |
 
 さらに天気・Calendarについては、**128種類の予報・busyパターン**を使い、
 

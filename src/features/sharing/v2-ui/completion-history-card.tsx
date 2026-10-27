@@ -1,3 +1,4 @@
+import { v2MemberLabels } from './member-labels';
 import moment from 'moment-timezone';
 import { Text, View } from 'react-native';
 import { AppButton, Card, SectionHeading } from '../../../components/planner-ui';
@@ -10,7 +11,7 @@ export function V2CompletionHistoryCard({ model, record, actions, busy, run }: {
   run: (work: () => Promise<unknown>) => Promise<void>;
 }) {
   const admin = model.viewerUserId === model.adminUserId;
-  const nameOf = (uid: string) => model.plan.members.find((member) => member.userId === uid)?.displayName ?? '以前のメンバー';
+  const nameOf = v2MemberLabels(model.plan.members);
   const date = (at: string) => moment(at).tz(model.plan.timeZone).format('YYYY年M月D日 HH:mm');
   const status = !record.active ? '取消済み' : record.outcome === 'incomplete' ? '未実施の記録' : record.approvalConflictIds.length ? '代行の回答が競合しています'
     : record.acceptance === 'pending' ? '代行の承認待ち' : record.acceptance === 'rejected' ? '代行は非承認 · 実施記録は保持' : '実施済み';

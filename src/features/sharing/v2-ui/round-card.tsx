@@ -1,3 +1,4 @@
+import { v2MemberLabels } from './member-labels';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppButton, palette, typography } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
@@ -16,7 +17,7 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
 }) {
   const chore = model.plan.chores.find((entry) => entry.id === round.choreId); if (!chore) return null;
   const viewer = model.viewerUserId; const admin = viewer === model.adminUserId;
-  const nameOf = (uid: string) => model.plan.members.find((member) => member.userId === uid)?.displayName ?? '以前のメンバー';
+  const nameOf = v2MemberLabels(model.plan.members);
   const owns = subject.subjectUserId === null ? round.assigneeIds.length === 0 || round.assigneeIds.includes(viewer) : subject.subjectUserId === viewer;
   const relatedWork = model.plan.history.filter((record) => [...subject.completionOperationIds, ...subject.pendingCompletionIds].includes(record.operationId));
   const showStatus = owns || admin || relatedWork.some((record) => record.recorderUserId === viewer || record.performerUserId === viewer) || model.plan.policy?.showCompletionStatus === true;
@@ -59,7 +60,7 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
           ? <AppButton title="引き受ける" compact disabled={busy} onPress={() => run(() => actions.claim(ref))} /> : null}
         {showActions && !subject.completed && round.claimantUserIds.includes(viewer) && !round.assignmentFixed
           ? <AppButton title="引き受けを解除" compact variant="quiet" disabled={busy} onPress={() => run(() => actions.releaseClaim(ref))} /> : null}
-        {showActions && round.assignmentFixed && owns && !subject.completed ? <AppButton title={assignmentPending ? '担当変更を申請中' : onAssignmentRequest ? '担当の変更を申請' : '自分の担当解除を申請'} compact variant="quiet" disabled={busy || assignmentPending}
+        {showActions && !admin && round.assignmentFixed && owns && !subject.completed ? <AppButton title={assignmentPending ? '担当変更を申請中' : onAssignmentRequest ? '担当の変更を申請' : '自分の担当解除を申請'} compact variant="quiet" disabled={busy || assignmentPending}
           onPress={onAssignmentRequest ?? (() => run(() => { const remaining = round.assigneeIds.filter((uid) => uid !== viewer); return actions.requestAssignment(ref,
             { memberIds: remaining, start: 'this', scope: 'once', fixed: remaining.length > 0 && round.assignmentFixed,
               expectedAssignmentIds: round.assignmentOperationIds, expectedConflictIds: round.assignmentConflictIds }); }))} /> : null}

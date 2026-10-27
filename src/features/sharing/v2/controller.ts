@@ -6,7 +6,7 @@ import { v2ReadPoint } from './view-point.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { normalizeV2Configuration } from './configuration-normalization.ts';
 import { observedDateRules } from './formal-rule-view.ts';
-import { v2DateDecisionReviews } from './decision-review.ts';
+import { v2DecisionReviews } from './decision-review.ts';
 import type { SharedChoreConfiguration } from './model.ts';
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
@@ -27,8 +27,9 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
           earliestEffectiveFrom: facts.map((op) => { const cfg = op.payload.configuration as unknown as SharedChoreConfiguration; return cfg.effectiveFrom ?? cfg.anchorDate; }).sort().at(-1) ?? range.asOfDate,
           candidates: candidates.map((op) => ({ operationId: op.operationId, authorUserId: op.authorUserId, recordedAt: op.recordedAt!, configuration: normalizeV2Configuration(op.payload.configuration as unknown as SharedChoreConfiguration) })) };
       });
+      const reviews = v2DecisionReviews(state, repository.scope.userId);
       return { plan, configurations, viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
-        requests: state.assessment.requestStates, requestReviews: v2DateDecisionReviews(state, repository.scope.userId),
+        requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
         assignmentRequests: state.assessment.assignmentRequests, assignmentRules: state.assessment.view.assignmentsAt(at)?.facts ?? [], pendingChanges: state.assessment.pendingOutboxIds.length,
         receiptPending: state.assessment.provisionalOperationIds.length, quarantinedChanges: state.assessment.rejected.length + state.replica.pendingOperationIds.length };

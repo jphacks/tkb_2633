@@ -1,3 +1,4 @@
+import { v2MemberLabels } from './member-labels';
 import { useRef, useState } from 'react';
 import { Text } from 'react-native';
 import { AppButton, Card, SectionHeading } from '../../../components/planner-ui';
@@ -19,6 +20,7 @@ function CompletionEditor({ model, round, subject, actions, busy, run, now = () 
   const [draft, setDraft] = useState({ when: 'now' as 'now' | 'past', day: '', clock: '', clockChoice: '', performer: model.viewerUserId });
   const input = useRef(draft); const inFlight = useRef(false);
   const { when, day, clock, clockChoice, performer } = draft;
+  const nameOf = v2MemberLabels(model.plan.members);
   const [error, setError] = useState<string | null>(null); const [submitted, setSubmitted] = useState(false);
   const [displayed] = useState(() => ({ ref: { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion,
     subjectUserId: subject.subjectUserId, expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId),
@@ -56,7 +58,7 @@ function CompletionEditor({ model, round, subject, actions, busy, run, now = () 
       <V2TimeDisambiguation day={day} clock={clock} timeZone={displayed.timeZone} value={clockChoice} onChange={(value) => edit({ clockChoice: value })} disabled={disabled} />
       <Text style={styles.caption}>日時の地域：{displayed.timeZone}。入力した実施日時と、この操作の記録日時を別々に保存します。</Text></> : null}
     <V2Choices label="実際に実施した人" value={performer} onChange={(value) => edit({ performer: value })} disabled={disabled}
-      choices={performers.map((member) => ({ value: member.userId, label: `${member.displayName}${member.userId === model.viewerUserId ? '（あなた）' : ''}` }))} />
+      choices={performers.map((member) => ({ value: member.userId, label: `${nameOf(member.userId)}${member.userId === model.viewerUserId ? '（あなた）' : ''}` }))} />
     {displayed.assignees.length && !displayed.assignees.includes(performer) ? <Text style={styles.caption}>{model.plan.policy?.allowSubstitution
       ? '代行として記録します。本来の担当・実施者・登録者をそれぞれ残します。' : '代行の実施事実を保存し、管理者の承認までは完了扱いにしません。'}</Text> : null}
     {subject.strictInstructionUnfulfilled || subject.formalDate.kind === 'manual' && subject.formalDate.strict ? <Text style={styles.caption}>実施した事実と、指定日時の条件を満たしたかを別々に判定します。</Text> : null}

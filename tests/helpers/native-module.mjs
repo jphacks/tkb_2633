@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-export function loadNativeModule(filename, mocks) {
+export function loadNativeModule(filename, mocks, timers = {}) {
   const { outputText } = ts.transpileModule(readFileSync(new URL(`../../${filename}`, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   });
   const module = { exports: {} };
-  Function('require', 'module', 'exports', outputText)((name) => {
+  Function('require', 'module', 'exports', 'setTimeout', 'clearTimeout', outputText)((name) => {
     assert.ok(name in mocks, `unmocked native import ${name}`); return mocks[name];
-  }, module, module.exports);
+  }, module, module.exports, timers.setTimeout ?? globalThis.setTimeout, timers.clearTimeout ?? globalThis.clearTimeout);
   return module.exports;
 }

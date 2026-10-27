@@ -9,6 +9,7 @@ import type { SharedChoreConfiguration } from '../v2/model';
 import { useV2ConfigurationAutosave } from './use-configuration-autosave';
 import { canonicalJson } from '../operations';
 import { V2StaleSettingsError } from '../v2/configuration-edit';
+import { V2InitialConfiguration } from './initial-configuration';
 
 /** Only an authenticated administrator receives the editor; receiver authority remains the final check. */
 export function V2ConfigurationEditor(props: { model: V2GroupScreenModel; choreId: string;
@@ -24,7 +25,8 @@ function RetainedEditor({ model, choreId, controller, onSaved, onBack }: Paramet
   // Retain the editor (and its draft store) when a remote conflict temporarily removes the resolved value.
   if (row?.configuration && (!retained || row.configuration.ruleVersion >= retained.ruleVersion && canonicalJson(row.configuration) !== canonicalJson(retained))) setRetained(row.configuration);
   const configuration = row?.configuration && (!retained || row.configuration.ruleVersion >= retained.ruleVersion) ? row.configuration : retained;
-  if (!configuration) return <Text style={styles.caption}>{row?.candidates.length ? '設定が競合しています。候補を確認して解決してください。' : '周期・基準日・家事の種類を設定してください。'}</Text>;
+  if (!configuration) return row?.candidates.length ? <Text style={styles.caption}>設定が競合しています。候補を確認して解決してください。</Text>
+    : <V2InitialConfiguration model={model} choreId={choreId} controller={controller} onSaved={onSaved} onBack={onBack} />;
   const boundary = configuration.effectiveFrom ?? configuration.anchorDate;
   const earliestFrom = row?.earliestEffectiveFrom && row.earliestEffectiveFrom > boundary ? row.earliestEffectiveFrom : boundary;
   return <Editor configuration={configuration} earliestFrom={earliestFrom}

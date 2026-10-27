@@ -152,3 +152,20 @@ iPhoneは個別ルート化後も入力欄にキーボードフォーカスを�
 - `phase4p-scopedFuturePreserved.png`：SHA-256 `f35228292367b0dd25bea6bdd75c99c48bcce2124736c912ac4c4531a2ef33e6`。
 
 公開アクセシビリティAPIの検査であり、今回の一般メンバーの解除申請・本人承認は実TSX、署名付きSQLiteとFirestore Emulatorでの検査である。物理端末の実サービス承認E2Eへ数えない。iPhoneは手動確認待ちで操作していない。
+
+## Phase 4t追記：新規家事の有効化と周期の自動保存
+
+開始点`710ad8c`への通常ワークスペース接続差分。Android 10のSony I4293で、既存アカウント・個人DB・実グループを使わない開発用の合成検査DBを使用した。LiFlowを再インストール・初期化していない。検査補助APKは別パッケージのまま更新し、各操作の前にLiFlowかつ開発用画面であることを再検査する。画面から外れた場合は操作を中断する。
+
+最終の`phase4t-android-initial-final.log`は`initialActivationAutosaveAndReopen=true`、36.154秒、終了コード0。未設定の「トイレを掃除する」を開き、メンバーごとの家事として7日周期で有効化した。その後、数値を8へ変更し、自動保存完了を待ち、戻って同じ家事を開き直すと8日が保持されていることを確認した。
+
+- `phase4t-initialConfiguration.png`：SHA-256 `cb3a442314241cfa9bcce271fd65f1ca27b59ed34ffca91c429376fd9f8e71c6`。
+- `phase4t-initialActivated.png`：SHA-256 `dd2643579029e7e36a639c2c7a45daf8a1f8ca96082b87512ec954a9c256c754`。
+- `phase4t-initialAutosaved.png`：SHA-256 `42a2e61377dc37036f0ba9e2b630be6f8a2e352392761f8fcc5af886f60cb5a1`。
+- `phase4t-initialReopened.png`：SHA-256 `04193823608f8e88c623cb3a44c69e869ae44dde9b17cf76302fa2e4e2e9852a`。周期8日の実表示を画像でも確認した。
+
+先行する試行には、DevClientランチャーに留まったもの、こちらのコード反映による再読込で中断したもの、戻った先の見出しが画面外で検査ツールが停止したものがある。これらを成功へ数えずログを保持した。コード編集を止め、開発用画面へ入った後の操作に限定し、戻った先の実際のスクロール位置に合わせて確認した最終試行を上記の成功とする。
+
+この検査は公開アクセシビリティAPIでの入力・表示・端末内保存の検査で、ソフトウェアキーボードや座標タップの検証とは区別する。通常v2の実サービス・実アカウント間同期やiPhoneの新しい画面操作をPASSとしたものではない。通常ルートの選択・保護・前景更新は両OS条件の実TSX検査、通常作成と受付はFirestore Emulator・SQLiteとの結合検査で確認した。
+
+初期設定の数値欄は通常の自動保存欄と同じ、左にラベル・右に数値の配置へ揃えた。`phase4t-android-layout-verified.log`は`initialCompactLayoutReadOnly=true`、3.679秒、終了コード0。未設定のレンジフードを開いて新しい配置を読み取りのみで確認した。`phase4t-initialCompactLayout.png`のSHA-256は`9238d5c1b8b4c50a95879fc0cb3635fce55a7ecde5929bba8d319d3b22b3517d`。この確認では家事を有効化・保存していない。スクロールで開発用の目印が画面外となり安全側で停止した先行試行も、成功へ数えず保持している。

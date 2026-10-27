@@ -19,7 +19,7 @@ export interface SharingWorkspaceRecord {
   /** A new approval uses a fresh database/key pair; earlier offline edits remain archived locally. */
   localGeneration?: string;
   archivedLocalGenerations?: string[];
-  creation?: { timeZone: string; anchorDate: string; ownerDisplayName: string; wrappedKey: WrappedGroupKey };
+  creation?: { timeZone: string; anchorDate: string; ownerDisplayName: string; wrappedKey: WrappedGroupKey; kind?: 'family' | 'roommates' };
   join?: { invitation: SignedSharedInvitation; request: SharedJoinRequest };
 }
 const tails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
@@ -35,6 +35,7 @@ function validate(record: SharingWorkspaceRecord): SharingWorkspaceRecord {
     if (!Array.isArray(record.archivedLocalGenerations) || record.archivedLocalGenerations.length > 512) throw new Error('Too many archived workspace generations');
     for (const generation of record.archivedLocalGenerations) assertSharedIdentifier(generation);
   }
+  if (record.creation?.kind !== undefined && !['family', 'roommates'].includes(record.creation.kind)) throw new Error('Invalid group creation kind');
   if (!record.displayName.trim() || record.displayName.length > 500 || !['creating', 'joining', 'active', 'left', 'removed'].includes(record.status)
     || !Number.isFinite(Date.parse(record.createdAt)) || !Array.isArray(record.rosterArchive) || record.rosterArchive.length > 4096) throw new Error('Invalid sharing workspace');
   if ('body' in record.anchor) {

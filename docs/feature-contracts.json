@@ -2768,5 +2768,41 @@
       { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "v2 workspace reads and edits stop after an account change while committed events and outbox remain intact" },
       { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "a mistakenly supplied personal database is rejected without changing any existing table or row" }
     ]
+  },
+  {
+    "feature": "v2-native-workspace-approval-protocol-and-live-access",
+    "tests": [
+      { "file": "tests/sharing-v2-native-workspace.test.mjs", "name": "native v2 workspace factory chooses its isolated session and never registers a legacy planner adapter" },
+      { "file": "tests/sharing-v2-native-workspace.test.mjs", "name": "a pending signed invitation never opens a guessed database or reads a group key before approval" },
+      { "file": "tests/sharing-v2-native-workspace.test.mjs", "name": "a verified pending approval opens v2 only after discovery and does not activate an empty uninitialized group" },
+      { "file": "tests/sharing-v2-native-workspace.test.mjs", "name": "v2 UI commands recheck a stored version or access failure while cached data remains readable and retry does not invent edits" }
+    ]
+  },
+  {
+    "feature": "v2-workspace-navigation-preserves-personal-and-v1-scopes",
+    "tests": [
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "workspace navigation permits legacy screens only for personal or v1 scopes and redirects v2 to its dedicated stack" },
+      { "file": "tests/sharing-workspace-provider.test.mjs", "name": "active workspace scope injects the legacy provider only for v1 and keeps v2 and personal database contexts separate" },
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "unselected or mismatched v2 workspace routes never load shared controllers or expose edit controls" },
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "foreground shared changes refresh only the selected user and group and unsubscribe when leaving" }
+    ]
+  },
+  {
+    "feature": "v2-first-chore-activation-requires-explicit-valid-conditions",
+    "tests": [
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "an unconfigured shared chore stays disabled until explicit valid initial settings and then enters the autosave editor" }
+    ]
+  },
+  {
+    "feature": "empty-v2-commits-do-not-trigger-more-sync",
+    "tests": [
+      { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "an empty authenticated commit does not announce another local edit or schedule an endless synchronization loop" }
+    ]
+  },
+  {
+    "feature": "typecheck-excludes-frozen-handoff-snapshots",
+    "tests": [
+      { "file": "tests/typescript-project-scope.test.mjs", "name": "typechecking includes the live app and v2 routes while excluding immutable handoff source snapshots" }
+    ]
   }
 ]

@@ -35,8 +35,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
   const switchTo = useCallback((selection: SharingSelection | null): Promise<void> => {
     const work = async () => {
-      await drainPlannerDatabaseOperations(activeRef.current?.database ?? personalDatabase);
+      if (activeRef.current) await activeRef.current.drain(); else await drainPlannerDatabaseOperations(personalDatabase);
       const next = selection ? await openSharedWorkspace(selection) : null;
+      if (next?.protocol === null) throw new Error('参加承認と初回同期を完了してから切り替えてください。');
       await saveSharingSelection(selection);
       if (!alive.current) return;
       activeRef.current = next; setActive(next); setError(null); await refreshSharing();
@@ -53,7 +54,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           if (selected && user?.uid === selected.userId) {
             const record = (await knownSharingWorkspaces()).find((item) => item.groupId === selected.groupId);
             if (record && ['active', 'creating'].includes(record.status)) {
-              const workspace = await openSharedWorkspace(selected); await workspace.adapter.readSnapshot(new Date());
+              const workspace = await openSharedWorkspace(selected); if (workspace.protocol === null) throw new Error('参加承認と初回同期を確認してください。');
+              await workspace.readOverview();
               if (alive.current) { activeRef.current = workspace; setActive(workspace); }
             }
           }
@@ -68,7 +70,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!sessionStarted) return;
     return observeSharingUser(() => { void refreshSharing().catch(() => undefined); });
   }, [refreshSharing, sessionStarted]);
-  const groupKeys = groups.filter((group) => !['left', 'removed'].includes(group.status)).map((group) => `${group.userId}:${group.groupId}:${group.status}`).sort().join('|');
+  const groupKeys = groups.filter((group) => !['left', 'removed'].includes(group.status)).map((group) => JSON.stringify([group.userId, group.groupId, group.status,
+    group.localGeneration, group.rosterArchive?.at(-1)?.body.schemaVersion, group.rosterArchive?.at(-1)?.body.schedulerVersion])).sort().join('|');
   useEffect(() => {
     if (!ready || !userId) return;
     let stopped = false; let generation = 0; let subscriptions: (() => void)[] = []; let interval: ReturnType<typeof setInterval> | undefined;
@@ -103,7 +106,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 export function ActiveWorkspaceScope({ children }: { children: ReactNode }) {
   const context = useWorkspace();
   if (!context.ready) return <Page><Card><ActivityIndicator color={palette.accent} /><Text style={typography.body}>データを読み込んでいます。</Text></Card></Page>;
-  return context.active ? <PlannerDataProvider key={`${context.active.userId}:${context.active.groupId}`} databaseOverride={context.active.database}>{children}</PlannerDataProvider> : children;
+  return context.active?.protocol === 1 ? <PlannerDataProvider key={`${context.active.userId}:${context.active.groupId}`} databaseOverride={context.active.database}>{children}</PlannerDataProvider> : children;
 }
 export function useWorkspace(): WorkspaceContextValue {
   const context = useContext(WorkspaceContext); if (!context) throw new Error('WorkspaceProvider is required'); return context;

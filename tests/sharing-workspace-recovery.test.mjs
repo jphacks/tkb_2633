@@ -6,7 +6,8 @@ function fixture(options = {}) {
   const events = []; const handles = []; const synchronizers = []; const syncBudgets = [];
   const session = { userId: 'member' };
   const records = (options.groups ?? ['broken', 'healthy']).map((groupId) => ({ userId: 'member', groupId,
-    status: 'active', displayName: groupId, rosterArchive: [], anchor: { body: { groupId, ownerDeviceId: 'another-device' } } }));
+    status: 'active', displayName: groupId, rosterArchive: [], anchor: { body: { groupId, ownerDeviceId: 'another-device',
+      members: [{ userId: 'member', devices: [{ identity: { deviceId: 'this-device' } }] }] } } }));
   const registry = { closeAsync: async () => { events.push('registry-close'); } };
   const api = loadNativeModule('src/platform/sharing/workspaces.ts', {
     'expo-crypto': { randomUUID: () => 'test-operation' },
@@ -27,6 +28,9 @@ function fixture(options = {}) {
     './firestore-cloud.ts': { createSharingCloud: () => ({}) },
     '../../features/sharing/roster.ts': { sharedRosterDigest: () => 'test-digest', verifyPinnedSharedRoster: (roster) => roster },
     '../../features/sharing/operations.ts': { canonicalJson: JSON.stringify },
+    '../../features/sharing/workspace-protocol.ts': { verifyWorkspaceArchive: (record) => [record.anchor], sharedWorkspaceProtocol: () => 1 },
+    '../../features/sharing/v2/workspace-session.ts': {}, '../../features/sharing/v2/view-point.ts': {},
+    '../../features/sharing/v2/controller-access.ts': {},
     '../../features/sharing/crypto.ts': {},
     '../../features/sharing/conflict-resolution.ts': { planSharedConflictResolution: () => {
       events.push('resolve-plan'); return { operationId: 'resolution', entityType: 'waste', entityId: 'waste', operationType: 'patch', payload: { label: '缶' } };
@@ -54,6 +58,7 @@ function fixture(options = {}) {
       },
     },
     '../storage/sharing-projection.ts': { initializeSharedProjection: async (db) => {
+      events.push(`initialize:${db.groupId}`);
       if (options.failProjection === db.groupId) throw new Error(`projection failed:${db.groupId}`);
     } },
     '../storage/sharing-ledger.ts': { initializeSharingLedger: async () => {}, createLocalSharedOperations: async (database, _scope, plan, project) => {
@@ -169,4 +174,11 @@ test('a delayed roster result from an archived workspace cannot update a newly r
   await assert.rejects(h.synchronizers[0].saveArchive([{ body: { groupId: 'healthy', revision: 2 } }]), /再参加前/);
   assert.equal(h.records[0], rejoining);
   assert.equal(h.records[0].rosterArchive.length, 0);
+});
+
+test('a legacy workspace account switch during native database opening closes the new handle before schema initialization', async () => {
+  const options = { groups: ['healthy'] }; const h = fixture(options);
+  options.afterOpen = () => { h.session.userId = 'another-account'; };
+  await assert.rejects(h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' }), /切り替わり/u);
+  assert.equal(h.events.includes('initialize:healthy'), false); assert.ok(h.events.includes('close:healthy'));
 });

@@ -3,13 +3,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenHarness } from './helpers/screen-harness.mjs';
 
+test('active workspace scope injects the legacy provider only for v1 and keeps v2 and personal database contexts separate', () => {
+  for (const platform of ['ios', 'android']) for (const active of [null, { protocol: 1, userId: 'owner', groupId: 'legacy', database: { legacy: true } },
+    { protocol: 2, userId: 'owner', groupId: 'v2', database: { v2: true } }]) {
+    const mounted = [];
+    const screen = screenHarness('src/hooks/use-workspace.tsx', { platform, exportName: 'ActiveWorkspaceScope', props: { children: 'workspace-child' }, mocks: {
+      '@/contexts/workspace-context': { WorkspaceContext: { _currentValue: { ready: true, active } } },
+      './use-planner-data': { PlannerDataProvider: ({ databaseOverride, children }) => { mounted.push(databaseOverride); return children; } },
+      '@/platform/sharing/auth': {}, '@/platform/storage/repository': {},
+    } });
+    assert.deepEqual(mounted, active?.protocol === 1 ? [active.database] : []);
+    assert.ok(screen.text().includes('workspace-child'));
+  }
+});
+
 for (const [platform, name] of [
   ['ios', 'ios foreground sharing listener errors recheck membership instead of leaving revoked groups actionable until the next interval'],
   ['android', 'android foreground sharing listener errors recheck membership instead of leaving revoked groups actionable until the next interval'],
 ]) test(name, async () => {
   const effects = []; const watches = []; const synchronizations = []; let unsubscribed = 0;
   const group = { userId: 'owner', groupId: 'group-test', status: 'active', displayName: '家族' };
-  const workspace = { ...group, database: {}, adapter: { readSnapshot: async () => ({}) },
+  const workspace = { ...group, protocol: 1, database: {}, readOverview: async () => ({}), drain: async () => {}, adapter: { readSnapshot: async () => ({}) },
     watch: (changed, failed) => { watches.push({ changed, failed }); return () => { unsubscribed++; }; },
     async sync() { synchronizations.push('membership-check'); throw new Error('synthetic unavailable or permission-denied'); } };
   const appState = { currentState: 'active', addEventListener: () => ({ remove() {} }) };

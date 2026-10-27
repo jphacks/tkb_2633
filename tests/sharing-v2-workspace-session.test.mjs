@@ -81,6 +81,15 @@ test('v2 workspace reads and edits stop after an account change while committed 
     assert.equal((await listSharingOutbox(f.database, 'v2-session')).length, 23);
   } finally { f.connection.close(); }
 });
+test('an empty authenticated commit does not announce another local edit or schedule an endless synchronization loop', async () => {
+  const f = await fixture();
+  try {
+    const session = await createV2WorkspaceSession(f.options); const notifications = f.commits();
+    assert.deepEqual(await session.repository.commitCurrent(async () => []), []);
+    assert.equal(f.commits(), notifications);
+    assert.equal((await listSharingOutbox(f.database, 'v2-session')).length, 23);
+  } finally { f.connection.close(); }
+});
 test('a mistakenly supplied personal database is rejected without changing any existing table or row', async () => {
   const f = await fixture(); const dump = () => JSON.stringify(f.connection.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name").all());
   try {

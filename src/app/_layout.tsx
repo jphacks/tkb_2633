@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { useCallback, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
@@ -10,6 +10,7 @@ import { addWidgetUserInteractionListener } from '../platform/widgets/widget-int
 import { PlannerSystemBars } from '@/components/planner-system-bars';
 import { NotificationWorkspaceBridge } from '@/components/notification-workspace-bridge';
 import { WorkspaceProvider, ActiveWorkspaceScope, useWorkspace } from '@/hooks/use-workspace';
+import { WorkspaceNavigator } from '@/components/workspace-navigator';
 import '@/platform/notifications/configure-foreground-notifications';
 
 function WidgetInteractionBridge() {
@@ -53,16 +54,7 @@ export default function RootLayout() {
             <WidgetInteractionBridge />
             <NotificationWorkspaceBridge />
             <ActiveWorkspaceScope>
-            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="help" options={{ headerShown: false }} />
-              <Stack.Screen name="chores" options={{ headerShown: false, animationTypeForReplace: 'pop' }} />
-              <Stack.Screen name="settings" />
-              <Stack.Screen name="settings/chore/[id]" options={{ headerShown: false }} />
-              <Stack.Screen name="history" />
-              <Stack.Screen name="waste" options={{ headerShown: false }} />
-              <Stack.Screen name="sharing" options={{ headerShown: false }} />
-            </Stack>
+            <WorkspaceNavigator />
             </ActiveWorkspaceScope>
           </>
         </ThemeProvider>

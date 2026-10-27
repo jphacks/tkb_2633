@@ -25,6 +25,8 @@ import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
 import { createSharedGroupManager } from '../src/features/sharing/group-manager.ts';
 import { createV2WorkspaceSession } from '../src/features/sharing/v2/workspace-session.ts';
 import { readCloudWorkspaceArchive } from '../src/features/sharing/workspace-protocol.ts';
+import { workspaceHarness } from './helpers/sharing-workspaces-harness.mjs';
+import { v2ReadPoint } from '../src/features/sharing/v2/view-point.ts';
 import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
@@ -94,6 +96,23 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     assert.equal(ownerDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.equal(memberDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
   } finally { ownerDb.connection.close(); memberDb.connection.close(); }
+});
+
+test('normal v2 workspace creation uses the real gateway and Rules and a no-change sync cannot enqueue another local edit', async () => {
+  const f = await fixture(); const h = await workspaceHarness({ cloud: f.cloud, deferWorkspaceTimers: true });
+  try {
+    const workspace = await h.api.createV2SharingWorkspace('新しい家族', 'family', 'Asia/Tokyo');
+    const result = await workspace.sync({ force: true, budgetMs: 120_000 }); assert.equal(result.complete, true); assert.equal(result.pending, 0);
+    const record = await workspace.record(); assert.equal(record.status, 'active'); assert.ok(record.lastSuccessfulSyncAt); assert.equal(record.lastErrorCode, null);
+    assert.equal((await f.cloud.readGroup(workspace.groupId)).group.headSequence, 23); assert.equal((await workspace.checkpoint()).pendingCount, 0);
+    const state = await workspace.session.repository.readState(); const at = v2ReadPoint(state.assessment.view, state.archive.at(-1));
+    assert.equal(state.assessment.view.field('groupPolicy', 'policy', 'configuration', at).value.kind, 'family');
+    assert.equal((await workspace.readOverview()).chores.length, 20);
+    await workspace.sync({ force: true }); assert.equal((await f.cloud.readGroup(workspace.groupId)).group.headSequence, 23);
+    await h.api.saveSharingSelection(record); assert.deepEqual(JSON.parse(h.vault.get('active-workspace')), { groupId: workspace.groupId, userId: 'owner' });
+    h.auth.uid = 'another-user'; await assert.rejects(workspace.session.controller.actions.addChore('拒否される追加'));
+    assert.equal((await workspace.checkpoint()).pendingCount, 0);
+  } finally { await h.close(); }
 });
 
 test('v2 cloud commits immutable server receipts with encrypted events, bounds receipt recovery and keeps the same original timestamp on retry', async () => {

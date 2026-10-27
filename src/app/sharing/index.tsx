@@ -7,6 +7,7 @@ import { AccordionSection } from '@/components/accordion-section';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { enableSharingSession, createSharingWorkspace, openSharedWorkspace, requestSharingWorkspace, sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
 import type { SharedWorkspace } from '@/platform/sharing/workspaces';
+import type { SharedWorkspaceOverview } from '@/platform/sharing/workspace-types';
 import { isSharingConfigured } from '@/platform/sharing/firebase-services';
 import { isSharingAppleSignInAvailable, signInSharingWithApple, signInSharingWithGoogle, signOutSharing } from '@/platform/sharing/auth';
 import { sharingInvitationQr } from '@/features/sharing/invitation-qr';
@@ -23,6 +24,8 @@ export default function SharingScreen() {
   const [selected, setSelected] = useState<SharedWorkspace | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false); const [busy, setBusy] = useState(false);
   const inFlight = useRef(false); const alive = useRef(true); const [message, setMessage] = useState<string | null>(null);
+  const selectedRecord = context.groups.find((group) => group.groupId === selectedId);
+  const selectedRevision = JSON.stringify([selectedRecord?.status, selectedRecord?.localGeneration, selectedRecord?.rosterArchive?.at(-1)?.body.revision]);
   const run = async (work: () => Promise<void>) => {
     if (inFlight.current) return; inFlight.current = true; setBusy(true); setMessage(null);
     try { await work(); await context.refreshSharing(); }
@@ -40,7 +43,7 @@ export default function SharingScreen() {
     if (selectedId && context.userId) void openSharedWorkspace({ userId: context.userId, groupId: selectedId })
       .then((workspace) => { if (current) setSelected(workspace); }).catch((cause) => { if (current) setMessage(userMessage(cause)); });
     return () => { current = false; };
-  }, [context.userId, selectedId]);
+  }, [context.userId, selectedId, selectedRevision]);
   return <Page>
     <BackButton onPress={() => router.canGoBack() ? router.back() : router.replace('/')} />
     <ScreenHeading title="共有グループ" description="家族や同居人と、家事の予定や完了を共有できます。" />
@@ -75,7 +78,7 @@ export default function SharingScreen() {
         <Text style={styles.caption}>申請後、所有者の端末で承認されると参加できます。</Text>
         <AppButton title="参加を申請" disabled={busy || !link.trim()} onPress={() => void run(async () => { const workspace = await requestSharingWorkspace(link); setSelectedId(workspace.groupId); setLink(''); setExpanded(null); })} />
       </AccordionSection>
-      {selected && selected.groupId === selectedId && selected.userId === context.userId ? <GroupDetail key={`${selected.userId}:${selected.groupId}`} workspace={selected} run={run} busy={busy} /> : selectedId ? <ActivityIndicator color={palette.accent} /> : null}
+      {selected && selected.groupId === selectedId && selected.userId === context.userId ? <GroupDetail key={`${selected.userId}:${selected.groupId}:${selected.identity.deviceId}:${selected.protocol}`} workspace={selected} run={run} busy={busy} /> : selectedId ? <ActivityIndicator color={palette.accent} /> : null}
       <AppButton title="共有用アカウントからログアウト" variant="quiet" disabled={busy} onPress={() => void run(async () => { await context.switchTo(null); await signOutSharing(); setSelectedId(null); })} />
     </>}
     {busy ? <ActivityIndicator color={palette.accent} /> : null}
@@ -94,17 +97,18 @@ export default function SharingScreen() {
 function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run: (work: () => Promise<void>) => Promise<void>; busy: boolean }) {
   const context = useWorkspace();
   const [detail, setDetail] = useState<{ record: Awaited<ReturnType<SharedWorkspace['record']>>; pending: number;
-    snapshot: Awaited<ReturnType<SharedWorkspace['adapter']['readSnapshot']>> | null; conflicts: SharedEntity[]; openError: string | null } | null>(null);
+    snapshot: SharedWorkspaceOverview | null; conflicts: SharedEntity[]; openError: string | null } | null>(null);
   const [requests, setRequests] = useState<{ invitation: SignedSharedInvitation; request: SharedJoinRequest }[]>([]);
-  const [invite, setInvite] = useState<Awaited<ReturnType<SharedWorkspace['manager']['createInvitation']>> | null>(null);
+  const manager = workspace.manager;
+  const [invite, setInvite] = useState<Awaited<ReturnType<NonNullable<SharedWorkspace['manager']>['createInvitation']>> | null>(null);
   const [failedQr, setFailedQr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false); const [clock, setClock] = useState(() => Date.now());
   const load = useCallback(async () => {
     const record = await workspace.record(); const checkpoint = await workspace.checkpoint();
-    let snapshot: Awaited<ReturnType<SharedWorkspace['adapter']['readSnapshot']>> | null = null; let openError: string | null = null;
-    try { if (['active', 'creating'].includes(record.status)) snapshot = await workspace.adapter.readSnapshot(new Date()); }
+    let snapshot: SharedWorkspaceOverview | null = null; let openError: string | null = null;
+    try { if (['active', 'creating'].includes(record.status)) snapshot = await workspace.readOverview(); }
     catch (cause) { openError = userMessage(cause); }
-    const conflicts = snapshot?.sharing?.issues.some((issue) => issue.kind === 'conflict')
+    const conflicts = workspace.protocol === 1 && snapshot?.hasConflicts
       ? (await loadSharedReplica(workspace.database, workspace.groupId)).entities.filter((entity) => Object.keys(entity.conflicts).length) : [];
     return { record, snapshot, pending: checkpoint.pendingCount, conflicts, openError };
   }, [workspace]);
@@ -149,21 +153,21 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
       {roster?.body.members.map((member) => <View key={member.userId} style={styles.member}>
         <Text style={styles.label}>{snapshot.members.find((item) => item.id === member.userId)?.displayName ?? 'メンバー'}{member.userId === workspace.userId ? '（自分）' : ''}{member.userId === roster.body.ownerUserId ? ' · 所有者' : ''}</Text>
         <Text style={styles.caption}>参加端末：{member.devices.length}台</Text>
-        {isOwner ? member.devices.filter((device) => device.identity.deviceId !== workspace.identity.deviceId).map((device, index) => <AppButton key={device.identity.deviceId}
+        {isOwner && manager ? member.devices.filter((device) => device.identity.deviceId !== workspace.identity.deviceId).map((device, index) => <AppButton key={device.identity.deviceId}
           title={`${member.devices.length > 1 ? `端末${index + 1}へ` : 'このメンバーへ'}所有者を引き継ぐ`} compact variant="quiet" disabled={busy}
           onPress={() => Alert.alert('所有者を引き継ぎますか？', 'メンバーの招待・除名は、引き継ぎ先の端末から行うようになります。', [{ text: 'キャンセル', style: 'cancel' },
-            { text: '引き継ぐ', onPress: () => void run(async () => { await workspace.manager.transferOwnership({ userId: member.userId, deviceId: device.identity.deviceId }); await refresh(); }) }])} />) : null}
-        {isOwner && member.userId !== roster.body.ownerUserId ? <AppButton title="このメンバーを除名" compact variant="danger" disabled={busy}
+            { text: '引き継ぐ', onPress: () => void run(async () => { await manager.transferOwnership({ userId: member.userId, deviceId: device.identity.deviceId }); await refresh(); }) }])} />) : null}
+        {isOwner && manager && member.userId !== roster.body.ownerUserId ? <AppButton title="このメンバーを除名" compact variant="danger" disabled={busy}
           onPress={() => Alert.alert('メンバーを除名しますか？', '今後の共有データへアクセスできなくなります。すでに相手の端末に保存された内容は消去できません。', [{ text: 'キャンセル', style: 'cancel' },
-            { text: '除名する', style: 'destructive', onPress: () => void run(async () => { await workspace.manager.removeMembers([member.userId]); await refresh(); }) }])} /> : null}
-        {isOwner && member.devices.length > 1 ? member.devices.filter((device) => device.identity.deviceId !== workspace.identity.deviceId).map((device, index) => <AppButton key={`remove:${device.identity.deviceId}`}
+            { text: '除名する', style: 'destructive', onPress: () => void run(async () => { await manager.removeMembers([member.userId]); await refresh(); }) }])} /> : null}
+        {isOwner && manager && member.devices.length > 1 ? member.devices.filter((device) => device.identity.deviceId !== workspace.identity.deviceId).map((device, index) => <AppButton key={`remove:${device.identity.deviceId}`}
           title={`端末${index + 1}の参加を解除`} compact variant="danger" disabled={busy}
           onPress={() => Alert.alert('この端末の参加を解除しますか？', 'ほかの端末は引き続き使えます。解除した端末の保存済みデータは消去できません。', [{ text: 'キャンセル', style: 'cancel' },
-            { text: '解除する', style: 'destructive', onPress: () => void run(async () => { await workspace.manager.removeDevice(device.identity.deviceId); await refresh(); }) }])} />) : null}
+            { text: '解除する', style: 'destructive', onPress: () => void run(async () => { await manager.removeDevice(device.identity.deviceId); await refresh(); }) }])} />) : null}
       </View>)}
     </Card> : null}
-    {isOwner && record.status === 'active' ? <Card><SectionHeading title="招待・参加の承認" />
-      <AppButton title="招待リンクとQRを作る" disabled={busy} onPress={() => void run(async () => { setInvite(await workspace.manager.createInvitation()); await loadRequests(); })} />
+    {isOwner && manager && record.status === 'active' ? <Card><SectionHeading title="招待・参加の承認" />
+      <AppButton title="招待リンクとQRを作る" disabled={busy} onPress={() => void run(async () => { setInvite(await manager.createInvitation()); await loadRequests(); })} />
       {invite ? <>
         {qr ? failedQr === qr.uri ? <Text style={styles.error}>QRコードを表示できません。招待リンクを共有してください。</Text>
           : <Image source={{ uri: qr.uri }} style={styles.qr} contentFit="contain" cachePolicy="none" onError={() => setFailedQr(qr.uri)} accessibilityLabel="共有グループの招待QRコード" />
@@ -176,7 +180,7 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
       {requests.map(({ invitation, request }) => <Card key={`${invitation.body.inviteId}:${request.body.userId}`}>
         <Text style={styles.label}>参加申請</Text><Text selectable style={styles.verification}>{sharedJoinVerificationCode(request)}</Text>
         <Text style={styles.caption}>相手の端末にも同じ番号が表示されていることを確認してください。</Text>
-        <AppButton title="この端末の参加を承認" disabled={busy} onPress={() => void run(async () => { await workspace.manager.approve(invitation, request); await loadRequests(); await refresh(); })} />
+        <AppButton title="この端末の参加を承認" disabled={busy} onPress={() => void run(async () => { await manager.approve(invitation, request); await loadRequests(); await refresh(); })} />
         <AppButton title="申請を拒否" variant="quiet" disabled={busy} onPress={() => void run(async () => { await workspace.cloud.withdrawOrRejectJoinRequest(invitation.body.inviteId, request.body.userId); await loadRequests(); })} />
       </Card>)}
     </Card> : null}
@@ -189,7 +193,7 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
         <Text style={styles.label}>{fieldLabel(field)}</Text>
         {candidates.map((candidate, index) => <View key={candidate.operationId} style={styles.candidate}>
           <Text selectable style={styles.body}>{field === '$alive' ? candidate.value ? '残す' : '削除する' : typeof candidate.value === 'string' ? candidate.value.slice(0, 500) : JSON.stringify(candidate.value).slice(0, 500)}</Text>
-          <AppButton title={`内容${index + 1}を採用`} compact variant="secondary" disabled={busy} onPress={() => void run(async () => { await workspace.resolveConflict(entity.entityType, entity.entityId, field, candidate.operationId); await refresh(); })} />
+          {workspace.protocol === 1 ? <AppButton title={`内容${index + 1}を採用`} compact variant="secondary" disabled={busy} onPress={() => void run(async () => { await workspace.resolveConflict(entity.entityType, entity.entityId, field, candidate.operationId); await refresh(); })} /> : null}
         </View>)}
       </View>)}
     </Card>)}
@@ -197,9 +201,9 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
       <Text style={styles.body}>退出しても個人データは変わりません。未送信の変更と取得済みの内容はこの端末に保持されます。</Text>
       {record.status === 'joining' && record.join ? <AppButton title="参加申請を取り消す" variant="danger" disabled={busy} onPress={() => void run(async () => {
         await workspace.cancelJoinRequest(); await refresh();
-      })} /> : <AppButton title="このグループから退出" variant="danger" disabled={busy || ['left', 'removed'].includes(record.status)}
+      })} /> : manager ? <AppButton title="このグループから退出" variant="danger" disabled={busy || ['left', 'removed'].includes(record.status)}
         onPress={() => Alert.alert('グループから退出しますか？', detail.pending ? `未送信の変更が${detail.pending}件あります。退出後は送信できません。端末内の記録は保持します。` : '共有データの取得と送信を終了します。',
-          [{ text: 'キャンセル', style: 'cancel' }, { text: '退出する', style: 'destructive', onPress: () => void run(async () => { await workspace.manager.leave(); if (context.active?.groupId === workspace.groupId) await context.switchTo(null); await refresh(); }) }])} />}
+          [{ text: 'キャンセル', style: 'cancel' }, { text: '退出する', style: 'destructive', onPress: () => void run(async () => { await manager.leave(); if (context.active?.groupId === workspace.groupId) await context.switchTo(null); await refresh(); }) }])} /> : null}
     </AccordionSection>
   </>;
 }

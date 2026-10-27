@@ -1,0 +1,34 @@
+import type { LocalDate } from '../../../domain/shared/types';
+import { addDays, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
+import type { ScheduleSettings } from '../../../domain/scheduling/contracts';
+import { sharedLocalDate } from '../group-clock.ts';
+import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
+import { buildV2PersonalPlan } from '../v2/personal-plan.ts';
+import type { V2PersonalPlan } from '../v2/personal-plan';
+import { v2CalendarMonth } from './calendar-projection.ts';
+
+export interface V2GroupUiSession {
+  controller: V2GroupController; groupId: string; userId: string;
+  readModel: (options?: { calendarMonth?: string; focusDate?: string }) => Promise<V2GroupScreenModel & { personal: V2PersonalPlan }>;
+}
+
+/** The UI computes its range and personal suggestions from one authenticated group clock. */
+export function createV2ScreenSession(input: { controller: V2GroupController; groupId: string; userId: string; now: () => Date;
+  readPreferences: () => { ownerUserId: string; settings: ScheduleSettings } | Promise<{ ownerUserId: string; settings: ScheduleSettings }>;
+}): V2GroupUiSession {
+  return { controller: input.controller, groupId: input.groupId, userId: input.userId,
+    async readModel(options) {
+      if (options?.calendarMonth && options.focusDate) throw new Error('月表示と家事回の表示を同時に指定できません。');
+      const instant = input.now(); const preferences = await input.readPreferences();
+      if (preferences.ownerUserId !== input.userId) throw new Error('本人の予定設定を確認してください。');
+      const model = await input.controller.readModel(({ timeZone }) => {
+        const date = sharedLocalDate(instant, timeZone); const focus = options?.focusDate as LocalDate | undefined;
+        if (focus) parseLocalDate(focus);
+        const calendar = options?.calendarMonth ? v2CalendarMonth(options.calendarMonth === 'current' ? date : options.calendarMonth as LocalDate) : null;
+        return { from: addDays(calendar?.from ?? focus ?? date, -14), through: addDays(calendar?.through ?? focus ?? date, 14), asOfDate: date };
+      });
+      if (model.viewerUserId !== input.userId || model.plan.groupId !== input.groupId) throw new Error('表示する共有アカウント・グループが変わりました。');
+      const personal = buildV2PersonalPlan(model.plan, { viewerUserId: input.userId, now: instant.getTime(), settings: preferences.settings });
+      return { ...model, personal };
+    } };
+}

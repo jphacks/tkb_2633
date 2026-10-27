@@ -156,7 +156,7 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
       options.assertWritable();
       for (const draft of drafts) localIds.add(draft.operationId); return drafts;
     }, async (transaction, replica) => { options.assertWritable(); await project(transaction, replica, localIds); }, (op) => signSharedOperation(op, options.identity).authorSignature);
-    try { void Promise.resolve(options.afterCommit?.()).catch(() => undefined); } catch { /* A notification cannot undo committed facts or require another business write. */ }
+    if (created.length) try { void Promise.resolve(options.afterCommit?.()).catch(() => undefined); } catch { /* A notification cannot undo committed facts or require another business write. */ }
     return created;
   }
   return {

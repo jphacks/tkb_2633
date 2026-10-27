@@ -36,7 +36,7 @@ async function setup({ perMember = false, observer = false } = {}) {
     }
   }
   await sync(); const round = (await a.readPlan(range)).occurrences[0];
-  return { owner, member, a, b, c: other ? actions(other) : null, rule, sync, ref: reference, selector: { scope: 'once', occurrenceId: round.id, anchorDate: ref.anchorDate }, close() { for (const device of devices) device.connection.close(); } };
+  return { owner, member, observerDevice: other, a, b, c: other ? actions(other) : null, rule, sync, ref: reference, selector: { scope: 'once', occurrenceId: round.id, anchorDate: ref.anchorDate }, close() { for (const device of devices) device.connection.close(); } };
 }
 test('v2 a member requests removal of a locked date without changing the formal schedule before receipt-backed approval', async () => {
   const f = await setup();
@@ -201,5 +201,51 @@ test('v2 common planning reuses its read boundary instead of rescanning every ev
     t.diagnostic(`fullHistoryScans=${scans}; plannedRounds=${plan.occurrences.length}`);
     assert.ok(plan.occurrences.length >= 20); assert.ok(scans <= 4, `whole-history scans grew with the ${plan.occurrences.length} rounds: ${scans}`);
     delete ready[Symbol.iterator]; assert.deepEqual(buildV2CommonPlan(state, period), plan);
+  } finally { f.close(); }
+});
+test('v2 a third members normal locked-date change requires the same administrator and assignee consent as removal in a consent-based group', async () => {
+  const f = await setup({ observer: true });
+  try {
+    await f.a.patchGroupPolicy({ kind: 'roommates', adminCanFixWithoutConsent: false }); await f.sync();
+    const [request] = await f.c.changeDate(ref, { mode: 'fixed', target: { precision: 'interval', start: '2026-10-29T04:00:00Z', end: '2026-10-29T05:00:00Z' } }); await f.sync();
+    const state = (await f.owner.repository.readState()).assessment.requestStates[0]; assert.equal(state.audience.administratorVote, true);
+    assert.deepEqual(state.audience.approvingMemberIds, ['member']);
+    await f.a.decide(request.operationId, 'approve'); await f.sync();
+    assert.equal((await f.b.readPlan(range)).occurrences[0].subjects[0].formalDate.target.start, '2026-10-29T02:00:00.000Z');
+    await f.b.decide(request.operationId, 'approve'); await f.sync();
+    assert.equal((await f.b.readPlan(range)).occurrences[0].subjects[0].formalDate.target.start, '2026-10-29T04:00:00.000Z');
+  } finally { f.close(); }
+});
+test('v2 a family administrator may still approve a third members locked-date request when administrator fixing without consent is enabled', async () => {
+  const f = await setup({ observer: true });
+  try {
+    const [request] = await f.c.changeDate(ref, { mode: 'fixed', target: { precision: 'interval', start: '2026-10-29T04:00:00Z', end: '2026-10-29T05:00:00Z' } }); await f.sync();
+    assert.deepEqual((await f.owner.repository.readState()).assessment.requestStates[0].audience.approvingMemberIds, []);
+    await f.a.decide(request.operationId, 'approve'); await f.sync();
+    assert.equal((await f.b.readPlan(range)).occurrences[0].subjects[0].formalDate.target.start, '2026-10-29T04:00:00.000Z');
+  } finally { f.close(); }
+});
+test('v2 delegated fixed-date requests still require both approvals while direct signed writes remain forbidden', async () => {
+  const f = await setup({ observer: true });
+  try {
+    const original = { precision: 'interval', start: '2026-10-29T02:00:00Z', end: '2026-10-29T03:00:00Z' };
+    const proposed = { precision: 'interval', start: '2026-10-29T04:00:00Z', end: '2026-10-29T05:00:00Z' };
+    const [fixedSource] = await f.a.changeDate(ref, { mode: 'fixed', target: original, options: { strict: true, adminLocked: false } });
+    await f.a.patchGroupPolicy({ kind: 'roommates', adminCanFixWithoutConsent: false, delegationEnabled: true });
+    await f.a.grantDateRights('floor', 'observer', true, { changeDate: true, changeOthers: true, changeBeforeWindow: true }); await f.sync();
+    const before = await listSharingOutbox(f.observerDevice.database, groupId); const id = 'direct-delegated-date';
+    await assert.rejects(f.observerDevice.repository.commit([draft(id, 'designation', id, { configuration: {
+      id, choreId: ref.choreId, subjectUserId: null, ruleVersion: 1, referenceAnchorDate: ref.anchorDate, selector: f.selector,
+      timeZoneAtCreation: 'Asia/Tokyo', issuerUserId: 'observer', mode: 'fixed', target: proposed,
+      strict: true, adminLocked: false, forbidEarlier: false, basisRuleIds: [fixedSource.operationId],
+    } })]), { code: 'sharing/v2-authority-denied' });
+    assert.deepEqual(await listSharingOutbox(f.observerDevice.database, groupId), before);
+    const [request] = await f.c.changeDate(ref, { mode: 'fixed', target: proposed, expectedRuleIds: [fixedSource.operationId] });
+    assert.equal(request.entityType, 'changeRequest'); await f.sync(); const state = (await f.member.repository.readState()).assessment.requestStates[0];
+    assert.deepEqual(state.audience.approvingMemberIds, ['member']); assert.equal(state.audience.administratorVote, true);
+    await f.a.decide(request.operationId, 'approve'); await f.sync();
+    assert.equal((await f.b.readPlan(range)).occurrences[0].subjects[0].formalDate.target.start, '2026-10-29T02:00:00.000Z');
+    await f.b.decide(request.operationId, 'approve'); await f.sync();
+    assert.equal((await f.b.readPlan(range)).occurrences[0].subjects[0].formalDate.target.start, '2026-10-29T04:00:00.000Z');
   } finally { f.close(); }
 });

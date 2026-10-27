@@ -2701,5 +2701,31 @@
         "file": "tests/sharing-v2-date-requests-ui.test.mjs"
       }
     ]
+  },
+  {
+    "feature": "v2-normal-date-third-party-consent",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs",
+        "name": "v2 a third members normal locked-date change requires the same administrator and assignee consent as removal in a consent-based group"
+      },
+      {
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs",
+        "name": "v2 a family administrator may still approve a third members locked-date request when administrator fixing without consent is enabled"
+      }
+    ]
+  },
+  {
+    "feature": "v2-delegation-preserves-required-assignee-consent",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-cancellation-requests.test.mjs",
+        "name": "v2 delegated fixed-date requests still require both approvals while direct signed writes remain forbidden"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 administrator requirements retain third-party consent while explicit ordinary date delegation remains usable"
+      }
+    ]
   }
 ]

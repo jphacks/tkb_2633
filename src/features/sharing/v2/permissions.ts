@@ -65,15 +65,17 @@ export function evaluateDateChangePermission(input: DateChangeContext): DateChan
   }
   const canAutomaticallyApprove = input.movingEarlier && input.policy.autoApproveEarlier && !input.strict && !input.forbidEarlier
     && (!input.beforeWindow || input.policy.allowBeforeWindow || grant.changeBeforeWindow) && !input.afterWindow;
-  if (input.strict || input.forbidEarlier && input.movingEarlier) return { kind: 'approvalRequired', approver: 'admin', reason: 'strict' };
-  if (input.beforeWindow && !input.policy.allowBeforeWindow && !grant.changeBeforeWindow || input.afterWindow && !input.policy.allowAfterWindow) {
-    return { kind: 'approvalRequired', approver: 'admin', reason: 'outsideWindow' };
+  const strict = input.strict || input.forbidEarlier && input.movingEarlier;
+  const outside = input.beforeWindow && !input.policy.allowBeforeWindow && !grant.changeBeforeWindow || input.afterWindow && !input.policy.allowAfterWindow;
+  const locked = input.adminLocked && !canAutomaticallyApprove;
+  const administrator = strict || outside || locked || !owns && !grant.changeOthers && !input.assigneeIds.length;
+  // An administrator requirement cannot replace consent explicitly required from another assignee.
+  const assignee = !owns && input.assigneeIds.length > 0 && (administrator ? !input.policy.adminCanFixWithoutConsent : !grant.changeOthers);
+  if (administrator || assignee) {
+    return { kind: 'approvalRequired', approver: administrator && assignee ? 'adminAndAssignee' : administrator ? 'admin' : 'assignee',
+      reason: strict ? 'strict' : outside ? 'outsideWindow' : locked ? 'fixed' : 'othersAssignment' };
   }
-  if (!owns && !grant.changeOthers) return { kind: 'approvalRequired', approver: input.assigneeIds.length ? 'assignee' : 'admin', reason: 'othersAssignment' };
-  if (input.adminLocked) {
-    return canAutomaticallyApprove ? { kind: 'allowed', needsRequest: true, automaticallyApproved: true }
-      : { kind: 'approvalRequired', approver: 'admin', reason: 'fixed' };
-  }
+  if (input.adminLocked) return { kind: 'allowed', needsRequest: true, automaticallyApproved: true };
   return { kind: 'allowed', needsRequest: false, automaticallyApproved: false };
 }
 export function mayUndoCompletion(actorUserId: string, recorderUserId: string, adminUserId: string, activeMemberIds: readonly string[]): boolean {

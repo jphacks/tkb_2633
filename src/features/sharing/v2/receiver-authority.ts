@@ -536,10 +536,6 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
     permission = { kind: 'approvalRequired', approver: permission.kind === 'approvalRequired' && permission.approver !== 'admin' ? 'adminAndAssignee' : 'admin',
       reason: extendsFutureWindow ? 'outsideWindow' : originalOptions.adminLocked || fixedTime ? 'fixed' : 'strict' };
   }
-  if (permission.kind !== 'denied' && op.entityType === 'changeRequest' && op.payload.cancellation && !policy.adminCanFixWithoutConsent
-    && assigneeIds.length && !assigneeIds.includes(op.authorUserId) && op.authorUserId !== epoch.body.ownerUserId) {
-    permission = { kind: 'approvalRequired', approver: permission.kind === 'approvalRequired' && permission.approver !== 'assignee' ? 'adminAndAssignee' : 'assignee', reason: 'othersAssignment' };
-  }
   if (source.unresolved && permission.kind === 'allowed') permission = { ...permission, needsRequest: true };
   if (!cancelling && !automaticCancellation && permission.kind !== 'denied' && violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame,
     subjectUserId: subject, target: proposed, mode, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],

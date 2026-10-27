@@ -55,6 +55,21 @@ test('v2 date permissions keep fixed, strict, outside-window and assignee-consen
   assert.equal(evaluateDateChangePermission({ ...base, policy: createGroupPolicy('roommates'), afterWindow: true }).kind, 'allowed');
   assert.equal(evaluateDateChangePermission({ ...base, actorUserId: 'outsider' }).reason, 'notMember');
 });
+test('v2 administrator requirements retain third-party consent while explicit ordinary date delegation remains usable', () => {
+  const base = { ...changeContext(), assigneeIds: ['member-b'], policy: { ...createGroupPolicy('roommates'), delegationEnabled: true, allowBeforeWindow: false, allowAfterWindow: false } };
+  for (const grants of [[], [grant('delegated')]]) {
+    for (const condition of [{ strict: true }, { adminLocked: true }, { forbidEarlier: true, movingEarlier: true }, { afterWindow: true }]) {
+      const permission = evaluateDateChangePermission({ ...base, ...condition, grants });
+      assert.equal(permission.kind, 'approvalRequired'); assert.equal(permission.approver, 'adminAndAssignee');
+    }
+    const plain = evaluateDateChangePermission({ ...base, grants }); const earlier = evaluateDateChangePermission({ ...base, grants, adminLocked: true, movingEarlier: true });
+    if (grants.length) { assert.equal(plain.kind, 'allowed'); assert.deepEqual(earlier, { kind: 'allowed', needsRequest: true, automaticallyApproved: true }); }
+    else { assert.equal(plain.approver, 'assignee'); assert.equal(earlier.approver, 'assignee'); }
+  }
+  const own = { ...base, assigneeIds: ['member-a'] };
+  assert.equal(evaluateDateChangePermission({ ...own, strict: true }).approver, 'admin');
+  assert.deepEqual(evaluateDateChangePermission({ ...own, adminLocked: true, movingEarlier: true }), { kind: 'allowed', needsRequest: true, automaticallyApproved: true });
+});
 
 const take = (id, userId) => ({ ...stamp(id), occurrenceId: 'occurrence-a', userId });
 const claimInput = (claims, resolutions = [], releases = []) => ({ claims, resolutions, releases, activeMemberIds: members });

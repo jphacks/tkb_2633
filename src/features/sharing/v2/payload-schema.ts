@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-12';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-13';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -182,7 +182,7 @@ export function validateV2CompletionPayload(payload: RecordValue, operationType:
     else if (info.kind === 'designated') {
       record(info, ['kind', 'timeZone', 'ruleId', 'mode', 'target', 'strict']); assertSharedIdentifier(info.ruleId);
       choice(info.mode, ['deadline', 'day', 'fixed']); flag(info.strict); validateDesignationTarget(info.mode as 'deadline' | 'day' | 'fixed', info.target as unknown as DateTarget);
-    } else if (info.kind === 'unconfirmed') { record(info, ['kind', 'timeZone', 'reason']); choice(info.reason, ['dateConflict', 'cycleChanged', 'timeZoneChanged', 'invalidInterval']); }
+    } else if (info.kind === 'unconfirmed') { record(info, ['kind', 'timeZone', 'reason']); choice(info.reason, ['dateConflict', 'cycleChanged', 'timeZoneChanged', 'invalidInterval', 'ambiguousTime']); }
     else throw new Error('Invalid recorded instruction');
   }
 }

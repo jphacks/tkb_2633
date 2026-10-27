@@ -2014,5 +2014,30 @@
         "name": "v2 fixed-time automatic approval remains disabled by strict instructions, an earlier-change prohibition or the explicit group setting"
       }
     ]
+  },
+  {
+    "feature": "v2-clock-disambiguation-and-repeated-rule-reference",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-time-input.test.mjs",
+        "name": "v2 local time input requires an explicit occurrence of a repeated clock hour instead of silently recording the earlier one on either OS timezone"
+      },
+      {
+        "file": "tests/sharing-v2-time-input.test.mjs",
+        "name": "v2 repeated time choices include half-hour transitions and validate a fixed interval using each explicitly selected clock occurrence"
+      },
+      {
+        "file": "tests/sharing-v2-time-input.test.mjs",
+        "name": "v2 repeating clock rules preserve the explicitly chosen reference instant including the second repeated hour and request review for a future ambiguous hour"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 past-work form requires choosing the repeated clock occurrence and clears that choice when the actual time is edited"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 an ambiguous future repeat keeps a real work report unconfirmed and converges through signed SQLite facts without inventing either clock occurrence"
+      }
+    ]
   }
 ]

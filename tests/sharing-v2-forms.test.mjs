@@ -9,12 +9,12 @@ import { chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 
 const range = { from: '2026-10-20', through: '2026-11-10', asOfDate: '2026-10-27' };
 const formFile = 'src/features/sharing/v2-ui/completion-form.tsx';
-async function form(d, platform) {
+async function form(d, platform, query = range) {
   let id = 0; const controller = createV2GroupController(d.repository, { makeId: () => `${d.options.userId}-form-${++id}`, now, sync: async () => {} });
   let props;
-  const update = async () => { const model = await controller.readModel(range); const round = model.plan.occurrences[0];
+  const update = async () => { const model = await controller.readModel(query); const round = model.plan.occurrences[0];
     Object.assign(props, { model, round, subject: round.subjects[0] }); };
-  const model = await controller.readModel(range); const round = model.plan.occurrences[0];
+  const model = await controller.readModel(query); const round = model.plan.occurrences[0];
   props = { model, round, subject: round.subjects[0], actions: controller.actions, now, busy: false, run: async (work) => { await work(); await update(); } };
   const screen = screenHarness(formFile, { exportName: 'V2CompletionForm', props, platform });
   return { props, controller, screen, update };
@@ -118,5 +118,40 @@ test('v2 history does not offer another member a cancellation control for work r
     const screen = screenHarness('src/features/sharing/v2-ui/completion-history-card.tsx', { exportName: 'V2CompletionHistoryCard', props: {
       model, record: model.plan.history[0], actions: controller.actions, busy: false, run: async (work) => work() } });
     assert.ok(screen.text().includes('実施済み')); assert.throws(() => screen.button('この完了を取り消す'), /missing button/);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 past-work form requires choosing the repeated clock occurrence and clears that choice when the actual time is edited', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    const initial = seeds(); initial[1].payload.timeZone = 'America/New_York'; initial[1].payload.anchorDate = '2025-11-02';
+    initial[3].payload.configuration.anchorDate = '2025-11-02'; await d.repository.commit(initial);
+    const query = { from: '2025-11-02', through: '2025-11-03', asOfDate: '2026-10-27' };
+    const { screen, props } = await form(d, 'ios', query); await select(screen, '以前実施した');
+    await screen.change('実施日', '2025-11-02'); await screen.change('実施時刻', '01:30');
+    await screen.press('実施を記録する'); assert.ok(screen.text().includes('どの時刻か')); assert.equal(props.model.plan.history.length, 0);
+    await select(screen, '2回目（UTC-05:00）'); await screen.change('実施時刻', '01:45');
+    await screen.press('実施を記録する'); assert.ok(screen.text().includes('どの時刻か')); assert.equal(props.model.plan.history.length, 0);
+    await select(screen, '2回目（UTC-05:00）'); await screen.press('実施を記録する');
+    assert.equal(props.model.plan.history[0].performedAt, '2025-11-02T06:45:00.000Z');
+    assert.equal(props.model.plan.history[0].recordedAt, now().toISOString());
+  } finally { d.connection.close(); }
+});
+
+test('v2 an ambiguous future repeat keeps a real work report unconfirmed and converges through signed SQLite facts without inventing either clock occurrence', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    const initial = seeds(); initial[1].payload.timeZone = 'America/New_York'; initial[1].payload.anchorDate = '2026-10-25'; initial[3].payload.configuration.anchorDate = '2026-10-25';
+    await owner.repository.commit(initial); const { controller } = await form(owner, 'ios');
+    await controller.actions.changeDate({ choreId: 'floor', anchorDate: '2026-10-25', ruleVersion: 1, subjectUserId: null }, { mode: 'fixed',
+      target: { precision: 'interval', start: '2026-10-25T05:30:00.000Z', end: '2026-10-25T05:45:00.000Z' }, selector: { scope: 'ongoing', from: '2026-10-25' } });
+    const [work] = await controller.actions.complete({ choreId: 'floor', anchorDate: '2026-11-01', ruleVersion: 1, subjectUserId: null });
+    assert.equal(work.payload.recordedInstruction.kind, 'unconfirmed'); assert.equal(work.payload.recordedInstruction.reason, 'ambiguousTime');
+    const facts = await loadSharedFacts(owner.database, groupId);
+    for (const d of [owner, member]) await applyReceivedSharedFacts(d.database, groupId, facts, '6', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    const actual = await controller.readModel(range); const other = (await form(member, 'android')).props.model;
+    assert.equal(actual.plan.planHash, other.plan.planHash); assert.equal(actual.plan.history[0].instruction.reason, 'ambiguousTime');
+    assert.equal(actual.plan.history[0].strictInstructionFulfilled, null); assert.equal(actual.plan.history[0].active, true);
+    assert.equal(actual.quarantinedChanges, 0);
   } finally { owner.connection.close(); member.connection.close(); }
 });

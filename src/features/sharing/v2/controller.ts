@@ -5,6 +5,7 @@ import { buildV2CommonPlan } from './common-plan.ts';
 import { v2ReadPoint } from './view-point.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { normalizeV2Configuration } from './configuration-normalization.ts';
+import { observedDateRules } from './formal-rule-view.ts';
 import type { SharedChoreConfiguration } from './model.ts';
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
@@ -26,7 +27,8 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
           candidates: candidates.map((op) => ({ operationId: op.operationId, authorUserId: op.authorUserId, recordedAt: op.recordedAt!, configuration: normalizeV2Configuration(op.payload.configuration as unknown as SharedChoreConfiguration) })) };
       });
       return { plan, configurations, viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
-        requests: state.assessment.requestStates, assignmentRequests: state.assessment.assignmentRequests, assignmentRules: state.assessment.view.assignmentsAt(at)?.facts ?? [], pendingChanges: state.assessment.pendingOutboxIds.length,
+        requests: state.assessment.requestStates, dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
+        assignmentRequests: state.assessment.assignmentRequests, assignmentRules: state.assessment.view.assignmentsAt(at)?.facts ?? [], pendingChanges: state.assessment.pendingOutboxIds.length,
         receiptPending: state.assessment.provisionalOperationIds.length, quarantinedChanges: state.assessment.rejected.length + state.replica.pendingOperationIds.length };
     },
   };

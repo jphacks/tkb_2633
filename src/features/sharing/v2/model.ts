@@ -50,7 +50,7 @@ export type RuleSelector = { scope: 'once'; occurrenceId: string; anchorDate: Lo
 export interface DesignationOptions { strict: boolean; adminLocked: boolean; forbidEarlier: boolean; allowDuringCooldown?: boolean }
 export type RecordedInstruction = { kind: 'automatic'; timeZone: string }
   | { kind: 'designated'; ruleId: string; mode: DesignationMode; target: DateTarget; strict: boolean; timeZone: string }
-  | { kind: 'unconfirmed'; reason: 'dateConflict' | 'cycleChanged' | 'timeZoneChanged' | 'invalidInterval'; timeZone: string };
+  | { kind: 'unconfirmed'; reason: 'dateConflict' | 'cycleChanged' | 'timeZoneChanged' | 'invalidInterval' | 'ambiguousTime'; timeZone: string };
 export interface ManualRule extends DesignationOptions {
   id: string;
   choreId: string;

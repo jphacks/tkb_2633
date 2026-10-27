@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, ViewStyle } from 'react-native';
 import { palette, typography } from '../../../components/planner-ui';
+import { v2LocalTimeChoices } from './target-form';
 
 /** Android already uses adjustResize. Avoid applying an additional keyboard-height correction there. */
 export function V2FormScrollView({ children, contentContainerStyle }: { children: ReactNode; contentContainerStyle?: StyleProp<ViewStyle> }) {
@@ -25,6 +26,17 @@ export function V2Choices<T extends string>({ label, value, choices, onChange, d
 export function V2TextField({ label, ...props }: Omit<TextInputProps, 'style' | 'accessibilityLabel'> & { label: string }) {
   return <View style={v2FormStyles.group}><Text style={v2FormStyles.label}>{label}</Text>
     <TextInput {...props} accessibilityLabel={label} autoCapitalize="none" style={v2FormStyles.input} />
+  </View>;
+}
+
+export function V2TimeDisambiguation({ day, clock, timeZone, value, onChange, disabled, label = '時刻の区別' }: {
+  day: string; clock: string; timeZone: string; value: string; onChange: (value: string) => void; disabled?: boolean; label?: string;
+}) {
+  let choices: ReturnType<typeof v2LocalTimeChoices> = [];
+  try { choices = v2LocalTimeChoices(day, clock, timeZone); } catch { /* Partial text is validated only when the user submits. */ }
+  if (choices.length < 2) return null;
+  return <View style={v2FormStyles.group}><Text style={v2FormStyles.caption}>この地域では同じ時刻が複数回あります。どの時刻か選んでください。</Text>
+    <V2Choices label={label} value={value} choices={choices} onChange={onChange} disabled={disabled} />
   </View>;
 }
 

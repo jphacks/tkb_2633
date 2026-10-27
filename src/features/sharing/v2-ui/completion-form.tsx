@@ -4,7 +4,7 @@ import { AppButton, Card, SectionHeading } from '../../../components/planner-ui'
 import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2RoundReference } from '../v2/actions';
-import { V2Choices, V2TextField, v2FormStyles as styles } from './form-controls';
+import { V2Choices, V2TextField, V2TimeDisambiguation, v2FormStyles as styles } from './form-controls';
 import { v2LocalTimeInput } from './target-form';
 
 /** Explicit work reporting is never autosaved; its performed time is separate from its recording time. */
@@ -17,6 +17,7 @@ export function V2CompletionForm(props: {
 
 function CompletionEditor({ model, round, subject, actions, busy, run, now = () => new Date() }: Parameters<typeof V2CompletionForm>[0]) {
   const [when, setWhen] = useState<'now' | 'past'>('now'); const [day, setDay] = useState(''); const [clock, setClock] = useState('');
+  const [clockChoice, setClockChoice] = useState('');
   const [performer, setPerformer] = useState(model.viewerUserId); const [error, setError] = useState<string | null>(null); const [submitted, setSubmitted] = useState(false);
   const [displayed] = useState(() => ({ ref: { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion,
     subjectUserId: subject.subjectUserId, expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId) } satisfies V2RoundReference,
@@ -30,7 +31,7 @@ function CompletionEditor({ model, round, subject, actions, busy, run, now = () 
       if (displayed.ref.ruleVersion !== round.ruleVersion) throw new Error('周期が変更されています。現在の家事回を開き直してください。');
       if (!performers.some((member) => member.userId === performer)) throw new Error('現在参加している実施者を選んでください。');
       if (when === 'past') {
-        performedAt = v2LocalTimeInput(day, clock, model.plan.timeZone);
+        performedAt = v2LocalTimeInput(day, clock, model.plan.timeZone, clockChoice || undefined);
         if (Date.parse(performedAt) > now().getTime()) throw new Error('実際に実施した、現在より前の日時を入力してください。');
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : '実施日時を確認してください。'); return; }
@@ -42,8 +43,9 @@ function CompletionEditor({ model, round, subject, actions, busy, run, now = () 
   return <Card><SectionHeading title="実施を記録" />
     <V2Choices label="実施した時期" value={when} onChange={setWhen} disabled={disabled}
       choices={[{ value: 'now', label: '今実施した' }, { value: 'past', label: '以前実施した' }]} />
-    {when === 'past' ? <><V2TextField label="実施日" placeholder="YYYY-MM-DD" value={day} onChangeText={setDay} editable={!disabled} />
-      <V2TextField label="実施時刻" placeholder="HH:mm" value={clock} onChangeText={setClock} editable={!disabled} />
+    {when === 'past' ? <><V2TextField label="実施日" placeholder="YYYY-MM-DD" value={day} onChangeText={(value) => { setDay(value); setClockChoice(''); }} editable={!disabled} />
+      <V2TextField label="実施時刻" placeholder="HH:mm" value={clock} onChangeText={(value) => { setClock(value); setClockChoice(''); }} editable={!disabled} />
+      <V2TimeDisambiguation day={day} clock={clock} timeZone={model.plan.timeZone} value={clockChoice} onChange={setClockChoice} disabled={disabled} />
       <Text style={styles.caption}>日時の地域：{model.plan.timeZone}。入力した実施日時と、この操作の記録日時を別々に保存します。</Text></> : null}
     <V2Choices label="実際に実施した人" value={performer} onChange={setPerformer} disabled={disabled}
       choices={performers.map((member) => ({ value: member.userId, label: `${member.displayName}${member.userId === model.viewerUserId ? '（あなた）' : ''}` }))} />

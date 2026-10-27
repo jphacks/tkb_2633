@@ -62,3 +62,17 @@ Androidのfont scaleは既存設定1.15、density420を維持した。両端末�
 - `phase4e-cloud.log`：Emulator結合25件成功。
 
 代行の承認待ち・管理者承認と取消・他人による取消ボタンの非表示は実SQLiteを使う自動画面検査で確認した。今回の実機では合成した1ユーザーのみを使っており、これを複数の実アカウントによる代行E2Eとして報告しない。
+
+## Phase 4g追記：時刻変換の修正後の通常入力
+
+基点`89809022b8a708b15b83e8c0330d279171958997`へのPhase 4g差分、未公開ルール`liflow-shared-2-draft-13`で、両実機の東京の過去実施入力を再検査した。時刻の重複がない場合に不要な選択肢を出さず、前日の12:30を実施日時として保存・履歴表示できた。
+
+- `phase4g-iphone-past.xcresult` / `.log`：XCTest 1件成功。`iphone-phase4g/`に画面とツリー。履歴画像SHA-256：`0cde5d9c6ec23c0d3506f6276069103eed9fc51d8a0213b2873dfc95670fb2b6`。
+- `phase4g-android-past-confirmed.log`：入力・保存・履歴表示成功。54.59秒にはADBの階層取得・入力・画面取得を含む。`android-phase4g-past-history.png`のSHA-256：`e991c76e473041ff039083abbad6bde738de2e481da3c83b2636c0d8025232d8`。
+- Androidの最初のスクリプトは、読み込み中にも見える検査の注意書きだけを待ち、準備完了前に家事を探して失敗した。実際のホーム見出しの表示を待つように直し、成功した実行を上記へ分けて保存した。
+- `phase4g-previous-reference-repro.log`：前版と修正版による、二度ある時刻の基準回の比較。
+- `phase4g-ios.log` / `phase4g-android.log`：各1141件、lint・型検査成功。`phase4g-cloud.log`：Emulator25件成功。
+
+重複時刻の選択と将来の繰り返しの確認状態は、ホスト地域を変える純粋検査と実SQLiteで検証した。今回の実機再検査は東京での通常入力であり、重複時刻の実機操作は未実施である。
+
+AndroidのPhase 4eの画像・XMLは、後続検査で同じ名前へ保存したため原ファイルが上書きされた。当時のhash・操作ログとiPhone側の原画像は保持している。Phase 4gの画像は上記の独立名へ保存し、以後のADB検査は実行ごとの別ディレクトリへ出力する。

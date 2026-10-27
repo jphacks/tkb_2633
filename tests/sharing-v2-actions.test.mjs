@@ -352,3 +352,20 @@ test('v2 displayed round guards check the configuration frontier after waiting f
     assert.equal(work.entityType, 'completion'); assert.equal(JSON.stringify(work).includes('expectedConfigurationIds'), false);
   } finally { d.connection.close(); }
 });
+
+test('v2 displayed timezone guards reject queued work and schedule changes after a timezone update without leaking UI expectations into signed facts', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d); const displayed = { ...ref, expectedTimeZone: 'Asia/Tokyo' };
+    let release; let entered; const ready = new Promise((resolve) => { entered = resolve; });
+    const held = withSharingLedgerTransaction(d.database, async () => { entered(); await new Promise((resolve) => { release = resolve; }); }); await ready;
+    const update = d.repository.commit([{ operationId: 'new-zone', entityType: 'settings', entityId: 'settings', operationType: 'patch', payload: { timeZone: 'America/New_York' } }]);
+    const rejected = assert.rejects(a.complete(displayed), { code: 'sharing/v2-stale-settings' }); release(); await held; await update; await rejected;
+    const count = (await listSharingOutbox(d.database, groupId)).length;
+    for (const change of [() => a.changeDate(displayed, { mode: 'day', target: { precision: 'date', date: '2026-10-28' } }),
+      () => a.claim(displayed), () => a.assign(displayed, ['owner'], 'this', false)]) await assert.rejects(change(), { code: 'sharing/v2-stale-settings' });
+    assert.equal((await listSharingOutbox(d.database, groupId)).length, count);
+    const [work] = await a.complete({ ...ref, expectedTimeZone: 'America/New_York' });
+    assert.equal(work.payload.recordedInstruction.timeZone, 'America/New_York'); assert.equal(JSON.stringify(work).includes('expectedTimeZone'), false);
+  } finally { d.connection.close(); }
+});

@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-13",
+  "version": "liflow-shared-2-draft-14",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -49,5 +49,5 @@
     "src/features/sharing/v2/receipt-context.ts",
     "src/features/sharing/operations.ts"
   ],
-  "sourceSha256": "36512696c482d973359dcb13ef15f6171279d53006116f3a446211be44539b68"
+  "sourceSha256": "7bcaf93157aa28e53f6a13a45307c8e268fb8e255918313deef152fdf5f78c57"
 }

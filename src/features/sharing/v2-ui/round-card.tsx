@@ -22,7 +22,7 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const showStatus = owns || admin || relatedWork.some((record) => record.recorderUserId === viewer || record.performerUserId === viewer) || model.plan.policy?.showCompletionStatus === true;
   const undo = subject.completionOperationIds.filter((id) => model.plan.history.some((record) => record.operationId === id && record.active && (admin || record.recorderUserId === viewer)));
   const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId,
-    expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId) };
+    expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId), expectedTimeZone: model.plan.timeZone };
   const canComplete = owns && round.activeInPeriod && !subject.pendingCompletionIds.length && !subject.dependencyBlocked && !subject.dependencyAwaitingCompletion && !round.assignmentConflictIds.length;
   const onToggle = busy ? undefined : subject.completed ? undo.length ? () => run(() => actions.undoMany(undo)) : undefined
     : canComplete ? () => run(() => actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] })) : undefined;

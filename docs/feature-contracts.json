@@ -2039,5 +2039,18 @@
         "name": "v2 an ambiguous future repeat keeps a real work report unconfirmed and converges through signed SQLite facts without inventing either clock occurrence"
       }
     ]
+  },
+  {
+    "feature": "v2-displayed-timezone-and-input-protection",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 displayed timezone guards reject queued work and schedule changes after a timezone update without leaking UI expectations into signed facts"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 a changed group timezone keeps the unsent work input in its original timezone and blocks reinterpretation until reopening"
+      }
+    ]
   }
 ]

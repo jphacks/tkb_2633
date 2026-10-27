@@ -20,18 +20,19 @@ function CompletionEditor({ model, round, subject, actions, busy, run, now = () 
   const [clockChoice, setClockChoice] = useState('');
   const [performer, setPerformer] = useState(model.viewerUserId); const [error, setError] = useState<string | null>(null); const [submitted, setSubmitted] = useState(false);
   const [displayed] = useState(() => ({ ref: { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion,
-    subjectUserId: subject.subjectUserId, expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId) } satisfies V2RoundReference,
-  assignees: [...subject.assigneeIds] }));
+    subjectUserId: subject.subjectUserId, expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId),
+    expectedTimeZone: model.plan.timeZone } satisfies V2RoundReference, assignees: [...subject.assigneeIds], timeZone: model.plan.timeZone }));
   const canRecordOthers = model.viewerUserId === model.adminUserId || displayed.assignees.includes(model.viewerUserId);
   const performers = model.plan.members.filter((member) => member.active && (canRecordOthers || member.userId === model.viewerUserId));
-  const disabled = busy || submitted || !model.plan.members.some((member) => member.active && member.userId === model.viewerUserId);
+  const zoneChanged = displayed.timeZone !== model.plan.timeZone;
+  const disabled = busy || submitted || zoneChanged || !model.plan.members.some((member) => member.active && member.userId === model.viewerUserId);
   const submit = () => {
     setError(null); let performedAt: string | undefined;
     try {
       if (displayed.ref.ruleVersion !== round.ruleVersion) throw new Error('周期が変更されています。現在の家事回を開き直してください。');
       if (!performers.some((member) => member.userId === performer)) throw new Error('現在参加している実施者を選んでください。');
       if (when === 'past') {
-        performedAt = v2LocalTimeInput(day, clock, model.plan.timeZone, clockChoice || undefined);
+        performedAt = v2LocalTimeInput(day, clock, displayed.timeZone, clockChoice || undefined);
         if (Date.parse(performedAt) > now().getTime()) throw new Error('実際に実施した、現在より前の日時を入力してください。');
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : '実施日時を確認してください。'); return; }
@@ -39,14 +40,16 @@ function CompletionEditor({ model, round, subject, actions, busy, run, now = () 
       expectedAssigneeIds: displayed.assignees }); setSubmitted(true); });
   };
   if (submitted) return <Card><Text accessibilityLiveRegion="polite" style={styles.body}>実施記録を端末に保存しました。共有状況は同期表示で確認できます。</Text></Card>;
+  if (!model.plan.initialized) return <Card><Text style={styles.body}>グループの地域と基本設定が未確定です。先に設定を確認してください。</Text></Card>;
   if (subject.completed || subject.pendingCompletionIds.length) return <Card><Text style={styles.body}>{subject.completed ? 'この家事回は実施済みです。' : '実施記録の確認・承認を待っています。'}</Text></Card>;
   return <Card><SectionHeading title="実施を記録" />
+    {zoneChanged ? <Text accessibilityRole="alert" style={styles.error}>グループの地域が変更されています。入力は保存せず保持しています。現在の地域を確認して開き直してください。</Text> : null}
     <V2Choices label="実施した時期" value={when} onChange={setWhen} disabled={disabled}
       choices={[{ value: 'now', label: '今実施した' }, { value: 'past', label: '以前実施した' }]} />
     {when === 'past' ? <><V2TextField label="実施日" placeholder="YYYY-MM-DD" value={day} onChangeText={(value) => { setDay(value); setClockChoice(''); }} editable={!disabled} />
       <V2TextField label="実施時刻" placeholder="HH:mm" value={clock} onChangeText={(value) => { setClock(value); setClockChoice(''); }} editable={!disabled} />
-      <V2TimeDisambiguation day={day} clock={clock} timeZone={model.plan.timeZone} value={clockChoice} onChange={setClockChoice} disabled={disabled} />
-      <Text style={styles.caption}>日時の地域：{model.plan.timeZone}。入力した実施日時と、この操作の記録日時を別々に保存します。</Text></> : null}
+      <V2TimeDisambiguation day={day} clock={clock} timeZone={displayed.timeZone} value={clockChoice} onChange={setClockChoice} disabled={disabled} />
+      <Text style={styles.caption}>日時の地域：{displayed.timeZone}。入力した実施日時と、この操作の記録日時を別々に保存します。</Text></> : null}
     <V2Choices label="実際に実施した人" value={performer} onChange={setPerformer} disabled={disabled}
       choices={performers.map((member) => ({ value: member.userId, label: `${member.displayName}${member.userId === model.viewerUserId ? '（あなた）' : ''}` }))} />
     {displayed.assignees.length && !displayed.assignees.includes(performer) ? <Text style={styles.caption}>{model.plan.policy?.allowSubstitution

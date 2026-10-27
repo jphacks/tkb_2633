@@ -44,14 +44,14 @@ for (const platform of ['ios', 'android']) {
   test(`${platform} v2 work form rejects future and nonexistent local times and a stale assignee without committing a fact or outbox`, async () => {
     const f = await fixture(); const d = await f.device();
     try {
-      await d.repository.commit(seeds()); const { screen, controller, props } = await form(d, platform); await select(screen, '以前実施した');
+      const initial = seeds(); initial[1].payload.timeZone = 'America/New_York'; await d.repository.commit(initial);
+      const { screen, controller } = await form(d, platform); await select(screen, '以前実施した');
       const count = (await listSharingOutbox(d.database, groupId)).length;
       await screen.change('実施日', '2026-10-27'); await screen.change('実施時刻', '11:00'); await screen.press('実施を記録する');
       assert.ok(screen.text().includes('現在より前')); assert.equal((await listSharingOutbox(d.database, groupId)).length, count);
       await screen.change('実施時刻', '25:00'); await screen.press('実施を記録する'); assert.ok(screen.text().includes('00:00〜23:59'));
-      await screen.change('実施日', '2026-03-08'); await screen.change('実施時刻', '02:30'); props.model = { ...props.model, plan: { ...props.model.plan, timeZone: 'America/New_York' } }; screen.render();
+      await screen.change('実施日', '2026-03-08'); await screen.change('実施時刻', '02:30');
       await screen.press('実施を記録する'); assert.ok(screen.text().includes('存在しない時刻')); assert.equal((await listSharingOutbox(d.database, groupId)).length, count);
-      props.model = { ...props.model, plan: { ...props.model.plan, timeZone: 'Asia/Tokyo' } }; screen.render();
       await controller.actions.assign({ choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null }, ['member'], 'this', true);
       await select(screen, '今実施した'); await assert.rejects(screen.press('実施を記録する'), { code: 'sharing/v2-stale-settings' });
       assert.equal((await controller.readModel(range)).plan.history.length, 0);
@@ -73,6 +73,20 @@ test('v2 a restricted substitute uses the work form to retain a real report awai
     assert.equal(record.recorderUserId, 'member'); assert.deepEqual(record.originalAssigneeIds, ['owner']); assert.equal(props.subject.completed, false);
     assert.equal(props.subject.pendingCompletionIds.length, 1);
   } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 a changed group timezone keeps the unsent work input in its original timezone and blocks reinterpretation until reopening', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const { screen, props, update } = await form(d, 'ios');
+    await select(screen, '以前実施した'); await screen.change('実施日', '2026-10-27'); await screen.change('実施時刻', '08:00');
+    await d.repository.commit([draft('changed-zone', 'settings', 'settings', { timeZone: 'America/New_York' })]); await update(); screen.render();
+    assert.ok(screen.text().includes('グループの地域が変更')); assert.ok(screen.text().includes('日時の地域：Asia/Tokyo'));
+    assert.equal(screen.nodes().find((node) => node.props.accessibilityLabel === '実施時刻').props.value, '08:00');
+    assert.equal(screen.button('実施を記録する').props.disabled, true); assert.equal(props.model.plan.history.length, 0);
+    props.model = { ...props.model, plan: { ...props.model.plan, initialized: false } }; screen.render();
+    assert.ok(screen.text().includes('地域と基本設定が未確定')); assert.equal(screen.nodes().some((node) => node.type === 'TextInput'), false);
+  } finally { d.connection.close(); }
 });
 
 test('v2 a past-work form cannot submit against a cadence replaced after its displayed configuration even if the old round ID is still valid', async () => {

@@ -6,6 +6,7 @@ import { AppButton, BackButton, Card, palette, ScreenHeading, SectionHeading, ty
 import { AccordionSection } from '../../../components/accordion-section';
 import { V2RoundCard } from '../v2-ui/round-card';
 import { V2ConfigurationEditor } from '../v2-ui/configuration-editor';
+import { V2DateForm } from '../v2-ui/date-form';
 import { V2CompletionForm } from '../v2-ui/completion-form';
 import { V2CompletionHistoryCard } from '../v2-ui/completion-history-card';
 import { V2FormScrollView } from '../v2-ui/form-controls';
@@ -13,8 +14,8 @@ import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2DevelopmentPreview, V2DevelopmentPreviewModel } from './v2-preview-session';
 
 interface PreviewProps {
-  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round'; choreId?: string;
-  occurrenceId?: string; subjectId?: string; onRound?: (occurrenceId: string, subjectId: string) => void;
+  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round' | 'date'; choreId?: string;
+  occurrenceId?: string; subjectId?: string; onRound?: (occurrenceId: string, subjectId: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void;
 }
 
@@ -24,7 +25,7 @@ export function V2DevelopmentPreviewScreen(props: PreviewProps) {
   return <LivePreview {...props} />;
 }
 
-function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, occurrenceId, subjectId, onRound }: PreviewProps) {
+function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, occurrenceId, subjectId, onRound, onDate }: PreviewProps) {
   const [session, setSession] = useState<V2DevelopmentPreview | null>(null); const [model, setModel] = useState<V2DevelopmentPreviewModel | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
@@ -61,14 +62,15 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
         : <><BackButton onPress={onBack} /><Text style={styles.body}>検査する家事を選んでください。</Text></>}
     </V2FormScrollView>
   </SafeAreaView>;
-  if (view === 'round') {
+  if (view === 'round' || view === 'date') {
     const round = model.plan.occurrences.find((entry) => entry.id === occurrenceId); const subject = round?.subjects.find((entry) => entry.id === subjectId);
     return <SafeAreaView style={styles.safe} edges={['top']}><V2FormScrollView contentContainerStyle={styles.page}>
       {notice}<BackButton onPress={onBack} disabled={busy} />
       {round && subject ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === round.choreId)?.name ?? '共有家事'} />
-        <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
+        {view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
+          onDate={onDate ? () => onDate(round.id, subject.id) : undefined}
           recommendation={model.personal.recommendations.find((entry) => entry.subjectOccurrenceId === subject.id)} onOpen={() => onConfiguration(round.choreId)} />
-        <V2CompletionForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} />
+        <V2CompletionForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} /></>}
         <AppButton title="共通の設定を開く" variant="quiet" disabled={busy} onPress={() => onConfiguration(round.choreId)} /></>
         : <Text style={styles.body}>対象の家事回を表示できません。前の画面で現在の家事回を選んでください。</Text>}
     </V2FormScrollView></SafeAreaView>;

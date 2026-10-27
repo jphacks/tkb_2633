@@ -231,8 +231,11 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       repository.commit([draft('datePermission', v2DatePermissionId(scope.groupId, choreId, userId), { choreId, userId, enabled, rights })]),
     changeDate: (ref: V2RoundReference, input: { mode: DesignationMode; target: DateTarget; selector?: RuleSelector; options?: Partial<DesignationOptions>;
       extensionScope?: 'once' | 'future'; reviewedRequestIds?: string[]; expectedRuleIds?: string[]; confirmDateConflict?: boolean;
+      expectedAssigneeIds?: readonly string[]; expectedAssignmentIds?: readonly string[]; expectedConflictIds?: readonly string[]; expectedRequestReviewIds?: readonly string[];
       confirmRecentWork?: boolean; confirmHighLoad?: boolean }) => repository.commitCurrent(async (state) => {
-      const context = frame(state, ref); const view = state.assessment.view; const at = point(state);
+      const context = frame(state, ref); expectAssignment(context, input);
+      if (input.expectedAssigneeIds && !sameIds(input.expectedAssigneeIds, ref.subjectUserId === null ? context.assigneeIds : [ref.subjectUserId])) throw new V2StaleSettingsError();
+      const view = state.assessment.view; const at = point(state);
       const zone = view.field('settings', 'settings', 'timeZone', at)?.value as string;
       const target = validateDesignationTarget(input.mode, input.target);
       const rules = observedDateRules(view, at, state.assessment.formalRulesAt(at)); const selected = selectManualRule(rules, context.frame, ref.subjectUserId, zone);
@@ -246,6 +249,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         forbidEarlier: originals.some((fact) => fact.rule.forbidEarlier), ...input.options };
       const plan = buildV2CommonPlan(state, { from: ref.anchorDate, through: ref.anchorDate, asOfDate: ref.anchorDate });
       const subject = plan.occurrences.find((round) => round.id === context.frame.id)?.subjects.find((slot) => slot.subjectUserId === ref.subjectUserId);
+      if (input.expectedRequestReviewIds && !sameIds(input.expectedRequestReviewIds, subject?.requestReviewIds ?? [])) throw new V2StaleSettingsError();
       const civil = targetCivilDate(target, zone);
       if (subject?.dependencyNotBefore && civil < subject.dependencyNotBefore) throw new Error('先に必要な家事の実施日より後を指定してください。');
       if (subject?.dependencyBlocked && !subject.dependencyNotBefore) throw new Error('先に必要な家事の予定を確認してください。');
@@ -286,8 +290,13 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         return [draft('requestDecision', null, { requestId, decision, target, referenceDecisionId })];
       }),
     approveSubstitution: (completionOperationId: string, decision: 'approve' | 'reject') => repository.commit([draft('completionApproval', null, { completionOperationId, decision })]),
-    cancelDates: (ref: V2RoundReference, targetOperationIds: string[]) => repository.commitCurrent(async (state) => {
+    cancelDates: (ref: V2RoundReference, targetOperationIds: string[], edit: { expectedRuleIds?: readonly string[] } = {}) => repository.commitCurrent(async (state) => {
       const context = frame(state, ref); const rules = observedDateRules(state.assessment.view, point(state), state.assessment.formalRulesAt(point(state)), true);
+      if (edit.expectedRuleIds) {
+        const selected = selectManualRule(observedDateRules(state.assessment.view, point(state), state.assessment.formalRulesAt(point(state))), context.frame, ref.subjectUserId, state.assessment.view.field('settings', 'settings', 'timeZone', point(state))?.value as string);
+        const currentIds = selected.kind === 'selected' ? selected.equivalentOperationIds : selected.kind === 'conflict' ? selected.candidates.map((fact) => fact.operationId) : [];
+        if (!sameIds(edit.expectedRuleIds, currentIds)) throw new V2StaleSettingsError();
+      }
       if (targetOperationIds.some((id) => !rules.some((fact) => fact.operationId === id && fact.rule.choreId === context.frame.choreId && fact.rule.subjectUserId === ref.subjectUserId))) throw new Error('取り消す日時指定を確認してください。');
       return [draft('designationCancel', null, { targetOperationIds })];
     }),

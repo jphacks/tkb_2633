@@ -13,6 +13,7 @@ async function screenFixture(platform, view = 'home', clock = () => new Date('20
     openDatabase: async () => ({ database: h.database, close: async () => h.connection.close() }) });
   let focus; const navigation = []; const props = { development: true, loadSession: async () => preview, view,
     onBack: () => navigation.push(['back']), onConfiguration: (choreId) => navigation.push(['configuration', choreId]), onHistory: () => navigation.push(['history']),
+    onDate: (occurrenceId, subjectId) => navigation.push(['date', occurrenceId, subjectId]),
     onRound: (occurrenceId, subjectId) => navigation.push(['round', occurrenceId, subjectId]) };
   const screen = screenHarness(screenFile, { exportName: 'V2DevelopmentPreviewScreen', props, platform, focusEffect: (callback) => { focus = callback; } });
   const leave = focus();
@@ -119,3 +120,25 @@ test('v2 preview discards a late read after navigation and a successful retry cl
     resolve(f.preview); await screen.flush(); assert.ok(!screen.text().includes('Temporary read failure')); leave();
   } finally { f.leave(); await f.preview.close(); }
 });
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 date route carries the actual group occurrence and subject into a signed form without opening a private chore`, async () => {
+    const f = await screenFixture(platform); let cleanup;
+    try {
+      const model = await f.preview.readModel(); const round = model.plan.occurrences.find((r) => r.anchorDate === model.plan.range.asOfDate && r.configuration.policy.completion === 'one');
+      const params = { view: 'round', occurrenceId: round.id, subjectId: round.subjects[0].id }; const navigation = []; let focus;
+      const screen = screenHarness('src/app/development/sharing-v2-preview.tsx', { platform, params,
+        navigate: (...args) => navigation.push(args), focusEffect: (callback) => { focus = callback; },
+        transformSource: (path, source) => path.endsWith('/sharing-v2-preview.tsx') ? source.replaceAll('__DEV__', 'true') : source,
+        mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: async () => f.preview } } });
+      cleanup = focus(); for (let i = 0; i < 30 && !screen.text().includes('日時を変更'); i++) await screen.flush();
+      await screen.press('日時を変更'); assert.equal(navigation[0][0], 'push');
+      assert.equal(navigation[0][1].pathname, '/development/sharing-v2-preview'); assert.deepEqual(navigation[0][1].params, { view: 'date', occurrenceId: round.id, subjectId: round.subjects[0].id });
+      Object.assign(params, navigation[0][1].params); screen.render(); await screen.change('実施日', '2026-10-28'); await screen.press('日時を指定・申請する');
+      for (let i = 0; i < 30 && !screen.text().includes('日時指定を端末に保存'); i++) await screen.flush();
+      assert.ok(screen.text().includes('日時指定を端末に保存')); const next = await f.preview.readModel();
+      assert.deepEqual(next.plan.occurrences.find((r) => r.id === round.id).subjects[0].formalDate.target, { precision: 'date', date: '2026-10-28' });
+      params.subjectId = 'unrelated-private-id'; screen.render(); assert.ok(screen.text().includes('対象の家事回を表示できません')); assert.equal(screen.nodes().some((n) => n.type === 'TextInput'), false);
+    } finally { cleanup?.(); f.leave(); await f.preview.close(); }
+  });
+}

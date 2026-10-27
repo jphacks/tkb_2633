@@ -3,7 +3,7 @@ import type { LocalDate } from '../../../domain/shared/types.ts';
 import { parseLocalDate } from '../../../domain/scheduling/local-date.ts';
 import { v2WallTimeCandidates } from '../v2/local-time.ts';
 import type { DateTarget, DesignationMode, RuleSelector, SharedOccurrence } from '../v2/model.ts';
-import { validateDesignationTarget } from '../v2/date-target.ts';
+import { normalizeDateTarget, validateDesignationTarget } from '../v2/date-target.ts';
 import { finiteValidity } from '../v2/period-rules.ts';
 
 export function v2DateInput(value: string): LocalDate {
@@ -34,6 +34,19 @@ export function v2TargetFromForm(input: { mode: DesignationMode; day: string; cl
     : input.mode === 'deadline' && input.clock.trim() ? { precision: 'instant', at: v2LocalTimeInput(input.day, input.clock, input.timeZone, input.clockChoice) }
       : { precision: 'date', date: input.day as LocalDate });
 }
+/** Preserve each unchanged endpoint, including seconds and the selected repeated hour, independently. */
+export function v2TargetFromEditedForm(input: Parameters<typeof v2TargetFromForm>[0], original: DateTarget,
+  initial: ReturnType<typeof v2TargetFormValues> & { clockChoice: string; endClockChoice: string }): DateTarget {
+  const previous = normalizeDateTarget(original); v2DateInput(input.day);
+  const unchangedStart = input.day === initial.day && input.clock === initial.clock && (input.clockChoice ?? '') === initial.clockChoice;
+  const unchangedEnd = input.endDay === initial.endDay && input.endClock === initial.endClock && (input.endClockChoice ?? '') === initial.endClockChoice;
+  const start = () => unchangedStart && previous.precision !== 'date' ? previous.precision === 'interval' ? previous.start : previous.at
+    : v2LocalTimeInput(input.day, input.clock, input.timeZone, input.clockChoice);
+  const end = () => unchangedEnd && previous.precision === 'interval' ? previous.end : v2LocalTimeInput(input.endDay, input.endClock, input.timeZone, input.endClockChoice);
+  return validateDesignationTarget(input.mode, input.mode === 'fixed' ? { precision: 'interval', start: start(), end: end() }
+    : input.mode === 'deadline' && input.clock.trim() ? { precision: 'instant', at: start() } : { precision: 'date', date: input.day as LocalDate });
+}
+
 export type V2ValidityChoice = 'once' | 'twoWeeks' | 'oneMonth' | 'endDate' | 'ongoing';
 export function v2RuleSelectorFromForm(selection: V2ValidityChoice, round: SharedOccurrence, endDate: string): RuleSelector {
   if (selection === 'once') return { scope: 'once', occurrenceId: round.id, anchorDate: round.anchorDate };

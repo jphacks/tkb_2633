@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, ViewStyle } from 'react-native';
 import { palette, typography } from '../../../components/planner-ui';
 import { v2LocalTimeChoices } from './target-form';
@@ -26,6 +26,12 @@ export function V2Choices<T extends string>({ label, value, choices, onChange, d
 export function V2TextField({ label, ...props }: Omit<TextInputProps, 'style' | 'accessibilityLabel'> & { label: string }) {
   return <View style={v2FormStyles.group}><Text style={v2FormStyles.label}>{label}</Text>
     <TextInput {...props} accessibilityLabel={label} autoCapitalize="none" style={v2FormStyles.input} />
+  </View>;
+}
+
+export function V2Flag({ label, value, onChange, disabled = false }: { label: string; value: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+    <Text style={[v2FormStyles.label, { flex: 1 }]}>{label}</Text><Switch accessibilityLabel={label} value={value} onValueChange={onChange} disabled={disabled} />
   </View>;
 }
 

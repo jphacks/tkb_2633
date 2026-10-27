@@ -11,17 +11,17 @@ const now = () => new Date('2026-03-05T12:00:00Z');
 const ref = { choreId: 'floor', anchorDate: '2026-03-08', ruleVersion: 1, subjectUserId: null };
 const range = { from: '2026-03-01', through: '2026-03-15', asOfDate: '2026-03-05' };
 const target = { precision: 'interval', start: '2026-03-08T07:30:00.000Z', end: '2026-03-08T07:45:00.000Z' };
-async function setup({ consent = false } = {}) {
+async function setup({ consent = false, clock = now, sourceTarget = { precision: 'interval', start: '2026-03-01T07:30:00.000Z', end: '2026-03-01T07:45:00.000Z' } } = {}) {
   const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
-  const actions = (d) => { let id = 0; d.options.now = now; return createV2PlannerActions(d.repository, { makeId: () => `${d.options.userId}-gap-${++id}`, now }); };
+  const actions = (d) => { let id = 0; d.options.now = clock; return createV2PlannerActions(d.repository, { makeId: () => `${d.options.userId}-gap-${++id}`, now: clock }); };
   const a = actions(owner); const b = actions(member);
   const initial = seeds(); initial[1].payload.timeZone = 'America/New_York'; initial[1].payload.anchorDate = '2026-03-01';
   initial[3].payload.configuration.anchorDate = '2026-03-01'; initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['member']);
   await owner.repository.commit(initial);
   const [source] = await a.changeDate({ ...ref, anchorDate: '2026-03-01' }, { mode: 'fixed',
-    target: { precision: 'interval', start: '2026-03-01T07:30:00.000Z', end: '2026-03-01T07:45:00.000Z' }, selector: { scope: 'ongoing', from: '2026-03-01' }, options: { strict: true } });
+    target: sourceTarget, selector: { scope: 'ongoing', from: '2026-03-01' }, options: { strict: true } });
   if (consent) await a.patchGroupPolicy({ adminCanFixWithoutConsent: false });
-  const deliver = async (facts, receivedAt = now().getTime()) => { for (const d of [owner, member]) {
+  const deliver = async (facts, receivedAt = clock().getTime()) => { for (const d of [owner, member]) {
     const previous = await readSharingCheckpoint(d.database, groupId);
     const evidence = receiptsFor(facts).map((r) => ({ ...r, receivedAtMs: receivedAt }));
     await applyReceivedSharedFacts(d.database, groupId, facts, String(facts.length), d.repository.project, previous.cursor, receivedAt, d.repository.evidenceForServerReceipts(evidence));
@@ -133,4 +133,36 @@ test('v2 uncertain future clocks always require a signed request including admin
   assert.equal(state.targets.length, 2);
   assert.throws(() => v2DateChangeOriginal([rule], { ...round, ruleVersion: 2 }, 'America/New_York'), /周期や地域/);
   assert.throws(() => v2DateChangeOriginal([rule], round, 'Asia/Tokyo'), /周期や地域/);
+});
+
+test('v2 a missing interval end cannot extend approval past its real known start even though the whole formal interval is unresolved', async () => {
+  const { v2DateChangeOriginal } = await import('../src/features/sharing/v2/date-change-original.ts');
+  const { approvalDeadline } = await import('../src/features/sharing/v2/approval-deadline.ts');
+  const rule = { choreId: 'floor', subjectUserId: null, selector: { scope: 'ongoing', from: '2026-03-01' }, referenceAnchorDate: '2026-03-01',
+    timeZoneAtCreation: 'America/New_York', mode: 'fixed', target: { precision: 'interval', start: '2026-03-01T06:30:00.000Z', end: '2026-03-01T07:30:00.000Z' }, ruleVersion: 1 };
+  const source = v2DateChangeOriginal([rule], { choreId: 'floor', anchorDate: '2026-03-08', ruleVersion: 1 }, 'America/New_York');
+  assert.equal(source.original, null); assert.equal(source.originalReferenceAt, Date.parse('2026-03-08T06:30:00.000Z'));
+  const deadline = approvalDeadline({ serverRequestedAt: Date.parse('2026-03-08T05:45:00.000Z'), original: null,
+    originalReferenceAt: source.originalReferenceAt, proposed: target, timeZone: 'America/New_York' });
+  assert.equal(deadline.kind, 'tooLate'); assert.equal(deadline.referenceAt, source.originalReferenceAt);
+  const { fixture: requestFixture, start, instant } = await import('./helpers/sharing-v2-request-fixture.mjs');
+  const f = await requestFixture({ mode: 'deadline', original: null, proposed: instant(120) });
+  const state = f.state({ context: { permission: { kind: 'approvalRequired', approver: 'admin', reason: 'fixed' }, assigneeIds: ['a'],
+    timeZone: 'America/New_York', originalMissingTime: true, originalReferenceAt: start + 30 * 60000 } });
+  assert.equal(state.kind, 'tooLate'); assert.equal(state.formal, null);
+});
+
+
+test('v2 receivers independently recover a known interval start and reject late approval when only the repeated end clock is missing', async () => {
+  const f = await setup({ clock: () => new Date('2026-03-08T05:45:00.000Z'), sourceTarget: {
+    precision: 'interval', start: '2026-03-01T06:30:00.000Z', end: '2026-03-01T07:30:00.000Z' } });
+  try {
+    const [request] = await f.b.changeDate(ref, { mode: 'fixed', target, expectedRuleIds: [f.source.operationId], confirmDateConflict: true });
+    assert.equal(request.payload.original, null); await f.deliver(await loadSharedFacts(f.member.database, groupId));
+    for (const d of [f.owner, f.member]) {
+      const state = (await d.repository.readState()).assessment.requestStates[0]; assert.equal(state.kind, 'tooLate'); assert.equal(state.formal, null);
+      assert.equal(state.deadline.referenceAt, Date.parse('2026-03-08T06:30:00.000Z'));
+    }
+    assert.equal(f.owner.state().hash, f.member.state().hash);
+  } finally { f.close(); }
 });

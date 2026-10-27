@@ -6,7 +6,7 @@ import { instantMilliseconds, normalizeDateTarget } from './date-target.ts';
 import type { DateTarget, ManualRule, SharedOccurrence } from './model.ts';
 
 export type V2RuleTargetCandidates = { kind: 'targets'; targets: DateTarget[] }
-  | { kind: 'missingTime' } | { kind: 'review'; reason: 'cycleChanged' | 'timeZoneChanged' | 'invalidInterval' };
+  | { kind: 'missingTime'; referenceTimes: number[] } | { kind: 'review'; reason: 'cycleChanged' | 'timeZoneChanged' | 'invalidInterval' };
 
 /** Exact possible instants in the pinned group timezone; a gap is distinct from an invalid interval or changed rule. */
 export function v2RuleTargetCandidates(rule: ManualRule, occurrence: SharedOccurrence, timeZone: string): V2RuleTargetCandidates {
@@ -30,10 +30,10 @@ export function v2RuleTargetCandidates(rule: ManualRule, occurrence: SharedOccur
   };
   if (target.precision === 'instant') {
     const values = shift(target.at);
-    return values.length ? { kind: 'targets', targets: values.map((at) => ({ precision: 'instant', at })) } : { kind: 'missingTime' };
+    return values.length ? { kind: 'targets', targets: values.map((at) => ({ precision: 'instant', at })) } : { kind: 'missingTime', referenceTimes: [] };
   }
   const starts = shift(target.start); const ends = shift(target.end);
-  if (!starts.length || !ends.length) return { kind: 'missingTime' };
+  if (!starts.length || !ends.length) return { kind: 'missingTime', referenceTimes: starts.map((at) => instantMilliseconds(at)) };
   const targets: DateTarget[] = starts.flatMap((start) => ends.filter((end) => Date.parse(end) > Date.parse(start)).map((end) => ({ precision: 'interval' as const, start, end })));
   return targets.length ? { kind: 'targets', targets } : { kind: 'review', reason: 'invalidInterval' };
 }

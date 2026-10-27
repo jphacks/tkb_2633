@@ -169,3 +169,28 @@ test('v2 an ambiguous future repeat keeps a real work report unconfirmed and con
     assert.equal(actual.quarantinedChanges, 0);
   } finally { owner.connection.close(); member.connection.close(); }
 });
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 work submit reads an unrendered past-mode selection instead of incorrectly recording work as done now`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const { screen, props } = await form(d, platform);
+      const choice = screen.nodes().find((n) => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === '以前実施した');
+      const submit = screen.button('実施を記録する'); const before = (await listSharingOutbox(d.database, groupId)).length;
+      choice.props.onPress(); await submit.props.onPress(); await screen.flush();
+      assert.equal(props.model.plan.history.length, 0); assert.equal((await listSharingOutbox(d.database, groupId)).length, before);
+      assert.ok(screen.text().includes('日付は年-月-日'));
+    } finally { d.connection.close(); }
+  });
+  test(`${platform} v2 work submit preserves newly typed past details before a rendering turn`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const { screen, props } = await form(d, platform); await select(screen, '以前実施した');
+      const submit = screen.button('実施を記録する');
+      screen.nodes().find((n) => n.props.accessibilityLabel === '実施日' && n.type === 'TextInput').props.onChangeText('2026-10-27');
+      screen.nodes().find((n) => n.props.accessibilityLabel === '実施時刻' && n.type === 'TextInput').props.onChangeText('08:30');
+      await submit.props.onPress(); await screen.flush();
+      assert.equal(props.model.plan.history[0].performedAt, '2026-10-26T23:30:00.000Z');
+    } finally { d.connection.close(); }
+  });
+}

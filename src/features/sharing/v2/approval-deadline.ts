@@ -6,9 +6,12 @@ export type ApprovalDeadline = { kind: 'pendingDelivery' } | { kind: 'tooLate'; 
   | { kind: 'open'; referenceAt: number; requestedAt: number; expiresAt: number; graceHours: number };
 
 /** requestedAt is an immutable server receipt, never an untrusted device timestamp. */
-export function approvalDeadline(input: { serverRequestedAt: number | null; original: DateTarget | null; proposed: DateTarget; timeZone: string }): ApprovalDeadline {
+export function approvalDeadline(input: { serverRequestedAt: number | null; original: DateTarget | null; originalReferenceAt?: number | null; proposed: DateTarget; timeZone: string }): ApprovalDeadline {
   const proposedAt = targetReferenceTime(input.proposed, input.timeZone);
-  const referenceAt = input.original === null ? proposedAt : Math.min(targetReferenceTime(input.original, input.timeZone), proposedAt);
+  const verifiedStart = input.originalReferenceAt ?? null;
+  if (verifiedStart !== null && !Number.isSafeInteger(verifiedStart)) throw new Error('元の指定から検証した開始時刻を確認してください。');
+  const originalAt = input.original === null ? verifiedStart : Math.min(targetReferenceTime(input.original, input.timeZone), verifiedStart ?? Infinity);
+  const referenceAt = originalAt === null ? proposedAt : Math.min(originalAt, proposedAt);
   if (input.serverRequestedAt === null) return { kind: 'pendingDelivery' };
   const requestedAt = input.serverRequestedAt;
   if (!Number.isSafeInteger(requestedAt)) throw new Error('申請のサーバー受付時刻を確認できません。');

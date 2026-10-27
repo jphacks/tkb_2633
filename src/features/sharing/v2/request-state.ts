@@ -50,7 +50,7 @@ export function deriveV2DateRequest(input: {
   decisions: readonly AuthenticatedSharedOperation[];
   receipts: ReadonlyMap<string, V2ServerReceipt>;
   archive: readonly VerifiedSharedRoster[];
-  context: { permission: DateChangePermission; assigneeIds: readonly string[]; timeZone: string; originalWasConflicted?: boolean; originalMissingTime?: boolean; basisRuleIds?: readonly string[] };
+  context: { permission: DateChangePermission; assigneeIds: readonly string[]; timeZone: string; originalWasConflicted?: boolean; originalMissingTime?: boolean; originalReferenceAt?: number | null; basisRuleIds?: readonly string[] };
   confirmedServerTime?: number;
 }): V2DateRequestState {
   const request = input.request.operation;
@@ -61,7 +61,7 @@ export function deriveV2DateRequest(input: {
   const proposed = validateDesignationTarget(proposal.proposedMode, proposal.proposed);
   const requestReceipt = input.receipts.get(request.operationId);
   const deadline = approvalDeadline({ serverRequestedAt: requestReceipt?.receivedAtMs ?? null,
-    original, proposed, timeZone: input.context.timeZone });
+    original, originalReferenceAt: input.context.originalReferenceAt, proposed, timeZone: input.context.timeZone });
   const result: V2DateRequestState = { requestId: request.operationId, kind: 'pendingDelivery', original, formal: original,
     originalWasConflicted: input.context.originalWasConflicted ?? false, originalRuleIds: [...(input.context.basisRuleIds ?? [])].sort(compareOperationIds),
     proposal, deadline, confirmation: null, confirmedAt: null, counteroffers: [], conflictIds: [], decisions: [] };
@@ -143,7 +143,7 @@ export function deriveV2DateRequest(input: {
 
   function keyOf(target: DateTarget): string { return canonicalJson(normalizeDateTarget(target)); }
   function offerDeadline(target: DateTarget): number {
-    const alternative = approvalDeadline({ serverRequestedAt: requestReceipt!.receivedAtMs, original, proposed: target, timeZone: input.context.timeZone });
+    const alternative = approvalDeadline({ serverRequestedAt: requestReceipt!.receivedAtMs, original, originalReferenceAt: input.context.originalReferenceAt, proposed: target, timeZone: input.context.timeZone });
     return alternative.kind === 'open' ? Math.min(deadline.kind === 'open' ? deadline.expiresAt : -Infinity, alternative.expiresAt) : -Infinity;
   }
   function latestNodes(values: readonly DecisionNode[]): DecisionNode[] {

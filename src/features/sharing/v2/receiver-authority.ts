@@ -152,7 +152,7 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
       decisions: decisions.map((fact) => evidence.facts.get(fact.operationId)!),
       receipts: v2ObservedReceipts([request, ...decisions], at, evidence.receipts), archive, confirmedServerTime,
       context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone,
-        originalWasConflicted: context.originalWasConflicted, originalMissingTime: context.originalMissingTime, basisRuleIds: context.basisRuleIds } }));
+        originalWasConflicted: context.originalWasConflicted, originalMissingTime: context.originalMissingTime, originalReferenceAt: context.originalReferenceAt, basisRuleIds: context.basisRuleIds } }));
     while (causalRequestStates.size > 256) causalRequestStates.delete(causalRequestStates.keys().next().value!);
     return cut.get(id);
   }
@@ -175,7 +175,7 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
       const state = deriveV2DateRequest({ request: evidence.facts.get(id)!,
         decisions: (requestDecisions.get(id) ?? []).map((fact) => evidence.facts.get(fact.operationId)!), receipts: evidence.receipts, archive, confirmedServerTime,
         context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone,
-          originalWasConflicted: context.originalWasConflicted, originalMissingTime: context.originalMissingTime, basisRuleIds: context.basisRuleIds } });
+          originalWasConflicted: context.originalWasConflicted, originalMissingTime: context.originalMissingTime, originalReferenceAt: context.originalReferenceAt, basisRuleIds: context.basisRuleIds } });
       const rule = approvedRequestRule(request, state, { timeZone: context.zone, ruleVersion: context.config.ruleVersion });
       requestStates.set(id, state); if (rule) approvedRules.set(id, rule); else approvedRules.delete(id);
       dirtyRequests.delete(id);
@@ -444,7 +444,7 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   const originalRule = current.kind === 'selected' ? current.fact.rule : null;
   const originals = current.kind === 'conflict' ? current.candidates.map((fact) => fact.rule) : originalRule ? [originalRule] : [];
   const source = cancelling ? { original: originals[0]?.target ?? { precision: 'date' as const, date: anchorDate },
-    targets: originals.map((previous) => previous.target), unresolved: false, originalMissingTime: false }
+    targets: originals.map((previous) => previous.target), unresolved: false, originalMissingTime: false, originalReferenceAt: null }
     : v2DateChangeOriginal(originals, context.frame, zone);
   const { original, targets: originalTargets } = source;
   if (source.unresolved) requireAuthority(basis.length > 0 && (current.kind === 'selected' ? current.equivalentOperationIds : current.kind === 'conflict' ? current.candidates.map((fact) => fact.operationId) : [])
@@ -483,6 +483,6 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
     subjectUserId: subject, target: proposed, mode, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],
     receiptEpochs: dependencyEvidence?.epochs ?? new Map(), receipts: dependencyEvidence?.receipts })) permission = { kind: 'denied', reason: 'dependency' };
   return { ...context, assigneeIds, mode, original, proposed, proposedOptions, originalRule, originalOptions, zone, permission,
-    originalWasConflicted: current.kind === 'conflict' || source.unresolved, originalMissingTime: source.originalMissingTime,
+    originalWasConflicted: current.kind === 'conflict' || source.unresolved, originalMissingTime: source.originalMissingTime, originalReferenceAt: source.originalReferenceAt,
     basisRuleIds: current.kind === 'selected' ? current.equivalentOperationIds : current.kind === 'conflict' ? current.candidates.map((fact) => fact.operationId) : [] };
 }

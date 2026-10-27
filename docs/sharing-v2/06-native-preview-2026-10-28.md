@@ -76,3 +76,15 @@ Androidのfont scaleは既存設定1.15、density420を維持した。両端末�
 重複時刻の選択と将来の繰り返しの確認状態は、ホスト地域を変える純粋検査と実SQLiteで検証した。今回の実機再検査は東京での通常入力であり、重複時刻の実機操作は未実施である。
 
 AndroidのPhase 4eの画像・XMLは、後続検査で同じ名前へ保存したため原ファイルが上書きされた。当時のhash・操作ログとiPhone側の原画像は保持している。Phase 4gの画像は上記の独立名へ保存し、以後のADB検査は実行ごとの別ディレクトリへ出力する。
+
+
+## Phase 4j追記：日時変更と最新入力の保持
+
+基点`6928227`へのPhase 4j差分、未公開v2 draft17。両機種のSDK58パッチを再ビルドし、更新前後で既存primary SQLiteの全テーブルが同一であることと整合性を確認した。検査DBは独立したsynthetic scopeとし、実グループへ移行していない。
+
+- Android：`phase4j-android-batch-past.log`（54.07秒）でほこり取りの過去実施日時・実施者・登録者の履歴を確認。`phase4j-android-batch-date.log`（70.40秒）でフローリングの翌日指定・戻ったカード・再入力値を確認。ADBの取得・入力・スクロール時間を含み、描画速度の測定ではない。
+- iPhone：`phase4j-iphone-date17-retry.xcresult`で日時変更の基本動作1件成功（26.69秒）。これは最新入力保持の修正前。修正後の連続操作は、スクロール対象に本文以外の45ptの領域を選んでいた検査コードと、アプリ外画面の割り込みを切り分けて再検査中。初回のAutomation mode開始タイムアウトや中断した検査を成功へ数えない。
+- `phase4j-final-batch-ios.log` / `phase4j-final-batch-android.log`：各1176件、失敗0・スキップ0。`phase4j-batch-final-lint.log` / `phase4j-batch-final-types.log`通過。`phase4j-final17-cloud.log`：Emulator25件成功。
+- `phase4j-input-batch-before.log`と`phase4j-warning-revision-before.log`：描画前保存と古い確認の再現。`phase4j-batch-and-warning-confirmed.log`：修正後の関連45件通過。
+
+端末内画面と保存の検査であり、DSTの実機検査・実Firebaseサービスでのv2端末間同期・BackgroundTask実行保証として扱わない。証跡は`/tmp/liflow-v2-20261027/`に保持し、失敗分も上書きしていない。

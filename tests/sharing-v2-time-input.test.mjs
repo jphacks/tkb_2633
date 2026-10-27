@@ -67,3 +67,15 @@ test('v2 pinned wall-clock candidates round-trip exact milliseconds and never ma
   assert.equal(v2WallTimeCandidates({ date: '2026-04-05', hour: 1, minute: 45, timeZone: 'Australia/Lord_Howe' }).length, 2);
   assert.throws(() => v2WallTimeCandidates({ date: '2026-10-28', hour: 24, minute: 0, timeZone: 'Asia/Tokyo' }));
 });
+
+test('v2 date edits preserve every unchanged endpoint independently including sub-minute intervals and a second repeated hour', async () => {
+  const { v2TargetFromEditedForm } = await import('../src/features/sharing/v2-ui/target-form.ts');
+  const original = { precision: 'interval', start: '2026-11-01T06:30:27.123Z', end: '2026-11-01T06:30:58.456Z' };
+  const fields = { ...v2TargetFormValues(original, 'America/New_York'), clockChoice: '2026-11-01T06:30:00.000Z', endClockChoice: '2026-11-01T06:30:00.000Z' };
+  const input = { mode: 'fixed', ...fields, timeZone: 'America/New_York' };
+  assert.deepEqual(v2TargetFromEditedForm(input, original, fields), original);
+  assert.deepEqual(v2TargetFromEditedForm({ ...input, endClock: '01:45', endClockChoice: '2026-11-01T06:45:00.000Z' }, original, fields),
+    { ...original, end: '2026-11-01T06:45:00.000Z' });
+  assert.deepEqual(v2TargetFromEditedForm({ ...input, mode: 'deadline' }, original, fields), { precision: 'instant', at: original.start });
+  assert.throws(() => v2TargetFromEditedForm({ ...input, endClock: '01:15', endClockChoice: '2026-11-01T06:15:00.000Z' }, original, fields));
+});

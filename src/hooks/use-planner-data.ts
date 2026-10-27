@@ -19,9 +19,22 @@ import { sharedRepositoryAdapter } from '@/platform/storage/shared-repository-ad
 import { sharedGoogleNamespace, sharedPlannerChangeScope } from '@/features/google-sync/workspace-policy';
 import { millisecondsUntilNextSharedDay } from '@/features/sharing/group-clock';
 import { subscribeSharingChanges } from '@/platform/sharing/workspaces';
+import { PlannerIssuesContext } from '@/contexts/planner-issues-context';
 
 type PlannerController = ReturnType<typeof createPlannerRefreshController<PlannerSnapshot>>;
 const PlannerContext = createContext<{ database: SQLiteDatabase; controller: PlannerController } | null>(null);
+
+function SharedPlannerIssuesProvider({ children, controller, groupId }: {
+  children?: ReactNode; controller: PlannerController; groupId: string;
+}) {
+  const getCount = useMemo(() => () => {
+    const sharing = controller.getSnapshot().snapshot?.sharing;
+    return sharing?.groupId === groupId ? sharing.issues.length : 0;
+  }, [controller, groupId]);
+  const issueCount = useSyncExternalStore(controller.subscribe, getCount, getCount);
+  const value = useMemo(() => ({ groupId, issueCount }), [groupId, issueCount]);
+  return createElement(PlannerIssuesContext.Provider, { value }, children);
+}
 
 /** The only foreground owner of planner reads, lifecycle subscriptions and snapshot side effects. */
 export function PlannerDataProvider({ children, databaseOverride }: { children: ReactNode; databaseOverride?: SQLiteDatabase }) {
@@ -109,7 +122,8 @@ export function PlannerDataProvider({ children, databaseOverride }: { children: 
   }, [controller, database, shared]);
 
   const value = useMemo(() => ({ database, controller }), [database, controller]);
-  return createElement(PlannerContext.Provider, { value }, children);
+  return createElement(PlannerContext.Provider, { value }, shared
+    ? createElement(SharedPlannerIssuesProvider, { controller, groupId: shared.groupId }, children) : children);
 }
 
 export function usePlannerData() {

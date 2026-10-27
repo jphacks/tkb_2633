@@ -13,11 +13,15 @@ for (const [platform, snapshot, name] of [
       const effects = [], cancelled = []; const gateway = {}; let invalidated = 0;
       const shared = { userId: 'member', groupId: 'group-test' };
       const scope = 'a'.repeat(64);
-      const controller = { getSnapshot: () => ({ snapshot }), subscribe: () => () => {}, invalidate() { invalidated++; } };
+      let currentSnapshot = snapshot;
+      const controller = { getSnapshot: () => ({ snapshot: currentSnapshot }), subscribe: () => () => {}, invalidate() { invalidated++; } };
       const { PlannerDataProvider } = loadNativeModule('src/hooks/use-planner-data.ts', {
         'expo-sqlite': { useSQLiteContext: () => ({}) },
         react: { createContext: () => ({}), useMemo: (callback) => callback(),
-          useEffect: (callback) => effects.push(callback), createElement: () => null },
+          useEffect: (callback) => effects.push(callback), createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+          useSyncExternalStore: (subscribe, getSnapshot, getServerSnapshot) => {
+            assert.equal(subscribe, controller.subscribe); assert.equal(getSnapshot(), getServerSnapshot()); return getSnapshot();
+          } },
         'react-native': { Platform: { OS: platform }, AppState: { currentState: 'background', addEventListener: () => ({ remove() {} }) } },
         '@/domain/scheduling/local-date': {}, '@/platform/storage/repository': {}, '@/platform/widgets/refresh-planner-from-widget': {},
         '@/features/widgets/publish-today-widget-snapshot': {},
@@ -33,8 +37,15 @@ for (const [platform, snapshot, name] of [
           assert.equal(userId, shared.userId); assert.equal(groupId, shared.groupId); return scope;
         }, sharedPlannerChangeScope: () => scope },
         '@/features/sharing/group-clock': {}, '@/platform/sharing/workspaces': { subscribeSharingChanges: () => () => {} },
+        '@/contexts/planner-issues-context': { PlannerIssuesContext: { Provider: 'PlannerIssuesProvider' } },
       });
-      PlannerDataProvider({ children: null, databaseOverride: {} });
+      const provider = PlannerDataProvider({ children: null, databaseOverride: {} });
+      const issues = provider.props.children[0];
+      assert.equal(issues.type(issues.props).props.value.issueCount, 0);
+      currentSnapshot = { sharing: { groupId: shared.groupId, issues: [{}] } };
+      assert.deepEqual(issues.type(issues.props).props.value, { groupId: shared.groupId, issueCount: 1 });
+      currentSnapshot = { sharing: { groupId: 'another-group', issues: [{}, {}] } };
+      assert.equal(issues.type(issues.props).props.value.issueCount, 0, 'a previous group snapshot cannot leak its warning');
       const dispose = effects[0]();
       dispose();
       await Promise.resolve();

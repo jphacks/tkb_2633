@@ -11,13 +11,14 @@ import { searchWasteTypes } from './waste-types';
 import { wasteTypeColor } from './type-appearance';
 
 /** The same editor is used in first-run setup and settings so the supported modes cannot drift. */
-export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = false }: {
+export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = false, referenceDate }: {
   initial?: WasteScheduleInput;
   onSubmit: (schedule: WasteScheduleInput) => Promise<void>;
   onCancel?: () => void;
   disabled?: boolean;
+  referenceDate?: LocalDate;
 }) {
-  const today = localDateFromDate(new Date());
+  const today = referenceDate ?? localDateFromDate(new Date());
   const [query, setQuery] = useState(initial?.label ?? '');
   const [label, setLabel] = useState<string | null>(initial?.label ?? null);
   const [recurrence, setRecurrence] = useState<WasteRecurrence>(initial?.recurrence ?? 'weekly');

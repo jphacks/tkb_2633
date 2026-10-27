@@ -53,3 +53,19 @@ test('waste persistence rejects invalid weekdays, labels and nonexistent dates',
     await assert.rejects(repository.setWasteOccurrenceHidden(h.database, 'qa', '2026-02-30', true));
   } finally { h.connection.close(); }
 });
+
+test('personal waste edits preserve newer untouched fields and never resurrect a deleted edited schedule', async () => {
+  const h = createDatabase();
+  try {
+    await repository.initializeLocalDatabase(h.database);
+    await repository.saveWeeklyWasteSchedule(h.database, { id: 'edited-waste', label: '可燃ごみ', collectionWeekdays: [2] });
+    const displayed = (await repository.loadPlannerSnapshot(h.database)).wasteSchedules[0];
+    await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, recurrence: 'monthly', monthlyDay: 28 });
+    await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, label: 'びん' }, displayed);
+    const current = (await repository.loadPlannerSnapshot(h.database)).wasteSchedules[0];
+    assert.equal(current.label, 'びん'); assert.equal(current.recurrence, 'monthly');
+    await repository.deleteWeeklyWasteSchedule(h.database, displayed.id);
+    await assert.rejects(repository.saveWeeklyWasteSchedule(h.database, displayed, displayed), /見つかりません/);
+    assert.equal((await repository.loadPlannerSnapshot(h.database)).wasteSchedules.length, 0);
+  } finally { h.connection.close(); }
+});

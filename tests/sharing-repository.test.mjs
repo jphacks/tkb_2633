@@ -29,6 +29,94 @@ async function fixture() {
   return { ...h, scope, identity, roster, adapter, snapshot, commits: () => commits, close: () => { unregister(); h.connection.close(); } };
 }
 
+test('stale shared waste label edits preserve a newer weekly, biweekly or monthly collection rule', async () => {
+  for (const change of [
+    { recurrence: 'weekly', collectionWeekdays: [3] },
+    { recurrence: 'biweekly', collectionWeekdays: [4], anchorDate: '2026-10-29' },
+    { recurrence: 'monthly', collectionWeekdays: [], monthlyDay: 28 },
+  ]) {
+    const h = await fixture();
+    try {
+      await repository.saveWeeklyWasteSchedule(h.database, { label: '可燃ごみ', collectionWeekdays: [2] });
+      const displayed = (await h.snapshot()).wasteSchedules[0];
+      await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, ...change });
+      const intervening = (await h.snapshot()).wasteSchedules[0];
+      await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, label: '資源ごみ' }, displayed);
+      assert.deepEqual((await h.snapshot()).wasteSchedules[0], { ...intervening, label: '資源ごみ' });
+    } finally { h.close(); }
+  }
+});
+
+test('stale shared waste edits reject same-field overwrites and incompatible collection-rule combinations atomically', async () => {
+  for (const change of [{ label: '缶' }, { recurrence: 'biweekly', collectionWeekdays: [2], anchorDate: '2026-10-27' }]) {
+    const h = await fixture();
+    try {
+      await repository.saveWeeklyWasteSchedule(h.database, { label: '可燃ごみ', collectionWeekdays: [2] });
+      const displayed = (await h.snapshot()).wasteSchedules[0];
+      const proposed = 'label' in change ? { ...displayed, label: 'びん' } : { ...displayed, collectionWeekdays: [4] };
+      await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, ...change });
+      const before = (await h.snapshot()).wasteSchedules[0];
+      const pending = (await listSharingOutbox(h.database, h.scope.groupId)).length;
+      await assert.rejects(repository.saveWeeklyWasteSchedule(h.database, proposed, displayed), /別の端末/);
+      assert.deepEqual((await h.snapshot()).wasteSchedules[0], before);
+      assert.equal((await listSharingOutbox(h.database, h.scope.groupId)).length, pending);
+    } finally { h.close(); }
+  }
+});
+
+test('saving an untouched old waste form creates no event and does not restore an older shared value', async () => {
+  const h = await fixture();
+  try {
+    await repository.saveWeeklyWasteSchedule(h.database, { label: '可燃ごみ', collectionWeekdays: [2] });
+    const displayed = (await h.snapshot()).wasteSchedules[0];
+    await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, label: '缶' });
+    const pending = (await listSharingOutbox(h.database, h.scope.groupId)).length;
+    await repository.saveWeeklyWasteSchedule(h.database, displayed, displayed);
+    assert.equal((await h.snapshot()).wasteSchedules[0].label, '缶');
+    assert.equal((await listSharingOutbox(h.database, h.scope.groupId)).length, pending);
+  } finally { h.close(); }
+});
+
+for (const [platform, name] of [
+  ['ios', 'ios waste editing passes its original displayed values when another group member changes the collection rule'],
+  ['android', 'android waste editing passes its original displayed values when another group member changes the collection rule'],
+]) test(name, async () => {
+  const h = await fixture();
+  try {
+    await repository.saveWeeklyWasteSchedule(h.database, { label: '可燃ごみ', collectionWeekdays: [2] });
+    let snapshot = await h.snapshot();
+    const screen = screenHarness('src/app/waste.tsx', { platform, database: h.database, snapshot: () => snapshot,
+      refresh: async () => { snapshot = await h.snapshot(); } });
+    await screen.press('編集');
+    const displayed = snapshot.wasteSchedules[0];
+    await repository.saveWeeklyWasteSchedule(h.database, { ...displayed, recurrence: 'monthly', monthlyDay: 28 });
+    snapshot = await h.snapshot(); screen.render();
+    await screen.change('ゴミの種類', 'びん');
+    await screen.press('びんを選択');
+    await screen.press('変更を保存');
+    const saved = (await h.snapshot()).wasteSchedules[0];
+    assert.equal(saved.label, 'びん');
+    assert.equal(saved.recurrence, 'monthly');
+    assert.equal(saved.monthlyDay, 28);
+    assert.doesNotMatch(screen.text(), /別の端末/);
+  } finally { h.close(); }
+});
+
+for (const [platform, name] of [
+  ['ios', 'ios shared waste editor derives monthly and fortnight defaults from the group civil date'],
+  ['android', 'android shared waste editor derives monthly and fortnight defaults from the group civil date'],
+]) test(name, async () => {
+  const h = await fixture();
+  try {
+    const snapshot = { ...await h.snapshot(), today: '2099-02-01' };
+    const screen = screenHarness('src/app/waste.tsx', { platform, database: h.database, snapshot: () => snapshot });
+    await screen.press('毎月');
+    assert.equal(screen.nodes().find((node) => node.type === 'TextInput' && node.props.accessibilityLabel === '毎月の収集日').props.value, '1');
+    await screen.press('隔週'); await screen.press('月曜');
+    assert.match(screen.text(), /2月2日/);
+  } finally { h.close(); }
+});
+
 test('revalidating an unchanged shared roster reuses the snapshot instead of repeating the full planner and native outputs', async () => {
   const h = await fixture(); let denied = false;
   try {

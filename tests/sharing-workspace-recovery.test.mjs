@@ -4,6 +4,7 @@ import { loadNativeModule } from './helpers/native-module.mjs';
 
 function fixture(options = {}) {
   const events = []; const handles = []; const synchronizers = []; const syncBudgets = [];
+  const session = { userId: 'member' };
   const records = (options.groups ?? ['broken', 'healthy']).map((groupId) => ({ userId: 'member', groupId,
     status: 'active', displayName: groupId, rosterArchive: [], anchor: { body: { groupId, ownerDeviceId: 'another-device' } } }));
   const registry = { closeAsync: async () => { events.push('registry-close'); } };
@@ -11,7 +12,7 @@ function fixture(options = {}) {
     'expo-crypto': { randomUUID: () => 'test-operation' },
     'expo-sqlite': { openDatabaseAsync: async () => registry },
     './firebase-services.ts': { isSharingConfigured: () => true,
-      getSharingServices: () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: 'member' } }, firestore: {} }) },
+      getSharingServices: () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: session.userId } }, firestore: {} }) },
     './native-crypto.ts': { nativeSharingCrypto: {} },
     './secure-store.ts': { loadOrCreateSharingDeviceIdentity: async () => ({ deviceId: 'this-device' }),
       sharingSecureVault: { getItem: async (key) => key === 'sharing-enabled' ? 'true' : options.selection ? JSON.stringify(options.selection) : null } },
@@ -27,6 +28,9 @@ function fixture(options = {}) {
     '../../features/sharing/roster.ts': { sharedRosterDigest: () => 'test-digest', verifyPinnedSharedRoster: (roster) => roster },
     '../../features/sharing/operations.ts': { canonicalJson: JSON.stringify },
     '../../features/sharing/crypto.ts': {},
+    '../../features/sharing/conflict-resolution.ts': { planSharedConflictResolution: () => {
+      events.push('resolve-plan'); return { operationId: 'resolution', entityType: 'waste', entityId: 'waste', operationType: 'patch', payload: { label: '缶' } };
+    } },
     '../../features/sharing/synchronizer.ts': { createSharedSynchronizer: (deps) => { synchronizers.push(deps); return { sync: async (runOptions) => {
       syncBudgets.push(runOptions.budgetMs);
       events.push(`sync:${deps.groupId}`); options.afterSync?.(deps.groupId);
@@ -52,12 +56,15 @@ function fixture(options = {}) {
     '../storage/sharing-projection.ts': { initializeSharedProjection: async (db) => {
       if (options.failProjection === db.groupId) throw new Error(`projection failed:${db.groupId}`);
     } },
-    '../storage/sharing-ledger.ts': { initializeSharingLedger: async () => {} },
+    '../storage/sharing-ledger.ts': { initializeSharingLedger: async () => {}, createLocalSharedOperations: async (database, _scope, plan, project) => {
+      const replica = {}; const drafts = await plan(database, replica); await project(database, replica); return drafts;
+    } },
     '../storage/shared-planner-repository.ts': { createSharedPlannerRepository: (_database, scope) => ({
       readSnapshot: async () => ({ household: { name: 'group' }, groupId: scope.groupId }),
+      project: async () => { events.push('resolve-project'); options.afterProjection?.(); },
     }) },
     '../storage/shared-repository-adapter.ts': { registerSharedRepositoryAdapter: () => {} },
-    '../storage/repository.ts': { LOCAL_HOUSEHOLD_ID: 'home', loadGoogleSyncState: async (db) => {
+    '../storage/repository.ts': { LOCAL_HOUSEHOLD_ID: 'home', withPlannerDatabaseOperation: async (_database, work) => { await options.beforeQueuedWork?.(); return work(); }, loadGoogleSyncState: async (db) => {
       events.push(`google-state:${db.groupId}`);
       if (options.failGoogleState === db.groupId) throw new Error(`google state failed:${db.groupId}`);
       return { enabled: options.googleEnabled === true };
@@ -67,8 +74,26 @@ function fixture(options = {}) {
     '../notifications/expo-local-notification-gateway': { expoLocalNotificationGateway: {} },
     '../../features/google-sync/workspace-policy': { sharedGoogleNamespace: () => 'a'.repeat(64) },
   });
-  return { api, events, handles, records, synchronizers, syncBudgets };
+  return { api, events, handles, records, synchronizers, syncBudgets, session };
 }
+
+test('conflict resolution waiting for the workspace writer cannot proceed after the sharing account changes', async () => {
+  const options = { groups: ['healthy'] }; const h = fixture(options);
+  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
+  options.beforeQueuedWork = () => { h.session.userId = 'another-account'; };
+  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /現在編集できません/);
+  assert.equal(h.events.includes('resolve-plan'), false);
+  assert.equal(h.events.includes('resolve-project'), false);
+});
+
+test('conflict resolution rechecks sharing access after its projection before the transaction may commit', async () => {
+  const options = { groups: ['healthy'] }; const h = fixture(options);
+  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
+  options.afterProjection = () => { h.session.userId = 'another-account'; };
+  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /現在編集できません/);
+  assert.ok(h.events.includes('resolve-plan'));
+  assert.ok(h.events.includes('resolve-project'));
+});
 
 test('one unavailable shared database does not prevent later groups or the selected group reminders from syncing', async () => {
   const h = fixture({ failOpen: 'broken', selection: { userId: 'member', groupId: 'healthy' } });

@@ -9,6 +9,7 @@ import { openSharingDatabase, sharingDatabaseDirectory } from './database-locati
 import { createSharingCloud } from './firestore-cloud.ts';
 import { createSharedRoster, sharedRosterDigest, verifyPinnedSharedRoster, verifySharedRosterArchive } from '../../features/sharing/roster.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
+import { planSharedConflictResolution } from '../../features/sharing/conflict-resolution.ts';
 import { canonicalJson } from '../../features/sharing/operations.ts';
 import type { SharedEntityType } from '../../features/sharing/operations.ts';
 import { signSharedOperation, wrapGroupKey } from '../../features/sharing/crypto.ts';
@@ -225,13 +226,11 @@ async function buildWorkspace(selection: SharingSelection) {
         authorize(); const current = roster!;
         await withPlannerDatabaseOperation(database, () => createLocalSharedOperations(database,
           { groupId, userId, deviceId: identity.deviceId, keyVersion: current.body.keyVersion }, async (_transaction, replica) => {
-            const entity = replica.entities.find((item) => item.entityType === entityType && item.entityId === entityId);
-            const candidate = entity?.conflicts[field]?.find((item) => item.operationId === candidateId);
-            if (!entity || !candidate) throw new Error('競合の内容が更新されました。もう一度選び直してください。');
-            const restored = Object.fromEntries(Object.entries(entity.fields).filter(([, value]) => value !== null));
-            return [{ operationId: randomUUID(), entityType, entityId, operationType: field === '$alive' ? candidate.value ? 'restore' as const : 'delete' as const : 'patch' as const,
-              payload: field === '$alive' ? candidate.value ? restored : {} : { [field]: candidate.value } }];
-          }, adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature));
+            authorize();
+            return [planSharedConflictResolution(replica, entityType, entityId, field, candidateId, randomUUID())];
+          }, async (transaction, replica) => {
+            authorize(); await adapter.project(transaction, replica); authorize();
+          }, (operation) => signSharedOperation(operation, identity).authorSignature));
         changed(selection); void sync({ force: true }).catch(() => undefined);
       } };
   } catch (error) {

@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { typography } from './planner-typography';
 import { WorkspaceContext } from '../contexts/workspace-context';
+import { PlannerIssuesContext } from '../contexts/planner-issues-context';
 
 export { typography } from './planner-typography';
 
@@ -24,12 +25,19 @@ export const palette = {
 
 export function Page({ children, contentStyle }: PropsWithChildren<{ contentStyle?: object }>) {
   const workspace = useContext(WorkspaceContext);
+  const issues = useContext(PlannerIssuesContext);
+  const issueCount = workspace?.active?.groupId === issues?.groupId ? issues?.issueCount ?? 0 : 0;
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.page, contentStyle]}>
         {workspace?.active ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
           style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><Text style={styles.workspaceSwitch}>切り替え ›</Text></Pressable> : null}
         {workspace?.error ? <Text accessibilityRole="alert" style={styles.workspaceError}>{workspace.error}</Text> : null}
+        {issueCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="共有データを確認する"
+          onPress={() => router.push('/sharing')} style={styles.planningNotice}>
+          <Text style={styles.planningNoticeText}>共有データに確認が必要な項目があります（{issueCount}件）。</Text>
+          <Text style={styles.planningNoticeLink}>内容を確認 ›</Text>
+        </Pressable> : null}
         {children}
       </ScrollView>
     </SafeAreaView>
@@ -158,6 +166,9 @@ const styles = StyleSheet.create({
   workspaceName: { ...typography.label, color: palette.ink, fontWeight: '700', flex: 1 },
   workspaceSwitch: { ...typography.caption, color: palette.muted },
   workspaceError: { ...typography.caption, color: palette.warning },
+  planningNotice: { padding: 12, gap: 4, borderRadius: 12, backgroundColor: palette.goldSoft, minHeight: 48 },
+  planningNoticeText: { ...typography.label, color: palette.ink },
+  planningNoticeLink: { ...typography.label, color: palette.gold, fontWeight: '700' },
   safeArea: { flex: 1, backgroundColor: palette.background },
   page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 12 },
   heading: { gap: 5, marginBottom: 2 },

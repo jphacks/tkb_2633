@@ -24,6 +24,8 @@ Androidでは、バックグラウンドで待機処理が止まるSDKの互換�
 
 追加の[信頼性監査](docs/workspace-reliability-audit-2026-10-27.md)では、画面離脱後の古い処理、グループ間の失敗連鎖、保存中の権限変化を修正し、変更のない共有予定の再計算を抑えました。 [依存関係対策](docs/dependency-security-2026-10-27.md)ではZod・node-forgeを公式修正版へ更新し、npm auditの既知警告を0件にしています。
 
+[共有編集の追加監査](docs/shared-group-editing-audit-2026-10-27.md)では、古い編集画面からの上書き、収集ルールの同時変更、競合解決中の権限変化を修正しました。AndroidとiPhoneの実機でオフライン編集・再起動・再送・競合解決を行い、両端末の状態一致を確認しています。競合など確認が必要な項目は通常の画面にも案内を表示します。
+
 OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
 ---
@@ -594,13 +596,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **826 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **888 tests PASS（iOS・Androidの両条件）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **67機能（既存44を保持）** |
+| 保護対象feature contract | **84機能（既存44を保持）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |

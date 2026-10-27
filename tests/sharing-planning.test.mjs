@@ -2,11 +2,13 @@ import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDatabase } from './helpers/sqlite.mjs';
-import { buildSharedReplica } from '../src/features/sharing/replica.ts';
+import { buildSharedReplica, compactSharedReplica } from '../src/features/sharing/replica.ts';
 import { buildSharedPlannerSnapshot, sharedGroupBootstrap, sharedPlanningSignature } from '../src/features/sharing/planning.ts';
 import { millisecondsUntilNextSharedDay, sharedLocalDate } from '../src/features/sharing/group-clock.ts';
 import { createLocalSharedOperations, initializeSharingLedger, loadSharedReplica, listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
 import { completionCycleDate } from '../src/domain/scheduling/completion-matching.ts';
+import { planSharedMutation } from '../src/features/sharing/mutations.ts';
+import { planSharedConflictResolution } from '../src/features/sharing/conflict-resolution.ts';
 const options = { groupId: 'group-test', ownerUserId: 'owner', ownerDisplayName: '自分', name: '家族', timeZone: 'Asia/Tokyo', anchorDate: '2026-10-27' };
 function fixture() {
   const drafts = sharedGroupBootstrap(options);
@@ -88,6 +90,76 @@ test('shared weekly, biweekly, monthly waste and one-time hiding preserve the sa
   edit({ entityType: 'wasteVisibility', entityId: 'weekly.2026-10-27', operationType: 'patch', payload: { scheduleId: 'weekly', date: '2026-10-27', hidden: true } });
   const snapshot = plan(ops); assert.equal(snapshot.wasteSchedules.length, 3); assert.equal(snapshot.hiddenWasteDates[0].label, '可燃ごみ');
   assert.ok(snapshot.upcomingWasteDates.some((date) => date.scheduleId === 'monthly' && date.date === '2026-11-30'));
+});
+
+test('offline edits of dependent waste rule fields expose a conflict instead of creating an invalid mixed collection rule', () => {
+  const ops = fixture(); const id = 'waste-concurrent';
+  ops.push(next(ops, { entityType: 'waste', entityId: id, operationType: 'patch', payload: { label: 'びん', recurrence: 'weekly', collectionWeekdays: [2] } }));
+  const snapshot = plan(ops); const displayed = snapshot.wasteSchedules[0];
+  const replica = buildSharedReplica('group-test', ops);
+  const draft = (schedule, prefix) => planSharedMutation({ replica, snapshot, now: new Date('2026-10-27T02:00:00Z'), userId: 'owner', makeId: () => prefix },
+    'saveWeeklyWasteSchedule', [schedule, displayed]).drafts[0];
+  const left = next(ops, draft({ ...displayed, recurrence: 'biweekly', anchorDate: '2026-10-27' }, 'fortnight-edit'));
+  const right = next(ops, draft({ ...displayed, collectionWeekdays: [4] }, 'weekday-edit'), 'device-b');
+  let signature;
+  for (const changes of [[left, right], [right, left], [right, left, right, left]]) {
+    const state = plan([...ops, ...changes]);
+    assert.ok(state.sharing.issues.some((issue) => issue.entityId === id && issue.kind === 'conflict'));
+    assert.equal(state.sharing.issues.some((issue) => issue.entityId === id && issue.kind === 'invalid'), false);
+    assert.equal(state.wasteSchedules.some((schedule) => schedule.id === id), false);
+    const nextSignature = sharedPlanningSignature(state);
+    if (signature) assert.equal(nextSignature, signature); else signature = nextSignature;
+  }
+  for (const field of ['recurrence', 'collectionWeekdays', 'anchorDate']) {
+    const merged = [...ops, left, right];
+    const resolved = planSharedConflictResolution(buildSharedReplica('group-test', merged), 'waste', id, field, left.operationId, `resolve-${field}`);
+    merged.push(next(merged, resolved));
+    const state = plan(merged);
+    assert.equal(state.sharing.issues.some((issue) => issue.entityId === id), false);
+    assert.equal(state.wasteSchedules.find((schedule) => schedule.id === id).recurrence, 'biweekly');
+    assert.deepEqual(state.wasteSchedules.find((schedule) => schedule.id === id).collectionWeekdays, [2]);
+  }
+});
+
+test('monthly and fortnight collection-rule conflict choices remain coherent for either candidate after snapshot compaction', () => {
+  const ops = fixture(); const id = 'waste-snapshot';
+  ops.push(next(ops, { entityType: 'waste', entityId: id, operationType: 'patch', payload: { label: '資源ごみ', recurrence: 'weekly', collectionWeekdays: [2] } }));
+  const snapshot = plan(ops); const displayed = snapshot.wasteSchedules[0];
+  const replica = buildSharedReplica('group-test', ops);
+  const edit = (schedule, operationId, device) => next(ops, planSharedMutation({ replica, snapshot,
+    now: new Date('2026-10-27T02:00:00Z'), userId: 'owner', makeId: () => operationId }, 'saveWeeklyWasteSchedule', [schedule, displayed]).drafts[0], device);
+  const monthly = edit({ ...displayed, recurrence: 'monthly', collectionWeekdays: [], monthlyDay: 28 }, 'monthly-edit', 'device-a');
+  const fortnight = edit({ ...displayed, recurrence: 'biweekly', collectionWeekdays: [4], anchorDate: '2026-10-29' }, 'fortnight-edit', 'device-b');
+  const merged = [...ops, monthly, fortnight];
+  const compacted = buildSharedReplica('group-test', [], compactSharedReplica(buildSharedReplica('group-test', merged)));
+  for (const chosen of [monthly, fortnight]) for (const field of ['recurrence', 'collectionWeekdays', 'anchorDate', 'monthlyDay']) {
+    const decision = planSharedConflictResolution(compacted, 'waste', id, field, chosen.operationId, `choice-${chosen.operationId}-${field}`);
+    const state = plan([...merged, next(merged, decision)]);
+    assert.equal(state.sharing.issues.some((issue) => issue.entityId === id), false);
+    const schedule = state.wasteSchedules.find((item) => item.id === id);
+    assert.equal(schedule.recurrence, chosen.payload.recurrence);
+    assert.deepEqual(schedule.collectionWeekdays, chosen.payload.collectionWeekdays);
+    assert.equal(schedule.anchorDate ?? null, chosen.payload.anchorDate);
+    assert.equal(schedule.monthlyDay ?? null, chosen.payload.monthlyDay);
+  }
+});
+
+test('shared conflict decisions preserve ordinary field choices, deletion, restoration and stale-candidate rejection', () => {
+  const ops = fixture(); const id = 'group-test.builtin-chore-08';
+  const left = next(ops, { entityType: 'chore', entityId: id, operationType: 'patch', payload: { name: '家事A' } });
+  const right = next(ops, { entityType: 'chore', entityId: id, operationType: 'patch', payload: { name: '家事B' } }, 'device-b');
+  const conflict = buildSharedReplica('group-test', [...ops, left, right]);
+  const choice = planSharedConflictResolution(conflict, 'chore', id, 'name', left.operationId, 'ordinary-choice');
+  assert.deepEqual(choice.payload, { name: '家事A' });
+  assert.equal(choice.operationType, 'patch');
+  assert.throws(() => planSharedConflictResolution(conflict, 'chore', id, 'name', 'outdated', 'stale'), /更新されました/);
+  const deletion = next(ops, { entityType: 'chore', entityId: id, operationType: 'delete', payload: {} });
+  const edited = buildSharedReplica('group-test', [...ops, deletion, right]);
+  assert.equal(planSharedConflictResolution(edited, 'chore', id, '$alive', deletion.operationId, 'deleted').operationType, 'delete');
+  const restored = planSharedConflictResolution(edited, 'chore', id, '$alive', right.operationId, 'restored');
+  assert.equal(restored.operationType, 'restore');
+  assert.equal(restored.payload.name, '家事B');
+  assert.ok(Object.values(restored.payload).every((value) => value !== null));
 });
 
 test('shared batch edits roll back together, project once and allocate consecutive clocks without uploading generated schedules', async () => {

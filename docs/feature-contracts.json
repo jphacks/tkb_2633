@@ -1119,5 +1119,90 @@
         "name": "official node-forge rejects noncanonical DigestInfo lengths and nonempty NULL parameters"
       }
     ]
+  },
+  {
+    "feature": "sharing-waste-editor-concurrent-save",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "stale shared waste label edits preserve a newer weekly, biweekly or monthly collection rule"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "stale shared waste edits reject same-field overwrites and incompatible collection-rule combinations atomically"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "saving an untouched old waste form creates no event and does not restore an older shared value"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "ios waste editing passes its original displayed values when another group member changes the collection rule"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "android waste editing passes its original displayed values when another group member changes the collection rule"
+      },
+      {
+        "file": "tests/waste-search-and-storage.test.mjs",
+        "name": "personal waste edits preserve newer untouched fields and never resurrect a deleted edited schedule"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-waste-rule-atomic-conflict-resolution",
+    "tests": [
+      {
+        "file": "tests/sharing-planning.test.mjs",
+        "name": "offline edits of dependent waste rule fields expose a conflict instead of creating an invalid mixed collection rule"
+      },
+      {
+        "file": "tests/sharing-planning.test.mjs",
+        "name": "monthly and fortnight collection-rule conflict choices remain coherent for either candidate after snapshot compaction"
+      },
+      {
+        "file": "tests/sharing-planning.test.mjs",
+        "name": "shared conflict decisions preserve ordinary field choices, deletion, restoration and stale-candidate rejection"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-conflict-resolution-transaction-access",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "conflict resolution waiting for the workspace writer cannot proceed after the sharing account changes"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "conflict resolution rechecks sharing access after its projection before the transaction may commit"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-waste-group-date-defaults",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "ios shared waste editor derives monthly and fortnight defaults from the group civil date"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "android shared waste editor derives monthly and fortnight defaults from the group civil date"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-planning-issue-notice",
+    "tests": [
+      {
+        "file": "tests/sharing-planning-notice.test.mjs",
+        "name": "ios planner pages show a shared issue warning with a working resolution link only for the active group"
+      },
+      {
+        "file": "tests/sharing-planning-notice.test.mjs",
+        "name": "android planner pages show a shared issue warning with a working resolution link only for the active group"
+      }
+    ]
   }
 ]

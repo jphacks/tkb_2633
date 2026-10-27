@@ -8,7 +8,7 @@ import type { SharedOperationDraft } from '../../platform/storage/sharing-ledger
 import type { SharedRepositoryMutation } from '../../platform/storage/shared-repository-adapter.ts';
 import type { WasteScheduleInput } from '../waste/contracts.ts';
 import type { LocalDate } from '../../domain/shared/types.ts';
-import { normalizeWasteSchedule } from '../waste/schedule-policy.ts';
+import { mergeWasteScheduleEdits, normalizeWasteSchedule, wasteCollectionRule } from '../waste/schedule-policy.ts';
 import { canonicalJson } from './operations.ts';
 import type { JsonValue, SharedOperation } from './operations.ts';
 import type { SharedReplica } from './replica.ts';
@@ -182,13 +182,20 @@ export function planSharedMutation(context: SharedMutationContext, kind: SharedR
     return { drafts, result: undefined };
   }
   if (kind === 'saveWeeklyWasteSchedule') {
-    const input = args[0] as WasteScheduleInput; const normalized = normalizeWasteSchedule(input);
-    if (input.id && !replica.entities.some((entity) => entity.entityType === 'waste' && entity.entityId === input.id && !entity.deleted)) throw new Error('ゴミ収集日が見つかりません。');
+    const input = args[0] as WasteScheduleInput;
+    const previous = replica.entities.find((entity) => entity.entityType === 'waste' && entity.entityId === input.id);
+    if (input.id && (!previous || previous.deleted)) throw new Error('ゴミ収集日が見つかりません。');
+    if (previous && Object.keys(previous.conflicts).length) throw new Error('この収集日は同時編集の候補があります。共有グループで内容を選んでください。');
+    const displayed = args[1] as WasteScheduleInput | undefined;
+    const current = snapshot.wasteSchedules.find((schedule) => schedule.id === input.id);
+    if (displayed && !current) throw new Error('ゴミ収集日が見つかりません。');
+    const normalized = displayed ? mergeWasteScheduleEdits(current!, input, displayed) : normalizeWasteSchedule(input);
     const id = input.id ?? `waste.${context.makeId()}`;
-    const payload = { label: normalized.label, collectionWeekdays: [...normalized.collectionWeekdays], recurrence: normalized.recurrence,
-      anchorDate: normalized.anchorDate ?? null, monthlyDay: normalized.monthlyDay ?? null };
-    const previous = replica.entities.find((entity) => entity.entityType === 'waste' && entity.entityId === id);
+    const rule = wasteCollectionRule(normalized); const payload = { label: normalized.label, ...rule };
     const changes = Object.fromEntries(Object.entries(payload).filter(([key, value]) => canonicalJson(previous?.fields[key] ?? null) !== canonicalJson(value)));
+    // Concurrent valid rule edits must become a visible conflict, rather than
+    // silently combining a new weekday with another device's fortnight anchor.
+    if (Object.keys(rule).some((key) => key in changes)) Object.assign(changes, rule);
     return { drafts: Object.keys(changes).length ? [draft('waste', id, changes)] : [], result: undefined };
   }
   if (kind === 'setWasteOccurrenceHidden' || kind === 'deleteWeeklyWasteSchedule') {

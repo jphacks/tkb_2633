@@ -183,6 +183,8 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
     {detail.conflicts.map((entity) => <Card key={`${entity.entityType}:${entity.entityId}`}>
       <SectionHeading title="同時編集の確認" />
       <Text style={styles.body}>{snapshot?.chores.find((chore) => chore.id === entity.entityId)?.name ?? '共有設定'}を複数の端末で編集しました。採用する内容を選んでください。</Text>
+      {entity.entityType === 'waste' && ['recurrence', 'collectionWeekdays', 'anchorDate', 'monthlyDay'].some((field) => field in entity.conflicts)
+        ? <Text style={styles.body}>周期・曜日・基準日は、選んだ内容の組み合わせでまとめて採用します。</Text> : null}
       {Object.entries(entity.conflicts).map(([field, candidates]) => <View key={field} style={styles.member}>
         <Text style={styles.label}>{fieldLabel(field)}</Text>
         {candidates.map((candidate, index) => <View key={candidate.operationId} style={styles.candidate}>

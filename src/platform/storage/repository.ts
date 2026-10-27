@@ -20,7 +20,7 @@ import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/d
 import { addDays, localDateFromDate, parseLocalDate } from '@/domain/scheduling/local-date';
 import type { CalendarCountColors, CalendarCountDisplayMode, EntityId, Household, HouseholdMember, LocalDate, WeatherLocation, Weekday } from '@/domain/shared/types';
 import type { WasteRecurrence, WasteScheduleInput, WeeklyWasteSchedule } from '@/features/waste/contracts';
-import { normalizeWasteSchedule } from '@/features/waste/schedule-policy';
+import { mergeWasteScheduleEdits, normalizeWasteSchedule } from '@/features/waste/schedule-policy';
 import type { GoogleSyncEntry, GoogleSyncState, GoogleTaskCompletion, GoogleTaskLink, GoogleTaskStatus, GoogleTaskStatusChange } from '@/features/google-sync/contracts';
 import { googleTaskImportAction, parseGoogleCompletedAt } from '@/features/google-sync/google-completion-policy';
 import type { GoogleSyncStatus } from '@/features/google-sync/sync-policy';
@@ -1547,8 +1547,16 @@ async function replaceChoreDependenciesImpl(
 async function saveWeeklyWasteScheduleImpl(
   database: SQLiteDatabase,
   schedule: WasteScheduleInput,
+  base?: WasteScheduleInput,
 ): Promise<void> {
-  const normalized = normalizeWasteSchedule(schedule);
+  let normalized = normalizeWasteSchedule(schedule);
+  if (base) {
+    const row = await database.getFirstAsync<{ label: string; weekdays_json: string; recurrence: WasteRecurrence; anchor_date: LocalDate | null; monthly_day: number | null }>(
+      'SELECT label, weekdays_json, recurrence, anchor_date, monthly_day FROM weekly_waste_schedules WHERE id=? AND household_id=?', schedule.id ?? '', LOCAL_HOUSEHOLD_ID);
+    if (!row) throw new Error('ゴミ収集日が見つかりません。');
+    normalized = mergeWasteScheduleEdits({ id: schedule.id, label: row.label, collectionWeekdays: JSON.parse(row.weekdays_json), recurrence: row.recurrence,
+      ...(row.anchor_date ? { anchorDate: row.anchor_date } : {}), ...(row.monthly_day ? { monthlyDay: row.monthly_day } : {}) }, normalized, base);
+  }
   const id = schedule.id ?? createId('waste');
   await database.runAsync(
     `INSERT INTO weekly_waste_schedules (id, household_id, label, weekdays_json, recurrence, anchor_date, monthly_day)

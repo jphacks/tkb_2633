@@ -1,0 +1,35 @@
+import { causallyPrecedes } from '../operations.ts';
+import type { ManualRuleFact, SharedOccurrence } from './model.ts';
+import type { V2DateRequestState } from './request-state.ts';
+import type { V2HistoryView } from './history-view.ts';
+import { approvedRequestRuleId } from './formal-rules.ts';
+import { ruleSelectorMatches } from './period-rules.ts';
+
+/** A valid historical action does not silently acknowledge an as-yet unseen contradictory answer. */
+export function unresolvedRequestReviews(input: { occurrence: SharedOccurrence; subjectUserId: string | null;
+  candidates: readonly ManualRuleFact[]; allRules: readonly ManualRuleFact[]; requests: readonly V2DateRequestState[]; view: V2HistoryView }): string[] {
+  const rules = new Map(input.allRules.map((fact) => [fact.operationId, fact]));
+  const result: string[] = [];
+  for (const state of input.requests) {
+    const proposal = state.proposal;
+    if (!state.conflictIds.length || proposal.choreId !== input.occurrence.choreId || proposal.subjectUserId !== input.subjectUserId
+      || !ruleSelectorMatches(proposal.selector, input.occurrence)) continue;
+    const request = input.view.byId(state.requestId); if (!request) continue;
+    const possible = new Set([approvedRequestRuleId(request, proposal.proposed),
+      ...input.view.ofType('requestDecision').filter((op) => op.payload.requestId === state.requestId && op.payload.decision === 'counteroffer')
+        .map((op) => approvedRequestRuleId(request, op.payload.target as unknown as import('./model.ts').DateTarget))]);
+    let dependsOnDispute = state.kind === 'conflict'; let acknowledged = false;
+    const stack = [...input.candidates]; const visited = new Set<string>();
+    while (stack.length) {
+      const fact = stack.pop()!; if (visited.has(fact.operationId)) continue; visited.add(fact.operationId);
+      if (fact.rule.reviewedRequestIds?.includes(state.requestId) && ruleSelectorMatches(fact.rule.selector, input.occurrence)
+        && state.conflictIds.every((id) => { const answer = input.view.byId(id); return answer && causallyPrecedes(answer, fact); })) acknowledged = true;
+      for (const id of fact.rule.basisRuleIds ?? []) {
+        if (possible.has(id)) dependsOnDispute = true;
+        const parent = rules.get(id); if (parent) stack.push(parent);
+      }
+    }
+    if (dependsOnDispute && !acknowledged) result.push(state.requestId);
+  }
+  return result.sort();
+}

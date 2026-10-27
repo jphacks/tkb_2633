@@ -19,34 +19,7 @@ import { createV2HistoryView } from '../src/features/sharing/v2/history-view.ts'
 import { observedDateRules } from '../src/features/sharing/v2/formal-rule-view.ts';
 const { ensureLocalHousehold } = await import('../src/platform/storage/repository.ts');
 
-const groupId = 'v2-repository'; const scope = { groupId, userId: 'owner', householdId: 'group-local' };
-const now = () => new Date('2026-10-27T01:00:00Z');
-const receiptsFor = (facts) => facts.map((fact) => ({ schemaVersion: 2, groupId,
-  operationId: fact.operation.operationId, authorUserId: fact.operation.authorUserId, authorDeviceId: fact.operation.authorDeviceId,
-  receivedKeyVersion: fact.operation.keyVersion, uploadSequence: fact.operation.logicalClock,
-  authorProofDigest: v2AuthorProofDigest(fact), receivedAtMs: now().getTime() }));
-const draft = (operationId, entityType, entityId, payload) => ({ operationId, entityType, entityId, payload, operationType: 'patch' });
-const seeds = () => [
-  draft('policy', 'groupPolicy', 'policy', { configuration: createGroupPolicy('family') }),
-  draft('settings', 'settings', 'settings', { name: '検査グループ', timeZone: 'Asia/Tokyo', anchorDate: '2026-10-27' }),
-  draft('floor', 'chore', 'floor', { name: '床を掃除する', enabled: true }),
-  draft('configuration', 'chorePolicy', 'floor', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate: '2026-10-27',
-    intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
-];
-async function fixture() {
-  const owner = await createDeviceIdentity(crypto); const member = await createDeviceIdentity(crypto);
-  const archive = [createSharedRoster(groupId, 'owner', owner, { schemaVersion: 2 })]; archive.push(approveSharedDevice(archive[0], owner, 'member', member));
-  async function device(userId = 'owner', identity = owner) {
-    const h = createDatabase(); await initializeV2EventStore(h.database, { ...scope, userId });
-    let writable = true;
-    const options = { ...scope, userId, identity, anchor: archive[0], archive: () => archive, now, assertWritable: () => { if (!writable) throw new Error('account changed'); } };
-    const repository = createV2EventRepository(h.database, options);
-    return { ...h, repository, options, stopWrites: () => { writable = false; },
-      state: () => { const row = h.connection.prepare('SELECT * FROM sharing_v2_projection').get(); return row ? {
-        accepted: JSON.parse(row.accepted_ids_json), rejected: JSON.parse(row.rejected_json), pending: JSON.parse(row.pending_ids_json), hash: row.fact_hash } : null; } };
-  }
-  return { owner, member, archive, device };
-}
+import { fixture, groupId, scope, now, receiptsFor, draft, seeds } from './helpers/sharing-v2-repository-fixture.mjs';
 
 test('v2 repository binds a fresh database and preserves every personal table and v1 workspace without in-place conversion', async () => {
   const personal = createDatabase(); const legacy = createDatabase();
@@ -403,4 +376,55 @@ test('v2 a batch of 256 counteroffers retains all facts and converges through 10
     assert.deepEqual(requestStates(owner), requestStates(member)); assert.deepEqual(owner.state(), member.state());
     assert.equal((await listSharingOutbox(owner.database, groupId)).length, 0);
   } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 repository serializes authenticated reads and current-state mutation builders without nested transactions or stale updates', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds());
+    let release; let entered;
+    const gate = new Promise((resolve) => { release = resolve; }); const started = new Promise((resolve) => { entered = resolve; });
+    const update = d.repository.commitCurrent(async (state) => {
+      assert.equal(state.assessment.view.ready.length, 4); entered(); await gate;
+      return [draft('first-update', 'chore', 'floor', { name: '最初の編集' })];
+    });
+    await started;
+    const read = d.repository.readState();
+    const second = d.repository.commitCurrent(async (state) => {
+      const latest = state.assessment.view.ready.find((op) => op.operationId === 'first-update'); assert.ok(latest);
+      return [draft('second-update', 'chore', 'floor', { name: `${latest.payload.name}の次` })];
+    });
+    release(); await update;
+    assert.equal((await read).assessment.view.ready.length, 5); await second;
+    const current = await d.repository.readState(); assert.equal(current.assessment.view.ready.length, 6);
+    assert.deepEqual(current.assessment.rejected, []); assert.equal((await listSharingOutbox(d.database, groupId)).length, 6);
+  } finally { d.connection.close(); }
+});
+test('v2 repository revocation during projection rolls back the fact, outbox and projection together', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const before = d.state();
+    const run = d.database.runAsync;
+    d.database.runAsync = async (sql, ...parameters) => {
+      const result = await run(sql, ...parameters);
+      if (sql.startsWith('INSERT INTO sharing_v2_projection')) d.stopWrites();
+      return result;
+    };
+    await assert.rejects(d.repository.commit([draft('revoked-mid-write', 'chore', 'floor', { name: '権限変更中' })]), /account changed/);
+    assert.deepEqual(d.state(), before);
+    assert.equal(d.connection.prepare('SELECT count(*) AS n FROM sharing_operations').get().n, 4);
+    assert.equal(d.connection.prepare('SELECT count(*) AS n FROM sharing_outbox').get().n, 4);
+    await assert.rejects(d.repository.readState(), /account changed/);
+  } finally { d.connection.close(); }
+});
+test('v2 repository revocation while reading signed facts refuses to return account-bound state', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const before = d.state(); const read = d.database.getAllAsync;
+    d.database.getAllAsync = async (sql, ...parameters) => {
+      const result = await read(sql, ...parameters);
+      if (sql.includes('author_signature')) d.stopWrites(); return result;
+    };
+    await assert.rejects(d.repository.readState(), /account changed/); assert.deepEqual(d.state(), before);
+  } finally { d.connection.close(); }
 });

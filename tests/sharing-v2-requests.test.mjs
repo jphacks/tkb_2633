@@ -158,3 +158,15 @@ test('v2 a long counteroffer history keeps every audit fact but only its causal 
   assert.equal(state.counteroffers.length, 1); assert.equal(state.counteroffers[0].operationId, last.operation.operationId);
   assert.ok(state.decisions.every((decision) => decision.kind === 'eligible'));
 });
+
+test('v2 combined approval preserves both administrator and every affected assignee consent', async () => {
+  const approval = { kind: 'approvalRequired', approver: 'adminAndAssignee', reason: 'outsideWindow' };
+  const f = await fixture({ assigneeIds: ['a', 'b'], approval });
+  f.decide('owner', 'approve'); assert.equal(f.state().kind, 'awaiting');
+  f.decide('a', 'approve'); assert.equal(f.state().kind, 'awaiting');
+  f.decide('b', 'approve'); assert.equal(f.state().kind, 'approved');
+  const g = await fixture({ assigneeIds: ['a', 'b'], approval });
+  const offer = g.decide('owner', 'counteroffer', { target: date('2026-11-01') });
+  g.decide('a', 'acceptCounteroffer', { referenceDecisionId: offer.operation.operationId }); assert.equal(g.state().kind, 'counteroffered');
+  g.decide('b', 'acceptCounteroffer', { referenceDecisionId: offer.operation.operationId }); assert.equal(g.state().kind, 'approved');
+});

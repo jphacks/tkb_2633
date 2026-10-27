@@ -1,0 +1,402 @@
+import { addDays, daysBetween, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
+import type { LocalDate } from '../../../domain/shared/types.ts';
+import type { ChoreDefinition } from '../../../domain/chores/types.ts';
+import { canonicalJson, compareOperationIds } from '../operations.ts';
+import type { JsonValue, SharedOperation } from '../operations.ts';
+import { sharedDocumentDigest } from '../crypto.ts';
+import { sharedRosterDigest } from '../roster.ts';
+import type { VerifiedSharedRoster } from '../roster.ts';
+import { sharedLocalDate } from '../group-clock.ts';
+import type { assessV2BusinessHistory } from './receiver-authority.ts';
+import type { DateTarget, DesignationMode, GroupPolicy, ManualRuleFact, SharedOccurrence, SharedChoreConfiguration } from './model.ts';
+import type { V2ServerReceipt } from './server-receipts.ts';
+import { V2_SCHEDULER_VERSION } from './payload-schema.ts';
+import { v2ReadPoint } from './view-point.ts';
+import { commonFrame, commonFrames } from './common-frames.ts';
+import { frameAtOperation } from './authority-context.ts';
+import { v2SubjectOccurrenceId } from './occurrence-id.ts';
+import { observedDateRules } from './formal-rule-view.ts';
+import { selectManualRule } from './period-rules.ts';
+import { materializeRuleTarget } from './rule-target.ts';
+import { v2ConfigurationTimeline } from './configuration-timeline.ts';
+import { v2CompletionHistory } from './completion-history.ts';
+import type { V2CompletionRecord } from './completion-history.ts';
+import { expandedCommonWindow } from './window-extension.ts';
+import { unresolvedRequestReviews } from './request-review.ts';
+import { targetCivilDate, fixedInterval } from './date-target.ts';
+import { showExpiredOnHome } from './completion-state.ts';
+import { maximalCausalFacts } from './causal-facts.ts';
+import { v2Dependency, cyclicV2Dependencies, dependencyLowerBound } from './dependency-constraints.ts';
+import type { V2Dependency } from './dependency-constraints.ts';
+
+export type V2Assessment = Pick<ReturnType<typeof assessV2BusinessHistory>, 'view' | 'requestStates' | 'approvedRules' | 'receiptEpochs'>;
+export interface V2PlanIssue { kind: string; choreId: string | null; occurrenceId: string | null; subjectUserId: string | null; operationIds: string[] }
+export type V2FormalDate = { kind: 'automatic' }
+  | { kind: 'manual'; ruleId: string; mode: DesignationMode; target: DateTarget; strict: boolean; allowDuringCooldown: boolean }
+  | { kind: 'conflict'; ruleIds: string[] } | { kind: 'review'; reason: string; ruleIds: string[] };
+export interface V2SubjectPlan {
+  id: string; subjectUserId: string | null; required: boolean; assigneeIds: string[]; formalDate: V2FormalDate;
+  suggestedDate: LocalDate; executionWindowStart: LocalDate; executionWindowEnd: LocalDate;
+  completed: boolean; completionOperationIds: string[]; pendingCompletionIds: string[];
+  strictInstructionUnfulfilled: boolean; minimumNextExecutionDay: LocalDate | null; cooldownSuppressed: boolean;
+  virtuallyConsumed: boolean; showExpiredOnHome: boolean; requestReviewIds: string[];
+  dependencyNotBefore: LocalDate | null; dependencyNotBeforeInstant: number | null; dependencyBlocked: boolean; dependencyAwaitingCompletion: boolean;
+}
+export interface V2PlannedOccurrence extends SharedOccurrence {
+  configuration: SharedChoreConfiguration; assigneeIds: string[]; subjectUserIds: string[];
+  claimState: string; claimOperationIds: string[]; assignmentFixed: boolean; needsAssignment: boolean;
+  completed: boolean; historical: boolean; extensionRequestIds: string[]; subjects: V2SubjectPlan[];
+  activeInPeriod: boolean;
+}
+export interface V2CommonPlan {
+  groupId: string; algorithm: string; timeZone: string; initialized: boolean;
+  range: { from: LocalDate; through: LocalDate; asOfDate: LocalDate };
+  policy: GroupPolicy | null; commonSettings: Record<string, JsonValue>;
+  chores: Omit<ChoreDefinition, 'householdId'>[]; members: { userId: string; displayName: string; active: boolean }[];
+  occurrences: V2PlannedOccurrence[]; history: V2CompletionRecord[]; issues: V2PlanIssue[];
+  dependencies: V2Dependency[];
+  sourceHash: string; planHash: string;
+}
+function digestPages(values: readonly unknown[]): string[] {
+  const result: string[] = [];
+  for (let offset = 0; offset < values.length; offset += 1000) result.push(sharedDocumentDigest(values.slice(offset, offset + 1000)));
+  return result;
+}
+function fingerprints(values: readonly unknown[]): string[] { return digestPages(values.map((value) => sharedDocumentDigest(value))); }
+
+/** No personal database, Calendar, weather, device preferences, or implicit Date.now can enter this function. */
+export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: readonly VerifiedSharedRoster[]; receipts: ReadonlyMap<string, V2ServerReceipt> },
+  range: { from: LocalDate; through: LocalDate; asOfDate: LocalDate }): V2CommonPlan {
+  [range.from, range.through, range.asOfDate].forEach(parseLocalDate);
+  if (range.through < range.from || daysBetween(range.from, range.through) > 3650) throw new Error('Invalid common plan range');
+  const assessment = input.assessment; const view = assessment.view; const roster = input.archive.at(-1);
+  if (!roster || roster.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new Error('Unsupported common planner version');
+  const at = v2ReadPoint(view, roster); const issues: V2PlanIssue[] = [];
+  const issue = (kind: string, choreId: string | null = null, occurrenceId: string | null = null, subjectUserId: string | null = null, operationIds: string[] = []) => {
+    issues.push({ kind, choreId, occurrenceId, subjectUserId, operationIds: [...new Set(operationIds)].sort(compareOperationIds) });
+  };
+  function fields(type: 'chore' | 'settings' | 'member' | 'dependency', id: string): Record<string, JsonValue> {
+    const result: Record<string, JsonValue> = {};
+    const names = new Set(view.topic(type, id).flatMap((op) => Object.keys(op.payload)));
+    for (const name of names) {
+      try { const value = view.field(type, id, name, at); if (value) result[name] = value.value; }
+      catch { issue(`fieldConflict:${name}`, type === 'chore' ? id : null, null, null,
+        maximalCausalFacts(view.topic(type, id).filter((op) => Object.hasOwn(op.payload, name))).map((op) => op.operationId)); }
+    }
+    return result;
+  }
+  const commonSettings = fields('settings', 'settings');
+  const timeZone = typeof commonSettings.timeZone === 'string' ? commonSettings.timeZone : 'UTC';
+  let policy: GroupPolicy | null = null;
+  try { policy = view.field('groupPolicy', 'policy', 'configuration', at)?.value as unknown as GroupPolicy ?? null; }
+  catch { issue('groupPolicyConflict'); }
+  const initialized = Boolean(policy && typeof commonSettings.timeZone === 'string');
+  if (!initialized) issue('initialSynchronizationRequired');
+  const activeMembers = new Set(roster.body.members.map((member) => member.userId));
+  const history = v2CompletionHistory(view, at, input.receipts);
+  const historyByFrame = new Map<string, V2CompletionRecord[]>(); const recordsByChore = new Map<string, V2CompletionRecord[]>();
+  for (const record of history) {
+    const list = historyByFrame.get(record.occurrenceId) ?? []; list.push(record); historyByFrame.set(record.occurrenceId, list);
+    const chores = recordsByChore.get(record.choreId) ?? []; chores.push(record); recordsByChore.set(record.choreId, chores);
+    if (record.approvalConflictIds.length) issue('substitutionApprovalConflict', record.choreId, record.occurrenceId, record.subjectUserId, record.approvalConflictIds);
+    if (record.active && input.receipts.has(record.operationId) && !record.performedTimeConfirmed) issue('reportedTimeNeedsReview', record.choreId, record.occurrenceId, record.subjectUserId, [record.operationId]);
+  }
+  const ids = new Set([...view.ofType('chore').map((op) => op.entityId), ...history.map((record) => record.choreId)]);
+  const chores = [...ids].sort(compareOperationIds).map((id) => {
+    const data = fields('chore', id); let alive = false;
+    try { alive = view.field('chore', id, '$alive', at)?.value === true; } catch { issue('choreDeletionConflict', id); }
+    const cfg = view.ofType('chorePolicy').find((op) => op.entityId === id)?.payload.configuration as unknown as SharedChoreConfiguration | undefined;
+    const cycle = cfg?.intervalDays ?? 7;
+    return { description: '', category: '家事', frequencyDaysByMode: { frequent: cycle, balanced: cycle, relaxed: cycle },
+      windowRadiusDays: 2, maxShiftDays: 4, load: 'normal', holidayPriority: false, everyday: false, instructions: [], tools: [], cautions: [],
+      ...data, id, name: typeof data.name === 'string' ? data.name : '家事の設定を確認',
+      enabled: initialized && alive && data.enabled === true && data.archived !== true && data.requiresCycleSelection !== true && !issues.some((entry) => entry.choreId === id && entry.kind.startsWith('fieldConflict')),
+      archived: !alive || data.archived === true } as Omit<ChoreDefinition, 'householdId'>;
+  });
+  const memberIds = new Set([...activeMembers, ...history.flatMap((record) => [record.performerUserId, record.recorderUserId, ...record.originalAssigneeIds])]);
+  const members = [...memberIds].sort(compareOperationIds).map((userId) => {
+    const profile = view.ofType('member').find((op) => op.entityId === userId || op.payload.userId === userId);
+    const data = profile ? fields('member', profile.entityId) : {};
+    return { userId, displayName: typeof data.displayName === 'string' ? data.displayName : activeMembers.has(userId) ? 'メンバー' : '以前のメンバー', active: activeMembers.has(userId) };
+  });
+  const allRules = observedDateRules(view, at, assessment.approvedRules);
+  const dependencies: V2Dependency[] = [];
+  for (const id of [...new Set(view.ofType('dependency').map((op) => op.entityId))].sort(compareOperationIds)) {
+    const data = fields('dependency', id);
+    try { if (view.field('dependency', id, '$alive', at)?.value !== true) continue; }
+    catch { issue('dependencyPolicyNeedsReview'); continue; }
+    delete data.$alive; const edge = v2Dependency(id, data);
+    if (edge) dependencies.push(edge); else issue('dependencyPolicyNeedsReview', typeof data.successorChoreId === 'string' ? data.successorChoreId : null);
+  }
+  const timelines = new Map<string, ReturnType<typeof v2ConfigurationTimeline>>();
+  const occurrences: V2PlannedOccurrence[] = [];
+  const historyAtCut = new Map<string, V2CompletionRecord[]>();
+  function usable(record: V2CompletionRecord): boolean {
+    return record.active && record.outcome === 'completed' && record.acceptance === 'accepted'
+      && (!input.receipts.has(record.operationId) || record.performedTimeConfirmed);
+  }
+  function completedBefore(frameId: string, point: SharedOperation, context: ReturnType<typeof frameAtOperation>): boolean {
+    const key = canonicalJson(point.context); let cut = historyAtCut.get(key);
+    if (!cut) { cut = v2CompletionHistory(view, point, input.receipts); historyAtCut.set(key, cut); }
+    const active = cut.filter((record) => record.occurrenceId === frameId && usable(record));
+    return context.config.policy.completion === 'one' ? active.some((record) => record.subjectUserId === null)
+      : context.subjectUserIds.length > 0 && context.subjectUserIds.every((uid) => active.some((record) => record.subjectUserId === uid));
+  }
+  for (const chore of chores) {
+    const frames = new Map<string, SharedOccurrence>();
+    const timeline = v2ConfigurationTimeline(view, chore.id, at);
+    timelines.set(chore.id, timeline);
+    if (chore.enabled && !timeline.length) issue('choreConfigurationRequired', chore.id);
+    if (!chore.enabled && !(recordsByChore.get(chore.id)?.length) && !timeline.some((slice) => slice.configuration?.active === true)) continue;
+    for (const slice of timeline) {
+      if (!slice.configuration) {
+        if (slice.from <= range.through && (!slice.through || slice.through >= range.from)) issue(slice.review ?? 'configurationNeedsReview', chore.id, null, null, slice.operationIds);
+        continue;
+      }
+      if (slice.configuration.active === false) continue;
+      const bounds = [{ from: range.from, through: range.through }];
+      for (const fact of allRules) {
+        const rule = fact.rule; if (rule.choreId !== chore.id || rule.selector.scope === 'once' || rule.ruleVersion !== slice.version) continue;
+        try {
+          const delta = daysBetween(rule.referenceAnchorDate, targetCivilDate(rule.target, timeZone));
+          const first = rule.selector.scope === 'period' ? rule.selector.range.from : rule.selector.from;
+          const last = rule.selector.scope === 'period' ? rule.selector.range.through : null;
+          const from = addDays(range.from, -delta); const through = addDays(range.through, -delta);
+          bounds.push({ from: from > first ? from : first, through: last && last < through ? last : through });
+        } catch { issue('repeatingMappingNeedsReview', chore.id, null, rule.subjectUserId, [fact.operationId]); }
+      }
+      const merged: { from: LocalDate; through: LocalDate }[] = [];
+      for (const bound of bounds.map((bound) => ({ from: bound.from > slice.from ? bound.from : slice.from,
+        through: slice.through && slice.through < bound.through ? slice.through : bound.through })).filter((bound) => bound.from <= bound.through)
+        .sort((a, b) => compareOperationIds(a.from, b.from))) {
+        const previous = merged.at(-1);
+        if (previous && bound.from <= previous.through) { if (bound.through > previous.through) previous.through = bound.through; }
+        else merged.push({ ...bound });
+      }
+      try {
+        for (const bound of merged) for (const frame of commonFrames(view.groupId, chore.id, slice.configuration, bound.from, bound.through)) frames.set(frame.id, frame);
+      } catch { issue('planningRangeNeedsReview', chore.id); }
+    }
+    // A moved one-off date stays visible even when its anchor falls outside the displayed date range.
+    for (const fact of allRules.filter((rule) => rule.rule.choreId === chore.id && rule.rule.selector.scope === 'once')) {
+      const selector = fact.rule.selector; if (selector.scope !== 'once') continue;
+      const targetDate = targetCivilDate(fact.rule.target, timeZone); if (targetDate < range.from || targetDate > range.through) continue;
+      const slice = timeline.find((item) => item.configuration && item.from <= selector.anchorDate && (!item.through || selector.anchorDate <= item.through));
+      if (!slice?.configuration) { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); continue; }
+      try { const frame = commonFrame(view.groupId, chore.id, slice.configuration, selector.anchorDate); frames.set(frame.id, frame); }
+      catch { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); }
+    }
+    const retainedHistoricalFrames = new Set<string>();
+    for (const record of [...(recordsByChore.get(chore.id) ?? [])].sort((a, b) => view.byId(a.operationId)!.logicalClock - view.byId(b.operationId)!.logicalClock || compareOperationIds(a.operationId, b.operationId))) {
+      if (record.anchorDate < range.from || record.anchorDate > range.through) continue;
+      if (retainedHistoricalFrames.has(record.occurrenceId)) continue;
+      const source = view.byId(record.operationId)!;
+      try {
+        const context = frameAtOperation(view, input.archive, source, chore.id, record.anchorDate, source.payload.ruleVersion as number);
+        const current = frames.get(record.occurrenceId);
+        retainedHistoricalFrames.add(record.occurrenceId);
+        if (!current || current.ruleVersion !== context.frame.ruleVersion) {
+          frames.set(context.frame.id, context.frame);
+          if (current) issue('configurationChangedDuringRound', chore.id, current.id, record.subjectUserId, [record.operationId]);
+        }
+      }
+      catch { issue('historicalConfigurationNeedsReview', chore.id, record.occurrenceId, record.subjectUserId, [record.operationId]); }
+    }
+    if (frames.size > 20_000) { issue('planningRangeNeedsReview', chore.id); continue; }
+    for (const frame of [...frames.values()].sort((a, b) => compareOperationIds(a.anchorDate, b.anchorDate))) {
+      let context: ReturnType<typeof frameAtOperation>;
+      try {
+        context = frameAtOperation(view, input.archive, at, chore.id, frame.anchorDate, frame.ruleVersion);
+        // Once a round was complete, a later assignment change does not reopen it for a new person.
+        const changes = view.observed(view.ofType('assignmentRule'), at).filter((op) => op.payload.choreId === chore.id && op.payload.ruleVersion === frame.ruleVersion
+          && (op.payload.scope === 'once' ? op.payload.fromOccurrenceId === frame.id : (op.payload.fromAnchorDate as string) <= frame.anchorDate))
+          .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
+        for (const change of changes) {
+          const previous = frameAtOperation(view, input.archive, change, chore.id, frame.anchorDate, frame.ruleVersion);
+          if (completedBefore(frame.id, change, previous)) { context = previous; break; }
+        }
+      } catch { issue('assignmentNeedsReview', chore.id, frame.id); continue; }
+      const records = historyByFrame.get(frame.id) ?? []; const actual = records.filter(usable);
+      const window = expandedCommonWindow({ frame, timeZone, view, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
+      if (window.reviews.length) issue('windowExtensionNeedsReview', chore.id, frame.id, null, window.reviews);
+      const past = frame.anchorDate < range.asOfDate;
+      const originalSubjects = context.subjectUserIds;
+      const alreadyComplete = context.config.policy.completion === 'perMember' && originalSubjects.length > 0
+        && originalSubjects.every((uid) => actual.some((record) => record.subjectUserId === uid));
+      const requiredSubjects: (string | null)[] = context.config.policy.completion === 'one' ? [null]
+        : past || alreadyComplete ? originalSubjects : originalSubjects.filter((uid) => activeMembers.has(uid));
+      const subjects = [...new Set([...requiredSubjects, ...records.map((record) => record.subjectUserId)])].sort((a, b) => compareOperationIds(a ?? '', b ?? ''));
+      const planned: V2SubjectPlan[] = subjects.map((subjectUserId) => {
+        const completed = actual.filter((record) => record.subjectUserId === subjectUserId);
+        const pending = records.filter((record) => record.subjectUserId === subjectUserId && record.active && record.outcome === 'completed' && !usable(record));
+        const selected = selectManualRule(allRules, { ...frame, ...window }, subjectUserId, timeZone);
+        let formalDate: V2FormalDate = { kind: 'automatic' }; let suggestedDate = frame.anchorDate; let candidates: ManualRuleFact[] = [];
+        if (selected.kind === 'conflict') {
+          candidates = selected.candidates; formalDate = { kind: 'conflict', ruleIds: candidates.map((fact) => fact.operationId) };
+          issue('dateConflict', chore.id, frame.id, subjectUserId, formalDate.ruleIds);
+        } else if (selected.kind === 'selected') {
+          candidates = allRules.filter((fact) => selected.equivalentOperationIds.includes(fact.operationId)); const target = materializeRuleTarget(selected.fact.rule, frame, timeZone);
+          if (target.kind === 'review') { formalDate = { kind: 'review', reason: target.reason, ruleIds: selected.equivalentOperationIds }; issue(target.reason, chore.id, frame.id, subjectUserId, selected.equivalentOperationIds); }
+          else { formalDate = { kind: 'manual', ruleId: selected.fact.operationId, mode: selected.fact.rule.mode, target: target.target,
+            strict: selected.fact.rule.strict, allowDuringCooldown: selected.fact.rule.allowDuringCooldown === true }; suggestedDate = targetCivilDate(target.target, timeZone); }
+        }
+        const reviews = unresolvedRequestReviews({ occurrence: frame, subjectUserId, candidates, allRules, requests: assessment.requestStates, view });
+        if (reviews.length) issue('requestConflict', chore.id, frame.id, subjectUserId, reviews);
+        const recent = (recordsByChore.get(chore.id) ?? []).filter((record) => record.subjectUserId === subjectUserId && usable(record));
+        const last = recent.map((record) => sharedLocalDate(new Date(record.performedAt), timeZone)).sort().at(-1);
+        const minimumNextExecutionDay = context.config.intervalDays >= 2 && context.config.intervalDays <= 6 && last ? addDays(last, context.config.intervalDays) : null;
+        if (formalDate.kind === 'automatic' && minimumNextExecutionDay && minimumNextExecutionDay > suggestedDate && minimumNextExecutionDay <= window.windowEnd) {
+          suggestedDate = minimumNextExecutionDay;
+        }
+        const suppressed = minimumNextExecutionDay !== null && suggestedDate < minimumNextExecutionDay
+          && !(formalDate.kind === 'manual' && formalDate.allowDuringCooldown);
+        const dates = [...new Set(completed.map((record) => {
+          const source = view.byId(record.operationId)!;
+          if (record.instruction?.kind === 'designated') return targetCivilDate(record.instruction.target, record.instruction.timeZone);
+          return typeof source.payload.scheduledDate === 'string' ? source.payload.scheduledDate as LocalDate : record.anchorDate;
+        }))].sort();
+        if (completed.length && dates.length === 1) suggestedDate = dates[0];
+        if (dates.length > 1) issue('recordedScheduleConflict', chore.id, frame.id, subjectUserId, completed.map((record) => record.operationId));
+        return { id: v2SubjectOccurrenceId(frame.id, subjectUserId), subjectUserId, required: requiredSubjects.includes(subjectUserId),
+          assigneeIds: subjectUserId === null ? [...context.assigneeIds] : [subjectUserId], formalDate, suggestedDate,
+          executionWindowStart: formalDate.kind === 'manual' && suggestedDate < window.windowStart ? suggestedDate : window.windowStart,
+          executionWindowEnd: formalDate.kind === 'manual' && suggestedDate > window.windowEnd ? suggestedDate : window.windowEnd,
+          completed: completed.length > 0, completionOperationIds: completed.map((record) => record.operationId), pendingCompletionIds: pending.map((record) => record.operationId),
+          strictInstructionUnfulfilled: completed.length > 0 && completed.every((record) => record.strictInstructionFulfilled === false), minimumNextExecutionDay,
+          cooldownSuppressed: suppressed && !completed.length, virtuallyConsumed: !completed.length && (window.windowEnd < range.asOfDate
+            || minimumNextExecutionDay !== null && minimumNextExecutionDay > window.windowEnd && !(formalDate.kind === 'manual' && formalDate.allowDuringCooldown)),
+          showExpiredOnHome: !completed.length && showExpiredOnHome(window.windowEnd, range.asOfDate), requestReviewIds: reviews,
+          dependencyNotBefore: null, dependencyNotBeforeInstant: null, dependencyBlocked: false, dependencyAwaitingCompletion: false };
+      });
+      const currentSlice = timeline.find((slice) => slice.version === frame.ruleVersion && slice.from <= frame.anchorDate && (!slice.through || frame.anchorDate <= slice.through));
+      occurrences.push({ ...frame, windowStart: window.windowStart, windowEnd: window.windowEnd, configuration: context.config,
+        assigneeIds: [...context.assigneeIds], subjectUserIds: requiredSubjects.filter((uid): uid is string => uid !== null), claimState: context.claims.kind,
+        claimOperationIds: [...context.claims.activeClaimOperationIds], assignmentFixed: context.assignmentFixed,
+        needsAssignment: context.configuredAssignees.length > 0 && context.assigneeIds.length === 0 || context.config.policy.completion === 'perMember' && requiredSubjects.length === 0,
+        completed: planned.some((slot) => slot.required) && planned.filter((slot) => slot.required).every((slot) => slot.completed),
+        historical: !currentSlice, activeInPeriod: Boolean(currentSlice?.configuration && currentSlice.configuration.active !== false && (past || chore.enabled)),
+        extensionRequestIds: window.sources, subjects: planned });
+    }
+  }
+  const cyclic = cyclicV2Dependencies(dependencies);
+  const incoming = new Map<string, V2Dependency[]>();
+  for (const edge of dependencies) { const list = incoming.get(edge.successorChoreId) ?? []; list.push(edge); incoming.set(edge.successorChoreId, list); }
+  const occurrencesById = new Map(occurrences.map((entry) => [entry.id, entry]));
+  const predecessorCache = new Map<string, { day: LocalDate; instant: number | null; occurrenceId: string; completed: boolean } | null>();
+  function predecessorEnd(choreId: string, anchor: LocalDate): { day: LocalDate; instant: number | null; occurrenceId: string; completed: boolean } | null {
+    const key = `${choreId}:${anchor}`; if (predecessorCache.has(key)) return predecessorCache.get(key)!;
+    const choices: SharedOccurrence[] = []; let initial: SharedOccurrence | undefined;
+    for (const slice of timelines.get(choreId) ?? []) {
+      const cfg = slice.configuration; if (!cfg || cfg.active === false) continue;
+      const firstIndex = Math.max(0, Math.ceil(daysBetween(cfg.anchorDate, slice.from) / cfg.intervalDays));
+      const first = commonFrame(view.groupId, choreId, cfg, addDays(cfg.anchorDate, firstIndex * cfg.intervalDays));
+      if (slice.through && first.anchorDate > slice.through) continue;
+      if (!initial || first.anchorDate < initial.anchorDate) initial = first;
+      const cut = slice.through && slice.through < anchor ? slice.through : anchor;
+      const index = Math.floor(daysBetween(cfg.anchorDate, cut) / cfg.intervalDays);
+      if (index < firstIndex) continue;
+      choices.push(commonFrame(view.groupId, choreId, cfg, addDays(cfg.anchorDate, index * cfg.intervalDays)));
+    }
+    for (const record of recordsByChore.get(choreId) ?? []) {
+      if (record.anchorDate > anchor || !record.active || record.outcome !== 'completed') continue;
+      const source = view.byId(record.operationId)!;
+      try { choices.push(frameAtOperation(view, input.archive, source, choreId, record.anchorDate, source.payload.ruleVersion as number).frame); } catch { /* The related round remains a review. */ }
+    }
+    let frame = choices.sort((a, b) => compareOperationIds(b.anchorDate, a.anchorDate) || a.ruleVersion - b.ruleVersion)[0] ?? initial;
+    const recorded = frame && [...(historyByFrame.get(frame.id) ?? [])].sort((a, b) => view.byId(a.operationId)!.logicalClock - view.byId(b.operationId)!.logicalClock || compareOperationIds(a.operationId, b.operationId))[0];
+    if (recorded) {
+      const source = view.byId(recorded.operationId)!;
+      try { frame = frameAtOperation(view, input.archive, source, choreId, recorded.anchorDate, source.payload.ruleVersion as number).frame; } catch { /* The related round remains a review. */ }
+    }
+    let result: { day: LocalDate; instant: number | null; occurrenceId: string; completed: boolean } | null = null;
+    if (frame) try {
+      const context = frameAtOperation(view, input.archive, at, choreId, frame.anchorDate, frame.ruleVersion);
+      const subjects: (string | null)[] = context.config.policy.completion === 'one' ? [null] : context.subjectUserIds;
+      const records = (historyByFrame.get(frame.id) ?? []).filter(usable);
+      const completed = subjects.map((uid) => records.filter((record) => record.subjectUserId === uid).sort((a, b) => Date.parse(a.performedAt) - Date.parse(b.performedAt))[0]);
+      if (subjects.length && completed.every(Boolean)) {
+        const instant = Math.max(...completed.map((record) => Date.parse(record.performedAt))); result = { day: sharedLocalDate(new Date(instant), timeZone), instant, occurrenceId: frame.id, completed: true };
+      } else if (subjects.length) {
+        const window = expandedCommonWindow({ frame, timeZone, view, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
+        const endings: { day: LocalDate; instant: number | null }[] = [];
+        for (const uid of subjects) {
+          const selected = selectManualRule(allRules, frame, uid, timeZone);
+          if (selected.kind === 'conflict') break;
+          if (selected.kind === 'automatic') endings.push({ day: window.windowEnd, instant: null });
+          else {
+            const target = materializeRuleTarget(selected.fact.rule, frame, timeZone); if (target.kind === 'review') break;
+            const exact = fixedInterval(target.target);
+            endings.push({ day: exact ? sharedLocalDate(new Date(exact.end), timeZone) : targetCivilDate(target.target, timeZone), instant: exact?.end ?? null });
+          }
+        }
+        if (endings.length === subjects.length && (occurrencesById.has(frame.id) || !(incoming.get(choreId) ?? []).some((entry) => entry.required))) {
+          result = { ...endings.sort((a, b) => compareOperationIds(b.day, a.day) || (b.instant ?? 0) - (a.instant ?? 0))[0], occurrenceId: frame.id, completed: false };
+        }
+      }
+    } catch { /* Keep this dependent round visible with a review, rather than dropping it. */ }
+    predecessorCache.set(key, result); return result;
+  }
+  const depth = new Map<string, number>();
+  const counts = new Map(chores.map((chore) => [chore.id, 0])); const outgoing = new Map<string, V2Dependency[]>();
+  for (const edge of dependencies.filter((entry) => entry.required && !cyclic.has(entry.id))) {
+    counts.set(edge.successorChoreId, (counts.get(edge.successorChoreId) ?? 0) + 1);
+    const list = outgoing.get(edge.predecessorChoreId) ?? []; list.push(edge); outgoing.set(edge.predecessorChoreId, list);
+  }
+  const ready = [...counts].filter(([, count]) => count === 0).map(([id]) => id).sort(compareOperationIds);
+  for (let index = 0; index < ready.length; index++) {
+    const id = ready[index]; depth.set(id, index);
+    for (const edge of outgoing.get(id) ?? []) { const count = counts.get(edge.successorChoreId)! - 1; counts.set(edge.successorChoreId, count); if (!count) ready.push(edge.successorChoreId); }
+  }
+  for (const occurrence of [...occurrences].sort((a, b) => (depth.get(a.choreId) ?? 0) - (depth.get(b.choreId) ?? 0))) for (const edge of incoming.get(occurrence.choreId) ?? []) {
+    let end = cyclic.has(edge.id) ? null : predecessorEnd(edge.predecessorChoreId, occurrence.anchorDate);
+    if (end && occurrencesById.get(end.occurrenceId)?.subjects.some((entry) => !entry.completed && (entry.dependencyBlocked || entry.requestReviewIds.length || entry.formalDate.kind === 'conflict' || entry.formalDate.kind === 'review'))) end = null;
+    for (const subject of occurrence.subjects) {
+      if (edge.required && !subject.completed && !end?.completed) subject.dependencyAwaitingCompletion = true;
+      const lower = end ? dependencyLowerBound(end.day, edge) : null;
+      if (edge.required && lower && (!subject.dependencyNotBefore || lower > subject.dependencyNotBefore)) subject.dependencyNotBefore = lower;
+      if (edge.required && edge.minimumGapDays === 0 && end?.instant !== null && end?.instant !== undefined
+        && (subject.dependencyNotBeforeInstant === null || end.instant > subject.dependencyNotBeforeInstant)) subject.dependencyNotBeforeInstant = end.instant;
+      const fixed = subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'fixed' ? fixedInterval(subject.formalDate.target) : null;
+      const violation = !lower || subject.suggestedDate < lower || edge.minimumGapDays === 0 && end?.instant !== null && fixed && fixed.start < end!.instant!;
+      if (!violation) continue;
+      if (edge.required && !subject.completed && subject.formalDate.kind === 'automatic' && lower && lower <= subject.executionWindowEnd) {
+        subject.suggestedDate = lower; continue;
+      }
+      if (edge.required && !subject.completed) subject.dependencyBlocked = true;
+      issue(cyclic.has(edge.id) ? 'dependencyCycle' : edge.required ? 'requiredDependencyNeedsReview' : 'optionalDependencyWarning', occurrence.choreId, occurrence.id, subject.subjectUserId, [edge.id]);
+    }
+  }
+  // One witness per affected slot suffices; avoid enumerating every pair in a long horizon.
+  type FixedSlot = { occurrence: V2PlannedOccurrence; subject: V2SubjectPlan; start: number; end: number; ruleId: string };
+  const fixedByAssignee = new Map<string, FixedSlot[]>();
+  for (const occurrence of occurrences) for (const subject of occurrence.subjects) {
+    if (subject.completed || subject.formalDate.kind !== 'manual' || subject.formalDate.mode !== 'fixed') continue;
+    const interval = fixedInterval(subject.formalDate.target); if (!interval) continue;
+    for (const uid of subject.assigneeIds) {
+      const list = fixedByAssignee.get(uid) ?? [];
+      list.push({ occurrence, subject, ...interval, ruleId: subject.formalDate.ruleId }); fixedByAssignee.set(uid, list);
+    }
+  }
+  const overlapping = new Map<string, { slot: FixedSlot; witness: FixedSlot }>();
+  for (const list of fixedByAssignee.values()) {
+    list.sort((a, b) => a.start - b.start || a.end - b.end || compareOperationIds(a.subject.id, b.subject.id));
+    let furthest: FixedSlot | undefined;
+    for (const slot of list) {
+      if (furthest && slot.start < furthest.end) {
+        if (!overlapping.has(slot.subject.id)) overlapping.set(slot.subject.id, { slot, witness: furthest });
+        if (!overlapping.has(furthest.subject.id)) overlapping.set(furthest.subject.id, { slot: furthest, witness: slot });
+      }
+      if (!furthest || slot.end > furthest.end) furthest = slot;
+    }
+  }
+  for (const { slot, witness } of overlapping.values()) issue('fixedOverlap', slot.occurrence.choreId, slot.occurrence.id,
+    slot.subject.subjectUserId, [slot.ruleId, witness.ruleId]);
+  occurrences.sort((a, b) => compareOperationIds(a.anchorDate, b.anchorDate) || compareOperationIds(a.choreId, b.choreId));
+  issues.sort((a, b) => compareOperationIds(canonicalJson(a), canonicalJson(b)));
+  const sourceHash = sharedDocumentDigest({ algorithm: V2_SCHEDULER_VERSION, roster: sharedRosterDigest(roster),
+    operations: fingerprints(view.ready), receipts: fingerprints([...input.receipts.values()].sort((a, b) => a.uploadSequence - b.uploadSequence)) });
+  const planHash = sharedDocumentDigest({ sourceHash, range, policy, commonSettings,
+    chores: fingerprints(chores), members: fingerprints(members), dependencies: fingerprints(dependencies), occurrences: fingerprints(occurrences), history: fingerprints(history), issues: digestPages(issues) });
+  return { groupId: view.groupId, algorithm: V2_SCHEDULER_VERSION, timeZone, initialized, range: { ...range }, policy, commonSettings,
+    chores, members, dependencies, occurrences, history, issues, sourceHash, planHash };
+}

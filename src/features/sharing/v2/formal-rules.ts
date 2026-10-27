@@ -15,14 +15,20 @@ export function approvedRequestRule(request: SharedOperation, state: V2DateReque
   if (!state.confirmation) throw new Error('Missing source confirmation evidence');
   const proposal = state.proposal;
   const target = validateDesignationTarget(proposal.proposedMode, state.formal);
-  const id = `v2-rule-${sharedDocumentDigest({ groupId: request.groupId, requestId: request.operationId, target,
-    mode: proposal.proposedMode, options: proposal.proposedOptions, selector: proposal.selector })}`;
+  const id = approvedRequestRuleId(request, target);
   const basisRuleIds = [...new Set([...(proposal.originalDesignationId ? [proposal.originalDesignationId] : []), ...(proposal.basisRuleIds ?? [])])].sort(compareOperationIds);
   return { operationId: id, authorDeviceId: request.authorDeviceId, deviceSequence: request.deviceSequence, context: { ...request.context },
     sourceRequestId: request.operationId, confirmation: state.confirmation,
     rule: { id, choreId: proposal.choreId, subjectUserId: proposal.subjectUserId, selector: proposal.selector,
       referenceAnchorDate: proposal.anchorDate, timeZoneAtCreation: context.timeZone, ruleVersion: context.ruleVersion,
-      mode: proposal.proposedMode, target, ...proposal.proposedOptions, issuerUserId: request.authorUserId, basisRuleIds } };
+      mode: proposal.proposedMode, target, ...proposal.proposedOptions, issuerUserId: request.authorUserId, basisRuleIds,
+      ...(proposal.reviewedRequestIds ? { reviewedRequestIds: [...proposal.reviewedRequestIds] } : {}) } };
+}
+/** Identity calculation does not establish approval; only approvedRequestRule supplies evidence. */
+export function approvedRequestRuleId(request: SharedOperation, target: import('./model.ts').DateTarget): string {
+  const proposal = request.payload as unknown as import('./model.ts').DateChangeRequest;
+  return `v2-rule-${sharedDocumentDigest({ groupId: request.groupId, requestId: request.operationId, target: validateDesignationTarget(proposal.proposedMode, target),
+    mode: proposal.proposedMode, options: proposal.proposedOptions, selector: proposal.selector })}`;
 }
 export function observedManualRule(fact: ManualRuleFact, at: CausalStamp): boolean {
   return fact.confirmation ? observedConfirmation(fact.confirmation, at) : causallyPrecedes(fact, at);

@@ -14,8 +14,8 @@ export interface DateChangeContext {
   operation?: CausalStamp;
 }
 export type DateChangePermission = { kind: 'allowed'; needsRequest: boolean; automaticallyApproved: boolean }
-  | { kind: 'approvalRequired'; approver: 'admin' | 'assignee'; reason: 'othersAssignment' | 'fixed' | 'outsideWindow' | 'strict' }
-  | { kind: 'denied'; reason: 'notMember' | 'fixedConflict' | 'permissionConflict' };
+  | { kind: 'approvalRequired'; approver: 'admin' | 'assignee' | 'adminAndAssignee'; reason: 'othersAssignment' | 'fixed' | 'outsideWindow' | 'strict' }
+  | { kind: 'denied'; reason: 'notMember' | 'fixedConflict' | 'permissionConflict' | 'dependency' };
 
 /** Grant facts have already authenticated their issuer against the signed roster at authoring. */
 export function effectiveDatePermission(input: { grants: readonly DatePermissionFact[]; choreId: string; userId: string;

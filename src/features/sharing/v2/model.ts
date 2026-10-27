@@ -27,6 +27,8 @@ export interface SharedChoreConfiguration {
   windowBeforeDays: number;
   windowAfterDays: number;
   ruleVersion: number;
+  effectiveFrom?: LocalDate;
+  active?: boolean;
 }
 export type DateTarget = { precision: 'date'; date: LocalDate }
   | { precision: 'instant'; at: string }
@@ -40,7 +42,10 @@ export interface CausalStamp {
 export type RuleSelector = { scope: 'once'; occurrenceId: string; anchorDate: LocalDate }
   | { scope: 'period'; range: CivilRange }
   | { scope: 'ongoing'; from: LocalDate };
-export interface DesignationOptions { strict: boolean; adminLocked: boolean; forbidEarlier: boolean }
+export interface DesignationOptions { strict: boolean; adminLocked: boolean; forbidEarlier: boolean; allowDuringCooldown?: boolean }
+export type RecordedInstruction = { kind: 'automatic'; timeZone: string }
+  | { kind: 'designated'; ruleId: string; mode: DesignationMode; target: DateTarget; strict: boolean; timeZone: string }
+  | { kind: 'unconfirmed'; reason: 'dateConflict' | 'cycleChanged' | 'timeZoneChanged' | 'invalidInterval'; timeZone: string };
 export interface ManualRule extends DesignationOptions {
   id: string;
   choreId: string;
@@ -53,12 +58,14 @@ export interface ManualRule extends DesignationOptions {
   issuerUserId: string;
   ruleVersion: number;
   basisRuleIds?: string[];
+  reviewedRequestIds?: string[];
 }
 export interface DateChangeRequest {
   requesterUserId: string; choreId: string; anchorDate: LocalDate; occurrenceId: string; subjectUserId: string | null;
   originalDesignationId: string | null; original: DateTarget; proposed: DateTarget;
   proposedMode: DesignationMode; proposedOptions: DesignationOptions; selector: RuleSelector; extensionScope: 'once' | 'future';
   basisRuleIds?: string[];
+  reviewedRequestIds?: string[];
 }
 export interface ManualRuleFact extends CausalStamp { rule: ManualRule; confirmation?: ConfirmationProof; sourceRequestId?: string }
 export interface SharedOccurrence {

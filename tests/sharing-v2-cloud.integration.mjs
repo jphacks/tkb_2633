@@ -20,6 +20,7 @@ import { v2OccurrenceId } from '../src/features/sharing/v2/occurrence-id.ts';
 import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
 import { addDays as addLocalDays } from '../src/domain/scheduling/local-date.ts';
 import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
+import { buildV2CommonPlan } from '../src/features/sharing/v2/common-plan.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -228,6 +229,11 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     for (const d of [member, restored]) { assert.deepEqual(rules(d), rules(owner)); assert.equal(hash(d), hash(owner)); }
     const selected = selectManualRule(rules(restored), { id: requestOccurrence, choreId: 'approval-floor', anchorDate, ruleVersion: 1 }, null, 'Asia/Tokyo');
     assert.equal(selected.kind, 'selected'); assert.deepEqual(selected.fact.rule.target, day(addLocalDays(anchorDate, 5)));
+    const planRange = { from: anchorDate, through: addLocalDays(anchorDate, 28), asOfDate: anchorDate };
+    const ownerPlan = buildV2CommonPlan(await owner.repository.readState(), planRange);
+    for (const d of [member, restored]) assert.deepEqual(buildV2CommonPlan(await d.repository.readState(), planRange), ownerPlan);
+    const planned = ownerPlan.occurrences.find((entry) => entry.id === requestOccurrence);
+    assert.equal(planned.subjects[0].suggestedDate, addLocalDays(anchorDate, 5));
     for (const d of [owner, member, restored]) assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
   } finally { owner.connection.close(); member.connection.close(); restored?.connection.close(); }
 });

@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-5';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-6';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -48,8 +48,11 @@ function groupPolicy(value: unknown): void {
   for (const name of names.filter((key) => key !== 'kind')) flag(data[name]);
 }
 function chorePolicy(value: unknown): void {
-  const data = record(value, ['policy', 'anchorDate', 'intervalDays', 'windowBeforeDays', 'windowAfterDays', 'ruleVersion']);
+  const required = ['policy', 'anchorDate', 'intervalDays', 'windowBeforeDays', 'windowAfterDays', 'ruleVersion'];
+  const data = record(value, [...required, 'effectiveFrom', 'active'], required);
   day(data.anchorDate); integer(data.intervalDays, 1, 3650); integer(data.windowBeforeDays, 0, 14); integer(data.windowAfterDays, 0, 14); integer(data.ruleVersion, 1);
+  if ('effectiveFrom' in data) { day(data.effectiveFrom); if ((data.effectiveFrom as string) < (data.anchorDate as string)) throw new Error('Effective date cannot precede its common anchor'); }
+  if ('active' in data) flag(data.active);
   const policy = record(data.policy, ['completion', 'assignment']); choice(policy.completion, ['one', 'perMember']);
   const assignment = record(policy.assignment, ['mode', 'memberIds']); choice(assignment.mode, ['open', 'all', 'selected']);
   const members = ids(assignment.memberIds, assignment.mode !== 'selected', 16);
@@ -95,8 +98,10 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   if (entityType === 'designation') {
     record(payload, ['configuration']);
     const required = ['id', 'choreId', 'subjectUserId', 'selector', 'referenceAnchorDate', 'timeZoneAtCreation', 'mode', 'target', 'strict', 'adminLocked', 'forbidEarlier', 'issuerUserId', 'ruleVersion'];
-    const data = record(payload.configuration, [...required, 'basisRuleIds'], required);
+    const data = record(payload.configuration, [...required, 'basisRuleIds', 'reviewedRequestIds', 'allowDuringCooldown'], required);
     if ('basisRuleIds' in data) ids(data.basisRuleIds);
+    if ('reviewedRequestIds' in data) ids(data.reviewedRequestIds, false);
+    if ('allowDuringCooldown' in data) flag(data.allowDuringCooldown);
     if (data.id !== binding.operationId || data.issuerUserId !== binding.authorUserId) throw new Error('A designation cannot impersonate another issuer');
     assertSharedIdentifier(data.choreId); idOrNull(data.subjectUserId); selector(data.selector); day(data.referenceAnchorDate); choice(data.mode, ['deadline', 'day', 'fixed']);
     if ((data.selector as RecordValue).scope === 'once' && (data.selector as RecordValue).anchorDate !== data.referenceAnchorDate) throw new Error('One-off designation anchor mismatch');
@@ -107,13 +112,14 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   if (entityType === 'designationCancel') { record(payload, ['targetOperationIds']); ids(payload.targetOperationIds, false); return; }
   if (entityType === 'changeRequest') {
     const required = ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'proposedMode', 'proposedOptions', 'selector', 'extensionScope'];
-    record(payload, [...required, 'basisRuleIds'], required);
+    record(payload, [...required, 'basisRuleIds', 'reviewedRequestIds'], required);
     if ('basisRuleIds' in payload) ids(payload.basisRuleIds);
+    if ('reviewedRequestIds' in payload) ids(payload.reviewedRequestIds, false);
     if (payload.requesterUserId !== binding.authorUserId) throw new Error('Request author mismatch');
     assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId); idOrNull(payload.subjectUserId); idOrNull(payload.originalDesignationId);
     target(payload.original); choice(payload.proposedMode, ['deadline', 'day', 'fixed']);
     validateDesignationTarget(payload.proposedMode as 'deadline' | 'day' | 'fixed', payload.proposed as unknown as DateTarget);
-    Object.values(record(payload.proposedOptions, ['strict', 'adminLocked', 'forbidEarlier'])).forEach(flag);
+    Object.values(record(payload.proposedOptions, ['strict', 'adminLocked', 'forbidEarlier', 'allowDuringCooldown'], ['strict', 'adminLocked', 'forbidEarlier'])).forEach(flag);
     selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;
   }
   if (entityType === 'requestDecision') {
@@ -138,11 +144,21 @@ export function validateV2CompletionPayload(payload: RecordValue, operationType:
   if (operationType === 'undo') { record(payload, ['targetOperationId']); assertSharedIdentifier(payload.targetOperationId); return; }
   if (operationType !== 'complete') throw new Error('V2 completion facts are immutable');
   const required = ['choreId', 'anchorDate', 'completedAt', 'completedByMemberId', 'subjectUserId', 'originalAssigneeIds', 'ruleVersion', 'outcome'];
-  record(payload, [...required, 'scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate', 'completionNote'], required);
+  record(payload, [...required, 'scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate', 'completionNote', 'recordedInstruction'], required);
   assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.completedByMemberId); idOrNull(payload.subjectUserId);
   ids(payload.originalAssigneeIds, true, 16); integer(payload.ruleVersion, 1); choice(payload.outcome, ['completed', 'incomplete']); timestamp(payload.completedAt);
   if (instantMilliseconds(payload.completedAt as string) > instantMilliseconds(recordedAt)) throw new Error('Actual work cannot be recorded before it took place');
   for (const field of ['scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate']) if (field in payload) day(payload[field]);
   if ('completionNote' in payload) choice(payload.completionNote, ['completedNow', 'alreadyDone']);
   if (payload.scheduledWindowStart && payload.scheduledWindowEnd && payload.scheduledWindowStart > payload.scheduledWindowEnd) throw new Error('Invalid completion window');
+  if ('recordedInstruction' in payload) {
+    const info = record(payload.recordedInstruction, ['kind', 'timeZone', 'ruleId', 'mode', 'target', 'strict', 'reason'], ['kind', 'timeZone']);
+    if (!isSharedTimeZone(info.timeZone)) throw new Error('Invalid recorded instruction timezone');
+    if (info.kind === 'automatic') record(info, ['kind', 'timeZone']);
+    else if (info.kind === 'designated') {
+      record(info, ['kind', 'timeZone', 'ruleId', 'mode', 'target', 'strict']); assertSharedIdentifier(info.ruleId);
+      choice(info.mode, ['deadline', 'day', 'fixed']); flag(info.strict); validateDesignationTarget(info.mode as 'deadline' | 'day' | 'fixed', info.target as unknown as DateTarget);
+    } else if (info.kind === 'unconfirmed') { record(info, ['kind', 'timeZone', 'reason']); choice(info.reason, ['dateConflict', 'cycleChanged', 'timeZoneChanged', 'invalidInterval']); }
+    else throw new Error('Invalid recorded instruction');
+  }
 }

@@ -201,3 +201,17 @@ test('v2 private relocation searches the original civil day first even when earl
   assert.deepEqual(result.proposed, { start: requestedAt + 32 * hour, end: requestedAt + 33 * hour });
   assert.equal(proposePersonalRelocation({ ...input, fixedAndBusyIntervals: [{ start: requestedAt, end: requestedAt + 48 * hour }] }).reason, 'noSlot');
 });
+
+test('v2 prepared Calendar checks validate a bounded cache once and preserve union durations without repeatedly scanning the original cache', async () => {
+  const { createPrivateCalendarAvailability } = await import('../src/features/sharing/v2/private-availability.ts');
+  const binding = { ownerUserId: 'a', accountGeneration: 'generation', mainDeviceId: 'main', mainRevision: 1, calendarBinding: 'calendar' };
+  const start = Date.parse('2026-10-01T00:00:00Z'); let reads = 0;
+  const intervals = Array.from({ length: 20000 }, (_, i) => ({ start: new Date(start + i * 60000).toISOString(), end: new Date(start + (i + 2) * 60000).toISOString() }));
+  const cache = { ...binding, timeZone: 'UTC', fetchedAt: new Date(start).toISOString(), coverage: { start: new Date(start).toISOString(), end: new Date(start + 40 * 86400000).toISOString() }, get intervals() { reads++; return intervals; } };
+  const read = createPrivateCalendarAvailability(cache, binding, start); const preparedReads = reads;
+  for (let i = 0; i < 100; i++) {
+    const result = read({ precision: 'interval', start: new Date(start + i * 60000).toISOString(), end: new Date(start + (i + 60) * 60000).toISOString() });
+    assert.equal(result.conflict.kind, 'conflict'); assert.equal(result.busyMinutes, 60);
+  }
+  assert.equal(reads, preparedReads);
+});

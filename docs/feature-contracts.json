@@ -1649,5 +1649,83 @@
         "name": "v2 a batch of 256 counteroffers retains all facts and converges through 100-event receipt pages with one current alternative"
       }
     ]
+  },
+  {
+    "feature": "v2-common-plan-history",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 common planner keeps real work separate from strict instruction fulfillment and never rewrites it with later dates"
+      },
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 common planner uses explicit activity boundaries for unknown-date activation and keeps disabled intervals empty"
+      }
+    ]
+  },
+  {
+    "feature": "v2-common-plan-review",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 causal-cut approval permits legitimate children while later contradictory answers reopen review until explicitly resolved"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 combined approval preserves both administrator and every affected assignee consent"
+      }
+    ]
+  },
+  {
+    "feature": "v2-private-recommendations",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-plan.test.mjs",
+        "name": "v2 personal recommendations differ by private Calendar while the common windows and common hash remain identical"
+      },
+      {
+        "file": "tests/sharing-v2-personal-plan.test.mjs",
+        "name": "v2 personal recommendations cannot read another UID private preferences or use its Calendar as a free result"
+      }
+    ]
+  },
+  {
+    "feature": "v2-atomic-current-state",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 repository serializes authenticated reads and current-state mutation builders without nested transactions or stale updates"
+      },
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 repository revocation during projection rolls back the fact, outbox and projection together"
+      }
+    ]
+  },
+  {
+    "feature": "v2-planner-actions",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 actions record completion and targeted undo atomically and make repeated checkbox taps idempotent"
+      },
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 actions keep bootstrap separate, require explicit activation and protect administrator settings from members"
+      }
+    ]
+  },
+  {
+    "feature": "v2-required-order-preservation",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 common dependency matching uses dates across different cycles and a completed predecessor outside the visible range"
+      },
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 receiver refuses new dates and counteroffers before a required predecessor but accepts a later resolving date"
+      }
+    ]
   }
 ]

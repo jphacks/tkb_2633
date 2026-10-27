@@ -44,11 +44,12 @@ async function fixture(preset = 'common', members = [], policy = createGroupPoli
   const occurrenceId = v2OccurrenceId(groupId, 'floor', anchorDate);
   const validate = (facts = operations, rosters = archive) => validateV2BusinessHistory(buildSharedReplica(groupId, facts), rosters);
   const claim = (uid, observed = operations) => make(uid, 'claim', { choreId: 'floor', anchorDate, occurrenceId, userId: uid }, { observed });
-  const designation = (uid, target, { choreId = 'floor', subjectUserId = null, selector, strict = false, adminLocked = false, forbidEarlier = false, observed = operations } = {}) => {
+  const designation = (uid, target, { choreId = 'floor', subjectUserId = null, selector, strict = false, adminLocked = false, forbidEarlier = false, basisRuleIds, observed = operations } = {}) => {
     const id = `op-${String(nextId + 1).padStart(4, '0')}`;
     return make(uid, 'designation', { configuration: { id, choreId, subjectUserId, referenceAnchorDate: anchorDate, timeZoneAtCreation: 'Asia/Tokyo',
       selector: selector ?? { scope: 'once', occurrenceId: v2OccurrenceId(groupId, choreId, anchorDate), anchorDate },
-      mode: target.precision === 'interval' ? 'fixed' : 'day', target, strict, adminLocked, forbidEarlier, issuerUserId: uid, ruleVersion: 1 } }, { observed });
+      mode: target.precision === 'interval' ? 'fixed' : 'day', target, strict, adminLocked, forbidEarlier, issuerUserId: uid, ruleVersion: 1,
+      ...(basisRuleIds ? { basisRuleIds } : {}) } }, { observed });
   };
   const complete = (uid, subjectUserId = null, originalAssigneeIds = [], performer = uid) => make(uid, 'completion', {
     choreId: 'floor', anchorDate, completedAt: '2026-10-26T23:00:00Z', completedByMemberId: performer,
@@ -251,4 +252,58 @@ test('v2 administrator counteroffers cannot bypass another fixed shared chore fo
   assert.throws(() => f.validate(), /Counteroffer conflicts/); f.operations.pop();
   f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'counteroffer', target: time('2026-10-27T04:00:00Z', '2026-10-27T05:00:00Z'), referenceDecisionId: null });
   f.validate();
+});
+
+test('v2 date conflict resolution observes every candidate and cannot silently resolve from an incomplete or lower-priority basis', async () => {
+  const f = await fixture('assigned', ['a']); const base = [...f.operations];
+  const first = f.designation('owner', date('2026-10-28'), { observed: base });
+  const second = f.designation('a', date('2026-10-29'), { observed: base }); f.validate();
+  f.designation('owner', date('2026-10-30'), { basisRuleIds: [first.operationId] });
+  assert.throws(() => f.validate(), /every observed candidate/); f.operations.pop();
+  f.designation('owner', date('2026-10-30'), { basisRuleIds: [first.operationId, second.operationId], selector: { scope: 'ongoing', from: anchorDate } });
+  assert.throws(() => f.validate(), /lower-priority/); f.operations.pop();
+  const resolved = f.designation('owner', date('2026-10-30'), { basisRuleIds: [first.operationId, second.operationId] }); f.validate();
+  const probe = f.make('owner', 'member', { displayName: '管理者' }, { entityId: 'owner' });
+  const context = dateChangeContextAtOperation(createV2HistoryView(buildSharedReplica(groupId, f.operations)), f.archive,
+    { ...probe, entityType: 'changeRequest', payload: { choreId: 'floor', anchorDate, subjectUserId: null,
+      originalDesignationId: resolved.operationId, original: date('2026-10-30'), proposed: date('2026-10-30'), proposedMode: 'day',
+      proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, basisRuleIds: [resolved.operationId] } });
+  assert.equal(context.originalRule.id, resolved.operationId);
+});
+test('v2 members resolving conflicting dates must request administrator approval and inherit every candidate instruction guard', async () => {
+  const f = await fixture('assigned', ['a']); const base = [...f.operations];
+  const first = f.designation('owner', date('2026-10-28'), { strict: true, forbidEarlier: true, observed: base });
+  const second = f.designation('a', date('2026-10-29'), { observed: base });
+  const basisRuleIds = [first.operationId, second.operationId];
+  f.designation('a', date('2026-10-30'), { basisRuleIds }); assert.throws(() => f.validate(), /requires a signed request/); f.operations.pop();
+  const request = f.make('a', 'changeRequest', { requesterUserId: 'a', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
+    originalDesignationId: null, original: date('2026-10-28'), proposed: date('2026-10-30'), proposedMode: 'day',
+    proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, basisRuleIds,
+    selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' }); f.validate();
+  const context = dateChangeContextAtOperation(createV2HistoryView(buildSharedReplica(groupId, f.operations)), f.archive, request);
+  assert.equal(context.originalWasConflicted, true); assert.equal(context.originalOptions.strict, true); assert.equal(context.originalOptions.forbidEarlier, true);
+  assert.deepEqual(context.permission, { kind: 'approvalRequired', approver: 'admin', reason: 'strict' });
+  f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null }); f.validate();
+});
+test('v2 an administrator resolving roommate date conflicts still needs the affected assignee consent', async () => {
+  const f = await fixture('assigned', ['a'], { ...createGroupPolicy('roommates'), delegationEnabled: true });
+  f.make('owner', 'datePermission', { choreId: 'floor', userId: 'b', enabled: true,
+    rights: { changeDate: true, changeOthers: true, changeBeforeWindow: false } }, { entityId: v2DatePermissionId(groupId, 'floor', 'b') });
+  const base = [...f.operations]; const first = f.designation('a', date('2026-10-28'), { observed: base });
+  const second = f.designation('b', date('2026-10-29'), { observed: base });
+  const basisRuleIds = [first.operationId, second.operationId];
+  f.designation('owner', date('2026-10-30'), { basisRuleIds }); assert.throws(() => f.validate(), /requires a signed request/); f.operations.pop();
+  const request = f.make('owner', 'changeRequest', { requesterUserId: 'owner', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
+    originalDesignationId: null, original: date('2026-10-28'), proposed: date('2026-10-30'), proposedMode: 'day',
+    proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, basisRuleIds,
+    selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' }); f.validate();
+  f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null });
+  assert.throws(() => f.validate(), /designated approver/); f.operations.pop();
+  f.make('a', 'requestDecision', { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null }); f.validate();
+});
+test('v2 an administrator can cancel an explicitly observed conflict candidate without erasing the other candidate or history', async () => {
+  const f = await fixture('assigned', ['a']); const base = [...f.operations];
+  const first = f.designation('owner', date('2026-10-28'), { observed: base }); const second = f.designation('a', date('2026-10-29'), { observed: base });
+  const undo = f.make('owner', 'designationCancel', { targetOperationIds: [second.operationId] }); f.validate();
+  assert.ok(f.operations.includes(first)); assert.ok(f.operations.includes(second)); assert.equal(undo.payload.targetOperationIds.length, 1);
 });

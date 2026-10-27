@@ -3,7 +3,7 @@ import { canonicalJson } from '../operations.ts';
 import { uniqueCausalFacts } from './causal-facts.ts';
 import { maximalManualRules } from './formal-rules.ts';
 import type { LocalDate } from '../../../domain/shared/types.ts';
-import type { CivilRange, ManualRuleFact, SharedOccurrence } from './model.ts';
+import type { CivilRange, ManualRuleFact, SharedOccurrence, RuleSelector } from './model.ts';
 import { normalizeDateTarget } from './date-target.ts';
 import { materializeRuleTarget } from './rule-target.ts';
 
@@ -33,14 +33,17 @@ export function finiteValidity(from: LocalDate, selection: 'twoWeeks' | 'oneMont
   const exclusive = start.toISOString().slice(0, 10) as LocalDate; parseLocalDate(exclusive);
   return { from, through: addDays(exclusive, -1) };
 }
+export function ruleSelectorMatches(selector: RuleSelector, occurrence: SharedOccurrence): boolean {
+  if (selector.scope === 'once') return selector.occurrenceId === occurrence.id;
+  const from = selector.scope === 'period' ? selector.range.from : selector.from;
+  const through = selector.scope === 'period' ? selector.range.through : null;
+  return from <= occurrence.anchorDate && (through === null || occurrence.anchorDate <= through);
+}
 export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: SharedOccurrence, subjectUserId: string | null, timeZone?: string):
   { kind: 'automatic' } | { kind: 'selected'; fact: ManualRuleFact; equivalentOperationIds: string[] } | { kind: 'conflict'; candidates: ManualRuleFact[] } {
   const matching = uniqueCausalFacts(facts).filter(({ rule }) => {
     if (rule.choreId !== occurrence.choreId || rule.subjectUserId !== subjectUserId) return false;
-    if (rule.selector.scope === 'once') return rule.selector.occurrenceId === occurrence.id;
-    const from = rule.selector.scope === 'period' ? rule.selector.range.from : rule.selector.from;
-    const through = rule.selector.scope === 'period' ? rule.selector.range.through : null;
-    return from <= occurrence.anchorDate && (through === null || occurrence.anchorDate <= through);
+    return ruleSelectorMatches(rule.selector, occurrence);
   });
   if (!matching.length) return { kind: 'automatic' };
   const rank = (fact: ManualRuleFact) => fact.rule.selector.scope === 'once' ? 3 : fact.rule.selector.scope === 'period' ? 2 : 1;
@@ -53,7 +56,8 @@ export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: S
         ? { ...raw, date: addDays(raw.date, daysBetween(fact.rule.referenceAnchorDate, occurrence.anchorDate)) }
         : (() => { throw new Error('A shared timezone is required to compare repeating clock times'); })();
     return canonicalJson({ mode: fact.rule.mode, target,
-    strict: fact.rule.strict, adminLocked: fact.rule.adminLocked, forbidEarlier: fact.rule.forbidEarlier });
+    strict: fact.rule.strict, adminLocked: fact.rule.adminLocked, forbidEarlier: fact.rule.forbidEarlier,
+    allowDuringCooldown: fact.rule.allowDuringCooldown === true });
   };
   if (new Set(candidates.map(content)).size > 1) return { kind: 'conflict', candidates };
   return { kind: 'selected', fact: candidates[0], equivalentOperationIds: candidates.map((item) => item.operationId) };

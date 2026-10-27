@@ -598,13 +598,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **996 tests PASS（iOS・Androidの両条件、未有効化のv2基盤を含む）** |
+| 自動テスト | **1043 tests PASS（iOS・Androidの両条件、未有効化のv2基盤を含む）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **113機能（従来84を保持、元の44を含む）** |
+| 保護対象feature contract | **119機能（従来84を保持、元の44を含む）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |

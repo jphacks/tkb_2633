@@ -33,6 +33,11 @@ function serial<T>(db: SQLiteDatabase, operation: () => Promise<T>): Promise<T> 
   return pending;
 }
 
+/** Reads that rebuild v2 state share the same queue as mutations and received batches. */
+export function withSharingLedgerTransaction<T>(db: SQLiteDatabase, work: (transaction: SQLiteDatabase) => Promise<T>): Promise<T> {
+  return serial(db, () => atomic(db, work));
+}
+
 export function initializeSharingLedger(db: SQLiteDatabase): Promise<void> {
   return serial(db, async () => { await db.execAsync(`
     CREATE TABLE IF NOT EXISTS sharing_operations (
@@ -141,6 +146,11 @@ export function createLocalSharedOperation(
 }
 
 export type SharedOperationDraft = Pick<SharedOperation, 'operationId' | 'entityType' | 'entityId' | 'operationType' | 'payload'>;
+
+/** Caller already holds the database transaction; do not re-enter the ledger queue. */
+export function readSharedReplicaInsideTransaction(db: SQLiteDatabase, groupId: string): Promise<SharedReplica> {
+  return loadReplicaInside(db, groupId);
+}
 
 /** One user action can update a chore and its baseline atomically; upload pages remain capped at 100. */
 export function createLocalSharedOperations(

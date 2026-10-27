@@ -24,6 +24,9 @@ import { deriveV2DateRequest } from './request-state.ts';
 import type { V2DateRequestState } from './request-state.ts';
 import { approvedRequestRule } from './formal-rules.ts';
 import { observedDateRules } from './formal-rule-view.ts';
+import { recordedInstructionAt } from './recorded-instruction.ts';
+import { violatesV2RequiredOrder } from './date-dependencies.ts';
+type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
 
 export class V2AuthorityError extends Error { readonly code = 'sharing/v2-authority-denied'; }
 export interface VerifiedLegacyMigration {
@@ -67,6 +70,7 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   const requestContexts = new Map<string, ReturnType<typeof dateContext>>();
   const requestDecisions = new Map<string, SharedOperation[]>();
   const dirtyRequests = new Set<string>();
+  const causalRequestStates = new Map<string, Map<string, V2DateRequestState>>();
   let confirmedServerTime = 0;
   for (const receipt of evidence?.receipts.values() ?? []) confirmedServerTime = Math.max(confirmedServerTime, receipt.receivedAtMs);
   const unconfirmedFrontier = new Map<string, number>();
@@ -76,10 +80,17 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
     .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
   for (const op of ready) {
     try {
-      if (evidence && ['designation', 'designationCancel', 'changeRequest', 'requestDecision'].includes(op.entityType)) {
-        flushRequests(op.entityType === 'requestDecision' ? op.payload.requestId as string : undefined);
+      const formal = ['designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completion'].includes(op.entityType)
+        ? formalRulesAt(op, op.entityType === 'requestDecision' ? op.payload.requestId as string : undefined) : [];
+      const reviewIds = (op.entityType === 'designation' ? (op.payload.configuration as unknown as ManualRule).reviewedRequestIds
+        : op.entityType === 'changeRequest' ? op.payload.reviewedRequestIds as string[] | undefined : undefined) ?? [];
+      const reviews = new Map<string, V2DateRequestState>();
+      if (evidence) for (const id of reviewIds) {
+        const state = requestAt(id, op); if (state) reviews.set(id, state);
       }
-      const formal = [...approvedRules.values()];
+      if (evidence && view.ofType('dependency').length && (op.entityType === 'designation' || op.entityType === 'changeRequest' || op.entityType === 'requestDecision' && op.payload.decision === 'counteroffer')) {
+        for (const request of view.ofType('changeRequest')) { const state = requestAt(request.operationId, op); if (state) reviews.set(request.operationId, state); }
+      }
       if (evidence && op.schemaVersion === 2) {
         const receipt = evidence.receipts.get(op.operationId);
         if (receipt) {
@@ -92,14 +103,14 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
             if (!prior) throw new V2AwaitingReceiptError('Fetch the observed fact receipt before applying its descendant');
             if (prior.uploadSequence >= receipt.uploadSequence) throw new V2ReceiptCausalityError('A future server event cannot retroactively establish observed authority');
           }
-          authorizeV2Operation(view, archive, op, migration, undefined, receiptEpochs, formal, requestContexts); authorizeV2Operation(view, archive, op, migration, receivedEpoch, receiptEpochs, formal, requestContexts);
+          authorizeV2Operation(view, archive, op, migration, undefined, receiptEpochs, formal, requestContexts, reviews, evidence.receipts); authorizeV2Operation(view, archive, op, migration, receivedEpoch, receiptEpochs, formal, requestContexts, reviews, evidence.receipts);
         } else if (evidence.pendingLocalIds.has(op.operationId)) {
-          authorizeV2Operation(view, archive, op, migration, undefined, receiptEpochs, formal, requestContexts);
-          authorizeV2Operation(view, archive, op, migration, archive.at(-1), receiptEpochs, formal, requestContexts);
+          authorizeV2Operation(view, archive, op, migration, undefined, receiptEpochs, formal, requestContexts, reviews, evidence.receipts);
+          authorizeV2Operation(view, archive, op, migration, archive.at(-1), receiptEpochs, formal, requestContexts, reviews, evidence.receipts);
         } else throw new V2AwaitingReceiptError('Fetch the immutable receipt before applying this received fact');
       } else authorizeV2Operation(view, archive, op, migration);
       const originalContext = evidence && op.entityType === 'changeRequest'
-        ? dateContext(view, archive, op, undefined, undefined, receiptEpochs.get(op.operationId), formal) : undefined;
+        ? dateContext(view, archive, op, undefined, undefined, receiptEpochs.get(op.operationId), formal, reviews, { receipts: evidence.receipts, epochs: receiptEpochs }) : undefined;
       accept(op);
       if (evidence?.pendingLocalIds.has(op.operationId) && !evidence.receipts.has(op.operationId)) provisionalOperationIds.push(op.operationId);
       if (originalContext) { requestContexts.set(op.operationId, originalContext); dirtyRequests.add(op.operationId); }
@@ -117,7 +128,32 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   }
   flushRequests();
   return { view, rejected, provisionalOperationIds, receiptEpochs: receiptEpochs as ReadonlyMap<string, VerifiedSharedRoster>,
-    requestStates: [...requestStates.values()], approvedRules: [...approvedRules.values()] };
+    requestStates: [...requestStates.values()], approvedRules: [...approvedRules.values()], formalRulesAt };
+
+  function requestAt(id: string, at: SharedOperation): V2DateRequestState | undefined {
+    if (!evidence) return;
+    const request = view.byId(id); const context = requestContexts.get(id);
+    if (!request || !context || !causallyPrecedes(request, at)) return;
+    const key = canonicalJson(at.context); const cut = causalRequestStates.get(key) ?? new Map<string, V2DateRequestState>();
+    causalRequestStates.set(key, cut);
+    if (!cut.has(id)) cut.set(id, deriveV2DateRequest({ request: evidence.facts.get(id)!,
+      decisions: (requestDecisions.get(id) ?? []).filter((fact) => causallyPrecedes(fact, at)).map((fact) => evidence.facts.get(fact.operationId)!),
+      receipts: evidence.receipts, archive, confirmedServerTime,
+      context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone,
+        originalWasConflicted: context.originalWasConflicted, basisRuleIds: context.basisRuleIds } }));
+    while (causalRequestStates.size > 256) causalRequestStates.delete(causalRequestStates.keys().next().value!);
+    return cut.get(id);
+  }
+  function formalRulesAt(at: SharedOperation, except?: string): ManualRuleFact[] {
+    const rules: ManualRuleFact[] = [];
+    for (const [id, context] of requestContexts) {
+      if (id === except) continue;
+      const state = requestAt(id, at); if (!state) continue;
+      const rule = approvedRequestRule(view.byId(id)!, state, { timeZone: context.zone, ruleVersion: context.config.ruleVersion });
+      if (rule) rules.push(rule);
+    }
+    return rules;
+  }
 
   function flushRequests(except?: string): void {
     if (!evidence) return;
@@ -126,7 +162,8 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
       const context = requestContexts.get(id)!; const request = view.byId(id)!;
       const state = deriveV2DateRequest({ request: evidence.facts.get(id)!,
         decisions: (requestDecisions.get(id) ?? []).map((fact) => evidence.facts.get(fact.operationId)!), receipts: evidence.receipts, archive, confirmedServerTime,
-        context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone } });
+        context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone,
+          originalWasConflicted: context.originalWasConflicted, basisRuleIds: context.basisRuleIds } });
       const rule = approvedRequestRule(request, state, { timeZone: context.zone, ruleVersion: context.config.ruleVersion });
       requestStates.set(id, state); if (rule) approvedRules.set(id, rule); else approvedRules.delete(id);
       dirtyRequests.delete(id);
@@ -146,7 +183,7 @@ export function validateV2DeliveredAuthority(view: V2HistoryView, archive: reado
 
 function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, migration?: VerifiedLegacyMigration,
   receivedEpoch?: VerifiedSharedRoster, requestEpochs?: ReadonlyMap<string, VerifiedSharedRoster>, formalRules: readonly ManualRuleFact[] = [],
-  requestContexts?: ReadonlyMap<string, ReturnType<typeof dateContext>>): void {
+  requestContexts?: ReadonlyMap<string, ReturnType<typeof dateContext>>, reviewedRequests?: ReadonlyMap<string, V2DateRequestState>, receipts?: ReadonlyMap<string, V2ServerReceipt>): void {
   const originalEpoch = rosterAtOperation(archive, op); const epoch = receivedEpoch ?? originalEpoch; const admin = epoch.body.ownerUserId === op.authorUserId;
   sharedAuthorIdentity(originalEpoch, op.authorUserId, op.authorDeviceId, op.keyVersion);
   if (receivedEpoch) sharedAuthorIdentity(receivedEpoch, op.authorUserId, op.authorDeviceId, op.keyVersion);
@@ -200,10 +237,10 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   if (op.entityType === 'requestDecision') {
     const request = observedTarget(view, op, op.payload.requestId as string, 'changeRequest');
     const context = requestContexts?.get(request.operationId)
-      ?? dateContext(view, archive, request, undefined, undefined, requestEpochs?.get(request.operationId), formalRules);
+      ?? dateContext(view, archive, request, undefined, undefined, requestEpochs?.get(request.operationId), formalRules, reviewedRequests, receipts ? { receipts, epochs: requestEpochs ?? new Map() } : undefined);
     if (op.payload.decision === 'acceptCounteroffer') {
       const proposed = observedTarget(view, op, op.payload.referenceDecisionId as string, 'requestDecision');
-      const recipients = context.permission.kind === 'approvalRequired' && context.permission.approver === 'assignee'
+      const recipients = context.permission.kind === 'approvalRequired' && context.permission.approver !== 'admin'
         ? context.assigneeIds : [request.authorUserId];
       requireAuthority(recipients.includes(op.authorUserId) && proposed.payload.requestId === request.operationId
         && proposed.payload.decision === 'counteroffer', 'Only the affected consenting member may accept that administrator counteroffer');
@@ -211,12 +248,14 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     else {
       const permission = context.permission;
       requireAuthority(admin && !(permission.kind === 'approvalRequired' && permission.approver === 'assignee')
-        || permission.kind === 'approvalRequired' && permission.approver === 'assignee' && context.assigneeIds.includes(op.authorUserId), 'Decision requires the designated approver');
+        || permission.kind === 'approvalRequired' && permission.approver !== 'admin' && context.assigneeIds.includes(op.authorUserId), 'Decision requires the designated approver');
     }
     if (op.payload.target !== null) {
       const target = validateDesignationTarget(context.mode, op.payload.target as unknown as DateTarget);
       requireAuthority(!fixedConflictAtOperation(view, archive, op, target, context.assigneeIds,
         { occurrenceId: context.frame.id, subjectUserId: request.payload.subjectUserId as string | null }, formalRules), 'Counteroffer conflicts with a fixed shared assignment');
+      requireAuthority(!violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame, subjectUserId: request.payload.subjectUserId as string | null,
+        target, timeZone: context.zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])], receiptEpochs: requestEpochs ?? new Map(), receipts }), 'Counteroffer violates a required chore order');
     }
     return;
   }
@@ -245,6 +284,14 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     const expected = frame.config.policy.completion === 'perMember' ? [payload.subjectUserId as string] : frame.assigneeIds;
     requireAuthority(canonicalJson([...(payload.originalAssigneeIds as string[])].sort()) === canonicalJson([...expected].sort()), 'Original assignees must match the observed common state');
     requireAuthority(admin || payload.completedByMemberId === op.authorUserId || expected.includes(op.authorUserId), 'A member cannot record work as another person');
+    if ('recordedInstruction' in payload) {
+      const instruction = recordedInstructionAt(view, op, frame.frame, payload.subjectUserId as string | null, formalRules);
+      requireAuthority(canonicalJson(payload.recordedInstruction) === canonicalJson(instruction), 'Recorded instruction must match the formal date observed when reporting work');
+      if ('scheduledDate' in payload && instruction.kind !== 'unconfirmed') {
+        const expectedDate = instruction.kind === 'designated' ? targetCivilDate(instruction.target, instruction.timeZone) : frame.frame.anchorDate;
+        requireAuthority(payload.scheduledDate === expectedDate, 'A private recommendation cannot replace the recorded common date');
+      }
+    }
     // Disallowed substitutions remain real reports awaiting approval; they are not accepted completions.
     groupPolicyAt(view, op); return;
   }
@@ -269,13 +316,14 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   }
   if (op.entityType === 'designation' || op.entityType === 'changeRequest') {
     if (rule?.adminLocked) adminOnly();
+    if (rule?.allowDuringCooldown) adminOnly();
     const selector = rule?.selector ?? op.payload.selector as unknown as ManualRule['selector'];
     requireAuthority(selector.scope === 'once' ? selector.occurrenceId === frame.frame.id && selector.anchorDate === frame.frame.anchorDate
       : selector.scope === 'period' ? selector.range.from <= anchorDate && (selector.range.through === null || anchorDate <= selector.range.through) : selector.from <= anchorDate,
     'Date rule must include its reference occurrence');
-    const context = dateContext(view, archive, op, rule ?? undefined, undefined, receivedEpoch, formalRules);
+    const context = dateContext(view, archive, op, rule ?? undefined, undefined, receivedEpoch, formalRules, reviewedRequests, receipts ? { receipts, epochs: requestEpochs ?? new Map() } : undefined);
     if (rule) requireAuthority(rule.timeZoneAtCreation === context.zone, 'Designation must bind the group timezone observed by its author');
-    if (!rule && context.proposedOptions.adminLocked && !context.originalRule?.adminLocked) adminOnly();
+    if (!rule && context.proposedOptions.adminLocked && !context.originalOptions.adminLocked) adminOnly();
     requireAuthority(context.permission.kind !== 'denied', 'This date change is forbidden');
     if (rule) requireAuthority(context.permission.kind === 'allowed' && !context.permission.needsRequest, 'This date change requires a signed request and consent');
     return;
@@ -283,11 +331,12 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   throw new V2AuthorityError('Unsupported v2 business operation');
 }
 
-export function dateChangeContextAtOperation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, receivedEpoch?: VerifiedSharedRoster, formalRules: readonly ManualRuleFact[] = []) {
-  return dateContext(view, archive, op, undefined, undefined, receivedEpoch, formalRules);
+export function dateChangeContextAtOperation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, receivedEpoch?: VerifiedSharedRoster,
+  formalRules: readonly ManualRuleFact[] = [], reviewedRequests?: ReadonlyMap<string, V2DateRequestState>, dependencyEvidence?: DependencyEvidence) {
+  return dateContext(view, archive, op, undefined, undefined, receivedEpoch, formalRules, reviewedRequests, dependencyEvidence);
 }
 function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, rule?: ManualRule, proposedOverride?: DateTarget,
-  receivedEpoch?: VerifiedSharedRoster, formalRules: readonly ManualRuleFact[] = []) {
+  receivedEpoch?: VerifiedSharedRoster, formalRules: readonly ManualRuleFact[] = [], reviewedRequests?: ReadonlyMap<string, V2DateRequestState>, dependencyEvidence?: DependencyEvidence) {
   const choreId = rule?.choreId ?? op.payload.choreId as string; const anchorDate = rule?.referenceAnchorDate ?? op.payload.anchorDate as LocalDate;
   const context = frameAtOperation(view, archive, op, choreId, anchorDate, rule?.ruleVersion);
   const subject = rule ? rule.subjectUserId : op.payload.subjectUserId as string | null;
@@ -297,17 +346,43 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   requireAuthority(typeof zone === 'string', 'Missing shared timezone');
   const rules = observedDateRules(view, op, formalRules);
   const current = selectManualRule(rules, context.frame, subject, zone);
-  if (current.kind === 'conflict') throw new V2HistoryConflictError('Resolve concurrent dates before another change');
+  const cancelling = op.entityType === 'designationCancel';
+  const basis = cancelling ? [] : rule?.basisRuleIds ?? op.payload.basisRuleIds as string[] | undefined ?? [];
+  const reviewIds = cancelling ? [] : rule?.reviewedRequestIds ?? op.payload.reviewedRequestIds as string[] | undefined ?? [];
+  for (const id of reviewIds) {
+    const request = observedTarget(view, op, id, 'changeRequest'); const state = reviewedRequests?.get(id);
+    requireAuthority(request.payload.choreId === choreId && request.payload.subjectUserId === subject
+      && state && state.conflictIds.length > 0 && state.conflictIds.every((decisionId) => {
+        const decision = view.byId(decisionId); return decision && causallyPrecedes(decision, op);
+      }), 'A request conflict review must observe its actual conflicting answers for this chore and subject');
+  }
+  if (current.kind === 'conflict') {
+    if (!(cancelling && op.authorUserId === epoch.body.ownerUserId) && !current.candidates.every((fact) => basis.includes(fact.operationId))) {
+      throw new V2HistoryConflictError('Resolve concurrent dates with every observed candidate before another change');
+    }
+    if (!cancelling) {
+      const rank = (scope: ManualRule['selector']['scope']) => scope === 'once' ? 3 : scope === 'period' ? 2 : 1;
+      const selector = rule?.selector ?? op.payload.selector as unknown as ManualRule['selector'];
+      requireAuthority(rank(selector.scope) >= Math.max(...current.candidates.map((fact) => rank(fact.rule.selector.scope))), 'A lower-priority recurrence cannot resolve a more specific date conflict');
+    }
+  }
   const known = new Set(observedDateRules(view, op, formalRules, true).filter((fact) => fact.rule.choreId === choreId && fact.rule.subjectUserId === subject).map((fact) => fact.operationId));
-  for (const id of rule?.basisRuleIds ?? op.payload.basisRuleIds as string[] | undefined ?? []) requireAuthority(known.has(id), 'Date basis must reference an observed rule for this chore and subject');
+  for (const id of basis) requireAuthority(known.has(id), 'Date basis must reference an observed rule for this chore and subject');
   const originalRule = current.kind === 'selected' ? current.fact.rule : null;
-  const materialized = originalRule ? materializeRuleTarget(originalRule, context.frame, zone) : null;
-  requireAuthority(!materialized || materialized.kind === 'target', 'Recurrence or timezone change requires confirmation before changing the date');
-  const original = materialized?.kind === 'target' ? materialized.target : { precision: 'date' as const, date: anchorDate };
+  const originals = current.kind === 'conflict' ? current.candidates.map((fact) => fact.rule) : originalRule ? [originalRule] : [];
+  const originalTargets = originals.map((previous) => {
+    const materialized = materializeRuleTarget(previous, context.frame, zone);
+    requireAuthority(materialized.kind === 'target', 'Recurrence or timezone change requires confirmation before changing the date'); return materialized.target;
+  });
+  const original = [...originalTargets].sort((a, b) => targetReferenceTime(a, zone) - targetReferenceTime(b, zone))[0]
+    ?? { precision: 'date' as const, date: anchorDate };
+  const originalOptions: DesignationOptions = { adminLocked: originals.some((previous) => previous.adminLocked),
+    strict: originals.some((previous) => previous.strict), forbidEarlier: originals.some((previous) => previous.forbidEarlier) };
   const proposed = proposedOverride ?? rule?.target ?? op.payload.proposed as unknown as DateTarget;
   const mode: DesignationMode = proposedOverride ? 'day' : rule?.mode ?? op.payload.proposedMode as DesignationMode;
   const proposedOptions: DesignationOptions = op.entityType === 'designationCancel' ? { strict: false, adminLocked: false, forbidEarlier: false }
-    : rule ? { strict: rule.strict, adminLocked: rule.adminLocked, forbidEarlier: rule.forbidEarlier } : op.payload.proposedOptions as unknown as DesignationOptions;
+    : rule ? { strict: rule.strict, adminLocked: rule.adminLocked, forbidEarlier: rule.forbidEarlier,
+      ...(rule.allowDuringCooldown === undefined ? {} : { allowDuringCooldown: rule.allowDuringCooldown }) } : op.payload.proposedOptions as unknown as DesignationOptions;
   if (!proposedOverride) validateDesignationTarget(mode, proposed);
   if (op.entityType === 'changeRequest') {
     requireAuthority(canonicalJson(normalizeDateTarget(op.payload.original as unknown as DateTarget)) === canonicalJson(normalizeDateTarget(original))
@@ -317,16 +392,22 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   const grants = view.observed(view.ofType('datePermission'), op).map((fact) => ({ ...fact, ...fact.payload }) as unknown as DatePermissionFact);
   let permission: DateChangePermission = evaluateDateChangePermission({ actorUserId: op.authorUserId, adminUserId: epoch.body.ownerUserId,
       activeMemberIds: epoch.body.members.map((member) => member.userId), choreId, assigneeIds, policy, grants,
-      movingEarlier: targetReferenceTime(proposed, zone) < targetReferenceTime(original, zone), beforeWindow: date < context.frame.windowStart,
-      afterWindow: date > context.frame.windowEnd, adminLocked: Boolean(originalRule?.adminLocked), strict: Boolean(originalRule?.strict),
-      forbidEarlier: Boolean(originalRule?.forbidEarlier),
+      movingEarlier: targetReferenceTime(proposed, zone) < Math.max(...(originalTargets.length ? originalTargets : [original]).map((target) => targetReferenceTime(target, zone))), beforeWindow: date < context.frame.windowStart,
+      afterWindow: date > context.frame.windowEnd, ...originalOptions,
       fixedConflict: fixedConflictAtOperation(view, archive, op, proposed, assigneeIds, { occurrenceId: context.frame.id, subjectUserId: subject }, formalRules), operation: op });
-  const weakensInstruction = originalRule && (originalRule.adminLocked && !proposedOptions.adminLocked
-    || originalRule.strict && !proposedOptions.strict || originalRule.forbidEarlier && !proposedOptions.forbidEarlier
-    || originalRule.adminLocked && mode !== originalRule.mode);
-  if (permission.kind !== 'denied' && op.authorUserId !== epoch.body.ownerUserId && weakensInstruction) {
-    permission = { kind: 'approvalRequired', approver: 'admin', reason: originalRule.adminLocked ? 'fixed' : 'strict' };
+  const weakensInstruction = originals.some((previous) => previous.adminLocked && !proposedOptions.adminLocked
+    || previous.strict && !proposedOptions.strict || previous.forbidEarlier && !proposedOptions.forbidEarlier
+    || previous.adminLocked && mode !== previous.mode);
+  const extendsFutureWindow = op.entityType === 'changeRequest' && op.payload.extensionScope === 'future'
+    && (date < context.frame.windowStart || date > context.frame.windowEnd);
+  if (permission.kind !== 'denied' && op.authorUserId !== epoch.body.ownerUserId && (weakensInstruction || current.kind === 'conflict' || reviewIds.length > 0 || proposedOptions.allowDuringCooldown || extendsFutureWindow)) {
+    permission = { kind: 'approvalRequired', approver: permission.kind === 'approvalRequired' && permission.approver !== 'admin' ? 'adminAndAssignee' : 'admin',
+      reason: extendsFutureWindow ? 'outsideWindow' : originalOptions.adminLocked ? 'fixed' : 'strict' };
   }
-  return { ...context, assigneeIds, mode, original, proposed, proposedOptions, originalRule, zone, permission,
-    basisRuleIds: current.kind === 'selected' ? current.equivalentOperationIds : [] };
+  if (!cancelling && permission.kind !== 'denied' && violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame,
+    subjectUserId: subject, target: proposed, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],
+    receiptEpochs: dependencyEvidence?.epochs ?? new Map(), receipts: dependencyEvidence?.receipts })) permission = { kind: 'denied', reason: 'dependency' };
+  return { ...context, assigneeIds, mode, original, proposed, proposedOptions, originalRule, originalOptions, zone, permission,
+    originalWasConflicted: current.kind === 'conflict',
+    basisRuleIds: current.kind === 'selected' ? current.equivalentOperationIds : current.kind === 'conflict' ? current.candidates.map((fact) => fact.operationId) : [] };
 }

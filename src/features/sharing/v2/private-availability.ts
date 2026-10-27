@@ -1,5 +1,5 @@
 import { CALENDAR_AVAILABILITY_MAX_AGE_MS } from '../../google-sync/calendar-timing.ts';
-import { fixedInterval, instantMilliseconds, intervalsOverlap } from './date-target.ts';
+import { fixedInterval, instantMilliseconds } from './date-target.ts';
 import type { DateTarget, InstantRange } from './model.ts';
 import { isSharedTimeZone } from '../group-clock.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
@@ -48,18 +48,37 @@ export function validatedPrivateBusyIntervals(cache: PrivateBusyCache): InstantR
   }).filter((range) => range.start < range.end));
 }
 /** A local, account-bound check returns only the result, never the private intervals. */
-export function checkPrivateCalendarConflict(cache: PrivateBusyCache | null, expected: PrivateBusyBinding, target: DateTarget, now: number): CalendarConflict {
-  if (!cache) return { kind: 'unknown', reason: 'missing' };
+export interface PrivateCalendarReading { conflict: CalendarConflict; busyMinutes: number | null }
+export function createPrivateCalendarAvailability(cache: PrivateBusyCache | null, expected: PrivateBusyBinding, now: number): (target: DateTarget) => PrivateCalendarReading {
+  const unknown = (reason: Extract<CalendarConflict, { kind: 'unknown' }>['reason']) => () => ({ conflict: { kind: 'unknown' as const, reason }, busyMinutes: null });
+  if (!cache) return unknown('missing');
   if (!['ownerUserId', 'accountGeneration', 'mainDeviceId', 'calendarBinding'].every((key) => typeof expected[key as keyof PrivateBusyBinding] === 'string'
-    && expected[key as keyof PrivateBusyBinding] !== '') || !Number.isSafeInteger(expected.mainRevision) || expected.mainRevision < 1) return { kind: 'unknown', reason: 'binding' };
-  if (Object.entries(expected).some(([key, value]) => cache[key as keyof PrivateBusyBinding] !== value)) return { kind: 'unknown', reason: 'binding' };
+    && expected[key as keyof PrivateBusyBinding] !== '') || !Number.isSafeInteger(expected.mainRevision) || expected.mainRevision < 1) return unknown('binding');
+  if (Object.entries(expected).some(([key, value]) => cache[key as keyof PrivateBusyBinding] !== value)) return unknown('binding');
   try {
     const fetchedAt = instantMilliseconds(cache.fetchedAt);
-    if (!Number.isFinite(now) || fetchedAt > now || now - fetchedAt > CALENDAR_AVAILABILITY_MAX_AGE_MS) return { kind: 'unknown', reason: 'stale' };
-    const interval = fixedInterval(target);
-    if (!interval) return { kind: 'unknown', reason: 'timeNotSpecified' };
-    if (instantMilliseconds(cache.coverage.start) > interval.start || instantMilliseconds(cache.coverage.end) < interval.end) return { kind: 'unknown', reason: 'coverage' };
+    if (!Number.isFinite(now) || fetchedAt > now || now - fetchedAt > CALENDAR_AVAILABILITY_MAX_AGE_MS) return unknown('stale');
     const busy = validatedPrivateBusyIntervals(cache);
-    return { kind: busy.some((range) => intervalsOverlap(range, interval)) ? 'conflict' : 'clear' };
-  } catch { return { kind: 'unknown', reason: 'invalid' }; }
+    const coverage = { start: instantMilliseconds(cache.coverage.start), end: instantMilliseconds(cache.coverage.end) };
+    return (target) => {
+      try {
+        const interval = fixedInterval(target);
+        if (!interval) return unknown('timeNotSpecified')();
+        if (coverage.start > interval.start || coverage.end < interval.end) return unknown('coverage')();
+        let low = 0; let high = busy.length;
+        while (low < high) { const middle = (low + high) >>> 1; if (busy[middle].end <= interval.start) low = middle + 1; else high = middle; }
+        let duration = 0;
+        for (let index = low; index < busy.length && busy[index].start < interval.end; index++) {
+          duration += Math.max(0, Math.min(busy[index].end, interval.end) - Math.max(busy[index].start, interval.start));
+        }
+        return { conflict: { kind: duration > 0 ? 'conflict' : 'clear' }, busyMinutes: duration / 60_000 };
+      } catch { return unknown('invalid')(); }
+    };
+  } catch { return unknown('invalid'); }
+}
+export function createPrivateCalendarReader(cache: PrivateBusyCache | null, expected: PrivateBusyBinding, now: number): (target: DateTarget) => CalendarConflict {
+  const read = createPrivateCalendarAvailability(cache, expected, now); return (target) => read(target).conflict;
+}
+export function checkPrivateCalendarConflict(cache: PrivateBusyCache | null, expected: PrivateBusyBinding, target: DateTarget, now: number): CalendarConflict {
+  return createPrivateCalendarReader(cache, expected, now)(target);
 }

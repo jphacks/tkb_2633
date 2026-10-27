@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-5",
+  "version": "liflow-shared-2-draft-6",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -24,7 +24,22 @@
     "src/features/sharing/v2/fixed-conflict.ts",
     "src/features/sharing/v2/server-receipts.ts",
     "src/features/sharing/group-clock.ts",
-    "node_modules/moment-timezone/data/packed/latest.json"
+    "node_modules/moment-timezone/data/packed/latest.json",
+    "src/features/sharing/v2/common-plan.ts",
+    "src/features/sharing/v2/completion-history.ts",
+    "src/features/sharing/v2/configuration-timeline.ts",
+    "src/features/sharing/v2/dependency-constraints.ts",
+    "src/features/sharing/v2/personal-plan.ts",
+    "src/features/sharing/v2/personal-relocation.ts",
+    "src/features/sharing/v2/private-availability.ts",
+    "src/features/sharing/v2/recorded-instruction.ts",
+    "src/features/sharing/v2/request-review.ts",
+    "src/features/sharing/v2/view-point.ts",
+    "src/features/sharing/v2/window-extension.ts",
+    "src/domain/scheduling/calendar-penalty.ts",
+    "src/features/sharing/v2/actions.ts",
+    "src/features/sharing/v2/bootstrap.ts",
+    "src/features/sharing/v2/date-dependencies.ts"
   ],
-  "sourceSha256": "a4045fdbeac2a1f79a2aede0e306a0a0db58c41b5bd3e99f4271b73914ddacb2"
+  "sourceSha256": "2a953292b2f7f9150051647faaf62601e69ab86de89ae533bd339737a0b1efe9"
 }

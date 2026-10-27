@@ -12,7 +12,7 @@ import { rosterAtOperation } from '../../features/sharing/v2/authority-context.t
 import { V2_SCHEDULER_VERSION } from '../../features/sharing/v2/payload-schema.ts';
 import { SharingAccessError, SharingSchedulerVersionError } from '../../features/sharing/cloud-contract.ts';
 import { assertSharedProjectionCanInitialize, initializeSharedProjection } from './sharing-projection.ts';
-import { createLocalSharedOperations, initializeSharingLedger, readSharedFactsInsideTransaction } from './sharing-ledger.ts';
+import { createLocalSharedOperations, initializeSharingLedger, readSharedFactsInsideTransaction, readSharedReplicaInsideTransaction, withSharingLedgerTransaction } from './sharing-ledger.ts';
 import type { SharedOperationDraft, SharedLedgerEvidence } from './sharing-ledger.ts';
 import { withIsolatedSqliteTransaction } from './isolated-transaction.ts';
 import { initializeV2ReceiptTable, persistV2ServerReceiptsInside, readV2ServerReceiptsInside } from './sharing-v2-receipts.ts';
@@ -73,9 +73,11 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     return checkedArchive.value;
   }
   async function project(transaction: SQLiteDatabase, replica: SharedReplica, localIds?: ReadonlySet<string>) {
+    options.assertWritable();
     await assertV2Binding(transaction, options);
     if (replica.groupId !== options.groupId) throw new SharingAccessError('共有グループが一致しません。');
     const history = archive(); const latest = history.at(-1)!;
+    const expectedRoster = sharedRosterDigest(latest);
     if (latest.body.schemaVersion !== 2 || latest.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
     sharedAuthorIdentity(latest, options.userId, options.identity.deviceId, latest.body.keyVersion);
     const proofs = new Map((await readSharedFactsInsideTransaction(transaction, options.groupId)).map((fact) => [fact.operation.operationId, fact]));
@@ -103,6 +105,8 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     const rejected = assessment.rejected.map((entry) => ({ operationId: entry.operationId, kind: entry.kind,
       reason: 'code' in entry.error ? String(entry.error.code) : 'sharing/v2-invalid-business-fact' }));
     const requestStates = assessment.requestStates;
+    options.assertWritable();
+    if (sharedRosterDigest(archive().at(-1)!) !== expectedRoster) throw new SharingAccessError('処理中に共有権限が変わりました。');
     const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-5',
       sources: digestPages(replica.operations.map((operation) => sharedDocumentDigest(operation))),
       receipts: digestPages([...receipts.values()].map((receipt) => sharedDocumentDigest(receipt))),
@@ -117,20 +121,54 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
       pending_ids_json=excluded.pending_ids_json, provisional_ids_json=excluded.provisional_ids_json,
       request_states_json=excluded.request_states_json, formal_rules_json=excluded.formal_rules_json WHERE fact_hash != excluded.fact_hash`, factHash,
     JSON.stringify(accepted), JSON.stringify(rejected), JSON.stringify(replica.pendingOperationIds), JSON.stringify(assessment.provisionalOperationIds), JSON.stringify(requestStates), JSON.stringify(assessment.approvedRules));
-    return assessment;
+    options.assertWritable();
+    if (sharedRosterDigest(archive().at(-1)!) !== expectedRoster) throw new SharingAccessError('保存中に共有権限が変わりました。');
+    return { ...assessment, pendingOutboxIds: pendingRows.map((row) => row.operation_id) };
+  }
+  async function readStateInside(transaction: SQLiteDatabase, replica?: SharedReplica) {
+    options.assertWritable();
+    const source = replica ?? await readSharedReplicaInsideTransaction(transaction, options.groupId);
+    const assessment = await project(transaction, source);
+    const history = archive(); const expected = sharedRosterDigest(history.at(-1)!);
+    const receipts = await readV2ServerReceiptsInside(transaction, options.groupId);
+    options.assertWritable(); if (sharedRosterDigest(archive().at(-1)!) !== expected) throw new SharingAccessError('読み込み中に共有権限が変わりました。');
+    return { assessment, replica: source, archive: history, receipts };
+  }
+  type CurrentBuilder = (state: Awaited<ReturnType<typeof readStateInside>>) => Promise<readonly SharedOperationDraft[]>;
+  async function commit(input: readonly SharedOperationDraft[] | ((replica: SharedReplica) => Promise<readonly SharedOperationDraft[]>) | { build: CurrentBuilder }): Promise<SharedOperation[]> {
+    options.assertWritable(); const latest = archive().at(-1)!; const localIds = new Set<string>();
+    if (latest.body.schemaVersion !== 2 || latest.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
+    const operationTime = clock();
+    const author = { groupId: options.groupId, userId: options.userId, deviceId: options.identity.deviceId,
+      keyVersion: latest.body.keyVersion, schemaVersion: 2 as const, now: () => operationTime };
+    const created = await createLocalSharedOperations(database, author, async (transaction, replica) => {
+      options.assertWritable(); await assertV2Binding(transaction, options);
+      if (sharedRosterDigest(archive().at(-1)!) !== sharedRosterDigest(latest)) throw new SharingAccessError('編集開始後に共有権限が変わりました。');
+      const drafts = typeof input === 'function' ? await input(replica)
+        : 'build' in input ? await input.build(await readStateInside(transaction, replica)) : input;
+      options.assertWritable();
+      for (const draft of drafts) localIds.add(draft.operationId); return drafts;
+    }, async (transaction, replica) => { options.assertWritable(); await project(transaction, replica, localIds); }, (op) => signSharedOperation(op, options.identity).authorSignature);
+    options.afterCommit?.(); return created;
   }
   return {
     scope: Object.freeze({ groupId: options.groupId, userId: options.userId, householdId: options.householdId, deviceId: options.identity.deviceId }),
     readReceiptCache: async (transaction: SQLiteDatabase) => {
-      await assertV2Binding(transaction, options); return readV2ServerReceiptsInside(transaction, options.groupId);
+      options.assertWritable(); await assertV2Binding(transaction, options);
+      const receipts = await readV2ServerReceiptsInside(transaction, options.groupId); options.assertWritable(); return receipts;
+    },
+    async readState() {
+      options.assertWritable();
+      return withSharingLedgerTransaction(database, readStateInside);
     },
     project: async (transaction: SQLiteDatabase, replica: SharedReplica) => { await project(transaction, replica); },
     evidenceForServerReceipts(receipts: readonly V2ServerReceipt[]): SharedLedgerEvidence {
       let stored: ReadonlyMap<string, V2ServerReceipt> = new Map();
       return { record: async (transaction) => {
+        options.assertWritable();
         await assertV2Binding(transaction, options);
         const changed = await persistV2ServerReceiptsInside(transaction, options.groupId, receipts);
-        stored = await readV2ServerReceiptsInside(transaction, options.groupId); return changed;
+        stored = await readV2ServerReceiptsInside(transaction, options.groupId); options.assertWritable(); return changed;
       }, acknowledge: async (transaction, operation) => {
         if (operation.schemaVersion === 1) return true;
         const receipt = stored.get(operation.operationId); if (!receipt) return false;
@@ -138,19 +176,8 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
         return Boolean(row?.author_signature && receipt.authorProofDigest === v2AuthorProofDigest({ operation, authorSignature: row.author_signature }));
       } };
     },
-    async commit(input: readonly SharedOperationDraft[] | ((replica: SharedReplica) => Promise<readonly SharedOperationDraft[]>)): Promise<SharedOperation[]> {
-      options.assertWritable(); const latest = archive().at(-1)!; const localIds = new Set<string>();
-      if (latest.body.schemaVersion !== 2 || latest.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
-      const operationTime = clock();
-      const author = { groupId: options.groupId, userId: options.userId, deviceId: options.identity.deviceId,
-        keyVersion: latest.body.keyVersion, schemaVersion: 2 as const, now: () => operationTime };
-      const created = await createLocalSharedOperations(database, author, async (transaction, replica) => {
-        options.assertWritable(); await assertV2Binding(transaction, options);
-        if (sharedRosterDigest(archive().at(-1)!) !== sharedRosterDigest(latest)) throw new SharingAccessError('編集開始後に共有権限が変わりました。');
-        const drafts = typeof input === 'function' ? await input(replica) : input;
-        for (const draft of drafts) localIds.add(draft.operationId); return drafts;
-      }, async (transaction, replica) => { options.assertWritable(); await project(transaction, replica, localIds); }, (op) => signSharedOperation(op, options.identity).authorSignature);
-      options.afterCommit?.(); return created;
-    },
+    commit,
+    /** Build against this transaction's authenticated state, without a nested read or stale UI snapshot. */
+    commitCurrent: (build: CurrentBuilder) => commit({ build }),
   };
 }

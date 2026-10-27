@@ -17,6 +17,21 @@ export type DateChangePermission = { kind: 'allowed'; needsRequest: boolean; aut
   | { kind: 'approvalRequired'; approver: 'admin' | 'assignee' | 'adminAndAssignee'; reason: 'othersAssignment' | 'fixed' | 'outsideWindow' | 'strict' }
   | { kind: 'denied'; reason: 'notMember' | 'fixedConflict' | 'permissionConflict' | 'dependency' };
 
+export interface V2DateDecisionAudience {
+  automatic: boolean;
+  administratorVote: boolean;
+  approvingMemberIds: string[];
+  counterofferRecipientIds: string[];
+}
+/** The reducer, receiver and screens must use the same required-consent cohorts. */
+export function v2DateDecisionAudience(permission: DateChangePermission, assigneeIds: readonly string[], requesterUserId: string): V2DateDecisionAudience {
+  const memberConsent = permission.kind === 'approvalRequired' && permission.approver !== 'admin';
+  return { automatic: permission.kind === 'allowed',
+    administratorVote: !(permission.kind === 'approvalRequired' && permission.approver === 'assignee'),
+    approvingMemberIds: memberConsent ? [...new Set(assigneeIds)].sort() : [],
+    counterofferRecipientIds: memberConsent ? [...new Set(assigneeIds)].sort() : [requesterUserId] };
+}
+
 /** Grant facts have already authenticated their issuer against the signed roster at authoring. */
 export function effectiveDatePermission(input: { grants: readonly DatePermissionFact[]; choreId: string; userId: string;
   delegationEnabled: boolean; operation?: CausalStamp }) {

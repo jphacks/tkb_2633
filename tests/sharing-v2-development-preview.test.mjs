@@ -7,6 +7,26 @@ import { createV2DevelopmentPreview } from '../src/features/sharing/development/
 import { screenHarness } from './helpers/screen-harness.mjs';
 
 const screenFile = 'src/features/sharing/development/v2-preview-screen.tsx';
+async function openRoute(preview, platform, file, params, navigation, readyText) {
+  let focus;
+  const screen = screenHarness(`src/app/development/sharing-v2-preview/${file}.tsx`, { platform, params,
+    navigate: (...args) => navigation.push(args), focusEffect: (callback) => { focus = callback; },
+    transformSource: (path, source) => path.endsWith('/v2-preview-route.tsx') ? source.replaceAll('__DEV__', 'true') : source,
+    mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: async () => preview } } });
+  const leave = focus(); for (let i = 0; i < 30 && !screen.text().includes(readyText); i++) await screen.flush();
+  assert.ok(screen.text().includes(readyText)); return { screen, leave };
+}
+
+test('v2 every isolated preview route denies release execution before opening the fixture', () => {
+  let opened = 0; let focused = 0;
+  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests']) {
+    const screen = screenHarness(`src/app/development/sharing-v2-preview/${file}.tsx`, { platform, params: {},
+      focusEffect: () => focused++, transformSource: (path, source) => path.endsWith('/v2-preview-route.tsx') ? source.replaceAll('__DEV__', 'false') : source,
+      mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: () => { opened++; throw new Error('Release must not open synthetic storage'); } } } });
+    assert.ok(screen.text().includes('この画面は開発ビルド専用です。')); assert.equal(screen.nodes().some((node) => node.type === 'TextInput'), false);
+  }
+  assert.equal(opened, 0); assert.equal(focused, 0);
+});
 async function screenFixture(platform, view = 'home', clock = () => new Date('2026-10-27T01:00:00Z')) {
   const h = createDatabase(); let id = 0;
   const preview = await createV2DevelopmentPreview({ development: true, crypto, makeId: () => `screen-${++id}`, now: clock,
@@ -108,6 +128,22 @@ for (const platform of ['ios', 'android']) {
   });
 }
 
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 request route stays in the isolated group and shows a truthful empty state without creating a request`, async () => {
+    const f = await screenFixture(platform); let cleanup;
+    try {
+      const params = {}; const navigation = [];
+      let { screen, leave } = await openRoute(f.preview, platform, 'index', params, navigation, '今日の共有家事'); cleanup = leave;
+      const before = await f.preview.readModel(); await screen.press('日時の変更申請');
+      assert.deepEqual(navigation[0], ['push', '/development/sharing-v2-preview/requests']);
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'requests', {}, navigation, '日時の変更申請はありません')); cleanup = leave;
+      assert.ok(screen.text().includes('日時の変更申請')); assert.ok(screen.text().includes('日時の変更申請はありません'));
+      assert.equal(screen.nodes().some((node) => node.type === 'TextInput'), false);
+      assert.equal((await f.preview.readModel()).pendingChanges, before.pendingChanges);
+    } finally { cleanup?.(); f.leave(); await f.preview.close(); }
+  });
+}
+
 test('v2 preview discards a late read after navigation and a successful retry clears its previous loading error', async () => {
   const f = await screenFixture('ios');
   try {
@@ -126,15 +162,12 @@ for (const platform of ['ios', 'android']) {
     const f = await screenFixture(platform); let cleanup;
     try {
       const model = await f.preview.readModel(); const round = model.plan.occurrences.find((r) => r.anchorDate === model.plan.range.asOfDate && r.configuration.policy.completion === 'one');
-      const params = { view: 'round', occurrenceId: round.id, subjectId: round.subjects[0].id }; const navigation = []; let focus;
-      const screen = screenHarness('src/app/development/sharing-v2-preview.tsx', { platform, params,
-        navigate: (...args) => navigation.push(args), focusEffect: (callback) => { focus = callback; },
-        transformSource: (path, source) => path.endsWith('/sharing-v2-preview.tsx') ? source.replaceAll('__DEV__', 'true') : source,
-        mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: async () => f.preview } } });
-      cleanup = focus(); for (let i = 0; i < 30 && !screen.text().includes('日時を変更'); i++) await screen.flush();
+      const params = { occurrenceId: round.id, subjectId: round.subjects[0].id }; const navigation = [];
+      let { screen, leave } = await openRoute(f.preview, platform, 'round', params, navigation, '日時を変更'); cleanup = leave;
       await screen.press('日時を変更'); assert.equal(navigation[0][0], 'push');
-      assert.equal(navigation[0][1].pathname, '/development/sharing-v2-preview'); assert.deepEqual(navigation[0][1].params, { view: 'date', occurrenceId: round.id, subjectId: round.subjects[0].id });
-      Object.assign(params, navigation[0][1].params); screen.render(); await screen.change('実施日', '2026-10-28'); await screen.press('日時を指定・申請する');
+      assert.equal(navigation[0][1].pathname, '/development/sharing-v2-preview/date'); assert.deepEqual(navigation[0][1].params, { occurrenceId: round.id, subjectId: round.subjects[0].id });
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'date', params, navigation, '日時の指定・変更')); cleanup = leave;
+      await screen.change('実施日', '2026-10-28'); await screen.press('日時を指定・申請する');
       for (let i = 0; i < 30 && !screen.text().includes('日時指定を端末に保存'); i++) await screen.flush();
       assert.ok(screen.text().includes('日時指定を端末に保存')); const next = await f.preview.readModel();
       assert.deepEqual(next.plan.occurrences.find((r) => r.id === round.id).subjects[0].formalDate.target, { precision: 'date', date: '2026-10-28' });

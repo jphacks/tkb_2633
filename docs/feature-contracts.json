@@ -2196,5 +2196,118 @@
         "name": "v2 date warning cannot confirm a different draft changed before its old confirmation button re-renders"
       }
     ]
+  },
+  {
+    "feature": "v2-reviewed-date-decision-atomic-guard",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 a stale approval cannot silently acknowledge a counteroffer that arrived after the displayed request"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 decision guards are checked after acquiring the SQLite transaction rather than before a queued counteroffer"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 a displayed decision revision cannot be reused after ownership, timezone, cadence or assignment changes"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 batch decision guards match single-request guards and unrelated cosmetic edits cannot stop a reviewed answer"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 a thousand projected request cards keep source traversals bounded instead of rescanning the group per card"
+      }
+    ]
+  },
+  {
+    "feature": "v2-date-answer-current-fixed-and-required-order",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 approval rechecks a fixed overlap introduced after the request instead of scheduling two chores for its assignee"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 accepting a counteroffer rechecks later fixed schedules and leaves its old formal date intact on rejection"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 approval rechecks allow adjacent time slots and different assignees instead of blocking all same-day work"
+      },
+      {
+        "file": "tests/sharing-v2-date-decisions.test.mjs",
+        "name": "v2 date approval cannot violate a required order introduced after the request but rejecting the request remains possible"
+      }
+    ]
+  },
+  {
+    "feature": "v2-date-request-answers-ui",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 request approval is explicitly saved and remains awaiting until its server receipt arrives"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 administrator counteroffer and the actual members consent confirm without a second administrator approval"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 request rejection retains the original formal date and its signed request history"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 an incoming answer disables the old request editor and retains its input until explicit review"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 a counteroffer saves the latest typed date before another render without autosaving input"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 counteroffer inputs require an explicit repeated-clock choice and preserve its exact instant"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 conflicting answers remain visible and require explicit review before a causal resolution"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 an invalid date approval shows a usable error and never claims the request was saved or approved"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 old timezone requests cannot be reinterpreted through a fresh screen and an uninitialized group cannot answer"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 an expired request keeps an offline answer visibly unconfirmed and cannot offer approval controls"
+      }
+    ]
+  },
+  {
+    "feature": "v2-date-request-route-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 request route stays in the isolated group and shows a truthful empty state without creating a request"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 every isolated preview route denies release execution before opening the fixture"
+      }
+    ]
+  },
+  {
+    "feature": "v2-exact-approval-clock-labels",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-time-input.test.mjs",
+        "name": "v2 approval labels distinguish repeated hours, exact sub-minute times and years without changing ordinary compact labels"
+      }
+    ]
   }
 ]

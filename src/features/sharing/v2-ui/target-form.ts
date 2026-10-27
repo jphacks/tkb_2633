@@ -59,8 +59,27 @@ export function v2TargetFormValues(target: DateTarget, timeZone: string) {
   const end = target.precision === 'interval' ? moment(target.end).tz(timeZone) : null;
   return { day: start.format('YYYY-MM-DD'), clock: start.format('HH:mm'), endDay: end?.format('YYYY-MM-DD') ?? start.format('YYYY-MM-DD'), endClock: end?.format('HH:mm') ?? '' };
 }
-export function v2TargetLabel(target: DateTarget, timeZone: string): string {
-  if (target.precision === 'date') { const date = parseLocalDate(target.date); return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`; }
-  const label = (at: string) => moment(at).tz(timeZone).format('M月D日 HH:mm');
+/** Shared by designation and counteroffer editors; untouched endpoints retain their exact instant. */
+export function v2InitialTargetFields(target: DateTarget, timeZone: string) {
+  const values = v2TargetFormValues(target, timeZone);
+  const choice = (day: string, clock: string, at?: string) => {
+    if (!at || !clock) return '';
+    const candidates = v2LocalTimeChoices(day, clock, timeZone);
+    return candidates.length > 1 ? candidates.find((candidate) => Date.parse(candidate.value) === Math.floor(Date.parse(at) / 60000) * 60000)?.value ?? '' : '';
+  };
+  return { ...values, clockChoice: choice(values.day, values.clock, target.precision === 'instant' ? target.at : target.precision === 'interval' ? target.start : undefined),
+    endClockChoice: choice(values.endDay, values.endClock, target.precision === 'interval' ? target.end : undefined) };
+}
+export type V2TargetFields = ReturnType<typeof v2InitialTargetFields>;
+export function v2TargetLabel(target: DateTarget, timeZone: string, options: { includeYear?: boolean } = {}): string {
+  if (target.precision === 'date') { const date = parseLocalDate(target.date); return `${options.includeYear ? `${date.getUTCFullYear()}年` : ''}${date.getUTCMonth() + 1}月${date.getUTCDate()}日`; }
+  const label = (at: string) => {
+    const value = moment(at).tz(timeZone); const stamp = value.valueOf();
+    const candidates = v2WallTimeCandidates({ date: value.format('YYYY-MM-DD') as LocalDate, hour: value.hour(), minute: value.minute(),
+      second: value.second(), millisecond: value.millisecond(), timeZone });
+    const clock = value.millisecond() ? 'HH:mm:ss.SSS' : value.second() ? 'HH:mm:ss' : 'HH:mm';
+    return value.format(`${options.includeYear ? 'YYYY年' : ''}M月D日 ${clock}`)
+      + (candidates.length > 1 ? `（${candidates.indexOf(stamp) + 1}回目・UTC${value.format('Z')}）` : '');
+  };
   return target.precision === 'instant' ? label(target.at) : `${label(target.start)}〜${label(target.end)}`;
 }

@@ -88,3 +88,19 @@ AndroidのPhase 4eの画像・XMLは、後続検査で同じ名前へ保存し�
 - `phase4j-input-batch-before.log`と`phase4j-warning-revision-before.log`：描画前保存と古い確認の再現。`phase4j-batch-and-warning-confirmed.log`：修正後の関連45件通過。
 
 端末内画面と保存の検査であり、DSTの実機検査・実Firebaseサービスでのv2端末間同期・BackgroundTask実行保証として扱わない。証跡は`/tmp/liflow-v2-20261027/`に保持し、失敗分も上書きしていない。
+
+## Phase 4k追記：Androidのアクセシビリティ操作とiPhoneの未解決入力
+
+基点`fbcf4bb`へのPhase 4k差分、未公開v2 draft18。LiFlowのprimary DBや実グループを変更せず、既存の独立した合成検査領域を使用した。今回の実機では申請の承認・代替提案を実サービスへ送信していない。
+
+Androidの座標操作では画面が切り替わらない失敗が残ったため、公開APIの`UiAutomation`・`AccessibilityNodeInfo.ACTION_CLICK/ACTION_SET_TEXT`を使う専用検査APKで切り分けた。LiFlowのDBやJSへ値を注入せず、実際の要素操作とコールバックから保存する。検査APKは別package・自己targetとし、LiFlowのインストール・データを置換しない。成功は次の範囲に限定する。
+
+- `phase4k-accessibility-date.log`：19.960秒、翌日2026-10-29の指定・明示保存・戻ったカード・再入力値を確認。`android-action-date/dateReopened.png`のSHA-256は`d00d8abeb12fe474f747c19cff7b11f65b810212a659f66a48e13e2a12960720`。
+- `phase4k-accessibility-past-ready.log`：16.998秒、2026-10-27の12:30を実施日時に保存し、2026-10-28の記録日時・実施者・登録者を履歴で確認。`android-action-past/pastHistory.png`のSHA-256は`3162967ab62c1f5c4b56ce382901490879b4c011468b6a8953ceeccf04787bca`。
+- `phase4k-accessibility-requests.log`：6.283秒、ホームから別ルートの申請一覧へ移動し、申請がないことを正しく表示。`android-action-requests/requestsEmpty.png`のSHA-256は`ad90d75af7b5debc5604bb0750da968d58d8fe99fc85ba1fc7a91e5931f9bdfe`。一覧へ入るためのダミー申請は作成しない。
+
+これらはソフトウェアキーボード入力や座標タップを通した検査のPASSではない。所要時間には要素待ち・入力・画像保存を含み、描画性能の測定ではない。最初の過去入力検査は条件付き欄の描画前に探して失敗したため、対象欄を待つ修正後の実行を別名で保存した。
+
+iPhoneは個別ルート化後も入力欄にキーボードフォーカスを得られず、`phase4k-iphone-distinct-date`と`phase4k-iphone-native-inset`は失敗として保持した。フォーム容器の試験変更は改善しなかったため元へ戻した。映像と要素情報が一致しない状態で入力を続けず、本人へ手動タップでキーボードが出るか確認を依頼した。端末のロック状態情報だけから入力可能と断定せず、原因をOS・Compiler・アプリに特定したとは扱わない。
+
+コード検査は`phase4k-complete-ios.log`・`phase4k-complete-android.log`各1209件成功、lint・型検査成功、`phase4k-cloud.log`のEmulator25件成功。実TSXの15ルート検査、申請回答UI20件、別SQLite間の受信と期限・権限・固定重複・必須依存関係を含む。実機の空一覧の成功を、複数アカウントによる申請回答E2Eの成功として扱わない。証拠は引き続き`/tmp/liflow-v2-20261027/`に保持する。

@@ -10,7 +10,7 @@ import type { V2HistoryView } from './history-view.ts';
 import { frameAtOperation, groupPolicyAt, rosterAtOperation } from './authority-context.ts';
 import { deriveClaims } from './claims.ts';
 import type { ClaimFact, ClaimRelease, ClaimResolution } from './claims.ts';
-import { evaluateDateChangePermission, mayUndoCompletion } from './permissions.ts';
+import { evaluateDateChangePermission, mayUndoCompletion, v2DateDecisionAudience } from './permissions.ts';
 import type { DatePermissionFact, DateChangePermission } from './permissions.ts';
 import { normalizeDateTarget, targetCivilDate, targetReferenceTime, validateDesignationTarget } from './date-target.ts';
 import type { DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, SharedChoreConfiguration } from './model.ts';
@@ -283,24 +283,28 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     const request = observedTarget(view, op, op.payload.requestId as string, 'changeRequest');
     const context = requestContexts?.get(request.operationId)
       ?? dateContext(view, archive, request, undefined, undefined, requestEpochs?.get(request.operationId), formalRules, reviewedRequests, receipts ? { receipts, epochs: requestEpochs ?? new Map() } : undefined);
+    const audience = v2DateDecisionAudience(context.permission, context.assigneeIds, request.authorUserId);
+    let answerTarget: DateTarget | null = op.payload.decision === 'approve' ? context.proposed
+      : op.payload.decision === 'counteroffer' ? op.payload.target as unknown as DateTarget : null;
     if (op.payload.decision === 'acceptCounteroffer') {
       const proposed = observedTarget(view, op, op.payload.referenceDecisionId as string, 'requestDecision');
-      const recipients = context.permission.kind === 'approvalRequired' && context.permission.approver !== 'admin'
-        ? context.assigneeIds : [request.authorUserId];
-      requireAuthority(recipients.includes(op.authorUserId) && proposed.payload.requestId === request.operationId
+      requireAuthority(audience.counterofferRecipientIds.includes(op.authorUserId) && proposed.payload.requestId === request.operationId
         && proposed.payload.decision === 'counteroffer', 'Only the affected consenting member may accept that administrator counteroffer');
+      answerTarget = proposed.payload.target as unknown as DateTarget;
     } else if (op.payload.decision === 'counteroffer') adminOnly();
     else {
-      const permission = context.permission;
-      requireAuthority(admin && !(permission.kind === 'approvalRequired' && permission.approver === 'assignee')
-        || permission.kind === 'approvalRequired' && permission.approver !== 'admin' && context.assigneeIds.includes(op.authorUserId), 'Decision requires the designated approver');
+      requireAuthority(admin && audience.administratorVote || audience.approvingMemberIds.includes(op.authorUserId), 'Decision requires the designated approver');
     }
-    if (op.payload.target !== null) {
-      const target = validateDesignationTarget(context.mode, op.payload.target as unknown as DateTarget);
-      requireAuthority(!fixedConflictAtOperation(view, archive, op, target, context.assigneeIds,
-        { occurrenceId: context.frame.id, subjectUserId: request.payload.subjectUserId as string | null }, formalRules), 'Counteroffer conflicts with a fixed shared assignment');
-      requireAuthority(!violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame, subjectUserId: request.payload.subjectUserId as string | null,
-        target, mode: context.mode, timeZone: context.zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])], receiptEpochs: requestEpochs ?? new Map(), receipts }), 'Counteroffer violates a required chore order');
+    if (answerTarget !== null) {
+      const target = validateDesignationTarget(context.mode, answerTarget);
+      const current = frameAtOperation(view, archive, op, request.payload.choreId as string, request.payload.anchorDate as LocalDate, context.config.ruleVersion);
+      const subject = request.payload.subjectUserId as string | null;
+      const assignees = subject === null ? current.assigneeIds : current.subjectUserIds.includes(subject) ? [subject] : [];
+      const answerLabel = op.payload.decision === 'counteroffer' ? 'Counteroffer' : 'Date answer';
+      requireAuthority(!fixedConflictAtOperation(view, archive, op, target, assignees,
+        { occurrenceId: current.frame.id, subjectUserId: subject }, formalRules), `${answerLabel} conflicts with a fixed shared assignment`);
+      requireAuthority(!violatesV2RequiredOrder({ view, archive, operation: op, frame: current.frame, subjectUserId: subject,
+        target, mode: context.mode, timeZone: context.zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])], receiptEpochs: requestEpochs ?? new Map(), receipts }), `${answerLabel} violates a required chore order`);
     }
     return;
   }

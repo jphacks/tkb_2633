@@ -1,10 +1,20 @@
 import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { v2TargetLabel } from '../src/features/sharing/v2-ui/target-form.ts';
+
 import { v2LocalTimeChoices, v2LocalTimeInput, v2TargetFromForm, v2TargetFormValues, v2RuleSelectorFromForm } from '../src/features/sharing/v2-ui/target-form.ts';
 import { materializeRuleTarget } from '../src/features/sharing/v2/rule-target.ts';
 import { v2WallTimeCandidates } from '../src/features/sharing/v2/local-time.ts';
 
+test('v2 approval labels distinguish repeated hours, exact sub-minute times and years without changing ordinary compact labels', () => {
+  const first = v2TargetLabel({ precision: 'instant', at: '2026-11-01T05:30:27.123Z' }, 'America/New_York', { includeYear: true });
+  const second = v2TargetLabel({ precision: 'instant', at: '2026-11-01T06:30:27.123Z' }, 'America/New_York', { includeYear: true });
+  assert.equal(first, '2026年11月1日 01:30:27.123（1回目・UTC-04:00）');
+  assert.equal(second, '2026年11月1日 01:30:27.123（2回目・UTC-05:00）');
+  assert.equal(v2TargetLabel({ precision: 'date', date: '2027-01-01' }, 'Asia/Tokyo', { includeYear: true }), '2027年1月1日');
+  assert.equal(v2TargetLabel({ precision: 'date', date: '2026-10-28' }, 'Asia/Tokyo'), '10月28日');
+});
 test('v2 local time input requires an explicit occurrence of a repeated clock hour instead of silently recording the earlier one on either OS timezone', () => {
   const previous = process.env.TZ;
   try {

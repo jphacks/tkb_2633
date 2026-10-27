@@ -9,7 +9,8 @@ import { maximalCausalFacts } from './causal-facts.ts';
 import { bindV2ServerReceipt } from './server-receipts.ts';
 import type { V2ServerReceipt } from './server-receipts.ts';
 import type { DateChangeRequest, DateTarget } from './model.ts';
-import type { DateChangePermission } from './permissions.ts';
+import type { DateChangePermission, V2DateDecisionAudience } from './permissions.ts';
+import { v2DateDecisionAudience } from './permissions.ts';
 
 import { combineConfirmations as combine, confirmationOf as proofOf } from './confirmation.ts';
 import type { ConfirmationProof } from './confirmation.ts';
@@ -38,6 +39,8 @@ export interface V2DateRequestState {
   counteroffers: { operationId: string; target: DateTarget; expiresAt: number }[];
   conflictIds: string[];
   decisions: { operationId: string; kind: AuditKind }[];
+  timeZone: string;
+  audience: V2DateDecisionAudience;
 }
 
 /**
@@ -64,18 +67,19 @@ export function deriveV2DateRequest(input: {
     original, originalReferenceAt: input.context.originalReferenceAt, proposed, timeZone: input.context.timeZone });
   const result: V2DateRequestState = { requestId: request.operationId, kind: 'pendingDelivery', original, formal: original,
     originalWasConflicted: input.context.originalWasConflicted ?? false, originalRuleIds: [...(input.context.basisRuleIds ?? [])].sort(compareOperationIds),
-    proposal, deadline, confirmation: null, confirmedAt: null, counteroffers: [], conflictIds: [], decisions: [] };
+    proposal, deadline, confirmation: null, confirmedAt: null, counteroffers: [], conflictIds: [], decisions: [], timeZone: input.context.timeZone,
+    audience: v2DateDecisionAudience(input.context.permission, input.context.assigneeIds, request.authorUserId) };
   if (!requestReceipt) return result;
   bindV2ServerReceipt(requestReceipt, input.request, input.archive);
   if (deadline.kind !== 'open') return { ...result, kind: deadline.kind };
   if (input.context.permission.kind === 'denied') return { ...result, kind: 'blocked' };
   if (input.confirmedServerTime !== undefined && !Number.isSafeInteger(input.confirmedServerTime)) throw new Error('Invalid confirmed server time');
-  const automatic = input.context.permission.kind === 'allowed';
+  const automatic = result.audience.automatic;
   const assigneeConsent = input.context.permission.kind === 'approvalRequired' && input.context.permission.approver !== 'admin';
   const combinedConsent = input.context.permission.kind === 'approvalRequired' && input.context.permission.approver === 'adminAndAssignee';
-  const requiredMembers = [...new Set(input.context.assigneeIds)].sort(compareOperationIds);
+  const requiredMembers = result.audience.approvingMemberIds;
   if (assigneeConsent && !requiredMembers.length) throw new Error('Missing affected assignees');
-  const recipients = assigneeConsent ? requiredMembers : [request.authorUserId];
+  const recipients = result.audience.counterofferRecipientIds;
   const facts = new Map<string, AuthenticatedSharedOperation>();
   for (const fact of input.decisions) {
     const previous = facts.get(fact.operation.operationId);
@@ -100,7 +104,7 @@ export function deriveV2DateRequest(input: {
     const decision = op.payload.decision as Decision;
     const admin = op.authorUserId === epoch.body.ownerUserId;
     if (decision === 'counteroffer' ? !admin : decision === 'acceptCounteroffer' ? !recipients.includes(op.authorUserId)
-      : assigneeConsent ? !requiredMembers.includes(op.authorUserId) && !(combinedConsent && admin) : !admin) {
+      : !(admin && result.audience.administratorVote || requiredMembers.includes(op.authorUserId))) {
       audit.set(op.operationId, 'unauthorized'); continue;
     }
     const target = decision === 'counteroffer' ? validateDesignationTarget(proposal.proposedMode, op.payload.target as unknown as DateTarget) : null;

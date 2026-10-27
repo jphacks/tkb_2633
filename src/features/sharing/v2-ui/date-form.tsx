@@ -9,9 +9,10 @@ import type { V2RoundReference } from '../v2/actions';
 import { v2DateChangeOriginal } from '../v2/date-change-original';
 import type { DateTarget, DesignationMode, RuleSelector } from '../v2/model';
 import type { CalendarConflict } from '../v2/private-availability';
-import { V2Choices, V2Flag, V2TextField, V2TimeDisambiguation, v2FormStyles as styles } from './form-controls';
-import { v2LocalTimeChoices, v2RuleSelectorFromForm, v2TargetFormValues, v2TargetFromEditedForm, v2TargetLabel } from './target-form';
+import { V2Choices, V2Flag, V2TextField, v2FormStyles as styles } from './form-controls';
+import { v2InitialTargetFields, v2RuleSelectorFromForm, v2TargetFromEditedForm, v2TargetLabel } from './target-form';
 import type { V2ValidityChoice } from './target-form';
+import { V2DateTargetFields } from './date-target-fields';
 
 const ruleIdsOf = (formal: V2SubjectPlan['formalDate']) => formal.kind === 'automatic' ? [] : formal.kind === 'manual' ? formal.equivalentRuleIds : formal.ruleIds;
 const sameIds = (a: readonly string[], b: readonly string[]) => canonicalJson([...a].sort()) === canonicalJson([...b].sort());
@@ -24,12 +25,6 @@ function displayedState({ model, round, subject }: Props) {
   const rules = model.dateRules.filter((fact) => ruleIds.includes(fact.operationId));
   const target: DateTarget = formal.kind === 'manual' ? formal.target : { precision: 'date', date: round.anchorDate };
   const mode: DesignationMode = formal.kind === 'manual' ? formal.mode : rules.length === 1 ? rules[0].rule.mode : 'day';
-  const values = v2TargetFormValues(target, model.plan.timeZone);
-  const clockChoice = (day: string, clock: string, at?: string) => {
-    if (!at || !clock) return '';
-    const choices = v2LocalTimeChoices(day, clock, model.plan.timeZone);
-    return choices.length > 1 ? choices.find((choice) => Date.parse(choice.value) === Math.floor(Date.parse(at) / 60000) * 60000)?.value ?? '' : '';
-  };
   const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId,
     expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId), expectedTimeZone: model.plan.timeZone };
   let originalMissingTime = false;
@@ -37,8 +32,7 @@ function displayedState({ model, round, subject }: Props) {
   return { ref, ruleIds, rules, target, mode, originalMissingTime, timeZone: model.plan.timeZone, assignees: [...subject.assigneeIds],
     assignmentIds: [...round.assignmentOperationIds], conflictIds: [...round.assignmentConflictIds], reviewIds: [...subject.requestReviewIds],
     needsReview: formal.kind === 'conflict' || formal.kind === 'review' || subject.requestReviewIds.length > 0,
-    fields: { ...values, clockChoice: clockChoice(values.day, values.clock, target.precision === 'instant' ? target.at : target.precision === 'interval' ? target.start : undefined),
-      endClockChoice: clockChoice(values.endDay, values.endClock, target.precision === 'interval' ? target.end : undefined) },
+    fields: v2InitialTargetFields(target, model.plan.timeZone),
     options: { strict: rules.some((fact) => fact.rule.strict), adminLocked: rules.some((fact) => fact.rule.adminLocked), forbidEarlier: rules.some((fact) => fact.rule.forbidEarlier) } };
 }
 
@@ -128,14 +122,8 @@ function DateEditor(props: Props) {
     </View> : null}
     <V2Choices label="指定の種類" value={mode} onChange={(value) => edit({ mode: value })} disabled={disabled}
       choices={[{ value: 'deadline', label: '期限までに実施' }, { value: 'day', label: 'この日に実施' }, { value: 'fixed', label: '固定日時に実施' }]} />
-    <V2TextField label={mode === 'deadline' ? '期限の日付' : '実施日'} value={fields.day} placeholder="YYYY-MM-DD" editable={!disabled} onChangeText={(value) => field('day', value)} />
-    {mode !== 'day' ? <><V2TextField label={mode === 'fixed' ? '開始時刻' : '期限の時刻（任意）'} value={fields.clock} placeholder="HH:mm" editable={!disabled} onChangeText={(value) => field('clock', value)} />
-      <V2TimeDisambiguation day={fields.day} clock={fields.clock} timeZone={displayed.timeZone} value={fields.clockChoice} disabled={disabled} onChange={(value) => field('clockChoice', value)} />
-      {mode === 'deadline' ? <Text style={styles.caption}>時刻を空欄にすると、この地域の23:59を申請期限の計算に使います。</Text> : null}</> : null}
-    {mode === 'fixed' ? <><V2TextField label="終了日" value={fields.endDay} placeholder="YYYY-MM-DD" editable={!disabled} onChangeText={(value) => field('endDay', value)} />
-      <V2TextField label="終了時刻" value={fields.endClock} placeholder="HH:mm" editable={!disabled} onChangeText={(value) => field('endClock', value)} />
-      <V2TimeDisambiguation label="終了時刻の区別" day={fields.endDay} clock={fields.endClock} timeZone={displayed.timeZone} value={fields.endClockChoice} disabled={disabled} onChange={(value) => field('endClockChoice', value)} />
-      <Text style={styles.caption}>Google Calendarの競合：{calendarStatus === 'clear' ? '取得済みの本人用情報の範囲では重複なし' : calendarStatus === 'conflict' ? '本人の予定と重複' : '未確認'}。{ownCalendar ? '本人用の情報で保存前に確認します。' : ''}他の人の予定内容は表示しません。</Text></> : null}
+    <V2DateTargetFields mode={mode} fields={fields} timeZone={displayed.timeZone} disabled={disabled} onChange={field} />
+    {mode === 'fixed' ? <Text style={styles.caption}>Google Calendarの競合：{calendarStatus === 'clear' ? '取得済みの本人用情報の範囲では重複なし' : calendarStatus === 'conflict' ? '本人の予定と重複' : '未確認'}。{ownCalendar ? '本人用の情報で保存前に確認します。' : ''}他の人の予定内容は表示しません。</Text> : null}
     <V2Choices label="日時指定の適用範囲" value={validity} onChange={(value) => edit({ validity: value })} disabled={disabled}
       choices={[{ value: 'once', label: '今回だけ' }, { value: 'twoWeeks', label: '2週間' }, { value: 'oneMonth', label: '1か月' }, { value: 'endDate', label: '終了日を指定' }, { value: 'ongoing', label: '無期限' }]} />
     {validity === 'endDate' ? <V2TextField label="適用する最後の基準日" value={through} placeholder="YYYY-MM-DD" editable={!disabled} onChangeText={(value) => edit({ through: value })} /> : null}

@@ -21,6 +21,8 @@ import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
 import { expandedCommonWindow } from './window-extension.ts';
+import { v2DateDecisionReview } from './decision-review.ts';
+import type { V2DateDecisionEdit } from './decision-review.ts';
 import { v2AssignmentRequestReference, approvedV2AssignmentId, observedV2AssignmentCancellations } from './assignment-state.ts';
 import type { DateTarget, DesignationMode, DesignationOptions, GroupKind, GroupPolicy, RuleSelector, SharedChoreConfiguration } from './model.ts';
 
@@ -282,10 +284,13 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         issuerUserId: scope.userId, ruleVersion: ref.ruleVersion, ...(basisRuleIds.length ? { basisRuleIds } : {}),
         ...(input.reviewedRequestIds?.length ? { reviewedRequestIds: input.reviewedRequestIds } : {}) } }) }];
     }),
-    decide: (requestId: string, decision: 'approve' | 'reject' | 'counteroffer' | 'acceptCounteroffer', target: DateTarget | null = null, referenceDecisionId: string | null = null) =>
+    decide: (requestId: string, decision: 'approve' | 'reject' | 'counteroffer' | 'acceptCounteroffer', target: DateTarget | null = null, referenceDecisionId: string | null = null, edit: V2DateDecisionEdit = {}) =>
       repository.commitCurrent(async (state) => {
         const current = state.assessment.requestStates.find((entry) => entry.requestId === requestId);
         if (!current) throw new Error('申請を同期してください。');
+        const review = v2DateDecisionReview(state, requestId, scope.userId);
+        if (edit.expectedDecisionIds && !sameIds(edit.expectedDecisionIds, review.answers.map((answer) => answer.operationId))
+          || edit.expectedReviewRevision !== undefined && edit.expectedReviewRevision !== review.revision) throw new V2StaleSettingsError();
         if (['approved', 'rejected', 'expired', 'tooLate', 'blocked'].includes(current.kind)) return [];
         return [draft('requestDecision', null, { requestId, decision, target, referenceDecisionId })];
       }),

@@ -87,6 +87,17 @@ test('v2 calendar markers follow shared-card visibility and cannot reveal anothe
 });
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} calendar mutations keep the visible cards and known counts while disabling another action instead of emptying the list`, async () => {
+    const f = await setup(platform);
+    try {
+      const before = f.screen.nodes().find((node) => node.type === 'FlatList').props.data.map((entry) => entry.key);
+      assert.ok(before.length > 0); f.props.busy = true; f.screen.render();
+      assert.deepEqual(f.screen.nodes().find((node) => node.type === 'FlatList').props.data.map((entry) => entry.key), before);
+      assert.ok(f.screen.nodes().some((node) => node.props.accessibilityLabel === '2026年10月27日、確認できる未完了の共有家事1件'));
+      assert.equal(f.screen.nodes().find((node) => node.props.accessibilityRole === 'checkbox').props.disabled, true);
+      assert.equal(f.props.model.plan.history.length, 0);
+    } finally { f.close(); }
+  });
   test(`${platform} v2 calendar completion reduces the displayed count to zero while keeping the completed card on its day`, async () => {
     const f = await setup(platform);
     try {

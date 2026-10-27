@@ -6,17 +6,20 @@ import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import { buildV2PersonalPlan } from '../v2/personal-plan.ts';
 import type { V2PersonalPlan } from '../v2/personal-plan';
 import { v2CalendarMonth } from './calendar-projection.ts';
+import type { V2PrivateOverlayState, V2PrivateTaskSource } from './private-overlay';
 
 export interface V2GroupUiSession {
   controller: V2GroupController; groupId: string; userId: string;
-  readModel: (options?: { calendarMonth?: string; focusDate?: string }) => Promise<V2GroupScreenModel & { personal: V2PersonalPlan }>;
+  privateTasks?: V2PrivateTaskSource;
+  readModel: (options?: { calendarMonth?: string; focusDate?: string }) => Promise<V2GroupScreenModel & { personal: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
 }
 
 /** The UI computes its range and personal suggestions from one authenticated group clock. */
 export function createV2ScreenSession(input: { controller: V2GroupController; groupId: string; userId: string; now: () => Date;
   readPreferences: () => { ownerUserId: string; settings: ScheduleSettings } | Promise<{ ownerUserId: string; settings: ScheduleSettings }>;
+  privateTasks?: V2PrivateTaskSource;
 }): V2GroupUiSession {
-  return { controller: input.controller, groupId: input.groupId, userId: input.userId,
+  return { controller: input.controller, groupId: input.groupId, userId: input.userId, privateTasks: input.privateTasks,
     async readModel(options) {
       if (options?.calendarMonth && options.focusDate) throw new Error('月表示と家事回の表示を同時に指定できません。');
       const instant = input.now(); const preferences = await input.readPreferences();
@@ -28,7 +31,14 @@ export function createV2ScreenSession(input: { controller: V2GroupController; gr
         return { from: addDays(calendar?.from ?? focus ?? date, -14), through: addDays(calendar?.through ?? focus ?? date, 14), asOfDate: date };
       });
       if (model.viewerUserId !== input.userId || model.plan.groupId !== input.groupId) throw new Error('表示する共有アカウント・グループが変わりました。');
-      const personal = buildV2PersonalPlan(model.plan, { viewerUserId: input.userId, now: instant.getTime(), settings: preferences.settings });
-      return { ...model, personal };
+      let privateOverlay: V2PrivateOverlayState | undefined;
+      if (input.privateTasks) try {
+        privateOverlay = await input.privateTasks.read(model.plan.range, instant);
+        if (privateOverlay.ownerUserId !== input.userId) throw new Error('本人の個人家事を確認してください。');
+      } catch { privateOverlay = { status: 'unavailable', message: '個人家事を取得できませんでした。個人モードの状態を確認し、再読込してください。' }; }
+      const privateLoad = privateOverlay?.status === 'ready' && privateOverlay.timeZone === model.plan.timeZone
+        ? { ownerUserId: input.userId, days: privateOverlay.dailyLoad } : undefined;
+      const personal = buildV2PersonalPlan(model.plan, { viewerUserId: input.userId, now: instant.getTime(), settings: preferences.settings, privateLoad });
+      return { ...model, personal, ...(privateOverlay ? { privateOverlay } : {}) };
     } };
 }

@@ -169,3 +169,22 @@ iPhoneは個別ルート化後も入力欄にキーボードフォーカスを�
 この検査は公開アクセシビリティAPIでの入力・表示・端末内保存の検査で、ソフトウェアキーボードや座標タップの検証とは区別する。通常v2の実サービス・実アカウント間同期やiPhoneの新しい画面操作をPASSとしたものではない。通常ルートの選択・保護・前景更新は両OS条件の実TSX検査、通常作成と受付はFirestore Emulator・SQLiteとの結合検査で確認した。
 
 初期設定の数値欄は通常の自動保存欄と同じ、左にラベル・右に数値の配置へ揃えた。`phase4t-android-layout-verified.log`は`initialCompactLayoutReadOnly=true`、3.679秒、終了コード0。未設定のレンジフードを開いて新しい配置を読み取りのみで確認した。`phase4t-initialCompactLayout.png`のSHA-256は`9238d5c1b8b4c50a95879fc0cb3635fce55a7ecde5929bba8d319d3b22b3517d`。この確認では家事を有効化・保存していない。スクロールで開発用の目印が画面外となり安全側で停止した先行試行も、成功へ数えず保持している。
+
+## Phase 4u：Android 10、個人家事の重ね表示
+
+Sony I4293 / Android 10（API 29）、同じLiFlow development buildとMetroポート8101。実アカウント・個人DB・既存共有グループを操作せず、`personal=1`付き開発用リンクが新規に用意した独立した個人／v2検査DBを使用。別パッケージのUiAutomation helperだけ更新し、LiFlowの再インストール・データ消去は実施していない。iPhoneは依頼済みの手動確認待ちで、この検査は未実施。
+
+- 1回目：23.832秒、code 1。ホームの完了・取消と手順表示まで進んだが、長い手順のスクロールでQA識別表示がaccessibility treeから外れ、操作を停止。安全確認を弱めず、QA画面だけに固定の識別表示を配置した。
+- 2回目：41.283秒、code 1。カレンダーで保存すると一覧を一度空にする既存処理が働き、位置が先頭へ戻った。個人の件数は0へ更新済みだったが、チェック済みカードの確認を続けられなかった。修正前のTSX検査でも`data`が空になる失敗を両OSで再現した。
+- 3回目：22.435秒、code 0、`privateHomeCalendarCompletionUndoAndInstructions=true`。以前の検査用完了だけを明示的に取り消してから、ホームとカレンダーで完了・取消、手順開閉、共有の送信待ち不変、件数の1→0→1を確認した。カレンダーの完了後・取消後ともカードが同じスクロール位置で表示された。画像も確認済み。
+
+3回目のローカル証跡は`/tmp/liflow-v2-20261027/phase4u-android-private-third.log`、画像一覧とSHA-256は`phase4u-native-evidence.json`。主な画像：
+
+| 画像 | SHA-256 |
+| --- | --- |
+| `phase4u-privateHomePending.png` | `15b923fd25f8111801ee77cee499ae68085946cdfe5a20358f46c108d2251272` |
+| `phase4u-privateHomeCompleted.png` | `9a1f9b40155fc2674546cbb390373fa26e372307b1967065e383b0535b9a2270` |
+| `phase4u-privateCalendarCompleted.png` | `af5b3bdaaec721f399ff2068608041c6755855680df8009642c7f89eef1717da` |
+| `phase4u-privateCalendarUndone.png` | `8b90d9f40aaec376b0b76475869448f5b2103b867c22c546b8ed7a6a48294df7` |
+
+棒モードでは合計2件と3件が同じ区分なので、上部マーカーの2枚は同一画像となる。個人件数の0／1はnative accessibility labelのassertionで検査しており、画像だけで差を判断したとは扱わない。初回・2回目の失敗ログも保持し、最終成功に含めない。本番v2共有、iOSの今回の画面、個人Calendarの同一人物端末同期、v2 Google Tasksや通知が実サービスで通ったという証跡ではない。

@@ -44,8 +44,39 @@ async function screenFixture(platform, view = 'home', clock = () => new Date('20
 test('v2 development fixture refuses release execution before opening storage, creating identities or accessing an account', async () => {
   let calls = 0;
   await assert.rejects(createV2DevelopmentPreview({ development: false, makeId: () => { calls++; return 'unused'; }, now: () => new Date(),
-    crypto: { randomBytes: () => { calls++; throw new Error('Unexpected crypto'); } }, openDatabase: () => { calls++; throw new Error('Unexpected DB'); } }));
+    crypto: { randomBytes: () => { calls++; throw new Error('Unexpected crypto'); } }, openDatabase: () => { calls++; throw new Error('Unexpected DB'); },
+    openPrivateDatabase: () => { calls++; throw new Error('Unexpected private DB'); } }));
   assert.equal(calls, 0);
+});
+
+test('optional development personal overlays use a separate empty synthetic database without cloud or Google changes', async () => {
+  const shared = createDatabase(); const personal = createDatabase(); let id = 0;
+  const preview = await createV2DevelopmentPreview({ development: true, crypto, makeId: () => `private-preview-${++id}`, now: () => new Date(),
+    openDatabase: async () => ({ database: shared.database, close: async () => shared.connection.close() }),
+    openPrivateDatabase: async (userId, groupId) => { assert.match(userId, /^qa-v2-owner-/u); assert.match(groupId, /-personal-fixture$/u);
+      return { database: personal.database, close: async () => personal.connection.close() }; } });
+  try {
+    const model = await preview.readModel(); const row = model.privateOverlay.home[0]; assert.equal(row.chore.name, '検査用の個人家事');
+    const before = shared.connection.prepare('SELECT * FROM sharing_outbox ORDER BY operation_id').all();
+    await preview.privateTasks.setCompleted(row.key, row.revision, true);
+    assert.equal(personal.connection.prepare('SELECT outcome FROM chore_completions').get().outcome, 'completed');
+    assert.deepEqual(shared.connection.prepare('SELECT * FROM sharing_outbox ORDER BY operation_id').all(), before);
+    assert.equal(personal.connection.prepare('SELECT COUNT(*) AS n FROM google_sync_state').get().n, 0);
+    assert.equal(shared.connection.prepare('SELECT COUNT(*) AS n FROM chore_completions').get().n, 0);
+    await assert.rejects(preview.controller.sync(), /クラウドへ送信しません/u);
+  } finally { await preview.close(); }
+});
+
+test('development personal-overlay seeding refuses any existing database before modifying its contents', async () => {
+  const shared = createDatabase(); const personal = createDatabase(); let id = 0;
+  personal.connection.exec("CREATE TABLE preserve (value TEXT); INSERT INTO preserve VALUES ('keep original')");
+  try {
+    await assert.rejects(createV2DevelopmentPreview({ development: true, crypto, makeId: () => `existing-preview-${++id}`, now: () => new Date(),
+      openDatabase: async () => ({ database: shared.database, close: async () => shared.connection.close() }),
+      openPrivateDatabase: async () => ({ database: personal.database, close: async () => {} }) }), /空の独立した保存先/u);
+    assert.deepEqual(personal.connection.prepare('SELECT name FROM sqlite_master WHERE type = ?').all('table').map((row) => row.name), ['preserve']);
+    assert.equal(personal.connection.prepare('SELECT value FROM preserve').get().value, 'keep original'); assert.equal(personal.writes.length, 0);
+  } finally { personal.connection.close(); }
 });
 
 test('v2 development fixture uses a fresh synthetic scope and real signed SQLite operations without cloud receipts or a personal database', async () => {

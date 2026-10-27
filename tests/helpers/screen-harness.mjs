@@ -28,6 +28,7 @@ export function screenHarness(filename, options = {}) {
     useState: hook,
     useRef: (value) => hook(() => ({ current: value }))[0],
     useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
+    useLayoutEffect: (callback) => options.layoutEffect?.(callback),
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     useContext: (context) => context._currentValue ?? null,
     createElement: (type, props, ...children) => jsx(type, { ...props, children }),

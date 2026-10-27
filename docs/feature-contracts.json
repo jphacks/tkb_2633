@@ -2804,5 +2804,49 @@
     "tests": [
       { "file": "tests/typescript-project-scope.test.mjs", "name": "typechecking includes the live app and v2 routes while excluding immutable handoff source snapshots" }
     ]
+  },
+  {
+    "feature": "v2-private-overlay-preserves-personal-selection-and-privacy",
+    "tests": [
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "private overlay follows the existing personal selectors including legacy completions, grace days and hidden chores" },
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "private overlay indexes large unrelated completion history once rather than rescanning it for every calendar cell" },
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "private overlay rejects other users and shared snapshots and never shifts a civil date into the group timezone" }
+    ]
+  },
+  {
+    "feature": "v2-private-checkboxes-use-guarded-personal-transactions-and-existing-google-queue",
+    "tests": [
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "personal completion and undo from a composite view persist only in the personal database and its existing Google queue" },
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "private overlay stale selections, repeated taps and changed access cannot undo a newer completion or invoke shared mutations" },
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "the personal queue validates a displayed checkbox after concurrent edits and rolls back if access changes before saving" },
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "personal overlay readers and writers reject v1 and v2 connections before any initialization or adapter mutation" }
+    ]
+  },
+  {
+    "feature": "v2-composite-mobile-home-calendar-and-account-switch-guards",
+    "tests": [
+      { "file": "tests/sharing-v2-private-ui.test.mjs", "name": "shared home overlays private chores and routes completion and undo to their original personal source" },
+      { "file": "tests/sharing-v2-private-ui.test.mjs", "name": "composite calendar counts personal recommendations and shared tasks without sending private rows to shared actions" },
+      { "file": "tests/sharing-v2-private-ui.test.mjs", "name": "an old private checkbox cannot save or synchronize after changing the selected account or group" }
+    ]
+  },
+  {
+    "feature": "v2-calendar-mutations-preserve-list-position-and-known-counts",
+    "tests": [
+      { "file": "tests/sharing-v2-calendar-ui.test.mjs", "name": "calendar mutations keep the visible cards and known counts while disabling another action instead of emptying the list" }
+    ]
+  },
+  {
+    "feature": "v2-private-load-affects-only-personal-recommendations",
+    "tests": [
+      { "file": "tests/sharing-v2-private-overlay.test.mjs", "name": "same-zone private load changes only the personal recommendation and cannot enter a shared plan or outbox" }
+    ]
+  },
+  {
+    "feature": "v2-private-overlay-native-fixture-never-seeds-existing-data",
+    "tests": [
+      { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "optional development personal overlays use a separate empty synthetic database without cloud or Google changes" },
+      { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "development personal-overlay seeding refuses any existing database before modifying its contents" }
+    ]
   }
 ]

@@ -15,6 +15,9 @@ import type {
 } from '@/domain/chores/types';
 import { parseCalendarCountColors } from '@/domain/calendar/count-colors';
 import { completionCycleDate, completionWasRecordedBeforeWindow } from '@/domain/scheduling/completion-matching';
+import { selectDateTasks } from '@/domain/scheduling/date-tasks';
+import { dateTaskRevision } from '@/domain/scheduling/date-task-reference';
+import type { PersonalDateTaskCommand } from '@/domain/scheduling/date-task-reference';
 import type { ScheduleGenerationInput } from '@/domain/scheduling/contracts';
 import { generateHouseworkScheduleResult, wouldCreateDependencyCycle } from '@/domain/scheduling/engine';
 import { addDays, localDateFromDate, parseLocalDate } from '@/domain/scheduling/local-date';
@@ -203,6 +206,18 @@ interface CompletionRow {
   scheduled_date: string | null;
   scheduled_window_start: string | null;
   scheduled_window_end: string | null;
+}
+
+function completionFromRow(row: CompletionRow): ChoreCompletion {
+  return {
+    id: row.id, householdId: row.household_id, choreId: row.chore_id, completedAt: row.completed_at,
+    completedByMemberId: row.completed_by_member_id ?? undefined, outcome: row.outcome, source: row.source ?? undefined,
+    scheduleEntryId: row.schedule_entry_id ?? undefined,
+    scheduledDate: (row.scheduled_date ?? undefined) as LocalDate | undefined,
+    scheduledWindowStart: (row.scheduled_window_start ?? undefined) as LocalDate | undefined,
+    scheduledWindowEnd: (row.scheduled_window_end ?? undefined) as LocalDate | undefined,
+    ...(row.source === 'googleTasks' ? { estimatedDate: false } : {}),
+  };
 }
 
 interface ScheduleEntryRow {
@@ -521,20 +536,7 @@ async function loadPlannerSnapshotImpl(
     successorChoreId: row.successor_chore_id,
     policyData: row.policy_json ? parseJson(row.policy_json, undefined) : undefined,
   }));
-  const completions = completionRows.map((row): ChoreCompletion => ({
-    id: row.id,
-    householdId: row.household_id,
-    choreId: row.chore_id,
-    completedAt: row.completed_at,
-    completedByMemberId: row.completed_by_member_id ?? undefined,
-    outcome: row.outcome,
-    source: row.source ?? undefined,
-    scheduleEntryId: row.schedule_entry_id ?? undefined,
-    scheduledDate: (row.scheduled_date ?? undefined) as LocalDate | undefined,
-    scheduledWindowStart: (row.scheduled_window_start ?? undefined) as LocalDate | undefined,
-    scheduledWindowEnd: (row.scheduled_window_end ?? undefined) as LocalDate | undefined,
-    ...(row.source === 'googleTasks' ? { estimatedDate: false } : {}),
-  }));
+  const completions = completionRows.map(completionFromRow);
   const previousScheduleEntries = scheduleEntryRows
     .map((row) => parseJson<ChoreScheduleEntry | undefined>(row.entry_json, undefined))
     .filter((entry): entry is ChoreScheduleEntry => Boolean(entry?.id && entry.choreId));
@@ -1065,6 +1067,58 @@ async function completeChoreImpl(
     inserted = await persistChoreCompletion(database, entry, new Date().toISOString(), source, memberId);
   });
   return inserted;
+}
+
+/** Overlay access must never initialize or mutate a v1/v2 group connection. */
+async function assertPersonalPlannerDatabase(database: SQLiteDatabase): Promise<void> {
+  if (sharedRepositoryAdapter(database) || await database.getFirstAsync(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('sharing_workspace_metadata', 'sharing_v2_binding') LIMIT 1",
+  )) throw new Error('個人の保存先を確認できません。個人モードを開き直してください。');
+  const household = await database.getFirstAsync<{ id: string }>('SELECT id FROM households WHERE id = ?', LOCAL_HOUSEHOLD_ID);
+  if (!household) throw new Error('個人の家事を読み込んでから再試行してください。');
+}
+
+async function readPersonalPlannerOverlaySnapshotImpl(database: SQLiteDatabase, now = new Date()) {
+  await assertPersonalPlannerDatabase(database);
+  const today = localDateFromDate(now); const timeZone = getDeviceTimeZone();
+  const snapshot = readCachedPlannerSnapshot(database, now) ?? await loadPlannerSnapshotImpl(database, today, now, timeZone);
+  return { snapshot, today, timeZone };
+}
+
+/** Re-select inside the personal queue and transaction; a stale UI can never target a new occurrence. */
+async function setPersonalDateTaskCompletedImpl(database: SQLiteDatabase, command: PersonalDateTaskCommand,
+  assertAccess: () => void | Promise<void>): Promise<boolean> {
+  parseLocalDate(command.date);
+  if (![0, 3].includes(command.graceDays) || typeof command.completed !== 'boolean' || typeof command.revision !== 'string'
+    || !command.choreId) throw new Error('表示した個人家事を選び直してください。');
+  await assertAccess(); await assertPersonalPlannerDatabase(database);
+  let changed = false;
+  await database.withTransactionAsync(async () => {
+    const row = await database.getFirstAsync<DefinitionRow>(
+      'SELECT id, enabled, definition_json FROM chore_definitions WHERE id = ? AND household_id = ?', command.choreId, LOCAL_HOUSEHOLD_ID,
+    );
+    if (!row?.enabled) throw new Error('この個人家事は変更されています。表示を更新してください。');
+    const chore = { ...JSON.parse(row.definition_json) as ChoreDefinition, enabled: Boolean(row.enabled) };
+    const entries = (await database.getAllAsync<ScheduleEntryRow>(
+      'SELECT entry_json FROM chore_schedule_entries WHERE chore_id = ? AND household_id = ?', command.choreId, LOCAL_HOUSEHOLD_ID,
+    )).map((entry) => JSON.parse(entry.entry_json) as ChoreScheduleEntry);
+    if (chore.id !== command.choreId || chore.householdId !== LOCAL_HOUSEHOLD_ID
+      || entries.some((entry) => entry.householdId !== LOCAL_HOUSEHOLD_ID || entry.choreId !== command.choreId)) {
+      throw new Error('個人の家事と保存先を確認できません。表示を更新してください。');
+    }
+    const completions = (await database.getAllAsync<CompletionRow>(
+      `SELECT id, household_id, chore_id, completed_at, completed_by_member_id, source, schedule_entry_id,
+       scheduled_date, scheduled_window_start, scheduled_window_end, outcome FROM chore_completions
+       WHERE chore_id = ? AND household_id = ? ORDER BY completed_at DESC`, command.choreId, LOCAL_HOUSEHOLD_ID,
+    )).map(completionFromRow);
+    const task = selectDateTasks(entries, completions, command.date, command.graceDays, [chore])[0];
+    if (!task || dateTaskRevision(task) !== command.revision) throw new Error('個人家事の状態が変わっています。表示を更新して選び直してください。');
+    await assertAccess();
+    if (task.completed === command.completed) return;
+    if (command.completed && task.entry && await isActiveChoreEntry(database, task.entry)) changed = await persistChoreCompletion(database, task.entry, new Date().toISOString(), 'inApp');
+    else if (!command.completed && task.completion) changed = await undoCompletionInTransaction(database, task.completion.id, 'inApp', localDateFromDate(new Date()));
+  });
+  return changed;
 }
 
 async function isActiveChoreEntry(database: SQLiteDatabase, entry: ChoreScheduleEntry): Promise<boolean> {
@@ -1991,6 +2045,8 @@ export const updateChoreSettings = serializeDatabaseOperation(updateChoreSetting
 export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl, 'saveReviewedApplianceCare');
 export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl, 'setChoreEnabled');
 export const completeChore = serializePlannerOperation(completeChoreImpl, 'completeChore');
+export const readPersonalPlannerOverlaySnapshot = serializeDatabaseOperation(readPersonalPlannerOverlaySnapshotImpl);
+export const setPersonalDateTaskCompleted = serializePlannerOperation(setPersonalDateTaskCompletedImpl);
 export const importGoogleTaskCompletions = serializePlannerOperation(importGoogleTaskCompletionsImpl, 'importGoogleTaskCompletions');
 export const importGoogleTaskChanges = serializePlannerOperation(importGoogleTaskChangesImpl, 'importGoogleTaskChanges');
 export const undoCompletedChore = serializePlannerOperation(undoCompletedChoreImpl, 'undoCompletedChore');

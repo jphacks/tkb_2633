@@ -1,25 +1,28 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { V2DevelopmentPreviewScreen } from './v2-preview-screen';
 import { developmentV2Preview } from '@/platform/sharing/development-v2-preview';
+import { useCallback } from 'react';
 
 export type V2PreviewView = 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar';
 
 /** Separate Native stack screens retain their own inputs, scroll position and route parameters. */
 export function V2PreviewRoute({ view }: { view: V2PreviewView }) {
-  const params = useLocalSearchParams<{ choreId?: string; occurrenceId?: string; subjectId?: string; anchorDate?: string }>();
+  const params = useLocalSearchParams<{ choreId?: string; occurrenceId?: string; subjectId?: string; anchorDate?: string; personal?: string }>();
   const router = useRouter();
   const text = (value: unknown) => typeof value === 'string' ? value : undefined;
-  const focus = text(params.anchorDate); const context = focus ? { anchorDate: focus } : {};
-  return <V2DevelopmentPreviewScreen development={__DEV__} loadSession={developmentV2Preview} view={view}
+  const focus = text(params.anchorDate); const personal = text(params.personal) === '1'; const privateContext = personal ? { personal: '1' } : {};
+  const context = { ...privateContext, ...(focus ? { anchorDate: focus } : {}) };
+  const loadSession = useCallback(() => developmentV2Preview(personal), [personal]);
+  return <V2DevelopmentPreviewScreen key={personal ? 'private-fixture' : 'shared-fixture'} development={__DEV__} loadSession={loadSession} view={view}
     anchorDate={focus}
     choreId={text(params.choreId)} occurrenceId={text(params.occurrenceId)} subjectId={text(params.subjectId)}
-    onRound={(occurrenceId, subjectId, anchorDate) => router.push({ pathname: '/development/sharing-v2-preview/round', params: { occurrenceId, subjectId, ...(anchorDate ? { anchorDate } : context) } })}
+    onRound={(occurrenceId, subjectId, anchorDate) => router.push({ pathname: '/development/sharing-v2-preview/round', params: { occurrenceId, subjectId, ...context, ...(anchorDate ? { anchorDate } : {}) } })}
     onDate={(occurrenceId, subjectId) => router.push({ pathname: '/development/sharing-v2-preview/date', params: { occurrenceId, subjectId, ...context } })}
     onAssignment={(occurrenceId, subjectId) => router.push({ pathname: '/development/sharing-v2-preview/assignment', params: { occurrenceId, subjectId, ...context } })}
     onBack={() => router.back()}
-    onConfiguration={(choreId) => router.push({ pathname: '/development/sharing-v2-preview/configuration', params: { choreId } })}
-    onHistory={() => router.push('/development/sharing-v2-preview/history')}
-    onCalendar={() => router.push('/development/sharing-v2-preview/calendar')}
-    onAssignmentRequests={() => router.push('/development/sharing-v2-preview/assignment-requests')}
-    onRequests={() => router.push('/development/sharing-v2-preview/requests')} />;
+    onConfiguration={(choreId) => router.push({ pathname: '/development/sharing-v2-preview/configuration', params: { choreId, ...privateContext } })}
+    onHistory={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/history', params: privateContext } : '/development/sharing-v2-preview/history')}
+    onCalendar={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/calendar', params: privateContext } : '/development/sharing-v2-preview/calendar')}
+    onAssignmentRequests={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/assignment-requests', params: privateContext } : '/development/sharing-v2-preview/assignment-requests')}
+    onRequests={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/requests', params: privateContext } : '/development/sharing-v2-preview/requests')} />;
 }

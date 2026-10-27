@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-4';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-5';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -94,7 +94,9 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   }
   if (entityType === 'designation') {
     record(payload, ['configuration']);
-    const data = record(payload.configuration, ['id', 'choreId', 'subjectUserId', 'selector', 'referenceAnchorDate', 'timeZoneAtCreation', 'mode', 'target', 'strict', 'adminLocked', 'forbidEarlier', 'issuerUserId', 'ruleVersion']);
+    const required = ['id', 'choreId', 'subjectUserId', 'selector', 'referenceAnchorDate', 'timeZoneAtCreation', 'mode', 'target', 'strict', 'adminLocked', 'forbidEarlier', 'issuerUserId', 'ruleVersion'];
+    const data = record(payload.configuration, [...required, 'basisRuleIds'], required);
+    if ('basisRuleIds' in data) ids(data.basisRuleIds);
     if (data.id !== binding.operationId || data.issuerUserId !== binding.authorUserId) throw new Error('A designation cannot impersonate another issuer');
     assertSharedIdentifier(data.choreId); idOrNull(data.subjectUserId); selector(data.selector); day(data.referenceAnchorDate); choice(data.mode, ['deadline', 'day', 'fixed']);
     if ((data.selector as RecordValue).scope === 'once' && (data.selector as RecordValue).anchorDate !== data.referenceAnchorDate) throw new Error('One-off designation anchor mismatch');
@@ -104,7 +106,9 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   }
   if (entityType === 'designationCancel') { record(payload, ['targetOperationIds']); ids(payload.targetOperationIds, false); return; }
   if (entityType === 'changeRequest') {
-    record(payload, ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'proposedMode', 'proposedOptions', 'selector', 'extensionScope']);
+    const required = ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'proposedMode', 'proposedOptions', 'selector', 'extensionScope'];
+    record(payload, [...required, 'basisRuleIds'], required);
+    if ('basisRuleIds' in payload) ids(payload.basisRuleIds);
     if (payload.requesterUserId !== binding.authorUserId) throw new Error('Request author mismatch');
     assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId); idOrNull(payload.subjectUserId); idOrNull(payload.originalDesignationId);
     target(payload.original); choice(payload.proposedMode, ['deadline', 'day', 'fixed']);

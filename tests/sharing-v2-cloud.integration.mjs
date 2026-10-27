@@ -19,6 +19,7 @@ import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharin
 import { v2OccurrenceId } from '../src/features/sharing/v2/occurrence-id.ts';
 import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
 import { addDays as addLocalDays } from '../src/domain/scheduling/local-date.ts';
+import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -211,6 +212,22 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     await initializeV2EventStore(restored.database, { groupId, userId: 'member', householdId: 'local' });
     await restored.sync.sync({ force: true });
     assert.deepEqual(requests(restored), requests(owner)); assert.equal(hash(restored), hash(owner));
+    const rules = (d) => JSON.parse(d.connection.prepare('SELECT formal_rules_json FROM sharing_v2_projection').get().formal_rules_json);
+    const firstRule = rules(owner)[0]; assert.ok(firstRule.confirmation); assert.deepEqual(rules(restored), rules(owner));
+    await member.repository.commit([change('next-date-request', 'changeRequest', 'next-date-request', {
+      requesterUserId: 'member', choreId: 'approval-floor', anchorDate, occurrenceId: requestOccurrence, subjectUserId: null,
+      originalDesignationId: firstRule.operationId, original: firstRule.rule.target, proposed: day(addLocalDays(anchorDate, 5)), proposedMode: 'day',
+      proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, basisRuleIds: [firstRule.operationId],
+      selector: { scope: 'once', occurrenceId: requestOccurrence, anchorDate }, extensionScope: 'once',
+    })]);
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
+    await owner.repository.commit([change('next-date-consent', 'requestDecision', 'next-date-consent', {
+      requestId: 'next-date-request', decision: 'approve', target: null, referenceDecisionId: null,
+    })]);
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); await restored.sync.sync({ force: true });
+    for (const d of [member, restored]) { assert.deepEqual(rules(d), rules(owner)); assert.equal(hash(d), hash(owner)); }
+    const selected = selectManualRule(rules(restored), { id: requestOccurrence, choreId: 'approval-floor', anchorDate, ruleVersion: 1 }, null, 'Asia/Tokyo');
+    assert.equal(selected.kind, 'selected'); assert.deepEqual(selected.fact.rule.target, day(addLocalDays(anchorDate, 5)));
     for (const d of [owner, member, restored]) assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
   } finally { owner.connection.close(); member.connection.close(); restored?.connection.close(); }
 });

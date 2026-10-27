@@ -1,6 +1,7 @@
 import type { LocalDate } from '../../../domain/shared/types.ts';
 import type { VersionVector } from '../operations.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
+import type { ConfirmationProof } from './confirmation.ts';
 
 export type GroupKind = 'family' | 'roommates';
 export interface GroupPolicy {
@@ -51,13 +52,15 @@ export interface ManualRule extends DesignationOptions {
   target: DateTarget;
   issuerUserId: string;
   ruleVersion: number;
+  basisRuleIds?: string[];
 }
 export interface DateChangeRequest {
   requesterUserId: string; choreId: string; anchorDate: LocalDate; occurrenceId: string; subjectUserId: string | null;
   originalDesignationId: string | null; original: DateTarget; proposed: DateTarget;
   proposedMode: DesignationMode; proposedOptions: DesignationOptions; selector: RuleSelector; extensionScope: 'once' | 'future';
+  basisRuleIds?: string[];
 }
-export interface ManualRuleFact extends CausalStamp { rule: ManualRule }
+export interface ManualRuleFact extends CausalStamp { rule: ManualRule; confirmation?: ConfirmationProof; sourceRequestId?: string }
 export interface SharedOccurrence {
   id: string; choreId: string; anchorDate: LocalDate;
   windowStart: LocalDate; windowEnd: LocalDate; ruleVersion: number;

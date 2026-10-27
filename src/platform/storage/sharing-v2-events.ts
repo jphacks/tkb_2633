@@ -6,7 +6,7 @@ import { sharedDocumentDigest, signSharedOperation, verifyAuthenticatedSharedOpe
 import type { DeviceSecretIdentity } from '../../features/sharing/crypto.ts';
 import { sharedAuthorIdentity, sharedRosterDigest, verifySharedRosterArchive } from '../../features/sharing/roster.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
-import { assessV2BusinessHistory, dateChangeContextAtOperation } from '../../features/sharing/v2/receiver-authority.ts';
+import { assessV2BusinessHistory } from '../../features/sharing/v2/receiver-authority.ts';
 import type { VerifiedLegacyMigration } from '../../features/sharing/v2/receiver-authority.ts';
 import { rosterAtOperation } from '../../features/sharing/v2/authority-context.ts';
 import { V2_SCHEDULER_VERSION } from '../../features/sharing/v2/payload-schema.ts';
@@ -18,7 +18,6 @@ import { withIsolatedSqliteTransaction } from './isolated-transaction.ts';
 import { initializeV2ReceiptTable, persistV2ServerReceiptsInside, readV2ServerReceiptsInside } from './sharing-v2-receipts.ts';
 import { bindV2ServerReceipt, v2AuthorProofDigest } from '../../features/sharing/v2/server-receipts.ts';
 import type { V2ServerReceipt } from '../../features/sharing/v2/server-receipts.ts';
-import { deriveV2DateRequest } from '../../features/sharing/v2/request-state.ts';
 
 interface V2StoreScope { userId: string; groupId: string; householdId: string }
 function digestPages(values: readonly unknown[]): string[] {
@@ -47,6 +46,9 @@ export async function initializeV2EventStore(database: SQLiteDatabase, scope: V2
     }
     if (!(await transaction.getAllAsync<{ name: string }>('PRAGMA table_info(sharing_v2_projection)')).some((column) => column.name === 'request_states_json')) {
       await transaction.execAsync("ALTER TABLE sharing_v2_projection ADD COLUMN request_states_json TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!(await transaction.getAllAsync<{ name: string }>('PRAGMA table_info(sharing_v2_projection)')).some((column) => column.name === 'formal_rules_json')) {
+      await transaction.execAsync("ALTER TABLE sharing_v2_projection ADD COLUMN formal_rules_json TEXT NOT NULL DEFAULT '[]'");
     }
     await initializeV2ReceiptTable(transaction);
   });
@@ -100,31 +102,21 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     const accepted = assessment.view.ready.map((operation) => operation.operationId);
     const rejected = assessment.rejected.map((entry) => ({ operationId: entry.operationId, kind: entry.kind,
       reason: 'code' in entry.error ? String(entry.error.code) : 'sharing/v2-invalid-business-fact' }));
-    const decisions = new Map<string, typeof replica.operations>();
-    for (const op of assessment.view.ofType('requestDecision')) {
-      const requestId = op.payload.requestId as string; const list = decisions.get(requestId) ?? []; list.push(op); decisions.set(requestId, list);
-    }
-    let confirmedServerTime = 0;
-    for (const receipt of receipts.values()) confirmedServerTime = Math.max(confirmedServerTime, receipt.receivedAtMs);
-    const requestStates = assessment.view.ofType('changeRequest').map((request) => {
-      const context = dateChangeContextAtOperation(assessment.view, history, request, assessment.receiptEpochs.get(request.operationId));
-      return deriveV2DateRequest({ request: proofs.get(request.operationId)!,
-        decisions: (decisions.get(request.operationId) ?? []).map((op) => proofs.get(op.operationId)!), receipts, archive: history, confirmedServerTime,
-        context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone } });
-    });
-    const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-4',
+    const requestStates = assessment.requestStates;
+    const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-5',
       sources: digestPages(replica.operations.map((operation) => sharedDocumentDigest(operation))),
       receipts: digestPages([...receipts.values()].map((receipt) => sharedDocumentDigest(receipt))),
       accepted: digestPages(accepted), rejected: digestPages(rejected), provisional: digestPages(assessment.provisionalOperationIds),
       requests: digestPages(requestStates.map(({ decisions, counteroffers, conflictIds, ...state }) => sharedDocumentDigest({ ...state,
         decisions: digestPages(decisions), counteroffers: digestPages(counteroffers), conflictIds: digestPages(conflictIds) }))),
+      formalRules: digestPages(assessment.approvedRules.map((rule) => sharedDocumentDigest(rule))),
       roster: sharedRosterDigest(latest) });
-    await transaction.runAsync(`INSERT INTO sharing_v2_projection (singleton, fact_hash, accepted_ids_json, rejected_json, pending_ids_json, provisional_ids_json, request_states_json)
-      VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET
+    await transaction.runAsync(`INSERT INTO sharing_v2_projection (singleton, fact_hash, accepted_ids_json, rejected_json, pending_ids_json, provisional_ids_json, request_states_json, formal_rules_json)
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET
       fact_hash=excluded.fact_hash, accepted_ids_json=excluded.accepted_ids_json, rejected_json=excluded.rejected_json,
       pending_ids_json=excluded.pending_ids_json, provisional_ids_json=excluded.provisional_ids_json,
-      request_states_json=excluded.request_states_json WHERE fact_hash != excluded.fact_hash`, factHash,
-    JSON.stringify(accepted), JSON.stringify(rejected), JSON.stringify(replica.pendingOperationIds), JSON.stringify(assessment.provisionalOperationIds), JSON.stringify(requestStates));
+      request_states_json=excluded.request_states_json, formal_rules_json=excluded.formal_rules_json WHERE fact_hash != excluded.fact_hash`, factHash,
+    JSON.stringify(accepted), JSON.stringify(rejected), JSON.stringify(replica.pendingOperationIds), JSON.stringify(assessment.provisionalOperationIds), JSON.stringify(requestStates), JSON.stringify(assessment.approvedRules));
     return assessment;
   }
   return {

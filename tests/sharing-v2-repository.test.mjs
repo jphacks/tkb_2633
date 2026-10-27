@@ -14,6 +14,9 @@ import { loadSharedFacts, loadSharedReplica, listSharingOutbox, applyReceivedSha
 import { createEncryptedSharedSnapshot, openEncryptedSharedSnapshot } from '../src/features/sharing/snapshots.ts';
 import { migrateLocalDatabase } from '../src/platform/storage/migrations.ts';
 import { withIsolatedSqliteTransaction } from '../src/platform/storage/isolated-transaction.ts';
+import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
+import { createV2HistoryView } from '../src/features/sharing/v2/history-view.ts';
+import { observedDateRules } from '../src/features/sharing/v2/formal-rule-view.ts';
 const { ensureLocalHousehold } = await import('../src/platform/storage/repository.ts');
 
 const groupId = 'v2-repository'; const scope = { groupId, userId: 'owner', householdId: 'group-local' };
@@ -290,4 +293,114 @@ test('v2 an administrator request delivered after ownership transfer loses autom
     assert.equal(requestStates(d)[0].kind, 'approved'); assert.deepEqual(d.state().rejected.map((entry) => entry.operationId), ['former-owner-approval']);
     assert.equal(requestStates(d)[0].decisions[0].operationId, 'current-owner-approval');
   } finally { d.connection.close(); }
+});
+
+const formalRules = (d) => JSON.parse(d.connection.prepare('SELECT formal_rules_json FROM sharing_v2_projection').get().formal_rules_json);
+async function approvedFixture() {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  await owner.repository.commit(seeds()); const initial = await loadSharedFacts(owner.database, groupId);
+  await receiveRequestFacts(owner, initial, 4, receiptsFor(initial)); await receiveRequestFacts(member, initial, 4, receiptsFor(initial));
+  await member.repository.commit([requestDraft()]);
+  const request = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.operationId === 'request-date');
+  const receipt = { ...receiptsFor([request])[0], uploadSequence: 5 };
+  await receiveRequestFacts(owner, [request], 5, [receipt]); await receiveRequestFacts(member, [request], 5, [receipt]);
+  await owner.repository.commit([draft('approve-first', 'requestDecision', 'approve-first', { requestId: 'request-date', decision: 'approve', target: null, referenceDecisionId: null })]);
+  const approval = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === 'approve-first');
+  const approvalReceipt = { ...receiptsFor([approval])[0], uploadSequence: 6 };
+  await receiveRequestFacts(owner, [approval], 6, [approvalReceipt]); await receiveRequestFacts(member, [approval], 6, [approvalReceipt]);
+  return { ...f, owner, member, close: () => { owner.connection.close(); member.connection.close(); } };
+}
+test('v2 a second date request can reference an approved semantic rule and replaces it only with observed confirmation and explicit basis', async () => {
+  const f = await approvedFixture();
+  try {
+    const first = formalRules(f.member)[0]; assert.ok(first.confirmation); assert.equal(first.rule.target.date, '2026-10-30');
+    const second = requestDraft(); second.operationId = second.entityId = 'second-request';
+    second.payload = { ...second.payload, originalDesignationId: first.operationId, original: first.rule.target,
+      proposed: { precision: 'date', date: '2026-10-31' }, basisRuleIds: [first.operationId] };
+    await f.member.repository.commit([second]);
+    const request = (await loadSharedFacts(f.member.database, groupId)).find((fact) => fact.operation.operationId === 'second-request');
+    const receipt = { ...receiptsFor([request])[0], uploadSequence: 7 };
+    await receiveRequestFacts(f.owner, [request], 7, [receipt]); await receiveRequestFacts(f.member, [request], 7, [receipt]);
+    await f.owner.repository.commit([draft('approve-second', 'requestDecision', 'approve-second', { requestId: 'second-request', decision: 'approve', target: null, referenceDecisionId: null })]);
+    const approval = (await loadSharedFacts(f.owner.database, groupId)).find((fact) => fact.operation.operationId === 'approve-second');
+    const approvalReceipt = { ...receiptsFor([approval])[0], uploadSequence: 8 };
+    await receiveRequestFacts(f.owner, [approval], 8, [approvalReceipt]); await receiveRequestFacts(f.member, [approval], 8, [approvalReceipt]);
+    assert.equal(requestStates(f.owner).length, 2); assert.ok(requestStates(f.owner).every((state) => state.kind === 'approved'));
+    assert.deepEqual(formalRules(f.owner), formalRules(f.member));
+    const selected = selectManualRule(formalRules(f.owner), { id: v2OccurrenceId(groupId, 'floor', '2026-10-27'), choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1 }, null, 'Asia/Tokyo');
+    assert.equal(selected.kind, 'selected'); assert.equal(selected.fact.rule.target.date, '2026-10-31'); assert.equal(selected.fact.sourceRequestId, 'second-request');
+    const stale = requestDraft(); stale.operationId = stale.entityId = 'stale-request';
+    await assert.rejects(f.member.repository.commit([stale]), /formal date/);
+  } finally { f.close(); }
+});
+test('v2 cancelling an observed approved date preserves its source request and receipts and returns subsequent changes to the common baseline', async () => {
+  const f = await approvedFixture();
+  try {
+    const rule = formalRules(f.owner)[0];
+    await f.owner.repository.commit([draft('cancel-approved', 'designationCancel', 'cancel-approved', { targetOperationIds: [rule.operationId] })]);
+    const replica = await loadSharedReplica(f.owner.database, groupId); const probe = { ...replica.operations.at(-1), context: replica.frontier };
+    const visible = observedDateRules(createV2HistoryView(replica), probe, formalRules(f.owner)); assert.equal(visible.length, 0);
+    assert.equal(requestStates(f.owner)[0].kind, 'approved', 'cancellation does not falsify the earlier approval history');
+    assert.equal(formalRules(f.owner)[0].operationId, rule.operationId);
+    const predicted = draft('cancel-unconfirmed', 'designationCancel', 'cancel-unconfirmed', { targetOperationIds: ['v2-rule-' + 'a'.repeat(64)] });
+    await assert.rejects(f.owner.repository.commit([predicted]), /confirmed and observed/);
+  } finally { f.close(); }
+});
+test('v2 approved fixed intervals participate in later shared overlap checks and rollback an invalid local edit with its outbox', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    const initialDrafts = seeds(); initialDrafts[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['member']);
+    await owner.repository.commit(initialDrafts); const initial = await loadSharedFacts(owner.database, groupId);
+    await receiveRequestFacts(owner, initial, 4, receiptsFor(initial)); await receiveRequestFacts(member, initial, 4, receiptsFor(initial));
+    const requested = requestDraft(); requested.payload.proposedMode = 'fixed';
+    requested.payload.proposed = { precision: 'interval', start: '2026-10-28T01:00:00Z', end: '2026-10-28T02:00:00Z' };
+    // A locked source makes the owner decision necessary even for one's assigned chore.
+    requested.payload.proposedOptions.adminLocked = true;
+    await assert.rejects(member.repository.commit([requested]), /administrator/);
+    requested.payload.proposedOptions.adminLocked = false;
+    // Family policy requires approval for dates after its common window.
+    requested.payload.proposed = { precision: 'interval', start: '2026-10-30T01:00:00Z', end: '2026-10-30T02:00:00Z' };
+    await member.repository.commit([requested]); const request = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.operationId === 'request-date');
+    await receiveRequestFacts(owner, [request], 5, [{ ...receiptsFor([request])[0], uploadSequence: 5 }]);
+    await owner.repository.commit([draft('approve-fixed', 'requestDecision', 'approve-fixed', { requestId: 'request-date', decision: 'approve', target: null, referenceDecisionId: null })]);
+    const approval = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === 'approve-fixed');
+    await receiveRequestFacts(owner, [approval], 6, [{ ...receiptsFor([approval])[0], uploadSequence: 6 }]);
+    await owner.repository.commit([draft('second-floor', 'chore', 'second', { name: '別の家事', enabled: true }),
+      draft('second-policy', 'chorePolicy', 'second', { configuration: { ...seeds()[3].payload.configuration, policy: chorePolicyFromPreset('assigned', ['member']) } })]);
+    const make = (id, start, end) => draft(id, 'designation', id, { configuration: { id, choreId: 'second', subjectUserId: null,
+      selector: { scope: 'once', occurrenceId: v2OccurrenceId(groupId, 'second', '2026-10-27'), anchorDate: '2026-10-27' }, referenceAnchorDate: '2026-10-27',
+      timeZoneAtCreation: 'Asia/Tokyo', mode: 'fixed', target: { precision: 'interval', start, end }, strict: false, adminLocked: false, forbidEarlier: false,
+      issuerUserId: 'owner', ruleVersion: 1 } });
+    const before = owner.state(); const pending = await listSharingOutbox(owner.database, groupId);
+    await assert.rejects(owner.repository.commit([make('overlap', '2026-10-30T01:30:00Z', '2026-10-30T02:30:00Z')]), /forbidden/);
+    assert.deepEqual(owner.state(), before); assert.deepEqual(await listSharingOutbox(owner.database, groupId), pending);
+    await owner.repository.commit([make('adjacent', '2026-10-30T02:00:00Z', '2026-10-30T03:00:00Z')]);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 a batch of 256 counteroffers retains all facts and converges through 100-event receipt pages with one current alternative', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const initial = await loadSharedFacts(owner.database, groupId);
+    await receiveRequestFacts(owner, initial, 4, receiptsFor(initial)); await receiveRequestFacts(member, initial, 4, receiptsFor(initial));
+    await member.repository.commit([requestDraft()]); const request = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.operationId === 'request-date');
+    const receipt = { ...receiptsFor([request])[0], uploadSequence: 5 };
+    await receiveRequestFacts(owner, [request], 5, [receipt]); await receiveRequestFacts(member, [request], 5, [receipt]);
+    await owner.repository.commit(Array.from({ length: 256 }, (_, index) => {
+      const id = `counter-${String(index).padStart(3, '0')}`;
+      return draft(id, 'requestDecision', id, { requestId: 'request-date', decision: 'counteroffer',
+        target: { precision: 'date', date: index % 2 ? '2026-10-30' : '2026-10-31' }, referenceDecisionId: null });
+    }));
+    assert.equal((await listSharingOutbox(owner.database, groupId)).length, 100, 'outbox reading remains bounded even for a larger atomic local action');
+    const counteroffers = (await loadSharedFacts(owner.database, groupId)).filter((fact) => fact.operation.entityType === 'requestDecision');
+    assert.equal(counteroffers.length, 256);
+    for (let index = 0; index < counteroffers.length; index += 100) {
+      const page = counteroffers.slice(index, index + 100); const cursor = 5 + index + page.length;
+      await receiveRequestFacts(owner, page, cursor, receiptsFor(page)); await receiveRequestFacts(member, page, cursor, receiptsFor(page));
+    }
+    const state = requestStates(owner)[0]; assert.equal(state.kind, 'counteroffered'); assert.equal(state.decisions.length, 256);
+    assert.equal(state.counteroffers.length, 1); assert.equal(state.counteroffers[0].operationId, 'counter-255');
+    assert.deepEqual(requestStates(owner), requestStates(member)); assert.deepEqual(owner.state(), member.state());
+    assert.equal((await listSharingOutbox(owner.database, groupId)).length, 0);
+  } finally { owner.connection.close(); member.connection.close(); }
 });

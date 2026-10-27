@@ -1599,5 +1599,55 @@
         "name": "v2 causal maxima retain the pairwise semantics including duplicate facts and self context without quadratic pair scans"
       }
     ]
+  },
+  {
+    "feature": "sharing-v2-confirmed-rule-causality",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-formal-rules.test.mjs",
+        "name": "v2 pending requests have no formal rule and an approved rule requires the complete confirmation instead of its request dot"
+      },
+      {
+        "file": "tests/sharing-v2-formal-rules.test.mjs",
+        "name": "v2 approved rule identities stay stable as equivalent simultaneous confirmation proofs arrive"
+      },
+      {
+        "file": "tests/sharing-v2-formal-rules.test.mjs",
+        "name": "v2 observing only a pending request cannot make a direct date change silently supersede its later approved rule"
+      },
+      {
+        "file": "tests/sharing-v2-formal-rules.test.mjs",
+        "name": "v2 replacing an approved date requires both its explicit semantic basis and observed confirmation evidence"
+      },
+      {
+        "file": "tests/sharing-v2-formal-rules.test.mjs",
+        "name": "v2 an approval that later observes a competing direct date cannot retroactively suppress a change unseen by its original request"
+      },
+      {
+        "file": "tests/sharing-v2-formal-rules.test.mjs",
+        "name": "v2 a derived date retains the explicit mode, recurring selector and authoring timezone instead of inventing a signed event"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-chained-date-requests-and-cancellation",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 a second date request can reference an approved semantic rule and replaces it only with observed confirmation and explicit basis"
+      },
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 cancelling an observed approved date preserves its source request and receipts and returns subsequent changes to the common baseline"
+      },
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 approved fixed intervals participate in later shared overlap checks and rollback an invalid local edit with its outbox"
+      },
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 a batch of 256 counteroffers retains all facts and converges through 100-event receipt pages with one current alternative"
+      }
+    ]
   }
 ]

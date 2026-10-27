@@ -1,6 +1,7 @@
 import { addDays, daysBetween, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
 import { canonicalJson } from '../operations.ts';
-import { uniqueCausalFacts, maximalCausalFacts } from './causal-facts.ts';
+import { uniqueCausalFacts } from './causal-facts.ts';
+import { maximalManualRules } from './formal-rules.ts';
 import type { LocalDate } from '../../../domain/shared/types.ts';
 import type { CivilRange, ManualRuleFact, SharedOccurrence } from './model.ts';
 import { normalizeDateTarget } from './date-target.ts';
@@ -44,7 +45,7 @@ export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: S
   if (!matching.length) return { kind: 'automatic' };
   const rank = (fact: ManualRuleFact) => fact.rule.selector.scope === 'once' ? 3 : fact.rule.selector.scope === 'period' ? 2 : 1;
   const maximum = Math.max(...matching.map(rank)); const priority = matching.filter((fact) => rank(fact) === maximum);
-  const candidates = maximalCausalFacts(priority);
+  const candidates = maximalManualRules(priority);
   const content = (fact: ManualRuleFact) => {
     const raw = normalizeDateTarget(fact.rule.target);
     const target = timeZone ? materializeRuleTarget(fact.rule, occurrence, timeZone)

@@ -3,7 +3,7 @@ import { sharedLocalDate } from '../group-clock.ts';
 import type { SharedOperation } from '../operations.ts';
 import type { VerifiedSharedRoster } from '../roster.ts';
 import type { LocalDate } from '../../../domain/shared/types.ts';
-import type { DateTarget, ManualRule, ManualRuleFact, SharedChoreConfiguration } from './model.ts';
+import type { DateTarget, ManualRuleFact, SharedChoreConfiguration } from './model.ts';
 import type { V2HistoryView } from './history-view.ts';
 import { V2HistoryConflictError } from './history-view.ts';
 import { frameAtOperation } from './authority-context.ts';
@@ -11,16 +11,15 @@ import { commonFrames } from './common-frames.ts';
 import { fixedAssignmentsOverlap, fixedInterval } from './date-target.ts';
 import { materializeRuleTarget } from './rule-target.ts';
 import { selectManualRule } from './period-rules.ts';
+import { observedDateRules } from './formal-rule-view.ts';
 
 /** A scoped local check against actual signed designations; no Calendar data or caller-supplied conflict flag. */
 export function fixedConflictAtOperation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], operation: SharedOperation,
-  target: DateTarget, assigneeIds: string[], own: { occurrenceId: string; subjectUserId: string | null }): boolean {
+  target: DateTarget, assigneeIds: string[], own: { occurrenceId: string; subjectUserId: string | null }, approved: readonly ManualRuleFact[] = []): boolean {
   const interval = fixedInterval(target); if (!interval || !assigneeIds.length) return false;
   const zone = view.field('settings', 'settings', 'timeZone', operation)?.value;
   if (typeof zone !== 'string') throw new Error('Missing shared timezone');
-  const cancelled = new Set(view.observed(view.ofType('designationCancel'), operation).flatMap((op) => op.payload.targetOperationIds as string[]));
-  const rules = view.observed(view.ofType('designation'), operation).filter((op) => !cancelled.has(op.operationId))
-    .map((op) => ({ ...op, rule: op.payload.configuration as unknown as ManualRule }) as ManualRuleFact);
+  const rules = observedDateRules(view, operation, approved);
   const visited = new Set<string>(); let inspected = 0;
   for (const fact of rules.filter((item) => item.rule.mode === 'fixed')) {
     const rule = fact.rule; const previous = fixedInterval(rule.target); if (!previous) throw new Error('Invalid fixed designation');

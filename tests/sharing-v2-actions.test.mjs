@@ -306,3 +306,26 @@ test('v2 assignment forms retain displayed assignment bases and refuse stale ass
     assert.deepEqual(plan.occurrences[0].assigneeIds, ['member']); assert.equal(plan.history.length, 0);
   } finally { d.connection.close(); }
 });
+
+test('v2 completing and undoing before a cadence edit keeps the current round actionable without replacing original history or losing a later real completion', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const a = actions(owner); await a.claim(ref);
+    const [first] = await a.complete(ref); await a.undo(first.operationId);
+    const originalHistory = (await a.readPlan(range)).history[0];
+    await a.patchChoreConfiguration('floor', 1, { intervalDays: 17 }, '2026-10-27');
+    let plan = await a.readPlan(range); const round = plan.occurrences.find((entry) => entry.anchorDate === ref.anchorDate);
+    assert.equal(round.activeInPeriod, true); assert.equal(round.ruleVersion, 2); assert.equal(round.completed, false);
+    assert.deepEqual(plan.history[0], originalHistory);
+    assert.equal(plan.issues.some((issue) => issue.kind === 'configurationChangedDuringRound'), false);
+    const [second] = await a.complete({ ...ref, ruleVersion: 2 }, { expectedAssigneeIds: ['owner'] });
+    const completedHistory = (await a.readPlan(range)).history.find((entry) => entry.operationId === second.operationId);
+    await a.patchChoreConfiguration('floor', 2, { windowAfterDays: 3 }, '2026-10-27');
+    plan = await a.readPlan(range); const retained = plan.occurrences.find((entry) => entry.id === round.id);
+    assert.equal(retained.ruleVersion, 2); assert.equal(retained.completed, true);
+    assert.deepEqual(plan.history.find((entry) => entry.operationId === second.operationId), completedHistory);
+    const facts = await loadSharedFacts(owner.database, groupId);
+    for (const d of [owner, member]) await applyReceivedSharedFacts(d.database, groupId, facts, '20', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    assert.equal((await a.readPlan(range)).planHash, (await actions(member).readPlan(range)).planHash);
+  } finally { owner.connection.close(); member.connection.close(); }
+});

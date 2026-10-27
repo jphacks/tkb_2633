@@ -82,3 +82,32 @@ test('v2 editor remote refresh preserves dirty text, updates untouched fields an
     editor.changeNumber('intervalDays', '17'); assert.equal(await editor.flush(), true); assert.equal((await d.configuration()).intervalDays, 17);
   } finally { d.connection.close(); }
 });
+
+test('v2 editor removal remains blocked throughout an in-flight save and repeated back requests cannot navigate twice', async () => {
+  const d = await setup();
+  try {
+    const entered = deferred(); const release = deferred(); let navigated = 0;
+    const editor = createV2ConfigurationEditorState({ configuration: await d.configuration(), effectiveFrom: '2026-10-27',
+      save: async (edits, from) => { entered.resolve(); await release.promise; return d.actions.patchChoreConfigurationFields('floor', edits, from); }, onSaved: async () => {} });
+    editor.changeNumber('intervalDays', '17'); const leaving = editor.navigateAfterSave(() => { navigated++; }); await entered.promise;
+    assert.equal(editor.getSnapshot().leaving, true); assert.equal(editor.getSnapshot().removalAllowed, false);
+    assert.equal(await editor.navigateAfterSave(() => { navigated++; }), false); release.resolve(); assert.equal(await leaving, true);
+    assert.equal(navigated, 1); assert.equal(editor.getSnapshot().removalAllowed, true); assert.equal((await d.configuration()).intervalDays, 17);
+    editor.resumeNavigation(); assert.equal(editor.getSnapshot().removalAllowed, false); assert.equal(editor.getSnapshot().leaving, false);
+  } finally { d.connection.close(); }
+});
+
+test('v2 editor failed or invalid drafts prevent leaving and remain retryable instead of being lost on navigation', async () => {
+  const d = await setup();
+  try {
+    let fail = true; let navigated = 0;
+    const editor = createV2ConfigurationEditorState({ configuration: await d.configuration(), effectiveFrom: '2026-10-27',
+      save: (edits, from) => { if (fail) throw new Error('SQLite full'); return d.actions.patchChoreConfigurationFields('floor', edits, from); }, onSaved: async () => {} });
+    editor.changeNumber('intervalDays', '17'); assert.equal(await editor.navigateAfterSave(() => { navigated++; }), false);
+    assert.equal(editor.getSnapshot().draft.intervalDays, '17'); assert.equal(editor.getSnapshot().removalAllowed, false); assert.equal(navigated, 0);
+    fail = false; assert.equal(await editor.navigateAfterSave(() => { navigated++; }), true); assert.equal(navigated, 1);
+    editor.resumeNavigation(); editor.changeNumber('intervalDays', '');
+    assert.equal(await editor.navigateAfterSave(() => { navigated++; }), false); assert.equal(navigated, 1);
+    assert.equal(editor.getSnapshot().draft.intervalDays, ''); editor.discard();
+  } finally { d.connection.close(); }
+});

@@ -1899,5 +1899,52 @@
         "name": "v2 a stale checkbox cannot silently register substitution after another member became the assignee"
       }
     ]
+  },
+  {
+    "feature": "v2-settings-navigation-preserves-drafts",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-autosave.test.mjs",
+        "name": "v2 editor removal remains blocked throughout an in-flight save and repeated back requests cannot navigate twice"
+      },
+      {
+        "file": "tests/sharing-v2-autosave.test.mjs",
+        "name": "v2 editor failed or invalid drafts prevent leaving and remain retryable instead of being lost on navigation"
+      },
+      {
+        "file": "tests/sharing-v2-screen.test.mjs",
+        "name": "v2 settings guard native removal until saving succeeds and retain the draft after a failed back gesture"
+      }
+    ]
+  },
+  {
+    "feature": "v2-isolated-development-preview",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 development fixture refuses release execution before opening storage, creating identities or accessing an account"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 development screen does not initialize a session or install a focus handler in a release build"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 isolated native preview connects home, collapsed expired rounds, configuration navigation and targeted history undo to actual SQLite"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 preview keeps an unfinished common round visible on its personal recommended day after midnight without writing a different common anchor"
+      }
+    ]
+  },
+  {
+    "feature": "v2-cancelled-history-current-cadence",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 completing and undoing before a cadence edit keeps the current round actionable without replacing original history or losing a later real completion"
+      }
+    ]
   }
 ]

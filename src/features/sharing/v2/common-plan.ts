@@ -205,9 +205,13 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       catch { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); }
     }
     const retainedHistoricalFrames = new Set<string>();
-    for (const record of [...(recordsByChore.get(chore.id) ?? [])].sort((a, b) => view.byId(a.operationId)!.logicalClock - view.byId(b.operationId)!.logicalClock || compareOperationIds(a.operationId, b.operationId))) {
+    for (const record of [...(recordsByChore.get(chore.id) ?? [])].sort((a, b) => Number(b.active) - Number(a.active)
+      || view.byId(a.operationId)!.logicalClock - view.byId(b.operationId)!.logicalClock || compareOperationIds(a.operationId, b.operationId))) {
       if (record.anchorDate < range.from || record.anchorDate > range.through) continue;
       if (retainedHistoricalFrames.has(record.occurrenceId)) continue;
+      // An undone report remains in history but cannot replace an actionable current frame.
+      // Prefer any still-active report before considering cancelled historical-only rounds.
+      if (!record.active && frames.has(record.occurrenceId)) continue;
       const source = view.byId(record.operationId)!;
       try {
         const context = frameAtOperation(view, input.archive, source, chore.id, record.anchorDate, source.payload.ruleVersion as number);

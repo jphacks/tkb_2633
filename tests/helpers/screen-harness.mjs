@@ -39,7 +39,8 @@ export function screenHarness(filename, options = {}) {
     'react-native': {
       ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
       FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
-        ...(props.data ?? []).slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index }))] }),
+        ...((props.data ?? []).length ? props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })) : [props.ListEmptyComponent]),
+        props.ListFooterComponent] }),
       Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
       AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
@@ -55,6 +56,7 @@ export function screenHarness(filename, options = {}) {
       router: { ...Object.fromEntries(['push', 'navigate', 'replace', 'back', 'dismissTo'].map((name) => [name, (...args) => options.navigate?.(name, ...args)])),
         setParams: (value) => { options.params = { ...options.params, ...value }; } },
       Tabs: { Screen: 'TabsScreen' }, useFocusEffect: (callback) => options.focusEffect?.(callback),
+      usePreventRemove: (prevent, callback) => { options.preventRemove?.(prevent, callback); return () => options.disablePrevention?.(); },
     },
     'expo-sqlite': { useSQLiteContext: () => options.database },
     'expo-linking': { openURL: async (url) => options.openURL?.(url) },

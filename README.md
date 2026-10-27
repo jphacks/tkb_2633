@@ -26,7 +26,7 @@ Androidでは、バックグラウンドで待機処理が止まるSDKの互換�
 
 [共有編集の追加監査](docs/shared-group-editing-audit-2026-10-27.md)では、古い編集画面からの上書き、収集ルールの同時変更、競合解決中の権限変化を修正しました。AndroidとiPhoneの実機でオフライン編集・再起動・再送・競合解決を行い、両端末の状態一致を確認しています。競合など確認が必要な項目は通常の画面にも案内を表示します。
 
-[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限の基礎、schema2の保存、受信業務権限、署名付きSnapshotを自動検査しています。申請・回答の状態は専用DBへ投影しますが、v2のUI・承認結果から正式予定を更新する処理・本人専用Calendar同期はまだ有効化しておらず、実機で確認済みの既存グループはv1のままです。[進捗と未接続部分](docs/sharing-v2/05-progress.md)を参照してください。
+[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotを自動検査しています。独立した検査データを使うv2画面はiPhone・Android 10の実機でも操作確認しました。通常の作業領域・本人専用Calendar同期にはまだ接続しておらず、既存グループはv1のままです。[進捗と未接続部分](docs/sharing-v2/05-progress.md)を参照してください。
 
 OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
@@ -598,13 +598,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **1105 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む）** |
+| 自動テスト | **1119 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **131機能（従来84を保持、元の44を含む）** |
+| 保護対象feature contract | **134機能（従来84を保持、元の44を含む）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |

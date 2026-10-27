@@ -5,12 +5,14 @@ import { formatJapaneseDate } from '@/domain/scheduling/local-date';
 import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2RoundReference } from '../v2/actions';
+import type { V2Recommendation } from '../v2/personal-plan';
 import { v2TargetLabel } from './target-form';
 
-export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false }: {
+export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false, recommendation }: {
   model: V2GroupScreenModel; round: V2PlannedOccurrence; subject: V2SubjectPlan; actions: V2GroupController['actions']; busy: boolean;
   run: (work: () => Promise<unknown>) => Promise<void>; onOpen: () => void; onDate: () => void; onAssignment: () => void;
   onPast: () => void; onAssignmentRequest?: () => void; showActions?: boolean;
+  recommendation?: V2Recommendation;
 }) {
   const chore = model.plan.chores.find((entry) => entry.id === round.choreId); if (!chore) return null;
   const viewer = model.viewerUserId; const admin = viewer === model.adminUserId;
@@ -34,7 +36,7 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
     <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={showStatus && subject.completed} deemphasized={subject.cooldownSuppressed || subject.virtuallyConsumed} onOpen={onOpen} onToggle={onToggle} />
     <View style={styles.details}>
       <Text style={styles.date}>{formal.kind === 'manual' ? `${formal.mode === 'fixed' ? '固定日時' : formal.mode === 'deadline' ? '期限' : '実施日'}：${v2TargetLabel(formal.target, model.plan.timeZone)}`
-        : `予定：${formatJapaneseDate(subject.suggestedDate, { weekday: true })}`}</Text>
+        : `${recommendation ? '推奨日' : '基準日'}：${formatJapaneseDate(recommendation?.date ?? subject.suggestedDate, { weekday: true })}`}</Text>
       {showActions && (!subject.completed || recordedWindow) ? <Text style={styles.caption}>{subject.completed ? '実施時点の期間' : '実施できる期間'}：
         {formatJapaneseDate(recordedWindow?.windowStart ?? subject.executionWindowStart)}〜{formatJapaneseDate(recordedWindow?.windowEnd ?? subject.executionWindowEnd)}</Text> : null}
       {round.claimState === 'provisional' ? <Text style={styles.notice}>引き受けが重なっています。暫定担当のまま実施でき、管理者が正式な担当を決めます。</Text> : null}

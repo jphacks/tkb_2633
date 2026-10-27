@@ -17,13 +17,14 @@ export interface V2EditorInput { configuration: SharedChoreConfiguration; effect
 /** An external store keeps remote updates and queued drafts coherent without render-time ref writes. */
 export function createV2ConfigurationEditorState(initial: V2EditorInput) {
   let input = initial; let draft = texts(initial.configuration); let refreshError: string | null = null;
+  let leaving = false; let removalAllowed = false;
   const listeners = new Set<() => void>();
   const autosave = createV2ConfigurationAutosave({ configuration: initial.configuration, effectiveFrom: () => input.effectiveFrom,
     save: (edits, from) => input.save(edits, from), onSaved: async () => { refreshError = null; await input.onSaved(); },
     onRefreshError: () => { refreshError = '保存済みです。表示を更新できなかったため、再度開いて確認してください。'; },
   });
   function state() {
-    return { draft, status: autosave.getSnapshot(), refreshError,
+    return { draft, status: autosave.getSnapshot(), refreshError, leaving, removalAllowed,
       hasDraft: Object.keys(draft).some((field) => autosave.isDirty(field as keyof typeof draft)),
       anchorError: (() => { try { parseLocalDate(draft.anchorDate); return draft.anchorDate > input.effectiveFrom ? '基準日は適用開始日以前にしてください。' : null; }
         catch { return '日付を年-月-日で入力してください。'; } })() };
@@ -37,6 +38,7 @@ export function createV2ConfigurationEditorState(initial: V2EditorInput) {
   const numberError = (field: NumericField) => {
     const [min, max] = limits[field]; return parseSettingInteger(draft[field], min, max) === undefined ? `${min}〜${max}日の整数で入力してください。` : null;
   };
+  const flush = async () => { const saved = await autosave.flush(); return saved && !snapshot.anchorError && !Object.keys(limits).some((field) => numberError(field as NumericField)); };
   return {
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => snapshot,
@@ -48,7 +50,15 @@ export function createV2ConfigurationEditorState(initial: V2EditorInput) {
       draft = Object.fromEntries(Object.entries(received).map(([field, value]) => [field, autosave.isDirty(field as keyof typeof received)
         ? draft[field as keyof typeof received] : value])) as typeof draft; publish();
     },
-    flush: async () => { const saved = await autosave.flush(); return saved && !snapshot.anchorError && !Object.keys(limits).some((field) => numberError(field as NumericField)); },
+    flush,
+    resumeNavigation() { leaving = false; removalAllowed = false; publish(); },
+    async navigateAfterSave(navigate: () => void): Promise<boolean> {
+      if (leaving) return false; leaving = true; publish();
+      if (!await flush()) { leaving = false; publish(); return false; }
+      removalAllowed = true; publish();
+      try { navigate(); return true; }
+      catch { leaving = false; removalAllowed = false; refreshError = '端末に保存済みです。画面を移動できなかったため、もう一度お試しください。'; publish(); return false; }
+    },
     hasDraft: () => snapshot.hasDraft, numberError,
     changeNumber(field: NumericField, text: string) {
       draft = { ...draft, [field]: text }; const [min, max] = limits[field]; const value = parseSettingInteger(text, min, max);

@@ -1,4 +1,5 @@
 import { v2MemberLabels } from './member-labels';
+import { createV2RoundVisibility } from './round-visibility';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppButton, palette, typography } from '@/components/planner-ui';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
@@ -16,11 +17,9 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   recommendation?: V2Recommendation;
 }) {
   const chore = model.plan.chores.find((entry) => entry.id === round.choreId); if (!chore) return null;
-  const viewer = model.viewerUserId; const admin = viewer === model.adminUserId;
+  const viewer = model.viewerUserId;
+  const { admin, owns, relatedWork, showStatus } = createV2RoundVisibility(model)(round, subject);
   const nameOf = v2MemberLabels(model.plan.members);
-  const owns = subject.subjectUserId === null ? round.assigneeIds.length === 0 || round.assigneeIds.includes(viewer) : subject.subjectUserId === viewer;
-  const relatedWork = model.plan.history.filter((record) => [...subject.completionOperationIds, ...subject.pendingCompletionIds].includes(record.operationId));
-  const showStatus = owns || admin || relatedWork.some((record) => record.recorderUserId === viewer || record.performerUserId === viewer) || model.plan.policy?.showCompletionStatus === true;
   const undo = subject.completionOperationIds.filter((id) => model.plan.history.some((record) => record.operationId === id && record.active && (admin || record.recorderUserId === viewer)));
   const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId,
     expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId), expectedTimeZone: model.plan.timeZone };

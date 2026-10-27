@@ -118,3 +118,15 @@ iPhoneは個別ルート化後も入力欄にキーボードフォーカスを�
 標準UiAutomationのアクセシビリティ操作であり、座標タップ・ソフトウェアキーボード・Googleアカウント間承認・バックグラウンド実行のPASSではない。所要時間は画面待ち・操作・画像保存を含み、描画速度の測定ではない。再インストールしたのは独立した検査APKのみで、LiFlowのデータを初期化・置換していない。
 
 `phase4m-full-ios.log`・`phase4m-full-android.log`はCIと同じ`HOUSEWORK_TEST_PLATFORM`指定で各1261件成功、失敗0・スキップ0。lint・型検査通過。`phase4m-final-cloud.log`はEmulator25件成功で、将来の周期に対応した担当指定とSnapshot復元を含む。コード検査、端末内操作、実サービス同期の範囲を混同しない。
+
+## Phase 4n追記：Androidの共有カレンダーと過去実施
+
+基点`29146f7`へのPhase 4n差分、未公開v2 draft21。Sony I4293（Android10/API29）の同じ独立検査DBで実施した。LiFlowを再インストール・初期化せず、実サービスの受付や別アカウントを偽装していない。iPhoneは手動確認待ちで操作していない。
+
+- `phase4n-android-calendar.log`：`calendarMonthPastWorkAndHistory=true`、43.627秒。共有カレンダーの前月・次月を開き、7日前の10月21日を選び、浴室の回を12:30に実施した記録を保存した。戻った選択日の未完了数は0になり、完了カードと実施者、記録日10月28日の履歴が残ることを確認した。この回は実施期間の終了が5日前の境界に当たるため、「ホームの期限を明確に過ぎた実機検査」とは数えない。15日前の回は別の両OS条件の実TSX・SQLite検査で確認した。
+- `android-phase4n-calendar/calendarPastCompleted.png`：SHA-256 `7d0b0370a9114ac164b7615534a0030d9fc9dc26fcaf70f1a1ea015c8dbe6035`。
+- `android-phase4n-calendar/calendarWorkHistory.png`：SHA-256 `c38ea240efd3304e22e6ad590be1edfc4fef0661b00fa111d5df47a04e12a1d2`。
+- `android-phase4n-calendar/calendarWorkSaved.png`：SHA-256 `4c18689ed3ef47aa804e62c7b4260447736d5d5c9338e0a6ced2648f02570d0b`。
+- 画像の確認後、週ごとにCard共通gapが加わる余白を除き、凡例を短くした。読取専用の`phase4n-android-calendar-compact.log`は`calendarCompactReadOnly=true`、7.605秒。新しい完了を追加せず選択日と完了カードを再表示した。`android-phase4n-calendar-compact.png`：SHA-256 `9bbee939ae5b5d5296dc9e432c9cf87a186df1238d9f49f37256ff011900d15f`。元画像は別名で保持した。
+
+操作は公開UiAutomationのアクセシビリティAPIであり、座標タップ・ソフトウェアキーボードや実アカウント間E2Eの成功には数えない。今回の全件検査は両OS各1281件、Emulator25件、機能契約166件。最終余白調整後の関連32件・lint・型検査も成功した。

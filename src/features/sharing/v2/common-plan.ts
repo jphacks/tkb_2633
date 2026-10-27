@@ -147,6 +147,11 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
     return record.active && record.outcome === 'completed' && record.acceptance === 'accepted'
       && (!input.receipts.has(record.operationId) || record.performedTimeConfirmed);
   }
+  function recordedScheduleDay(record: V2CompletionRecord): LocalDate {
+    if (record.instruction?.kind === 'designated') return targetCivilDate(record.instruction.target, record.instruction.timeZone);
+    const source = view.byId(record.operationId)!;
+    return typeof source.payload.scheduledDate === 'string' ? source.payload.scheduledDate as LocalDate : record.anchorDate;
+  }
   function completedBefore(frameId: string, point: SharedOperation, context: ReturnType<typeof frameAtOperation>): boolean {
     const key = canonicalJson([frameId, point.context, point.receiptContext ?? null]); let cut = historyAtCut.get(key);
     if (!cut) { cut = v2CompletionHistory(view, point, input.receipts, context.frame); historyAtCut.set(key, cut);
@@ -207,7 +212,10 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
     const retainedHistoricalFrames = new Set<string>();
     for (const record of [...(recordsByChore.get(chore.id) ?? [])].sort((a, b) => Number(b.active) - Number(a.active)
       || view.byId(a.operationId)!.logicalClock - view.byId(b.operationId)!.logicalClock || compareOperationIds(a.operationId, b.operationId))) {
-      if (record.anchorDate < range.from || record.anchorDate > range.through) continue;
+      if (record.anchorDate < range.from || record.anchorDate > range.through) {
+        const scheduledDate = recordedScheduleDay(record);
+        if (!record.active || scheduledDate < range.from || scheduledDate > range.through) continue;
+      }
       if (retainedHistoricalFrames.has(record.occurrenceId)) continue;
       // An undone report remains in history but cannot replace an actionable current frame.
       // Prefer any still-active report before considering cancelled historical-only rounds.
@@ -285,11 +293,7 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
         }
         const suppressed = minimumNextExecutionDay !== null && suggestedDate < minimumNextExecutionDay
           && !(formalDate.kind === 'manual' && formalDate.allowDuringCooldown);
-        const dates = [...new Set(completed.map((record) => {
-          const source = view.byId(record.operationId)!;
-          if (record.instruction?.kind === 'designated') return targetCivilDate(record.instruction.target, record.instruction.timeZone);
-          return typeof source.payload.scheduledDate === 'string' ? source.payload.scheduledDate as LocalDate : record.anchorDate;
-        }))].sort();
+        const dates = [...new Set(completed.map(recordedScheduleDay))].sort();
         if (completed.length && dates.length === 1) suggestedDate = dates[0];
         if (dates.length > 1) issue('recordedScheduleConflict', chore.id, frame.id, subjectUserId, completed.map((record) => record.operationId));
         return { id: v2SubjectOccurrenceId(frame.id, subjectUserId), subjectUserId, required: requiredSubjects.includes(subjectUserId),

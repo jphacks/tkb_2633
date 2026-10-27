@@ -96,16 +96,19 @@ export function AppButton({
   variant = 'primary',
   disabled = false,
   compact = false,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   disabled?: boolean;
   compact?: boolean;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

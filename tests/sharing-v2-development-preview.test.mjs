@@ -19,7 +19,7 @@ async function openRoute(preview, platform, file, params, navigation, readyText)
 
 test('v2 every isolated preview route denies release execution before opening the fixture', () => {
   let opened = 0; let focused = 0;
-  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests', 'assignment', 'assignment-requests']) {
+  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests', 'assignment', 'assignment-requests', 'calendar']) {
     const screen = screenHarness(`src/app/development/sharing-v2-preview/${file}.tsx`, { platform, params: {},
       focusEffect: () => focused++, transformSource: (path, source) => path.endsWith('/v2-preview-route.tsx') ? source.replaceAll('__DEV__', 'false') : source,
       mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: () => { opened++; throw new Error('Release must not open synthetic storage'); } } } });
@@ -129,6 +129,43 @@ for (const platform of ['ios', 'android']) {
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 calendar routes register an actual past round beyond the home cutoff and preserve its performed and recorded dates`, async () => {
+    const f = await screenFixture(platform); let cleanup;
+    try {
+      const [chore] = await f.preview.controller.actions.addChore('過去の家事');
+      await f.preview.controller.actions.configureChore(chore.entityId, { policy: { completion: 'one', assignment: { mode: 'open', memberIds: [] } },
+        anchorDate: '2026-10-12', intervalDays: 30, windowBeforeDays: 2, windowAfterDays: 2, effectiveFrom: '2026-10-12', active: true });
+      assert.equal((await f.preview.readModel()).plan.occurrences.some((round) => round.choreId === chore.entityId), false);
+      const navigation = []; let { screen, leave } = await openRoute(f.preview, platform, 'calendar', {}, navigation, '共有カレンダー'); cleanup = leave;
+      const day = screen.nodes().find((node) => node.props.accessibilityLabel === '2026年10月12日、確認できる未完了の共有家事1件'); assert.ok(day);
+      await day.props.onPress(); await screen.flush();
+      await screen.press('過去の家事全員共通 · 担当未確定'); const target = navigation.at(-1); assert.equal(target[1].params.anchorDate, '2026-10-12');
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'round', target[1].params, navigation, '実施を記録')); cleanup = leave;
+      const past = screen.nodes().find((node) => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === '以前実施した');
+      past.props.onPress(); await screen.flush(); await screen.change('実施日', '2026-10-12'); await screen.change('実施時刻', '12:30');
+      await screen.press('実施を記録する'); assert.ok(screen.text().includes('実施記録を端末に保存しました'));
+      const history = (await f.preview.readModel()).plan.history.find((record) => record.choreId === chore.entityId);
+      assert.equal(history.performedAt, '2026-10-12T03:30:00.000Z'); assert.equal(history.recordedAt, '2026-10-27T01:00:00.000Z');
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'calendar', {}, navigation, '共有カレンダー')); cleanup = leave;
+      assert.ok(screen.nodes().some((node) => node.props.accessibilityLabel === '2026年10月12日、確認できる未完了の共有家事0件'));
+    } finally { cleanup?.(); f.leave(); await f.preview.close(); }
+  });
+  test(`${platform} v2 a failed read-only month change does not claim that data was saved or the unloaded day was empty`, async () => {
+    const f = await screenFixture(platform); let cleanup; let failed = false;
+    try {
+      const preview = { ...f.preview, readModel: async (options) => {
+        if (options?.calendarMonth && options.calendarMonth !== 'current' && !failed) { failed = true; throw new Error('Read unavailable'); }
+        return f.preview.readModel(options);
+      } };
+      const before = (await f.preview.readModel()).pendingChanges;
+      const { screen, leave } = await openRoute(preview, platform, 'calendar', {}, [], '共有カレンダー'); cleanup = leave;
+      await screen.press('次の月'); assert.ok(screen.text().includes('表示を更新できませんでした'));
+      assert.equal(screen.text().includes('端末に保存済みです'), false); assert.equal(screen.text().includes('この日の共有家事はありません'), false);
+      assert.equal((await f.preview.readModel()).pendingChanges, before);
+      await screen.press('この月を再読込'); assert.ok(screen.text().includes('2026年11月'));
+      assert.equal(screen.text().includes('この月の共有予定を取得できていません'), false);
+    } finally { cleanup?.(); f.leave(); await f.preview.close(); }
+  });
   test(`${platform} v2 assignment routes preserve the group round identity through explicit save and request-list navigation`, async () => {
     const f = await screenFixture(platform); let cleanup;
     try {

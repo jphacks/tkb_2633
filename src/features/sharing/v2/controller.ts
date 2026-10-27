@@ -8,6 +8,7 @@ import { normalizeV2Configuration } from './configuration-normalization.ts';
 import { observedDateRules } from './formal-rule-view.ts';
 import { v2DecisionReviews } from './decision-review.ts';
 import type { SharedChoreConfiguration } from './model.ts';
+type V2ModelRange = { from: LocalDate; through: LocalDate; asOfDate: LocalDate };
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
 export function createV2GroupController(repository: ReturnType<typeof createV2EventRepository>, options: {
@@ -16,9 +17,16 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
   const actions = createV2PlannerActions(repository, options);
   return {
     actions, sync: options.sync,
-    async readModel(range: { from: LocalDate; through: LocalDate; asOfDate: LocalDate }) {
+    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange)) {
       const state = await repository.readState();
-      const plan = buildV2CommonPlan(state, range); const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
+      const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
+      let range: V2ModelRange;
+      if (typeof inputRange === 'function') {
+        const zone = state.assessment.view.field('settings', 'settings', 'timeZone', at)?.value;
+        if (typeof zone !== 'string') throw new Error('グループの地域を確認してください。');
+        range = inputRange({ timeZone: zone });
+      } else range = inputRange;
+      const plan = buildV2CommonPlan(state, range);
       const configurations = plan.chores.map((chore) => {
         const facts = state.assessment.view.topic('chorePolicy', chore.id); const candidates = maximalCausalFacts(facts);
         let configuration: SharedChoreConfiguration | null = null;

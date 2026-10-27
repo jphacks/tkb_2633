@@ -11,16 +11,20 @@ import { V2CompletionForm } from '../v2-ui/completion-form';
 import { V2DateRequests } from '../v2-ui/date-requests';
 import { V2AssignmentForm } from '../v2-ui/assignment-form';
 import { V2AssignmentRequests } from '../v2-ui/assignment-requests';
+import { V2Calendar } from '../v2-ui/calendar';
+import { v2CalendarMonth } from '../v2-ui/calendar-projection';
+import type { LocalDate } from '../../../domain/shared/types';
 import { V2CompletionHistoryCard } from '../v2-ui/completion-history-card';
 import { V2FormScrollView } from '../v2-ui/form-controls';
 import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2DevelopmentPreview, V2DevelopmentPreviewModel } from './v2-preview-session';
 
 interface PreviewProps {
-  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests'; choreId?: string;
-  occurrenceId?: string; subjectId?: string; onRound?: (occurrenceId: string, subjectId: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
+  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar'; choreId?: string;
+  occurrenceId?: string; subjectId?: string; anchorDate?: string; onRound?: (occurrenceId: string, subjectId: string, anchorDate?: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void; onRequests?: () => void;
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
+  onCalendar?: () => void;
 }
 
 /** This UI exercises real local persistence, not cloud synchronization or account authorization. */
@@ -29,18 +33,28 @@ export function V2DevelopmentPreviewScreen(props: PreviewProps) {
   return <LivePreview {...props} />;
 }
 
-function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests }: PreviewProps) {
+function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate }: PreviewProps) {
   const [session, setSession] = useState<V2DevelopmentPreview | null>(null); const [model, setModel] = useState<V2DevelopmentPreviewModel | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
+  const readOptions = useRef(anchorDate ? { focusDate: anchorDate } : view === 'calendar' ? { calendarMonth: 'current' } : undefined);
+  const readBinding = useRef({ anchorDate, view });
+  const [calendarMonth, setCalendarMonth] = useState<LocalDate | null>(null); const [calendarDay, setCalendarDay] = useState<LocalDate | null>(null);
   const refresh = useCallback(async () => {
     const revision = ++generation.current;
     try {
-      const preview = await loadSession(); const value = await preview.readModel();
+      const preview = await loadSession(); const value = await preview.readModel(readOptions.current);
       if (alive.current && generation.current === revision) { setSession(preview); setModel(value); setError(null); } return true;
     } catch (cause) { if (alive.current && generation.current === revision) setError(cause instanceof Error ? cause.message : '検査用の画面を読み込めませんでした。'); return false; }
   }, [loadSession]);
-  useFocusEffect(useCallback(() => { alive.current = true; void refresh(); return () => { alive.current = false; generation.current++; }; }, [refresh]));
+  useFocusEffect(useCallback(() => {
+    alive.current = true;
+    if (readBinding.current.anchorDate !== anchorDate || readBinding.current.view !== view) {
+      readOptions.current = anchorDate ? { focusDate: anchorDate } : view === 'calendar' ? { calendarMonth: 'current' } : undefined;
+      readBinding.current = { anchorDate, view };
+    }
+    void refresh(); return () => { alive.current = false; generation.current++; };
+  }, [refresh, anchorDate, view]));
   const run = async (work: () => Promise<unknown>) => {
     if (running.current) return; running.current = true; generation.current++; setBusy(true); setError(null);
     let failure: unknown;
@@ -48,7 +62,7 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
     try {
       const loaded = await refresh(); if (!alive.current) return;
       if (failure) setError(failure instanceof Error ? failure.message : '操作を完了できませんでした。');
-      else if (!loaded) setError('端末に保存済みです。表示を更新できなかったため、画面を開き直してください。');
+      else if (!loaded) setError('表示を更新できませんでした。画面を開き直して現在の状態を確認してください。');
     } finally { running.current = false; if (alive.current) setBusy(false); }
   };
   const notice = <View style={styles.notice}>
@@ -59,6 +73,22 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
   if (!model?.personal || !session) return <SafeAreaView style={styles.safe}>{notice}<ActivityIndicator color={palette.accent} />
     <AppButton title="読み込みを再試行" variant="quiet" onPress={() => void refresh()} /></SafeAreaView>;
   const controller = session.controller;
+  if (view === 'calendar') {
+    const month = calendarMonth ?? v2CalendarMonth(model.plan.range.asOfDate).month;
+    const selectMonth = async (day: LocalDate, selectedDate?: LocalDate) => {
+      if (!alive.current || running.current) return;
+      try {
+        const next = v2CalendarMonth(day); readOptions.current = { calendarMonth: next.month }; setCalendarMonth(next.month);
+        setCalendarDay(selectedDate ?? (model.plan.range.asOfDate.slice(0, 7) === next.month.slice(0, 7) ? model.plan.range.asOfDate : next.month));
+        await run(async () => {});
+      } catch (cause) { setError(cause instanceof Error ? cause.message : '表示する月を確認してください。'); }
+    };
+    return <SafeAreaView style={styles.safe} edges={['top']}><V2Calendar model={model} personal={model.personal} month={month}
+      selectedDate={calendarDay ?? model.plan.range.asOfDate} busy={busy} actions={controller.actions} run={run}
+      onMonth={selectMonth} onSelectDate={(day) => { if (day.slice(0, 7) === month.slice(0, 7)) setCalendarDay(day); else void selectMonth(day, day); }}
+      onRound={(id, subject, anchor) => onRound?.(id, subject, anchor)}
+      header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="共有カレンダー" /></View>} /></SafeAreaView>;
+  }
   if (view === 'assignmentRequests') return <SafeAreaView style={styles.safe} edges={['top']}>
     <V2AssignmentRequests model={model} actions={controller.actions} busy={busy} run={run}
       onResolve={onAssignment ? (id) => { const round = model.plan.occurrences.find((entry) => entry.id === id); if (round?.subjects[0]) onAssignment(id, round.subjects[0].id); } : undefined}
@@ -115,6 +145,7 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
           {expired.map(({ round, subject }) => <View key={subject.id}>{card(round, subject)}</View>)}
         </AccordionSection> : null}
         <AppButton title="実施履歴" variant="secondary" disabled={busy} onPress={onHistory} />
+        {onCalendar ? <AppButton title="共有カレンダー" variant="secondary" disabled={busy} onPress={onCalendar} /> : null}
         {onRequests ? <AppButton title="日時の変更申請" variant="secondary" disabled={busy} onPress={onRequests} /> : null}
         {onAssignmentRequests ? <AppButton title="担当の変更申請" variant="secondary" disabled={busy} onPress={onAssignmentRequests} /> : null}
         <Card><SectionHeading title="設定を検査" />{model.configurations.filter((entry) => entry.configuration).map((entry) =>

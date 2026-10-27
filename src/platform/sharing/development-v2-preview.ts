@@ -5,7 +5,8 @@ import { createV2DevelopmentPreview } from '../../features/sharing/development/v
 import type { V2DevelopmentPreview } from '../../features/sharing/development/v2-preview-session';
 import { V2_SCHEDULER_VERSION } from '../../features/sharing/v2/payload-schema';
 
-const symbol = Symbol.for(`LiFlow.developmentV2Preview.personal-model-2.${V2_SCHEDULER_VERSION}`);
+// The fixture read API now supports calendar months and focused historical rounds.
+const symbol = Symbol.for(`LiFlow.developmentV2Preview.personal-model-3.${V2_SCHEDULER_VERSION}`);
 type PreviewGlobal = typeof globalThis & { [key: symbol]: Promise<V2DevelopmentPreview> | undefined };
 
 /** Reuse a single isolated fixture through navigation/Fast Refresh; never open it in a release build. */

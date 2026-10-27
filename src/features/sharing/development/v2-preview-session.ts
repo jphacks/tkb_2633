@@ -8,7 +8,9 @@ import { v2GroupBootstrap } from '../v2/bootstrap.ts';
 import { createV2GroupController } from '../v2/controller.ts';
 import { chorePolicyFromPreset } from '../v2/model.ts';
 import { buildV2PersonalPlan } from '../v2/personal-plan.ts';
-import { addDays } from '../../../domain/scheduling/local-date.ts';
+import { addDays, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
+import type { LocalDate } from '../../../domain/shared/types.ts';
+import { v2CalendarMonth } from '../v2-ui/calendar-projection.ts';
 
 /** Local development fixture only. No registry, login, cloud, personal data or fabricated server receipts. */
 export async function createV2DevelopmentPreview(input: {
@@ -37,8 +39,15 @@ export async function createV2DevelopmentPreview(input: {
         windowBeforeDays: 2, windowAfterDays: 2, effectiveFrom: anchorDate, active: true });
     }
     return { controller, groupId, userId, close: opened.close,
-      readModel: async () => { const instant = input.now(); const date = sharedLocalDate(instant, 'Asia/Tokyo');
-        const model = await controller.readModel({ from: addDays(date, -14), through: addDays(date, 14), asOfDate: date });
+      readModel: async (options?: { calendarMonth?: string; focusDate?: string }) => {
+        if (options?.calendarMonth && options.focusDate) throw new Error('月表示と家事回の表示を同時に指定できません。');
+        const instant = input.now();
+        const model = await controller.readModel(({ timeZone }) => {
+          const date = sharedLocalDate(instant, timeZone); const focus = options?.focusDate as LocalDate | undefined;
+          if (focus) parseLocalDate(focus);
+          const calendar = options?.calendarMonth ? v2CalendarMonth(options.calendarMonth === 'current' ? date : options.calendarMonth as LocalDate) : null;
+          return { from: addDays(calendar?.from ?? focus ?? date, -14), through: addDays(calendar?.through ?? focus ?? date, 14), asOfDate: date };
+        });
         // Explicit synthetic preferences, never the logged-in user's private settings or Calendar.
         const personal = buildV2PersonalPlan(model.plan, { viewerUserId: userId, now: instant.getTime(),
           settings: { frequencyMode: 'balanced', restDays: [], loadLimits: { heavyDailyLimit: 2, normalDailyLimit: 3 } } });

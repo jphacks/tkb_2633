@@ -2495,5 +2495,80 @@
         "name": "v2 unnamed members have distinct assignment controls whose saved identities remain correct"
       }
     ]
+  },
+  {
+    "feature": "v2-calendar-historical-query",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-calendar-query.test.mjs",
+        "name": "v2 calendar queries retain recurrence anchors outside the month for both earlier and later repeating manual dates"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-query.test.mjs",
+        "name": "v2 calendar inverse queries do not extend a limited repeating designation beyond its original anchor period"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-query.test.mjs",
+        "name": "v2 calendar keeps a completed moved round on its recorded scheduled day after its designation was cancelled"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-query.test.mjs",
+        "name": "v2 a cancelled completion cannot recreate a moved calendar task after its old date rule was removed"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-query.test.mjs",
+        "name": "v2 moved calendar history retains its original timezone and source after a later cadence and group timezone change"
+      }
+    ]
+  },
+  {
+    "feature": "v2-shared-calendar-display",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 calendar month cells use the minimum complete weeks and stay identical across device timezones"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 calendar recommendation binding refuses another account, another group or an outdated common plan"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 calendar never applies the viewers private recommendation to another assigned member"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 model clock ranges use the timezone from the same authenticated read instead of a prior device-zone read"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 calendar markers follow shared-card visibility and cannot reveal another assignees hidden completion state"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 calendar completion reduces the displayed count to zero while keeping the completed card on its day"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 calendar retains rounds beyond the home expiry cutoff and opens their real group identity"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "v2 unloaded calendar months show a retry state rather than falsely claiming an empty day"
+      }
+    ]
+  },
+  {
+    "feature": "v2-calendar-past-route-and-read-errors",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 calendar routes register an actual past round beyond the home cutoff and preserve its performed and recorded dates"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 a failed read-only month change does not claim that data was saved or the unloaded day was empty"
+      }
+    ]
   }
 ]

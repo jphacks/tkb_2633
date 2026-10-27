@@ -16,6 +16,7 @@ export interface SharingOutboxItem {
 export interface SharedLocalAuthor {
   groupId: string; userId: string; deviceId: string; keyVersion: number;
   schemaVersion?: 1 | 2; recordedAt?: string;
+  now?: () => Date;
 }
 const tails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
 
@@ -147,7 +148,7 @@ export function createLocalSharedOperations(
 ): Promise<SharedOperation[]> {
   if (Array.isArray(input) && input.length > 256) return Promise.reject(new Error('Shared local transaction exceeds 256 changes'));
   const schemaVersion = author.schemaVersion ?? 1;
-  const recordedAt = schemaVersion === 2 ? author.recordedAt ?? new Date().toISOString() : undefined;
+  const recordedAt = schemaVersion === 2 ? author.recordedAt ?? (author.now?.() ?? new Date()).toISOString() : undefined;
   return serial(db, async () => {
     const created: SharedOperation[] = [];
     await atomic(db, async (db) => {
@@ -279,7 +280,11 @@ export function saveSharedAuthorProof(db: SQLiteDatabase, fact: AuthenticatedSha
 }
 
 export function loadSharedFacts(db: SQLiteDatabase, groupId: string): Promise<AuthenticatedSharedOperation[]> {
-  return serial(db, () => atomic(db, async (db) => {
+  return serial(db, () => atomic(db, (transaction) => readSharedFactsInsideTransaction(transaction, groupId)));
+}
+
+/** Use only inside an existing ledger transaction; queueing another ledger read there would deadlock. */
+export async function readSharedFactsInsideTransaction(db: SQLiteDatabase, groupId: string): Promise<AuthenticatedSharedOperation[]> {
     const snapshot = await loadSnapshotInside(db, groupId);
     const facts = new Map(snapshot?.facts.map((fact) => [fact.operation.operationId, fact]));
     const rows = await db.getAllAsync<{ operation_json: string; author_signature: string | null }>(
@@ -289,8 +294,7 @@ export function loadSharedFacts(db: SQLiteDatabase, groupId: string): Promise<Au
       const operation = validateSharedOperation(JSON.parse(row.operation_json), groupId);
       facts.set(operation.operationId, { operation, authorSignature: row.author_signature });
     }
-    return [...facts.values()];
-  }));
+  return [...facts.values()];
 }
 
 /** Membership snapshots include published facts only; pending offline edits stay in the outbox and merge after rekeying. */

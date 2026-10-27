@@ -19,6 +19,14 @@ export interface SharedChorePolicy {
   completion: 'one' | 'perMember';
   assignment: { mode: 'open' | 'all' | 'selected'; memberIds: string[] };
 }
+export interface SharedChoreConfiguration {
+  policy: SharedChorePolicy;
+  anchorDate: LocalDate;
+  intervalDays: number;
+  windowBeforeDays: number;
+  windowAfterDays: number;
+  ruleVersion: number;
+}
 export type DateTarget = { precision: 'date'; date: LocalDate }
   | { precision: 'instant'; at: string }
   | { precision: 'interval'; start: string; end: string };

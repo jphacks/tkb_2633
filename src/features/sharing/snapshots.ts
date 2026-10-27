@@ -7,10 +7,11 @@ import { MAX_SHARED_SNAPSHOT_CHUNK_BYTES, openSharedSnapshotChunk, sealSharedSna
 import type { AuthenticatedSharedOperation, DevicePublicIdentity, DeviceSecretIdentity, EncryptedSharedSnapshotChunk, SharingCryptoGateway } from './crypto.ts';
 import { sharedRosterDigest } from './roster.ts';
 import type { VerifiedSharedRoster } from './roster.ts';
+import { V2_SCHEDULER_VERSION } from './v2/payload-schema.ts';
 
 export type SharedAuthorResolver = (userId: string, deviceId: string, keyVersion: number) => DevicePublicIdentity;
 interface SharedSnapshotManifestBody {
-  schemaVersion: 1; groupId: string; snapshotId: string; keyVersion: number; throughSequence: number;
+  schemaVersion: 1 | 2; groupId: string; snapshotId: string; keyVersion: number; throughSequence: number;
   ownerDeviceId: string; rosterDigest: string; schedulerVersion: string;
   frontier: VersionVector; logicalClock: number; receiptCount: number; factCount: number;
   chunks: { id: string; digest: string; bytes: number }[];
@@ -41,7 +42,8 @@ export async function createEncryptedSharedSnapshot(crypto: SharingCryptoGateway
   key: Uint8Array, snapshotId: string, throughSequence: number, author: SharedAuthorResolver): Promise<EncryptedSharedSnapshot> {
   assertSharedIdentifier(snapshotId);
   if (snapshotId.length > 150 || roster.body.groupId !== replica.groupId
-    || roster.body.closed || !Number.isSafeInteger(throughSequence) || throughSequence < 0) throw new Error('Invalid snapshot authority or delivery position');
+    || roster.body.closed || !Number.isSafeInteger(throughSequence) || throughSequence < 0
+    || replica.operations.some((op) => op.schemaVersion > roster.body.schemaVersion)) throw new Error('Invalid snapshot authority or delivery position');
   if (canonicalJson(snapshotSigner(roster, owner.deviceId)) !== canonicalJson({ deviceId: owner.deviceId, signingPublicKey: owner.signingPublicKey,
     agreementPublicKey: owner.agreementPublicKey })) throw new Error('Invalid snapshot signing identity');
   const base = compactSharedReplica(replica); const facts = new Map(availableFacts.map((fact) => [fact.operation.operationId, fact]));
@@ -66,7 +68,7 @@ export async function createEncryptedSharedSnapshot(crypto: SharingCryptoGateway
     page.push(record); bytes += length;
   }
   await flush();
-  const body: SharedSnapshotManifestBody = { schemaVersion: 1, groupId: replica.groupId, snapshotId, keyVersion: roster.body.keyVersion,
+  const body: SharedSnapshotManifestBody = { schemaVersion: roster.body.schemaVersion, groupId: replica.groupId, snapshotId, keyVersion: roster.body.keyVersion,
     throughSequence, ownerDeviceId: owner.deviceId, rosterDigest: sharedRosterDigest(roster), schedulerVersion: roster.body.schedulerVersion,
     frontier: base.frontier, logicalClock: base.logicalClock, receiptCount: base.operationIndex.length, factCount: retained.length,
     chunks: chunks.map((chunk, index) => ({ id: `${snapshotId}.${index}`, digest: sharedDocumentDigest(chunk),
@@ -81,9 +83,10 @@ export function verifySharedSnapshotManifest(input: SignedSharedSnapshotManifest
   if (Object.keys(input).sort().join(',') !== 'body,signature') throw new Error('Unknown snapshot manifest field');
   const { body } = input; assertJsonRecord(body);
   if (Object.keys(body).sort().join(',') !== 'chunks,factCount,frontier,groupId,keyVersion,logicalClock,ownerDeviceId,receiptCount,rosterDigest,schedulerVersion,schemaVersion,snapshotId,throughSequence'
-    || body.schemaVersion !== 1 || body.groupId !== roster.body.groupId
+    || body.schemaVersion !== roster.body.schemaVersion || body.groupId !== roster.body.groupId
     || body.keyVersion !== roster.body.keyVersion || body.rosterDigest !== sharedRosterDigest(roster)
-    || body.schedulerVersion !== SHARED_SCHEDULER_VERSION || !Array.isArray(body.chunks) || body.chunks.length > 512) throw new Error('Untrusted snapshot manifest');
+    || body.schedulerVersion !== (roster.body.schemaVersion === 2 ? V2_SCHEDULER_VERSION : SHARED_SCHEDULER_VERSION)
+    || !Array.isArray(body.chunks) || body.chunks.length > 512) throw new Error('Untrusted snapshot manifest');
   assertSharedIdentifier(body.snapshotId);
   for (const value of [body.throughSequence, body.logicalClock, body.receiptCount, body.factCount]) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid snapshot count');

@@ -1,8 +1,10 @@
-import { addDays, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
+import { addDays, daysBetween, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
 import { canonicalJson } from '../operations.ts';
 import { uniqueCausalFacts, maximalCausalFacts } from './causal-facts.ts';
 import type { LocalDate } from '../../../domain/shared/types.ts';
 import type { CivilRange, ManualRuleFact, SharedOccurrence } from './model.ts';
+import { normalizeDateTarget } from './date-target.ts';
+import { materializeRuleTarget } from './rule-target.ts';
 
 function validateRange(range: CivilRange): void {
   parseLocalDate(range.from); if (range.through !== null) parseLocalDate(range.through);
@@ -30,7 +32,7 @@ export function finiteValidity(from: LocalDate, selection: 'twoWeeks' | 'oneMont
   const exclusive = start.toISOString().slice(0, 10) as LocalDate; parseLocalDate(exclusive);
   return { from, through: addDays(exclusive, -1) };
 }
-export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: SharedOccurrence, subjectUserId: string | null):
+export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: SharedOccurrence, subjectUserId: string | null, timeZone?: string):
   { kind: 'automatic' } | { kind: 'selected'; fact: ManualRuleFact; equivalentOperationIds: string[] } | { kind: 'conflict'; candidates: ManualRuleFact[] } {
   const matching = uniqueCausalFacts(facts).filter(({ rule }) => {
     if (rule.choreId !== occurrence.choreId || rule.subjectUserId !== subjectUserId) return false;
@@ -43,8 +45,15 @@ export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: S
   const rank = (fact: ManualRuleFact) => fact.rule.selector.scope === 'once' ? 3 : fact.rule.selector.scope === 'period' ? 2 : 1;
   const maximum = Math.max(...matching.map(rank)); const priority = matching.filter((fact) => rank(fact) === maximum);
   const candidates = maximalCausalFacts(priority);
-  const content = (fact: ManualRuleFact) => canonicalJson({ mode: fact.rule.mode, target: fact.rule.target,
+  const content = (fact: ManualRuleFact) => {
+    const raw = normalizeDateTarget(fact.rule.target);
+    const target = timeZone ? materializeRuleTarget(fact.rule, occurrence, timeZone)
+      : fact.rule.selector.scope === 'once' ? raw : raw.precision === 'date'
+        ? { ...raw, date: addDays(raw.date, daysBetween(fact.rule.referenceAnchorDate, occurrence.anchorDate)) }
+        : (() => { throw new Error('A shared timezone is required to compare repeating clock times'); })();
+    return canonicalJson({ mode: fact.rule.mode, target,
     strict: fact.rule.strict, adminLocked: fact.rule.adminLocked, forbidEarlier: fact.rule.forbidEarlier });
+  };
   if (new Set(candidates.map(content)).size > 1) return { kind: 'conflict', candidates };
   return { kind: 'selected', fact: candidates[0], equivalentOperationIds: candidates.map((item) => item.operationId) };
 }

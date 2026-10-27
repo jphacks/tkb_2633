@@ -9,14 +9,18 @@ import { migrateLocalDatabase } from './migrations.ts';
 import { withIsolatedSqliteTransaction } from './isolated-transaction.ts';
 import { stagePendingGoogleTaskStatus } from './google-task-link-state.ts';
 
-export async function initializeSharedProjection(database: SQLiteDatabase,
-  scope: { userId: string; groupId: string; householdId: string }): Promise<void> {
+export async function assertSharedProjectionCanInitialize(database: SQLiteDatabase): Promise<void> {
   const tables = new Set((await database.getAllAsync<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")).map((row) => row.name));
   if (!tables.has('sharing_workspace_metadata')) {
     for (const table of ['households', 'chore_definitions', 'chore_completions', 'appliances', 'weekly_waste_schedules', 'google_task_links', 'google_sync_state']) {
       if (tables.has(table) && await database.getFirstAsync(`SELECT 1 FROM ${table} LIMIT 1`)) throw new Error('既存の個人DBを共有用へ変換することはできません。');
     }
   }
+}
+
+export async function initializeSharedProjection(database: SQLiteDatabase,
+  scope: { userId: string; groupId: string; householdId: string }): Promise<void> {
+  await assertSharedProjectionCanInitialize(database);
   await migrateLocalDatabase(database);
   await database.execAsync(`PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS sharing_workspace_metadata (

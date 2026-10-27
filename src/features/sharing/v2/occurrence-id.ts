@@ -14,3 +14,7 @@ export function v2SubjectOccurrenceId(commonId: string, subjectUserId: string | 
   assertSharedIdentifier(subjectUserId);
   return `${commonId}.${sharedDocumentDigest([subjectUserId])}`;
 }
+export function v2DatePermissionId(groupId: string, choreId: string, userId: string): string {
+  [groupId, choreId, userId].forEach(assertSharedIdentifier);
+  return `grant.${sharedDocumentDigest([groupId, choreId, userId])}`;
+}

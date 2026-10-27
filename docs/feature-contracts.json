@@ -1373,5 +1373,44 @@
       { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 compaction retains superseded policies and permissions needed to audit authority at the original causal cut" },
       { "file": "tests/sharing-v2-storage.test.mjs", "name": "v2 occurrence identities bind group, chore and anchor while subjects remain independent of recommendation and rule revisions" }
     ]
+  },
+  {
+    "feature": "sharing-v2-receiver-business-authority",
+    "tests": [
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver allows member names and procedures but denies common cadence, activation, deletion and administrator policy changes" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver binds scoped grants to the actual chore and user and does not grant rights from the delegation toggle alone" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver authenticates membership epochs and requires canonical occurrence IDs rather than client-supplied labels" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 authority history survives compaction including superseded grants and original completion reports" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 invalid received grants cannot authorize descendants and quarantine does not block unrelated edits or actual work" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-receiver-participation-and-consent",
+    "tests": [
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver retains simultaneous claims as provisional and refuses a later claim that observed another assignee" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver checks release targets and administrator resolution without deleting the provisional work history" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver requires locked date changes to be requests and prevents another member from approving an administrator-only change" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver preserves roommate assignee consent and accepts only the requester acceptance of the administrator counteroffer" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver targets undo to the observed completion and recorder or historical administrator" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver keeps each-member identities separate and rejects forged subjects, performers and original assignments" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-common-frame-and-manual-targets",
+    "tests": [
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver refuses same-assignee fixed overlaps while allowing adjacent time slots, different assignees and date-only plans" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 common frames retain anchors and stable identities across horizons without personal inputs or virtual completion events" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 repeated designations keep the civil-day offset and wall clock across DST and retain one-off targets after a cycle revision" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-isolated-event-repository",
+    "tests": [
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 repository binds a fresh database and preserves every personal table and v1 workspace without in-place conversion" },
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 local repository atomically signs operations and outbox, retains original times on retry and resumes after restart" },
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 receive quarantines signed unauthorized edits and their forged privileges but commits independent changes and receive position" },
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 projection rejects missing or altered original author proofs before changing derived state or cursor" },
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 encrypted snapshots retain original proofs, restore authority state and refuse manifest protocol tampering" }
+    ]
   }
 ]

@@ -12,7 +12,7 @@ export interface ClaimState {
 
 /** Independent claims remain executable; only an explicit observed decision chooses a final assignee. */
 export function deriveClaims(occurrenceId: string, input: { claims: readonly ClaimFact[]; releases: readonly ClaimRelease[];
-  resolutions: readonly ClaimResolution[]; activeMemberIds: readonly string[] }): ClaimState {
+  resolutions: readonly ClaimResolution[]; activeMemberIds: readonly string[]; ignoredClaimOperationIds?: ReadonlySet<string> }): ClaimState {
   const claims = uniqueCausalFacts(input.claims).filter((fact) => fact.occurrenceId === occurrenceId);
   const byId = new Map(claims.map((fact) => [fact.operationId, fact])); const released = new Set<string>();
   const resolutions = maximalCausalFacts(input.resolutions.filter((fact) => fact.occurrenceId === occurrenceId));
@@ -28,7 +28,7 @@ export function deriveClaims(occurrenceId: string, input: { claims: readonly Cla
       throw new Error('管理者が固定した担当は、変更を申請してください。');
     }
   }
-  const activeClaims = claims.filter((fact) => !released.has(fact.operationId) && input.activeMemberIds.includes(fact.userId));
+  const activeClaims = claims.filter((fact) => !released.has(fact.operationId) && !input.ignoredClaimOperationIds?.has(fact.operationId) && input.activeMemberIds.includes(fact.userId));
   for (const resolution of resolutions) {
     if (new Set(resolution.assigneeIds).size !== resolution.assigneeIds.length || !resolution.assigneeIds.length) throw new Error('正式な担当者を選んでください。');
     const observed = resolution.claimOperationIds.map((id) => {

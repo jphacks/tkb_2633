@@ -21,6 +21,7 @@ import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
 import { addDays as addLocalDays } from '../src/domain/scheduling/local-date.ts';
 import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
 import { buildV2CommonPlan } from '../src/features/sharing/v2/common-plan.ts';
+import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -37,7 +38,7 @@ async function fixture(schemaVersion = 2) {
   const wrapped = await wrapGroupKey(crypto, groupId, 1, key, identity, identity, 'owner');
   await cloud.createGroup(roster, wrapped);
   const make = async (sequence, patch = {}) => {
-    const operation = { schemaVersion: 2, recordedAt: '2030-01-01T00:00:00Z', groupId, operationId: `operation-${sequence}`,
+    const operation = { schemaVersion: 2, receiptContext: {}, recordedAt: '2030-01-01T00:00:00Z', groupId, operationId: `operation-${sequence}`,
       authorUserId: 'owner', authorDeviceId: identity.deviceId, keyVersion: 1, deviceSequence: sequence, logicalClock: sequence,
       context: sequence > 1 ? { [identity.deviceId]: sequence - 1 } : {}, entityType: 'chore', entityId: 'floor', operationType: 'patch',
       payload: { name: `秘密のv2家事 ${sequence}` }, ...patch };
@@ -205,6 +206,17 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
     assert.equal(requests(owner)[0].kind, 'approved'); assert.deepEqual(requests(owner)[0].formal, day(addLocalDays(anchorDate, 4)));
     assert.deepEqual(requests(owner), requests(member)); assert.equal(hash(owner), hash(member));
+    let actionId = 0; const actionOptions = { makeId: () => `assignment-action-${++actionId}`, now: () => new Date() };
+    const ownerActions = createV2PlannerActions(owner.repository, actionOptions); const memberActions = createV2PlannerActions(member.repository, actionOptions);
+    const assignmentRef = { choreId: 'approval-floor', anchorDate, ruleVersion: 1, subjectUserId: null };
+    await ownerActions.assign(assignmentRef, ['member'], 'this', true); await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    const [assignmentRequest] = await memberActions.requestAssignment(assignmentRef, { memberIds: [], start: 'this', scope: 'once', fixed: false });
+    assert.equal((await member.repository.readState()).assessment.assignmentRequests[0].kind, 'pendingDelivery');
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
+    await ownerActions.answerAssignment(assignmentRequest.operationId, 'approve');
+    assert.equal((await owner.repository.readState()).assessment.assignmentRequests[0].kind, 'awaiting');
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    assert.equal((await owner.repository.readState()).assessment.assignmentRequests[0].kind, 'approved'); assert.equal(hash(owner), hash(member));
     const sequence = (await getDocFromServer(f.root)).data().headSequence;
     const approvedSnapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
       next, f.identity, key2, 'approved-requests-v2', sequence, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
@@ -213,6 +225,7 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     await initializeV2EventStore(restored.database, { groupId, userId: 'member', householdId: 'local' });
     await restored.sync.sync({ force: true });
     assert.deepEqual(requests(restored), requests(owner)); assert.equal(hash(restored), hash(owner));
+    assert.deepEqual((await restored.repository.readState()).assessment.assignmentRequests, (await owner.repository.readState()).assessment.assignmentRequests);
     const rules = (d) => JSON.parse(d.connection.prepare('SELECT formal_rules_json FROM sharing_v2_projection').get().formal_rules_json);
     const firstRule = rules(owner)[0]; assert.ok(firstRule.confirmation); assert.deepEqual(rules(restored), rules(owner));
     await member.repository.commit([change('next-date-request', 'changeRequest', 'next-date-request', {

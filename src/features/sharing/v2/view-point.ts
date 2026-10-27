@@ -9,6 +9,6 @@ export function v2ReadPoint(view: V2HistoryView, roster: VerifiedSharedRoster): 
   for (const op of view.ready) { context[op.authorDeviceId] = Math.max(context[op.authorDeviceId] ?? 0, op.deviceSequence); clock = Math.max(clock, op.logicalClock); }
   return { schemaVersion: 2, groupId: view.groupId, operationId: 'local-read-point', authorUserId: roster.body.ownerUserId,
     authorDeviceId: roster.body.ownerDeviceId, keyVersion: roster.body.keyVersion, context, logicalClock: clock + 1,
-    deviceSequence: (context[roster.body.ownerDeviceId] ?? 0) + 1, recordedAt: '1970-01-01T00:00:00Z',
+    deviceSequence: (context[roster.body.ownerDeviceId] ?? 0) + 1, recordedAt: '1970-01-01T00:00:00Z', receiptContext: view.confirmedReceiptContext() ?? context,
     entityType: 'member', entityId: roster.body.ownerUserId, operationType: 'patch', payload: {} };
 }

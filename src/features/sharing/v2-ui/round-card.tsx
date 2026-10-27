@@ -28,6 +28,8 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const formal = subject.formalDate;
   const schedules = relatedWork.filter((record) => record.active && record.schedule).map((record) => record.schedule!);
   const recordedWindow = subject.completed && schedules.length && schedules.every((schedule) => schedule.windowStart === schedules[0].windowStart && schedule.windowEnd === schedules[0].windowEnd) ? schedules[0] : null;
+  const assignmentPending = model.assignmentRequests.some((request) => request.proposal.occurrenceId === round.id && request.proposal.requesterUserId === viewer
+    && ['pendingDelivery', 'awaiting'].includes(request.kind));
   return <View style={styles.card}>
     <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={showStatus && subject.completed} deemphasized={subject.cooldownSuppressed || subject.virtuallyConsumed} onOpen={onOpen} onToggle={onToggle} />
     <View style={styles.details}>
@@ -53,7 +55,9 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
           ? <AppButton title="引き受ける" compact disabled={busy} onPress={() => run(() => actions.claim(ref))} /> : null}
         {showActions && !subject.completed && round.claimantUserIds.includes(viewer) && !round.assignmentFixed
           ? <AppButton title="引き受けを解除" compact variant="quiet" disabled={busy} onPress={() => run(() => actions.releaseClaim(ref))} /> : null}
-        {showActions && onAssignmentRequest && round.assignmentFixed && owns ? <AppButton title="担当の変更を申請" compact variant="quiet" disabled={busy} onPress={onAssignmentRequest} /> : null}
+        {showActions && round.assignmentFixed && owns && !subject.completed ? <AppButton title={assignmentPending ? '担当変更を申請中' : onAssignmentRequest ? '担当の変更を申請' : '自分の担当解除を申請'} compact variant="quiet" disabled={busy || assignmentPending}
+          onPress={onAssignmentRequest ?? (() => run(() => { const remaining = round.assigneeIds.filter((uid) => uid !== viewer); return actions.requestAssignment(ref,
+            { memberIds: remaining, start: 'this', scope: 'once', fixed: remaining.length > 0 && round.assignmentFixed }); }))} /> : null}
       </View>
     </View>
   </View>;

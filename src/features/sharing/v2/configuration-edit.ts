@@ -50,14 +50,15 @@ export function prepareV2ConfigurationEdit(input: { view: V2HistoryView; archive
   }
   if (old) {
     const lineage = v2AssignmentLineage(input.view, input.at, input.choreId, old);
-    const assignments = input.view.observed(input.view.ofType('assignmentRule'), input.at)
+    const assignments = (input.view.assignmentsAt(input.at)?.facts ?? input.view.observed(input.view.ofType('assignmentRule'), input.at))
       .filter((op) => op.payload.choreId === input.choreId && lineage.has(op.payload.ruleVersion as number));
+    const pendingRequests = (input.view.assignmentsAt(input.at)?.requests ?? []).filter((request) => ['pendingDelivery', 'awaiting', 'conflict'].includes(request.kind)
+      && request.proposal.choreId === input.choreId && lineage.has(request.proposal.ruleVersion));
     const samePolicy = canonicalJson(old.policy) === canonicalJson(configuration.policy);
-    if (assignments.length && input.preserveAssignments !== false) {
+    if ((assignments.length || pendingRequests.length) && input.preserveAssignments !== false) {
       if (!samePolicy) throw new V2AssignmentRemapError();
       if (old.targetMemberIds && configuration.targetMemberIds && canonicalJson(old.targetMemberIds) !== canonicalJson(configuration.targetMemberIds)) throw new V2AssignmentRemapError();
-      for (const op of assignments) {
-        const anchor = op.payload.fromAnchorDate as LocalDate;
+      for (const anchor of [...assignments.map((op) => op.payload.fromAnchorDate as LocalDate), ...pendingRequests.map((request) => request.proposal.anchorDate)]) {
         if (anchor < input.value.effectiveFrom) continue;
         try { commonFrame(input.view.groupId, input.choreId, configuration, anchor); } catch { throw new V2AssignmentRemapError(); }
       }

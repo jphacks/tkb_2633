@@ -30,7 +30,9 @@ export async function fixture({ preset = 'common', members = [], cycle = 7, befo
       for (const [id, count] of Object.entries(op.context)) context[id] = Math.max(context[id] ?? 0, count);
     }
     const id = operationId ?? `op-${String(facts.length + 1).padStart(5, '0')}`;
-    const fact = signSharedOperation({ schemaVersion: 2, operationId: id, groupId, authorUserId: uid(actor), authorDeviceId: identities[actor].deviceId,
+    const receiptContext = {};
+    for (const op of observed) if (receipts.has(op.operationId)) receiptContext[op.authorDeviceId] = Math.max(receiptContext[op.authorDeviceId] ?? 0, op.deviceSequence);
+    const fact = signSharedOperation({ schemaVersion: 2, operationId: id, groupId, authorUserId: uid(actor), authorDeviceId: identities[actor].deviceId, receiptContext,
       keyVersion: archive.at(-1).body.keyVersion, deviceSequence: (context[identities[actor].deviceId] ?? 0) + 1,
       logicalClock: Math.max(0, ...observed.map((op) => op.logicalClock)) + 1, context, recordedAt,
       entityType, entityId: entityId ?? id, operationType, payload }, identities[actor]);
@@ -60,13 +62,13 @@ export async function fixture({ preset = 'common', members = [], cycle = 7, befo
       timeZoneAtCreation: 'Asia/Tokyo', mode: target.precision === 'interval' ? 'fixed' : 'day', target,
       strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: uid(actor), ruleVersion: 1, ...fields } }, { actor, ...(observed ? { observed } : {}) });
   }
-  function complete({ actor = 'a', subject = null, day = anchorDate, performedAt = '2026-10-27T01:00:00Z', instruction = true, recordedAt, receivedAt, ...extra } = {}) {
+  function complete({ actor = 'a', subject = null, day = anchorDate, performedAt = '2026-10-27T01:00:00Z', instruction = true, recordedAt, receivedAt, delivered = true, ...extra } = {}) {
     const s = state(); const at = v2ReadPoint(s.assessment.view, archive.at(-1));
     const context = frameAtOperation(s.assessment.view, archive, at, 'floor', day, extra.ruleVersion);
     const recordedInstruction = recordedInstructionAt(s.assessment.view, at, context.frame, subject, s.assessment.approvedRules);
     return make('completion', { choreId: 'floor', anchorDate: day, completedAt: performedAt, completedByMemberId: uid(actor), subjectUserId: subject,
       originalAssigneeIds: subject === null ? context.assigneeIds : [subject], ruleVersion: context.config.ruleVersion, outcome: 'completed',
-      ...(instruction ? { recordedInstruction } : {}), ...extra }, { actor, recordedAt, receivedAt, entityId: v2SubjectOccurrenceId(occurrence(day), subject), operationType: 'complete' });
+      ...(instruction ? { recordedInstruction } : {}), ...extra }, { actor, recordedAt, receivedAt, delivered, entityId: v2SubjectOccurrenceId(occurrence(day), subject), operationType: 'complete' });
   }
   return { identities, archive, facts, receipts, make, state, plan, occurrence, designation, complete, defaultConfiguration };
 }

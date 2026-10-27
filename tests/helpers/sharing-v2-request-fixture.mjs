@@ -16,7 +16,7 @@ export async function fixture({ mode = 'day', original = date('2026-10-30'), pro
   for (const device of ['a', 'b', 'a2', 'owner2']) archive.push(approveSharedDevice(archive.at(-1), identities.owner, uid(device), identities[device]));
   const receipts = new Map(); const decisions = []; let generated = 0; let uploadSequence = 0;
   const request = signSharedOperation({ schemaVersion: 2, operationId: 'request', groupId: 'request-group', authorUserId: 'a', authorDeviceId: identities.a.deviceId,
-    keyVersion: archive.at(-1).body.keyVersion, deviceSequence: 1, logicalClock: 1, context: {}, recordedAt: new Date(start).toISOString(),
+    keyVersion: archive.at(-1).body.keyVersion, deviceSequence: 1, logicalClock: 1, context: {}, receiptContext: {}, recordedAt: new Date(start).toISOString(),
     entityType: 'changeRequest', entityId: 'request', operationType: 'patch', payload: { requesterUserId: 'a', choreId: 'floor', anchorDate: '2026-10-30',
       occurrenceId: 'frame', subjectUserId: null, originalDesignationId: 'old-date', original, proposed, proposedMode: mode,
       proposedOptions: { strict: true, adminLocked: true, forbidEarlier: false },
@@ -35,10 +35,12 @@ export async function fixture({ mode = 'day', original = date('2026-10-30'), pro
       context[op.authorDeviceId] = Math.max(context[op.authorDeviceId] ?? 0, op.deviceSequence);
       for (const [id, value] of Object.entries(op.context)) context[id] = Math.max(context[id] ?? 0, value);
     }
+    const receiptContext = {};
+    for (const fact of observed) { const op = fact.operation; if (receipts.has(op.operationId)) receiptContext[op.authorDeviceId] = Math.max(receiptContext[op.authorDeviceId] ?? 0, op.deviceSequence); }
     const operationId = `decision-${String(++generated).padStart(4, '0')}`;
     const fact = signSharedOperation({ schemaVersion: 2, operationId, groupId: 'request-group', authorUserId: uid(device), authorDeviceId: identities[device].deviceId,
       keyVersion: archive.at(-1).body.keyVersion, deviceSequence: (context[identities[device].deviceId] ?? 0) + 1,
-      logicalClock: Math.max(0, ...observed.map((fact) => fact.operation.logicalClock)) + 1, context,
+      logicalClock: Math.max(0, ...observed.map((fact) => fact.operation.logicalClock)) + 1, context, receiptContext,
       recordedAt: new Date(start + 500).toISOString(), entityType: 'requestDecision', entityId: operationId, operationType: 'patch',
       payload: { requestId: 'request', decision, target, referenceDecisionId } }, identities[device]);
     decisions.push(fact); if (delivered) deliver(fact, at); return fact;

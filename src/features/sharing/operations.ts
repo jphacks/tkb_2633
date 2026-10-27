@@ -16,6 +16,8 @@ export interface SharedOperation {
   schemaVersion: 1 | 2;
   /** Schema2 records the original operation time. Delivery time is an independent server receipt. */
   recordedAt?: string;
+  /** Schema2 distinguishes knowing a pending fact from observing its server-confirmed acceptance. */
+  receiptContext?: VersionVector;
   operationId: string;
   groupId: string;
   authorUserId: string;
@@ -37,7 +39,7 @@ const FORBIDDEN_FIELDS = new Set(['proto', 'constructor', 'prototype', 'accessto
   'idtoken', 'apikey', 'privatekey', 'clientsecret', 'signingsecretkey', 'agreementsecretkey', 'groupkey',
   'recoverysecret', 'authorization', 'googletaskid', 'googletasklistid', 'freebusy', 'pdfbase64']);
 const OPERATION_FIELDS = new Set(['schemaVersion', 'operationId', 'groupId', 'authorUserId', 'authorDeviceId',
-  'deviceSequence', 'logicalClock', 'context', 'keyVersion', 'entityType', 'entityId', 'operationType', 'payload', 'recordedAt']);
+  'deviceSequence', 'logicalClock', 'context', 'keyVersion', 'entityType', 'entityId', 'operationType', 'payload', 'recordedAt', 'receiptContext']);
 const FIELDS: Record<LegacySharedEntityType, Set<string>> = {
   chore: new Set(['name', 'category', 'description', 'enabled', 'recommendedCycleDays', 'userIntervalDays',
     'manufacturerRecommendedIntervalDays', 'manufacturerRecommendedConditions', 'requiresCycleSelection',
@@ -167,11 +169,12 @@ function validatePatchValues(entityType: LegacySharedEntityType, patch: Record<s
 
 export function validateSharedOperation(value: unknown, expectedGroupId?: string): SharedOperation {
   assertJsonRecord(value);
-  if (Object.keys(value).some((key) => !OPERATION_FIELDS.has(key)) || value.schemaVersion === 1 && Object.hasOwn(value, 'recordedAt')) throw new Error('Unknown operation field');
+  if (Object.keys(value).some((key) => !OPERATION_FIELDS.has(key)) || value.schemaVersion === 1 && ['recordedAt', 'receiptContext'].some((key) => Object.hasOwn(value, key))) throw new Error('Unknown operation field');
   if (value.schemaVersion !== SHARED_SCHEMA_VERSION && value.schemaVersion !== 2) throw new Error('Unsupported shared schema version');
   if (value.schemaVersion === 2) {
     if (typeof value.recordedAt !== 'string') throw new Error('Schema2 needs its original operation time');
     instantMilliseconds(value.recordedAt);
+    assertJsonRecord(value.receiptContext);
   }
   for (const key of ['operationId', 'groupId', 'authorUserId', 'authorDeviceId', 'entityId']) assertSharedIdentifier(value[key]);
   if (expectedGroupId && value.groupId !== expectedGroupId) throw new Error('Shared group mismatch');
@@ -186,6 +189,14 @@ export function validateSharedOperation(value: unknown, expectedGroupId?: string
   }
   if ((value.context[value.authorDeviceId as string] ?? 0) !== value.deviceSequence - 1) {
     throw new Error('Invalid author sequence');
+  }
+  if (Object.hasOwn(value, 'receiptContext')) {
+    assertJsonRecord(value.receiptContext);
+    if (Object.keys(value.receiptContext).length > 256) throw new Error('Too many confirmed receipt devices');
+    for (const [device, count] of Object.entries(value.receiptContext)) {
+      assertSharedIdentifier(device);
+      if (!integer(count) || count > (value.context[device] as number ?? 0)) throw new Error('Receipt context must be part of the observed operation context');
+    }
   }
   const legacy = typeof value.entityType === 'string' && Object.hasOwn(FIELDS, value.entityType);
   const version2 = value.schemaVersion === 2 && typeof value.entityType === 'string' && (V2_ENTITY_TYPES as readonly string[]).includes(value.entityType);

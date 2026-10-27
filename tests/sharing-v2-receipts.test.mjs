@@ -21,7 +21,7 @@ async function fixture() {
   const owner = await createDeviceIdentity(crypto); const member = await createDeviceIdentity(crypto);
   const archive = [createSharedRoster(groupId, 'owner', owner, { schemaVersion: 2 })]; archive.push(approveSharedDevice(archive[0], owner, 'member', member));
   const fact = signSharedOperation({ schemaVersion: 2, recordedAt: '2030-01-01T00:00:00Z', groupId, operationId, authorUserId: 'member', authorDeviceId: member.deviceId,
-    keyVersion: 2, deviceSequence: 1, logicalClock: 1, context: {}, entityType: 'member', entityId: 'member', operationType: 'patch', payload: { displayName: '検査' } }, member);
+    keyVersion: 2, deviceSequence: 1, logicalClock: 1, context: {}, receiptContext: {}, entityType: 'member', entityId: 'member', operationType: 'patch', payload: { displayName: '検査' } }, member);
   const raw = { schemaVersion: 2, authorUserId: 'member', authorDeviceId: member.deviceId, keyVersion: 2, uploadSequence: 1,
     authorProofDigest: v2AuthorProofDigest(fact), createdAt: Timestamp.fromMillis(serverTime) };
   return { owner, member, archive, fact, raw, receipt: parseV2FirestoreReceipt(raw, groupId, operationId) };

@@ -20,11 +20,12 @@ export interface V2CompletionRecord {
   strictInstructionFulfilled: boolean | null;
 }
 /** Facts remain immutable. Ownership/policy changes cannot retroactively change the original work report. */
-export function v2CompletionHistory(view: V2HistoryView, at: SharedOperation, receipts: ReadonlyMap<string, V2ServerReceipt>): V2CompletionRecord[] {
-  const complete = view.observed(view.ofType('completion'), at);
+export function v2CompletionHistory(view: V2HistoryView, at: SharedOperation, receipts: ReadonlyMap<string, V2ServerReceipt>, round?: { choreId: string; anchorDate: LocalDate }): V2CompletionRecord[] {
+  const source = round ? view.completionFactsForRound(round.choreId, round.anchorDate) : null;
+  const complete = view.observed(source ? source.filter((op) => op.entityType === 'completion') : view.ofType('completion'), at);
   const undone = new Set(complete.filter((op) => op.operationType === 'undo').map((op) => op.payload.targetOperationId as string));
   const approvals = new Map<string, SharedOperation[]>();
-  for (const op of view.observed(view.ofType('completionApproval'), at)) {
+  for (const op of view.observed(source ? source.filter((op) => op.entityType === 'completionApproval') : view.ofType('completionApproval'), at)) {
     const id = op.payload.completionOperationId as string; const list = approvals.get(id) ?? []; list.push(op); approvals.set(id, list);
   }
   return complete.filter((op) => op.operationType === 'complete' && op.schemaVersion === 2).map((op): V2CompletionRecord => {

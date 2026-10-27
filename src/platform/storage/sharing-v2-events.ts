@@ -18,6 +18,7 @@ import { withIsolatedSqliteTransaction } from './isolated-transaction.ts';
 import { initializeV2ReceiptTable, persistV2ServerReceiptsInside, readV2ServerReceiptsInside } from './sharing-v2-receipts.ts';
 import { bindV2ServerReceipt, v2AuthorProofDigest } from '../../features/sharing/v2/server-receipts.ts';
 import type { V2ServerReceipt } from '../../features/sharing/v2/server-receipts.ts';
+import { v2ConfirmedReceiptContext } from '../../features/sharing/v2/receipt-context.ts';
 
 interface V2StoreScope { userId: string; groupId: string; householdId: string }
 function digestPages(values: readonly unknown[]): string[] {
@@ -114,6 +115,7 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
       requests: digestPages(requestStates.map(({ decisions, counteroffers, conflictIds, ...state }) => sharedDocumentDigest({ ...state,
         decisions: digestPages(decisions), counteroffers: digestPages(counteroffers), conflictIds: digestPages(conflictIds) }))),
       formalRules: digestPages(assessment.approvedRules.map((rule) => sharedDocumentDigest(rule))),
+      assignmentRequests: digestPages(assessment.assignmentRequests.map((request) => sharedDocumentDigest(request))),
       roster: sharedRosterDigest(latest) });
     await transaction.runAsync(`INSERT INTO sharing_v2_projection (singleton, fact_hash, accepted_ids_json, rejected_json, pending_ids_json, provisional_ids_json, request_states_json, formal_rules_json)
       VALUES (1, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET
@@ -140,12 +142,14 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     if (latest.body.schemaVersion !== 2 || latest.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
     const operationTime = clock();
     const author = { groupId: options.groupId, userId: options.userId, deviceId: options.identity.deviceId,
-      keyVersion: latest.body.keyVersion, schemaVersion: 2 as const, now: () => operationTime };
+      keyVersion: latest.body.keyVersion, schemaVersion: 2 as const, now: () => operationTime, receiptContext: {} };
     const created = await createLocalSharedOperations(database, author, async (transaction, replica) => {
       options.assertWritable(); await assertV2Binding(transaction, options);
       if (sharedRosterDigest(archive().at(-1)!) !== sharedRosterDigest(latest)) throw new SharingAccessError('編集開始後に共有権限が変わりました。');
+      const current = await readStateInside(transaction, replica);
+      author.receiptContext = v2ConfirmedReceiptContext(current.assessment.view.ready, current.receipts);
       const drafts = typeof input === 'function' ? await input(replica)
-        : 'build' in input ? await input.build(await readStateInside(transaction, replica)) : input;
+        : 'build' in input ? await input.build(current) : input;
       options.assertWritable();
       for (const draft of drafts) localIds.add(draft.operationId); return drafts;
     }, async (transaction, replica) => { options.assertWritable(); await project(transaction, replica, localIds); }, (op) => signSharedOperation(op, options.identity).authorSignature);

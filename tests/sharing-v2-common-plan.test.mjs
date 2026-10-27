@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fixture, anchorDate, date } from './helpers/sharing-v2-plan-fixture.mjs';
 import { addDays } from '../src/domain/scheduling/local-date.ts';
+import { v2CompletionHistory } from '../src/features/sharing/v2/completion-history.ts';
+import { v2ReadPoint } from '../src/features/sharing/v2/view-point.ts';
 const slot = (plan, day = anchorDate, subject = null) => plan.occurrences.find((entry) => entry.anchorDate === day)?.subjects.find((entry) => entry.subjectUserId === subject);
 const accepted = (f) => assert.deepEqual(f.state().assessment.rejected.map((entry) => [entry.operationId, entry.error.message]), []);
 
@@ -337,4 +339,12 @@ test('v2 an unseen concurrent cancellation cannot rewrite the common window capt
   f.make('designationCancel', { targetOperationIds: [rule.operationId] }, { actor: 'owner2', observed: base, operationId: 'aaa-concurrent-cancel' }); accepted(f);
   const plan = f.plan(); assert.equal(plan.history.find((record) => record.operationId === work.operationId).schedule.commonWindow.end, '2026-10-31');
   assert.equal(plan.occurrences[0].windowEnd, '2026-10-29'); assert.ok(request);
+});
+
+test('v2 round-scoped history retains subject-specific work, approvals and undo without scanning every completion for each round', async () => {
+  const f = await fixture({ preset: 'eachMember' }); const first = f.complete({ subject: 'a' }); const second = f.complete({ subject: 'b', day: addDays(anchorDate, 7) });
+  f.make('completion', { targetOperationId: first.operationId }, { actor: 'a', entityId: first.entityId, operationType: 'undo' }); accepted(f);
+  const s = f.state(); const at = v2ReadPoint(s.assessment.view, f.archive.at(-1)); const view = { ...s.assessment.view, ofType: () => { throw new Error('Global history scan'); } };
+  const one = v2CompletionHistory(view, at, f.receipts, { choreId: 'floor', anchorDate }); assert.equal(one.length, 1); assert.equal(one[0].operationId, first.operationId); assert.equal(one[0].active, false);
+  const two = v2CompletionHistory(view, at, f.receipts, { choreId: 'floor', anchorDate: addDays(anchorDate, 7) }); assert.equal(two.length, 1); assert.equal(two[0].operationId, second.operationId); assert.equal(two[0].active, true);
 });

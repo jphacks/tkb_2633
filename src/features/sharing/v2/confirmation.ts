@@ -10,7 +10,7 @@ export function observedConfirmation(proof: ConfirmationProof, at: CausalStamp):
   if (proof.kind === 'operation') {
     assertSharedIdentifier(proof.operationId); assertSharedIdentifier(proof.authorDeviceId);
     if (!Number.isSafeInteger(proof.deviceSequence) || proof.deviceSequence <= 0) throw new Error('Invalid confirmation dot');
-    return (at.context[proof.authorDeviceId] ?? 0) >= proof.deviceSequence;
+    return ((at.receiptContext ?? at.context)[proof.authorDeviceId] ?? 0) >= proof.deviceSequence;
   }
   if (!['all', 'any'].includes(proof.kind) || !Array.isArray(proof.entries) || !proof.entries.length) throw new Error('Empty or invalid confirmation');
   return proof.kind === 'all' ? proof.entries.every((part) => observedConfirmation(part, at)) : proof.entries.some((part) => observedConfirmation(part, at));

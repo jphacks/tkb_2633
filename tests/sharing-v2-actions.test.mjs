@@ -5,7 +5,7 @@ import { fixture, seeds, now, draft, groupId } from './helpers/sharing-v2-reposi
 import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
 import { chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 import { v2GroupBootstrap } from '../src/features/sharing/v2/bootstrap.ts';
-import { applyReceivedSharedFacts, loadSharedFacts, listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
+import { applyReceivedSharedFacts, loadSharedFacts, listSharingOutbox, readSharingCheckpoint } from '../src/platform/storage/sharing-ledger.ts';
 import { receiptsFor } from './helpers/sharing-v2-repository-fixture.mjs';
 const ref = { choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null };
 const range = { from: '2026-10-27', through: '2026-11-10', asOfDate: '2026-10-27' };
@@ -203,5 +203,48 @@ test('v2 completion snapshots retain the approved common window and subject sche
     const rule = (await d.repository.readState()).assessment.approvedRules[0]; await a.cancelDates(ref, [rule.operationId]);
     const plan = await a.readPlan(range); assert.deepEqual(plan.history, before); assert.equal(plan.occurrences[0].windowEnd, '2026-10-29');
     assert.equal(plan.history[0].schedule.commonWindow.end, '2026-10-31');
+  } finally { d.connection.close(); }
+});
+
+test('v2 assignment requests atomically synchronize original assignees and receipt-backed approvals across two isolated user databases without duplicate taps', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const a = actions(owner); const b = actions(member); await a.assign(ref, ['member'], 'this', true);
+    const send = async (facts, cursor, receipts = receiptsFor(facts)) => {
+      for (const d of [owner, member]) {
+        const checkpoint = await readSharingCheckpoint(d.database, groupId);
+        await applyReceivedSharedFacts(d.database, groupId, facts, String(cursor), d.repository.project, checkpoint.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receipts));
+      }
+    };
+    await send(await loadSharedFacts(owner.database, groupId), 5);
+    const input = { memberIds: [], start: 'this', scope: 'once', fixed: false };
+    const [one, repeated] = await Promise.all([b.requestAssignment(ref, input), b.requestAssignment(ref, input)]);
+    assert.equal(one.length + repeated.length, 1); const req = [...one, ...repeated][0];
+    assert.ok(req.receiptContext[f.owner.deviceId] >= 5);
+    assert.deepEqual((await b.readPlan(range)).occurrences[0].assigneeIds, ['member']);
+    await assert.rejects(b.answerAssignment(req.operationId, 'approve'), { code: 'sharing/v2-authority-denied' });
+    const requestFact = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.operationId === req.operationId); await send([requestFact], 6);
+    const [answer] = await a.answerAssignment(req.operationId, 'approve'); assert.equal((await a.answerAssignment(req.operationId, 'approve')).length, 0);
+    assert.deepEqual((await a.readPlan(range)).occurrences[0].assigneeIds, ['member']);
+    const answerFact = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === answer.operationId); await send([answerFact], 7);
+    const plan = await a.readPlan(range); assert.deepEqual(plan.occurrences[0].assigneeIds, []); assert.equal(plan.planHash, (await b.readPlan(range)).planHash);
+    assert.equal((await owner.repository.readState()).assessment.assignmentRequests[0].kind, 'approved');
+    assert.equal((await member.repository.readState()).assessment.assignmentRequests[0].kind, 'approved');
+    await b.claim(ref); assert.deepEqual((await b.readPlan(range)).occurrences[0].assigneeIds, ['member']);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 repository persists an explicit confirmed-receipt context so a pending date extension cannot rewrite later-delivered work or its original window', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d);
+    const [request] = await a.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-31' }, extensionScope: 'future' });
+    assert.equal(request.entityType, 'changeRequest'); const [work] = await a.complete(ref);
+    assert.deepEqual(work.receiptContext, {}); assert.equal(work.payload.recordedInstruction.kind, 'automatic');
+    assert.deepEqual(work.payload.recordedCommonWindow, { start: '2026-10-25', end: '2026-10-29' });
+    const facts = await loadSharedFacts(d.database, groupId);
+    await applyReceivedSharedFacts(d.database, groupId, facts, '6', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    assert.deepEqual(d.state().rejected, []); const plan = await a.readPlan(range); assert.equal(plan.history[0].instruction.kind, 'automatic');
+    assert.equal(plan.history[0].schedule.commonWindow.end, '2026-10-29'); assert.equal(plan.occurrences[0].windowEnd, '2026-10-31'); assert.equal(plan.occurrences[0].completed, true);
   } finally { d.connection.close(); }
 });

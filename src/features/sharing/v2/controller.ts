@@ -26,7 +26,7 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
           candidates: candidates.map((op) => ({ operationId: op.operationId, authorUserId: op.authorUserId, recordedAt: op.recordedAt!, configuration: normalizeV2Configuration(op.payload.configuration as unknown as SharedChoreConfiguration) })) };
       });
       return { plan, configurations, viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
-        requests: state.assessment.requestStates, pendingChanges: state.assessment.pendingOutboxIds.length,
+        requests: state.assessment.requestStates, assignmentRequests: state.assessment.assignmentRequests, pendingChanges: state.assessment.pendingOutboxIds.length,
         receiptPending: state.assessment.provisionalOperationIds.length, quarantinedChanges: state.assessment.rejected.length + state.replica.pendingOperationIds.length };
     },
   };

@@ -34,7 +34,7 @@ async function fixture(preset = 'common', members = [], policy = createGroupPoli
     }
     const op = validateSharedOperation({ schemaVersion: 2, operationId, groupId, authorUserId: user, authorDeviceId: identities[user].deviceId,
       deviceSequence: (context[identities[user].deviceId] ?? 0) + 1, logicalClock: Math.max(0, ...observed.map((fact) => fact.logicalClock)) + 1,
-      context, keyVersion, recordedAt, entityType, entityId: entityId ?? operationId, operationType, payload });
+      context, receiptContext: {}, keyVersion, recordedAt, entityType, entityId: entityId ?? operationId, operationType, payload });
     operations.push(op); return op;
   }
   make('owner', 'groupPolicy', { configuration: policy }, { entityId: 'policy' });

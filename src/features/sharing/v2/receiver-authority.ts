@@ -29,6 +29,9 @@ import { violatesV2RequiredOrder } from './date-dependencies.ts';
 import { normalizeV2Configuration } from './configuration-normalization.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { expandedCommonWindow } from './window-extension.ts';
+import { createV2AssignmentHistory, v2AssignmentRequestReference } from './assignment-state.ts';
+import { v2ReadPoint } from './view-point.ts';
+import { v2ConfirmedReceiptContext, v2ObservedReceipts } from './receipt-context.ts';
 type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
 
 export class V2AuthorityError extends Error { readonly code = 'sharing/v2-authority-denied'; }
@@ -78,12 +81,14 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   for (const receipt of evidence?.receipts.values() ?? []) confirmedServerTime = Math.max(confirmedServerTime, receipt.receivedAtMs);
   const unconfirmedFrontier = new Map<string, number>();
   const dots = new Map(replica.operations.map((op) => [`${op.authorDeviceId}:${op.deviceSequence}`, op]));
-  const { view, accept } = createV2AuthorityIndex(replica.groupId);
+  let assignmentsAt!: ReturnType<typeof createV2AssignmentHistory>;
+  const { view, accept } = createV2AuthorityIndex(replica.groupId, (at) => assignmentsAt(at), () => v2ConfirmedReceiptContext(view.ready, evidence?.receipts ?? new Map()));
+  assignmentsAt = createV2AssignmentHistory(view, archive, evidence);
   const ready = replica.operations.filter((op) => !pending.has(op.operationId))
     .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
   for (const op of ready) {
     try {
-      const formal = ['designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completion'].includes(op.entityType)
+      const formal = ['designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completion', 'assignmentRequest'].includes(op.entityType)
         ? formalRulesAt(op, op.entityType === 'requestDecision' ? op.payload.requestId as string : undefined) : [];
       const reviewIds = (op.entityType === 'designation' ? (op.payload.configuration as unknown as ManualRule).reviewedRequestIds
         : op.entityType === 'changeRequest' ? op.payload.reviewedRequestIds as string[] | undefined : undefined) ?? [];
@@ -132,17 +137,19 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   }
   flushRequests();
   return { view, rejected, provisionalOperationIds, receiptEpochs: receiptEpochs as ReadonlyMap<string, VerifiedSharedRoster>,
-    requestStates: [...requestStates.values()], approvedRules: [...approvedRules.values()], formalRulesAt };
+    requestStates: [...requestStates.values()], approvedRules: [...approvedRules.values()], formalRulesAt,
+    assignmentRequests: assignmentsAt(v2ReadPoint(view, archive.at(-1)!)).requests };
 
   function requestAt(id: string, at: SharedOperation): V2DateRequestState | undefined {
     if (!evidence) return;
     const request = view.byId(id); const context = requestContexts.get(id);
     if (!request || !context || !causallyPrecedes(request, at)) return;
-    const key = canonicalJson(at.context); const cut = causalRequestStates.get(key) ?? new Map<string, V2DateRequestState>();
+    const key = canonicalJson([at.context, at.receiptContext ?? null]); const cut = causalRequestStates.get(key) ?? new Map<string, V2DateRequestState>();
     causalRequestStates.set(key, cut);
+    const decisions = (requestDecisions.get(id) ?? []).filter((fact) => causallyPrecedes(fact, at));
     if (!cut.has(id)) cut.set(id, deriveV2DateRequest({ request: evidence.facts.get(id)!,
-      decisions: (requestDecisions.get(id) ?? []).filter((fact) => causallyPrecedes(fact, at)).map((fact) => evidence.facts.get(fact.operationId)!),
-      receipts: evidence.receipts, archive, confirmedServerTime,
+      decisions: decisions.map((fact) => evidence.facts.get(fact.operationId)!),
+      receipts: v2ObservedReceipts([request, ...decisions], at, evidence.receipts), archive, confirmedServerTime,
       context: { permission: context.permission, assigneeIds: context.assigneeIds, timeZone: context.zone,
         originalWasConflicted: context.originalWasConflicted, basisRuleIds: context.basisRuleIds } }));
     while (causalRequestStates.size > 256) causalRequestStates.delete(causalRequestStates.keys().next().value!);
@@ -253,6 +260,15 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     adminOnly(); const target = observedTarget(view, op, op.payload.completionOperationId as string, 'completion');
     requireAuthority(target.operationType === 'complete', 'Approval must reference an actual completion fact'); return;
   }
+  if (op.entityType === 'assignmentDecision') {
+    adminOnly(); const request = observedTarget(view, op, op.payload.requestId as string, 'assignmentRequest');
+    if (op.payload.decision === 'reject') return;
+    const context = frameAtOperation(view, archive, op, request.payload.choreId as string, request.payload.anchorDate as LocalDate, request.payload.ruleVersion as number);
+    const sameIds = (left: unknown, right: readonly string[]) => canonicalJson([...(left as string[])].sort()) === canonicalJson([...right].sort());
+    requireAuthority(sameIds(request.payload.originalMemberIds, context.assigneeIds) && sameIds(request.payload.originalAssignmentIds, context.assignmentOperationIds)
+      && sameIds(request.payload.originalClaimOperationIds, context.claims.activeClaimOperationIds), 'Assignment changed since this request; review its current assignees first');
+    (request.payload.memberIds as string[]).forEach(member); return;
+  }
   if (op.entityType === 'requestDecision') {
     const request = observedTarget(view, op, op.payload.requestId as string, 'changeRequest');
     const context = requestContexts?.get(request.operationId)
@@ -292,13 +308,27 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   const rule = op.entityType === 'designation' ? payload.configuration as unknown as ManualRule : null;
   const choreId = rule?.choreId ?? payload.choreId as string;
   const anchorDate = rule?.referenceAnchorDate ?? (payload.anchorDate ?? payload.fromAnchorDate) as LocalDate;
-  const ruleVersion = rule?.ruleVersion ?? (op.entityType === 'completion' || op.entityType === 'assignmentRule' ? payload.ruleVersion as number : undefined);
+  const ruleVersion = rule?.ruleVersion ?? (['completion', 'assignmentRule', 'assignmentRequest'].includes(op.entityType) ? payload.ruleVersion as number : undefined);
   const frame = frameAtOperation(view, archive, op, choreId, anchorDate, ruleVersion, { allowAssignmentConflict: op.entityType === 'assignmentRule' });
   const occurrenceId = op.entityType === 'completion' ? v2SubjectOccurrenceId(frame.frame.id, payload.subjectUserId as string | null) : frame.frame.id;
   if (!rule) requireAuthority((payload.occurrenceId ?? payload.fromOccurrenceId ?? op.entityId) === occurrenceId, 'Operation belongs to another common occurrence');
   if (op.entityType === 'assignmentRule') {
     adminOnly(); (payload.memberIds as string[]).forEach(member);
-    requireAuthority(payload.scope === 'once' || !frame.assignmentConflictIds.some((id) => view.byId(id)?.payload.scope === 'once'), 'Resolve a one-off assignment conflict on its actual occurrence');
+    const assignmentFacts = view.assignmentsAt(op)?.facts.filter((fact) => fact.payload.choreId === choreId) ?? [];
+    requireAuthority(payload.scope === 'once' || !assignmentFacts.some((fact) => frame.assignmentConflictIds.includes(fact.operationId) && fact.payload.scope === 'once'), 'Resolve a one-off assignment conflict on its actual occurrence');
+    const known = new Set(assignmentFacts.map((fact) => fact.operationId));
+    for (const id of payload.basisRuleIds as string[] ?? []) requireAuthority(known.has(id), 'Assignment basis was not observed with its confirmation');
+    for (const id of payload.reviewedAssignmentRequestIds as string[] ?? []) requireAuthority(frame.assignmentReviewRequestIds.includes(id), 'A conflicting assignment request must be reviewed on its actual occurrence');
+    return;
+  }
+  if (op.entityType === 'assignmentRequest') {
+    requireAuthority(admin || frame.assigneeIds.includes(op.authorUserId), 'Only an affected assignee may request this assignment change');
+    (payload.memberIds as string[]).forEach(member);
+    const sameIds = (left: unknown, right: readonly string[]) => canonicalJson([...(left as string[])].sort()) === canonicalJson([...right].sort());
+    requireAuthority(sameIds(payload.originalMemberIds, frame.assigneeIds) && sameIds(payload.originalAssignmentIds, frame.assignmentOperationIds)
+      && sameIds(payload.originalClaimOperationIds, frame.claims.activeClaimOperationIds), 'Request must preserve its actual original assignment');
+    const reference = v2AssignmentRequestReference(view, op, frame.frame, frame.config.policy.completion === 'perMember' ? frame.subjectUserIds : [], formalRules);
+    requireAuthority(canonicalJson(payload.reference) === canonicalJson(reference.reference) && payload.timeZone === reference.timeZone, 'Assignment request must bind its real schedule and timezone');
     return;
   }
   if (op.entityType === 'completion') {
@@ -338,6 +368,7 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     }
     if (op.entityType === 'claimResolution') {
       adminOnly(); (payload.assigneeIds as string[]).forEach(member);
+      requireAuthority((payload.claimOperationIds as string[]).every((id) => frame.claims.activeClaimOperationIds.includes(id)), 'Resolve active claims only');
       const facts = [...view.observed(view.forOccurrence(occurrenceId), op), op];
       deriveClaims(occurrenceId, { activeMemberIds: memberIds,
         claims: facts.filter((fact) => fact.entityType === 'claim').map((fact) => ({ ...fact, ...fact.payload }) as unknown as ClaimFact),

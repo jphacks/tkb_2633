@@ -74,6 +74,14 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
   const assessment = input.assessment; const view = assessment.view; const roster = input.archive.at(-1);
   if (!roster || roster.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new Error('Unsupported common planner version');
   const at = v2ReadPoint(view, roster); const issues: V2PlanIssue[] = [];
+  const assignmentProjection = view.assignmentsAt(at);
+  const confirmedAssignmentAnswers = new Set((assignmentProjection?.requests ?? [])
+    .flatMap((request) => request.decisions.filter((decision) => decision.kind === 'eligible').map((decision) => decision.operationId)));
+  const assignmentChanges = [...view.ofType('assignmentRule'), ...view.ofType('assignmentDecision').filter((op) => op.payload.decision === 'approve' && confirmedAssignmentAnswers.has(op.operationId))];
+  const assignmentPayload = (op: SharedOperation) => op.entityType === 'assignmentRule' ? op.payload : (() => {
+    const request = view.byId(op.payload.requestId as string)!; return { choreId: request.payload.choreId, ruleVersion: request.payload.ruleVersion,
+      scope: request.payload.scope, fromOccurrenceId: request.payload.occurrenceId, fromAnchorDate: request.payload.anchorDate };
+  })();
   const issue = (kind: string, choreId: string | null = null, occurrenceId: string | null = null, subjectUserId: string | null = null, operationIds: string[] = []) => {
     issues.push({ kind, choreId, occurrenceId, subjectUserId, operationIds: [...new Set(operationIds)].sort(compareOperationIds) });
   };
@@ -138,8 +146,9 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       && (!input.receipts.has(record.operationId) || record.performedTimeConfirmed);
   }
   function completedBefore(frameId: string, point: SharedOperation, context: ReturnType<typeof frameAtOperation>): boolean {
-    const key = canonicalJson(point.context); let cut = historyAtCut.get(key);
-    if (!cut) { cut = v2CompletionHistory(view, point, input.receipts); historyAtCut.set(key, cut); }
+    const key = canonicalJson([frameId, point.context, point.receiptContext ?? null]); let cut = historyAtCut.get(key);
+    if (!cut) { cut = v2CompletionHistory(view, point, input.receipts, context.frame); historyAtCut.set(key, cut);
+      while (historyAtCut.size > 128) historyAtCut.delete(historyAtCut.keys().next().value!); }
     const active = cut.filter((record) => record.occurrenceId === frameId && usable(record));
     return context.config.policy.completion === 'one' ? active.some((record) => record.subjectUserId === null)
       : context.subjectUserIds.length > 0 && context.subjectUserIds.every((uid) => active.some((record) => record.subjectUserId === uid));
@@ -210,14 +219,24 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       try {
         context = frameAtOperation(view, input.archive, at, chore.id, frame.anchorDate, frame.ruleVersion, { allowAssignmentConflict: true });
         // Once a round was complete, a later assignment change does not reopen it for a new person.
-        const changes = view.observed(view.ofType('assignmentRule'), at).filter((op) => op.payload.choreId === chore.id && op.payload.ruleVersion === frame.ruleVersion
-          && (op.payload.scope === 'once' ? op.payload.fromOccurrenceId === frame.id : (op.payload.fromAnchorDate as string) <= frame.anchorDate))
+        const changes = view.observed(assignmentChanges, at).filter((op) => { const value = assignmentPayload(op); return value.choreId === chore.id && value.ruleVersion === frame.ruleVersion
+          && (value.scope === 'once' ? value.fromOccurrenceId === frame.id : (value.fromAnchorDate as string) <= frame.anchorDate); })
           .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
         for (const change of changes) {
           try {
             const previous = frameAtOperation(view, input.archive, change, chore.id, frame.anchorDate, frame.ruleVersion);
             if (completedBefore(frame.id, change, previous)) { context = previous; break; }
           } catch { /* Resolving a prior ambiguous assignment must not make the now-resolved round disappear. */ }
+        }
+        // A work report can know a pending decision without having received its formal acceptance.
+        // Preserve a round fully completed under that report's actually observed assignment as well.
+        if (changes.length) for (const record of historyByFrame.get(frame.id) ?? []) {
+          if (!usable(record)) continue; const work = view.byId(record.operationId); if (!work) continue;
+          try {
+            const previous = frameAtOperation(view, input.archive, work, chore.id, frame.anchorDate, frame.ruleVersion);
+            const afterWork = { ...work, context: { ...work.context, [work.authorDeviceId]: work.deviceSequence } };
+            if (completedBefore(frame.id, afterWork, previous)) { context = previous; break; }
+          } catch { /* Keep current explicit review when an original assignment cannot be reconstructed. */ }
         }
       } catch { issue('assignmentNeedsReview', chore.id, frame.id); continue; }
       if (context.assignmentConflictIds.length) issue('assignmentNeedsReview', chore.id, frame.id, null, context.assignmentConflictIds);

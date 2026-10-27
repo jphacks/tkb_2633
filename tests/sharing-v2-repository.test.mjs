@@ -64,7 +64,7 @@ test('v2 receive quarantines signed unauthorized edits and their forged privileg
     const [valid] = await member.repository.commit([draft('valid-local', 'chore', 'floor', { name: '床掃除' })]); assert.equal(valid.deviceSequence, 1);
     const context = { [f.owner.deviceId]: 4 };
     const invalid = signSharedOperation({ schemaVersion: 2, recordedAt: now().toISOString(), operationId: 'forbidden-remote', groupId,
-      authorUserId: 'member', authorDeviceId: f.member.deviceId, keyVersion: 2, deviceSequence: 1, logicalClock: 5, context,
+      authorUserId: 'member', authorDeviceId: f.member.deviceId, keyVersion: 2, deviceSequence: 1, logicalClock: 5, context, receiptContext: context,
       entityType: 'chore', entityId: 'floor', operationType: 'patch', payload: { enabled: false } }, f.member);
     const independent = signSharedOperation({ ...invalid.operation, operationId: 'independent-remote', deviceSequence: 2,
       logicalClock: 6, context: { ...context, [f.member.deviceId]: 1 }, payload: { instructions: ['ほこりを取る'] } }, f.member);
@@ -164,7 +164,7 @@ test('v2 server order prevents predicted future grants from retroactively author
   try {
     await d.repository.commit(seeds()); const initial = await loadSharedFacts(d.database, groupId);
     await applyReceivedSharedFacts(d.database, groupId, initial, '4', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(initial)));
-    const base = { schemaVersion: 2, recordedAt: now().toISOString(), groupId, keyVersion: 2, operationType: 'patch' };
+    const base = { schemaVersion: 2, receiptContext: {}, recordedAt: now().toISOString(), groupId, keyVersion: 2, operationType: 'patch' };
     const configuration = (id) => ({ id, choreId: 'floor', subjectUserId: null, referenceAnchorDate: '2026-10-27', timeZoneAtCreation: 'Asia/Tokyo',
       selector: { scope: 'once', occurrenceId: v2OccurrenceId(groupId, 'floor', '2026-10-27'), anchorDate: '2026-10-27' },
       mode: 'day', target: { precision: 'date', date: '2026-10-28' }, strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'member', ruleVersion: 1 });
@@ -256,7 +256,7 @@ test('v2 an administrator request delivered after ownership transfer loses autom
     const requestReceipt = { ...receiptsFor([request])[0], uploadSequence: 5, receivedKeyVersion: 3 };
     await receiveRequestFacts(d, [request], 5, [requestReceipt]);
     assert.equal(requestStates(d)[0].kind, 'awaiting', 'the author was an administrator at the click, but no longer at server acceptance');
-    const oldApproval = signSharedOperation({ schemaVersion: 2, operationId: 'former-owner-approval', groupId, authorUserId: 'owner', authorDeviceId: f.owner.deviceId,
+    const oldApproval = signSharedOperation({ schemaVersion: 2, receiptContext: {}, operationId: 'former-owner-approval', groupId, authorUserId: 'owner', authorDeviceId: f.owner.deviceId,
       deviceSequence: 6, logicalClock: 6, context: { [f.owner.deviceId]: 5 }, keyVersion: 2, recordedAt: now().toISOString(), entityType: 'requestDecision',
       entityId: 'former-owner-approval', operationType: 'patch', payload: { requestId: 'request-date', decision: 'approve', target: null, referenceDecisionId: null } }, f.owner);
     const newApproval = signSharedOperation({ ...oldApproval.operation, operationId: 'current-owner-approval', authorUserId: 'member', authorDeviceId: f.member.deviceId,

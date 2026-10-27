@@ -15,7 +15,7 @@ export interface SharingOutboxItem {
 }
 export interface SharedLocalAuthor {
   groupId: string; userId: string; deviceId: string; keyVersion: number;
-  schemaVersion?: 1 | 2; recordedAt?: string;
+  schemaVersion?: 1 | 2; recordedAt?: string; receiptContext?: SharedOperation['receiptContext'];
   now?: () => Date;
 }
 export interface SharedLedgerEvidence {
@@ -186,7 +186,8 @@ export function createLocalSharedOperations(
           created.push(existing); continue;
         }
         if (receipts.has(draft.operationId)) throw new Error('Operation ID already belongs to compacted history');
-        const op = validateSharedOperation({ ...draft, schemaVersion, ...(recordedAt ? { recordedAt } : {}), groupId: author.groupId, authorUserId: author.userId,
+        const op = validateSharedOperation({ ...draft, schemaVersion, ...(recordedAt ? { recordedAt } : {}),
+          ...(schemaVersion === 2 ? { receiptContext: author.receiptContext ?? {} } : {}), groupId: author.groupId, authorUserId: author.userId,
           authorDeviceId: author.deviceId, keyVersion: author.keyVersion, deviceSequence: (frontier[author.deviceId] ?? 0) + 1,
           logicalClock: clock + 1, context: frontier }, author.groupId);
         await insertOperation(db, op, sign?.(op));

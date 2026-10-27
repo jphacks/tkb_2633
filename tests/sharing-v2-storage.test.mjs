@@ -19,7 +19,7 @@ const groupId = 'group-v2-test'; const recordedAt = '2026-10-27T10:00:00Z';
 const scope = { groupId, userId: 'owner', deviceId: 'device-a', keyVersion: 1, schemaVersion: 2, recordedAt };
 const draft = (id, entityType, payload, entityId = id) => ({ operationId: id, entityType, entityId, operationType: 'patch', payload });
 const operation = (change, overrides = {}) => ({ ...change, schemaVersion: 2, groupId, authorUserId: 'owner', authorDeviceId: 'device-a',
-  keyVersion: 1, deviceSequence: 1, logicalClock: 1, context: {}, recordedAt, ...overrides });
+  keyVersion: 1, deviceSequence: 1, logicalClock: 1, context: {}, receiptContext: {}, recordedAt, ...overrides });
 const policyDraft = () => draft('policy-one', 'groupPolicy', { configuration: createGroupPolicy('family') }, 'policy');
 const rule = (id = 'day-rule') => ({ id, choreId: 'floor', subjectUserId: null, selector: { scope: 'once', occurrenceId: 'floor.2026-10-27', anchorDate: '2026-10-27' },
   referenceAnchorDate: '2026-10-27', timeZoneAtCreation: 'Asia/Tokyo', mode: 'day', target: { precision: 'date', date: '2026-10-27' }, strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'owner', ruleVersion: 1 });
@@ -28,12 +28,17 @@ test('v2 event allowlists retain explicit versions and original times while sche
   const value = operation(policyDraft());
   assert.deepEqual(validateSharedOperation(value), value);
   assert.throws(() => validateSharedOperation({ ...value, schemaVersion: 1 }));
+  const confirmed = { ...value, receiptContext: { ...value.context } }; assert.deepEqual(validateSharedOperation(confirmed).receiptContext, value.context);
+  assert.throws(() => validateSharedOperation({ ...value, receiptContext: { [value.authorDeviceId]: value.deviceSequence } }));
+  assert.throws(() => validateSharedOperation({ ...value, receiptContext: { invented: 1 } }));
+  assert.throws(() => validateSharedOperation({ ...value, receiptContext: null }));
   const { recordedAt: _recorded, ...withoutTime } = value;
   assert.throws(() => validateSharedOperation(withoutTime));
+  const { receiptContext: _receipts, ...withoutReceipts } = value; assert.throws(() => validateSharedOperation(withoutReceipts));
   assert.throws(() => validateSharedOperation({ ...value, schemaVersion: 3 }));
   const original = operation(draft('old', 'chore', { name: '床掃除' }), { schemaVersion: 1 });
   assert.throws(() => validateSharedOperation(original), /Unknown operation field/);
-  delete original.recordedAt; assert.deepEqual(validateSharedOperation(original), original);
+  delete original.recordedAt; delete original.receiptContext; assert.deepEqual(validateSharedOperation(original), original);
   assert.throws(() => validateSharedOperation({ ...value, recordedAt: '2026-10-27T10:00:00' }));
 });
 test('v2 events refuse private information, impersonated claims, rewritten facts and unknown policy extensions', () => {
@@ -83,7 +88,7 @@ test('v2 signed roster upgrades preserve every approved device, rotate epochs an
   const old = approveSharedDevice(createSharedRoster(groupId, 'owner', owner), owner, 'member', member);
   const next = upgradeSharedRoster(old, owner);
   assert.equal(old.body.schemaVersion, 1); assert.equal(next.body.schemaVersion, 2);
-  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2-draft-7');
+  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2-draft-8');
   assert.deepEqual(next.body.members, old.body.members);
   const fields = { ...rosterCloudFields(next), headSequence: 0, lastOperationId: null, snapshotId: null, snapshotThroughSequence: 0 };
   assert.equal(parseSharedCloudGroup(fields, groupId).group.schemaVersion, 2);

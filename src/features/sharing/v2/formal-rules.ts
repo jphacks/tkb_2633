@@ -4,7 +4,7 @@ import { sharedDocumentDigest } from '../crypto.ts';
 import type { CausalStamp, ManualRuleFact } from './model.ts';
 import type { V2DateRequestState } from './request-state.ts';
 import { observedConfirmation } from './confirmation.ts';
-import { uniqueCausalFacts, maximalCausalFacts } from './causal-facts.ts';
+import { maximalConfirmedFacts } from './confirmed-facts.ts';
 import { validateDesignationTarget } from './date-target.ts';
 
 /** Derived rules are rebuilt locally from source proofs, never accepted as signed operations from a Snapshot. */
@@ -36,13 +36,5 @@ export function observedManualRule(fact: ManualRuleFact, at: CausalStamp): boole
 
 /** Observing a pending request is insufficient to overwrite its later approval. */
 export function maximalManualRules(input: readonly ManualRuleFact[]): ManualRuleFact[] {
-  const facts = uniqueCausalFacts(input);
-  const causalMaxima = new Set(maximalCausalFacts(facts).map((fact) => fact.operationId));
-  const confirmed = new Map(facts.filter((fact) => fact.confirmation).map((fact) => [fact.operationId, fact]));
-  const replaced = new Set<string>();
-  for (const fact of facts) for (const id of fact.rule.basisRuleIds ?? []) {
-    const old = confirmed.get(id);
-    if (old?.confirmation && old.operationId !== fact.operationId && observedConfirmation(old.confirmation, fact)) replaced.add(id);
-  }
-  return facts.filter((fact) => fact.confirmation ? !replaced.has(fact.operationId) : causalMaxima.has(fact.operationId));
+  return maximalConfirmedFacts(input, (fact) => fact.rule.basisRuleIds ?? []);
 }

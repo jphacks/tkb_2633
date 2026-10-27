@@ -1792,5 +1792,65 @@
         "name": "v2 configuration editor keeps invalid input out of storage and flushes valid changes on background and navigation"
       }
     ]
+  },
+  {
+    "feature": "v2-assignment-request-receipts",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 fixed claim release remains a request until both immutable receipts arrive and then clears the old claim without resurrecting it"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 a late offline assignment approval stays in the audit and cannot clear its original fixed assignee"
+      },
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 assignment requests atomically synchronize original assignees and receipt-backed approvals across two isolated user databases without duplicate taps"
+      },
+      {
+        "file": "tests/sharing-v2-screen.test.mjs",
+        "name": "v2 fixed-assignee cards send a deliberate release request and the administrator's approval waits for its server receipt"
+      }
+    ]
+  },
+  {
+    "feature": "v2-pending-receipt-history",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 knowing a pending assignment approval does not mean observing its receipt and cannot retroactively invalidate work recorded under the original assignee"
+      },
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 repository persists an explicit confirmed-receipt context so a pending date extension cannot rewrite later-delivered work or its original window"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-confirmation-causality",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 a direct assignment that saw only a pending request cannot silently replace its later concurrent approval"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 equivalent concurrent assignment approvals retain one stable rule and either confirmation can authorize its later replacement"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 contradictory concurrent assignment votes require explicit review and preserve the same result in reverse receive order"
+      }
+    ]
+  },
+  {
+    "feature": "v2-round-scoped-history",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 round-scoped history retains subject-specific work, approvals and undo without scanning every completion for each round"
+      }
+    ]
   }
 ]

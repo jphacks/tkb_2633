@@ -8,10 +8,10 @@ import type { LocalDate } from '../../../domain/shared/types.ts';
 import { isSharedTimeZone } from '../group-clock.ts';
 
 export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 'assignmentRule', 'claim', 'claimRelease',
-  'claimResolution', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
+  'claimResolution', 'assignmentRequest', 'assignmentDecision', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-7';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-8';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -85,9 +85,23 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   // Each append-only business fact has its own identity. A patch cannot rewrite an older fact entity.
   if (binding.entityId !== binding.operationId) throw new Error('V2 fact identity must equal its operation ID');
   if (entityType === 'assignmentRule') {
-    record(payload, ['choreId', 'memberIds', 'fromOccurrenceId', 'fromAnchorDate', 'scope', 'fixed', 'ruleVersion']);
+    const required = ['choreId', 'memberIds', 'fromOccurrenceId', 'fromAnchorDate', 'scope', 'fixed', 'ruleVersion'];
+    record(payload, [...required, 'basisRuleIds', 'reviewedAssignmentRequestIds'], required);
+    if ('basisRuleIds' in payload) ids(payload.basisRuleIds);
+    if ('reviewedAssignmentRequestIds' in payload) ids(payload.reviewedAssignmentRequestIds, false);
     assertSharedIdentifier(payload.choreId); ids(payload.memberIds, true, 16); assertSharedIdentifier(payload.fromOccurrenceId); day(payload.fromAnchorDate);
     choice(payload.scope, ['once', 'from']); flag(payload.fixed); integer(payload.ruleVersion, 1); return;
+  }
+  if (entityType === 'assignmentRequest') {
+    record(payload, ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'ruleVersion', 'originalMemberIds', 'originalAssignmentIds', 'originalClaimOperationIds', 'memberIds', 'scope', 'fixed', 'reference', 'timeZone']);
+    if (payload.requesterUserId !== binding.authorUserId) throw new Error('Assignment requester mismatch');
+    assertSharedIdentifier(payload.choreId); assertSharedIdentifier(payload.occurrenceId); day(payload.anchorDate); integer(payload.ruleVersion, 1);
+    ids(payload.originalMemberIds, true, 16); ids(payload.originalAssignmentIds); ids(payload.originalClaimOperationIds); ids(payload.memberIds, true, 16);
+    choice(payload.scope, ['once', 'from']); flag(payload.fixed); target(payload.reference);
+    if (!isSharedTimeZone(payload.timeZone)) throw new Error('Invalid assignment request timezone'); return;
+  }
+  if (entityType === 'assignmentDecision') {
+    record(payload, ['requestId', 'decision']); assertSharedIdentifier(payload.requestId); choice(payload.decision, ['approve', 'reject']); return;
   }
   if (entityType === 'claim' || entityType === 'claimRelease') {
     record(payload, entityType === 'claim' ? ['choreId', 'anchorDate', 'occurrenceId', 'userId'] : ['choreId', 'anchorDate', 'occurrenceId', 'userId', 'targetOperationIds']);

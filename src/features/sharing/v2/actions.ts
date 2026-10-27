@@ -20,6 +20,7 @@ import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
 import { expandedCommonWindow } from './window-extension.ts';
+import { v2AssignmentRequestReference } from './assignment-state.ts';
 import type { DateTarget, DesignationMode, DesignationOptions, GroupKind, GroupPolicy, RuleSelector, SharedChoreConfiguration } from './model.ts';
 
 export interface V2RoundReference { choreId: string; anchorDate: LocalDate; ruleVersion: number; subjectUserId: string | null }
@@ -151,11 +152,33 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       const anchor = start === 'next' ? addDays(ref.anchorDate, context.config.intervalDays) : ref.anchorDate;
       const next = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, anchor, ref.ruleVersion, { allowAssignmentConflict: true });
       return [draft('assignmentRule', null, { choreId: ref.choreId, fromOccurrenceId: next.frame.id, fromAnchorDate: anchor,
-        scope: 'from', memberIds, fixed, ruleVersion: next.config.ruleVersion })];
+        scope: 'from', memberIds, fixed, ruleVersion: next.config.ruleVersion, basisRuleIds: next.assignmentOperationIds })];
     }),
     resolveAssignment: (ref: V2RoundReference, memberIds: string[], scope: 'once' | 'from', fixed: boolean) => repository.commitCurrent(async (state) => {
       const context = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
-      return [draft('assignmentRule', null, { choreId: ref.choreId, fromOccurrenceId: context.frame.id, fromAnchorDate: ref.anchorDate, scope, memberIds, fixed, ruleVersion: ref.ruleVersion })];
+      return [draft('assignmentRule', null, { choreId: ref.choreId, fromOccurrenceId: context.frame.id, fromAnchorDate: ref.anchorDate, scope, memberIds, fixed,
+        ruleVersion: ref.ruleVersion, basisRuleIds: context.assignmentOperationIds,
+        ...(context.assignmentReviewRequestIds.length ? { reviewedAssignmentRequestIds: context.assignmentReviewRequestIds } : {}) })];
+    }),
+    requestAssignment: (ref: V2RoundReference, input: { memberIds: string[]; start: 'this' | 'next'; scope: 'once' | 'from'; fixed: boolean }) => repository.commitCurrent(async (state) => {
+      const current = frame(state, ref); const anchor = input.start === 'next' ? addDays(ref.anchorDate, current.config.intervalDays) : ref.anchorDate;
+      const at = point(state); const context = frame(state, { ...ref, anchorDate: anchor });
+      const reference = v2AssignmentRequestReference(state.assessment.view, at, context.frame,
+        context.config.policy.completion === 'perMember' ? context.subjectUserIds : [], state.assessment.formalRulesAt(at));
+      const proposal = { requesterUserId: scope.userId, choreId: ref.choreId, anchorDate: anchor, occurrenceId: context.frame.id,
+        ruleVersion: context.config.ruleVersion, originalMemberIds: context.assigneeIds, originalAssignmentIds: context.assignmentOperationIds,
+        originalClaimOperationIds: context.claims.activeClaimOperationIds, memberIds: [...input.memberIds].sort(), scope: input.scope, fixed: input.fixed, ...reference };
+      if (state.assessment.assignmentRequests.some((request) => ['pendingDelivery', 'awaiting'].includes(request.kind)
+        && canonicalJson(request.proposal) === canonicalJson(proposal))) return [];
+      return [draft('assignmentRequest', null, proposal)];
+    }),
+    answerAssignment: (requestId: string, decision: 'approve' | 'reject') => repository.commitCurrent(async (state) => {
+      const request = state.assessment.assignmentRequests.find((entry) => entry.requestId === requestId); if (!request) throw new Error('担当変更の申請を同期してください。');
+      if (request.kind === (decision === 'approve' ? 'approved' : 'rejected')) return [];
+      if (!['pendingDelivery', 'awaiting'].includes(request.kind)) throw new Error('この申請は締め切られています。現在の担当を確認してください。');
+      const previous = state.assessment.view.ofType('assignmentDecision').find((op) => op.payload.requestId === requestId && op.authorDeviceId === scope.deviceId);
+      if (previous) { if (previous.payload.decision === decision) return []; throw new Error('すでに回答しています。現在の担当を確認してください。'); }
+      return [draft('assignmentDecision', null, { requestId, decision })];
     }),
     grantDateRights: (choreId: string, userId: string, enabled: boolean, rights: { changeDate: boolean; changeOthers: boolean; changeBeforeWindow: boolean }) =>
       repository.commit([draft('datePermission', v2DatePermissionId(scope.groupId, choreId, userId), { choreId, userId, enabled, rights })]),

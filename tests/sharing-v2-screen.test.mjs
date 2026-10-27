@@ -4,7 +4,7 @@ import test from 'node:test';
 import { screenHarness } from './helpers/screen-harness.mjs';
 import { fixture, seeds, now, groupId } from './helpers/sharing-v2-repository-fixture.mjs';
 import { createV2GroupController } from '../src/features/sharing/v2/controller.ts';
-import { applyReceivedSharedFacts, loadSharedFacts } from '../src/platform/storage/sharing-ledger.ts';
+import { applyReceivedSharedFacts, loadSharedFacts, readSharingCheckpoint } from '../src/platform/storage/sharing-ledger.ts';
 import { receiptsFor } from './helpers/sharing-v2-repository-fixture.mjs';
 import { v2TargetFromForm, v2LocalTimeInput } from '../src/features/sharing/v2-ui/target-form.ts';
 const range = { from: '2026-10-27', through: '2026-11-10', asOfDate: '2026-10-27' };
@@ -122,3 +122,29 @@ test('v2 common cadence controls are absent for non-administrators and conflicti
     assert.ok(screen.text().includes('設定が競合')); assert.equal(screen.nodes().some((node) => node.type === 'TextInput'), false);
   } finally { d.connection.close(); }
 });
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 fixed-assignee cards send a deliberate release request and the administrator's approval waits for its server receipt`, async () => {
+    const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+    try {
+      await owner.repository.commit(seeds()); const controller = ctrl(owner); await controller.actions.assign(ref, ['member'], 'this', true);
+      const receive = async (facts, cursor) => { for (const d of [owner, member]) {
+        const old = await readSharingCheckpoint(d.database, groupId);
+        await applyReceivedSharedFacts(d.database, groupId, facts, String(cursor), d.repository.project, old.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+      } };
+      await receive(await loadSharedFacts(owner.database, groupId), 5);
+      const memberCard = await card(member, platform); await memberCard.screen.press('自分の担当解除を申請');
+      assert.equal(memberCard.props.model.assignmentRequests[0].kind, 'pendingDelivery'); assert.equal(memberCard.screen.button('担当変更を申請中').props.disabled, true);
+      assert.deepEqual(memberCard.props.round.assigneeIds, ['member']);
+      const req = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.entityType === 'assignmentRequest'); await receive([req], 6);
+      const props = { model: await controller.readModel(range), actions: controller.actions, busy: false,
+        run: async (work) => { await work(); props.model = await controller.readModel(range); } };
+      const screen = screenHarness('src/features/sharing/v2-ui/assignment-requests.tsx', { exportName: 'V2AssignmentRequests', platform, props });
+      await screen.press('担当変更を承認'); assert.ok(screen.text().includes('回答の送信待ち')); assert.equal(screen.button('担当変更を承認').props.disabled, true);
+      assert.deepEqual(props.model.plan.occurrences[0].assigneeIds, ['member']);
+      const answer = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.entityType === 'assignmentDecision'); await receive([answer], 7);
+      props.model = await controller.readModel(range); screen.render(); assert.ok(screen.text().includes('承認済み'));
+      assert.deepEqual(props.model.plan.occurrences[0].assigneeIds, []); assert.equal(props.model.plan.planHash, (await memberCard.controller.readModel(range)).plan.planHash);
+    } finally { owner.connection.close(); member.connection.close(); }
+  });
+}

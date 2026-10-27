@@ -42,6 +42,7 @@ export interface CivilRange { from: LocalDate; through: LocalDate | null }
 export interface InstantRange { start: number; end: number }
 export interface CausalStamp {
   operationId: string; authorDeviceId: string; deviceSequence: number; context: VersionVector;
+  receiptContext?: VersionVector;
 }
 export type RuleSelector = { scope: 'once'; occurrenceId: string; anchorDate: LocalDate }
   | { scope: 'period'; range: CivilRange }
@@ -70,6 +71,11 @@ export interface DateChangeRequest {
   proposedMode: DesignationMode; proposedOptions: DesignationOptions; selector: RuleSelector; extensionScope: 'once' | 'future';
   basisRuleIds?: string[];
   reviewedRequestIds?: string[];
+}
+export interface AssignmentChangeRequest {
+  requesterUserId: string; choreId: string; anchorDate: LocalDate; occurrenceId: string; ruleVersion: number;
+  originalMemberIds: string[]; originalAssignmentIds: string[]; originalClaimOperationIds: string[];
+  memberIds: string[]; scope: 'once' | 'from'; fixed: boolean; reference: DateTarget; timeZone: string;
 }
 export interface ManualRuleFact extends CausalStamp { rule: ManualRule; confirmation?: ConfirmationProof; sourceRequestId?: string }
 export interface SharedOccurrence {

@@ -48,5 +48,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - name: Audit dependencies for high and critical vulnerabilities
+        run: npm audit --audit-level=high
       - name: Verify sharing authorization and encrypted transport against local Firestore
         run: npx --yes firebase-tools@15.34.1 emulators:exec --non-interactive --only firestore --project demo-liflow-sharing --config firebase.json "npm run test:sharing-cloud"

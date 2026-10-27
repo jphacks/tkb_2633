@@ -52,7 +52,9 @@
     "typescript": "~6.0.3"
   },
   "overrides": {
-    "@grpc/grpc-js": "^1.14.6"
+    "@grpc/grpc-js": "^1.14.6",
+    "node-forge": "1.4.1",
+    "zod": "4.6.7"
   },
   "scripts": {
     "postinstall": "node ./scripts/patch-hermes-podspec-encoding.cjs && node ./scripts/patch-expo-widget-open-app.cjs && node ./scripts/patch-google-signin-silent-tokens.cjs && node ./scripts/patch-expo-task-manager-headless.cjs",

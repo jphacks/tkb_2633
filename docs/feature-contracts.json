@@ -1077,5 +1077,47 @@
         "name": "revocation during a shared projection rolls back both the local edit and its outbox atomically"
       }
     ]
+  },
+  {
+    "feature": "patched-zod-cli-compatibility",
+    "tests": [
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "security override resolves patched Zod for the CLI and React Hooks without leaving a vulnerable second copy"
+      },
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "patched Zod rejects oversized bounded arrays, sets and maps before validating elements in sync and async paths"
+      },
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "Expo SDK 58 plugin and CLI output schemas preserve valid data and reject invalid data with Zod 4"
+      },
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "Expo SDK 58 MCP command schemas keep typed arguments, strict unknown-key rejection and JSON Schema conversion"
+      }
+    ]
+  },
+  {
+    "feature": "node-forge-nested-digest-hardening",
+    "tests": [
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "security override resolves the official fixed node-forge for both Expo consumers without changing the SDK"
+      },
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "installed node-forge rejects the upstream public low-exponent forgery vector without requiring a private key"
+      },
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "Expo certificate creation, validation and manifest signing still work with the strict node-forge parser"
+      },
+      {
+        "file": "tests/dependency-security.test.mjs",
+        "name": "official node-forge rejects noncanonical DigestInfo lengths and nonempty NULL parameters"
+      }
+    ]
   }
 ]

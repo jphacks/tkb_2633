@@ -245,6 +245,21 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
       .occurrences.find((entry) => entry.choreId === 'calendar-history' && entry.anchorDate === anchorDate);
     for (const d of [owner, member]) { const round = await historicalRound(d.repository); assert.ok(round); assert.equal(round.subjects[0].suggestedDate, recordedDate);
       assert.deepEqual(round.subjects[0].completionOperationIds, [historicalWork.operationId]); }
+    await owner.repository.commit([
+      change('partial-cancel-chore', 'chore', 'partial-cancel', { name: '期間解除の検査', enabled: true }),
+      change('partial-cancel-cfg', 'chorePolicy', 'partial-cancel', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate,
+        intervalDays: 1, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
+    ]);
+    const partialRef = { ...assignmentRef, choreId: 'partial-cancel' };
+    const [repeating] = await ownerActions.changeDate(partialRef, { mode: 'day', target: day(addLocalDays(anchorDate, 1)), selector: { scope: 'ongoing', from: anchorDate } });
+    await ownerActions.cancelDates({ ...partialRef, anchorDate: addLocalDays(anchorDate, 2) }, [repeating.operationId], {
+      selector: { scope: 'period', range: { from: addLocalDays(anchorDate, 2), through: addLocalDays(anchorDate, 4) } }, expectedRuleIds: [repeating.operationId],
+    });
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); assert.equal(hash(owner), hash(member));
+    const cancellationPlan = async (repository) => buildV2CommonPlan(await repository.readState(), { from: anchorDate, through: addLocalDays(anchorDate, 7), asOfDate: anchorDate })
+      .occurrences.filter((round) => round.choreId === 'partial-cancel');
+    const expectedCancellation = await cancellationPlan(owner.repository); assert.deepEqual(await cancellationPlan(member.repository), expectedCancellation);
+    assert.deepEqual(expectedCancellation.map((round) => round.subjects[0].formalDate.kind), ['manual', 'manual', 'automatic', 'automatic', 'automatic', 'manual', 'manual', 'manual']);
     const sequence = (await getDocFromServer(f.root)).data().headSequence;
     const approvedSnapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
       next, f.identity, key2, 'approved-requests-v2', sequence, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
@@ -260,6 +275,7 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     const restoredAssignment = (await restored.repository.readState()).assessment.view.byId(futureAssignment.operationId);
     assert.equal(restoredAssignment.payload.fromAnchorDate, nextAnchor); assert.equal(restoredAssignment.payload.ruleVersion, 2);
     assert.deepEqual(await historicalRound(restored.repository), await historicalRound(owner.repository));
+    assert.deepEqual(await cancellationPlan(restored.repository), expectedCancellation);
     await member.repository.commit([change('next-date-request', 'changeRequest', 'next-date-request', {
       requesterUserId: 'member', choreId: 'approval-floor', anchorDate, occurrenceId: requestOccurrence, subjectUserId: null,
       originalDesignationId: firstRule.operationId, original: firstRule.rule.target, proposed: day(addLocalDays(anchorDate, 5)), proposedMode: 'day',

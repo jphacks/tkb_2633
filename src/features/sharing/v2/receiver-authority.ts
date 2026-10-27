@@ -13,7 +13,8 @@ import type { ClaimFact, ClaimRelease, ClaimResolution } from './claims.ts';
 import { evaluateDateChangePermission, mayUndoCompletion, v2DateDecisionAudience } from './permissions.ts';
 import type { DatePermissionFact, DateChangePermission } from './permissions.ts';
 import { normalizeDateTarget, targetCivilDate, targetReferenceTime, validateDesignationTarget } from './date-target.ts';
-import type { DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, SharedChoreConfiguration } from './model.ts';
+import type { DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, RuleSelector, SharedChoreConfiguration } from './model.ts';
+import { cancellationScopeMatches } from './date-cancellations.ts';
 import { selectManualRule } from './period-rules.ts';
 import { v2DateChangeOriginal } from './date-change-original.ts';
 import { fixedConflictAtOperation } from './fixed-conflict.ts';
@@ -312,8 +313,17 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     for (const id of op.payload.targetOperationIds as string[]) {
       const target = observedDateRules(view, op, formalRules, true).find((fact) => fact.operationId === id);
       requireAuthority(target, 'Referenced designation was not confirmed and observed'); const rule = target.rule;
+      const selector = op.payload.selector as unknown as RuleSelector | undefined;
+      let cancelRule = rule;
+      if (selector) {
+        adminOnly();
+        const from = selector.scope === 'once' ? selector.anchorDate : selector.scope === 'period' ? selector.range.from : selector.from;
+        const frame = frameAtOperation(view, archive, op, rule.choreId, from, rule.ruleVersion).frame;
+        requireAuthority(cancellationScopeMatches(rule, selector, frame), 'Cancellation scope must start on an actual matching source occurrence');
+        cancelRule = { ...rule, referenceAnchorDate: from };
+      }
       requireAuthority(admin || rule.issuerUserId === op.authorUserId && !rule.adminLocked && !rule.strict, 'A locked designation must be changed through a request');
-      const context = dateContext(view, archive, op, rule, { precision: 'date', date: rule.referenceAnchorDate }, receivedEpoch, formalRules);
+      const context = dateContext(view, archive, op, cancelRule, { precision: 'date', date: cancelRule.referenceAnchorDate }, receivedEpoch, formalRules);
       requireAuthority(context.permission.kind === 'allowed' && !context.permission.needsRequest, 'Cancelling this designation requires consent');
     }
     return;

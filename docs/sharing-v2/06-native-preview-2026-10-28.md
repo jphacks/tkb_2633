@@ -130,3 +130,15 @@ iPhoneは個別ルート化後も入力欄にキーボードフォーカスを�
 - 画像の確認後、週ごとにCard共通gapが加わる余白を除き、凡例を短くした。読取専用の`phase4n-android-calendar-compact.log`は`calendarCompactReadOnly=true`、7.605秒。新しい完了を追加せず選択日と完了カードを再表示した。`android-phase4n-calendar-compact.png`：SHA-256 `9bbee939ae5b5d5296dc9e432c9cf87a186df1238d9f49f37256ff011900d15f`。元画像は別名で保持した。
 
 操作は公開UiAutomationのアクセシビリティAPIであり、座標タップ・ソフトウェアキーボードや実アカウント間E2Eの成功には数えない。今回の全件検査は両OS各1281件、Emulator25件、機能契約166件。最終余白調整後の関連32件・lint・型検査も成功した。
+
+## Phase 4o追記：Androidの今回だけ解除と次回の保持
+
+基点`5be8784`へのPhase 4o差分、未公開v2 draft22。新しい契約のため別の合成検査領域を開き、旧検査DB・primary DB・実グループを保持した。LiFlowの再インストールや初期化は行っていない。
+
+`phase4o-android-scoped-cancellation.log`：`scopedRemovalPreservesFuture=true`、54.084秒。フローリングを翌日にずらして2週間の指定を保存し、今回だけの解除が初期選択であることを確認して明示保存した。同じ回を再表示すると元の10月28日に戻り、共有カレンダーで次回の家事回を開くと11月5日の指定が保持されていた。最初の元指定の期間は10月28日〜11月10日で、今回の解除で全期間を消していないことを確認した。
+
+- `phase4o-scopedCancellationChoices.png`：SHA-256 `0366932272af8ed9db8e16da35d5c936f0f4336307043da13a9815a4fc0d4635`。解除の元期間と範囲選択を確認した。下端の選択肢全体は画像に収まらないため、選択状態の確認はネイティブ要素のchecked状態も照合した。
+- `phase4o-scopedCurrentRemoved.png`：SHA-256 `a291f9217cb7c69643b3971e9206b9cd26ffb1b3742869cc73c52d1b7efc7252`。
+- `phase4o-scopedFuturePreserved.png`：SHA-256 `01a912e3b34671d0f7c31880a7c78c2f47eb3bc68d5a859ecdddfaaee23e4104`。次回の入力欄が11月5日を保持することを確認した。
+
+公開アクセシビリティAPIでの実表示・端末内保存であり、座標タップ・ソフトウェアキーボード・実サービスの本人承認E2Eとは区別する。iPhoneは入力確認待ちのまま操作していない。両OS条件各1290件、Emulator25件、機能契約169件が通過した。

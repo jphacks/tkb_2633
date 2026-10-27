@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-21';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-22';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -129,7 +129,10 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
     validateDesignationTarget(data.mode as 'deadline' | 'day' | 'fixed', data.target as DateTarget);
     flag(data.strict); flag(data.adminLocked); flag(data.forbidEarlier); integer(data.ruleVersion, 1); return;
   }
-  if (entityType === 'designationCancel') { record(payload, ['targetOperationIds']); ids(payload.targetOperationIds, false); return; }
+  if (entityType === 'designationCancel') {
+    record(payload, ['targetOperationIds', 'selector'], ['targetOperationIds']); ids(payload.targetOperationIds, false);
+    if ('selector' in payload) selector(payload.selector); return;
+  }
   if (entityType === 'changeRequest') {
     const required = ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'proposedMode', 'proposedOptions', 'selector', 'extensionScope'];
     record(payload, [...required, 'basisRuleIds', 'reviewedRequestIds'], required);

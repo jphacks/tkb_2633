@@ -39,11 +39,26 @@ export function ruleSelectorMatches(selector: RuleSelector, occurrence: SharedOc
   const through = selector.scope === 'period' ? selector.range.through : null;
   return from <= occurrence.anchorDate && (through === null || occurrence.anchorDate <= through);
 }
+export function manualRuleMatches(fact: ManualRuleFact, occurrence: SharedOccurrence): boolean {
+  return ruleSelectorMatches(fact.rule.selector, occurrence)
+    && !(fact.excludedSelectors ?? []).some((selector) => ruleSelectorMatches(selector, occurrence));
+}
+/** Subtract exclusions before expanding inverse date queries, retaining the immutable source range. */
+export function uncancelledRuleRanges(fact: ManualRuleFact, range: CivilRange): CivilRange[] {
+  let result = [range];
+  for (const selector of fact.excludedSelectors ?? []) {
+    const removed = selector.scope === 'once' ? { from: selector.anchorDate, through: selector.anchorDate }
+      : selector.scope === 'period' ? selector.range : { from: selector.from, through: null };
+    result = result.flatMap((part) => subtractCivilRange(part, removed));
+  }
+  return result;
+}
 export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: SharedOccurrence, subjectUserId: string | null, timeZone?: string):
   { kind: 'automatic' } | { kind: 'selected'; fact: ManualRuleFact; equivalentOperationIds: string[] } | { kind: 'conflict'; candidates: ManualRuleFact[] } {
-  const matching = uniqueCausalFacts(facts).filter(({ rule }) => {
+  const matching = uniqueCausalFacts(facts).filter((fact) => {
+    const { rule } = fact;
     if (rule.choreId !== occurrence.choreId || rule.subjectUserId !== subjectUserId) return false;
-    return ruleSelectorMatches(rule.selector, occurrence);
+    return manualRuleMatches(fact, occurrence);
   });
   if (!matching.length) return { kind: 'automatic' };
   const rank = (fact: ManualRuleFact) => fact.rule.selector.scope === 'once' ? 3 : fact.rule.selector.scope === 'period' ? 2 : 1;

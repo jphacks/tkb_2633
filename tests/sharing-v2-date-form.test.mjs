@@ -152,9 +152,29 @@ test('v2 date cancellation names the entire source period and preserves real his
     await first.controller.actions.complete(ref); const history = (await first.controller.readModel(range)).plan.history;
     const { screen, props } = await form(d); const before = (await listSharingOutbox(d.database, groupId)).length;
     await screen.press('適用中の日時指定を解除…'); assert.ok(screen.text().includes('2026-10-27から無期限')); assert.equal((await listSharingOutbox(d.database, groupId)).length, before);
+    await choose(screen, '元指定の全期間');
     await screen.press('表示した適用期間の指定を解除する'); assert.ok(screen.text().includes('実施履歴は保持')); assert.deepEqual(props.model.plan.history, history);
   } finally { d.connection.close(); }
 });
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 cancellation defaults to one round and changing its explicit range never edits the date draft or another subject`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      const initial = seeds(); initial[3].payload.configuration.intervalDays = 1; await d.repository.commit(initial);
+      const source = await form(d, platform); const [rule] = await source.controller.actions.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-28' }, selector: { scope: 'ongoing', from: ref.anchorDate } });
+      const { screen, props } = await form(d, platform, { anchorDate: '2026-10-29' }); const before = (await listSharingOutbox(d.database, groupId)).length;
+      await screen.press('適用中の日時指定を解除…'); assert.equal(screen.nodes().find((node) => node.props.accessibilityLabel === '今回だけ解除').props.accessibilityState.checked, true);
+      await choose(screen, '解除の終了日を指定'); await screen.change('解除する最後の基準日', '2026-10-28');
+      await screen.press('選択した範囲の指定を解除する'); assert.ok(screen.text().includes('適用期間の開始と終了')); assert.equal((await listSharingOutbox(d.database, groupId)).length, before);
+      await screen.change('解除する最後の基準日', '2026-10-31'); await screen.press('選択した範囲の指定を解除する');
+      const cancellation = (await d.repository.readState()).assessment.view.ofType('designationCancel')[0];
+      assert.deepEqual(cancellation.payload, { targetOperationIds: [rule.operationId], selector: { scope: 'period', range: { from: '2026-10-29', through: '2026-10-31' } } });
+      assert.equal(props.model.plan.occurrences.find((round) => round.anchorDate === '2026-10-28').subjects[0].formalDate.kind, 'manual');
+      assert.equal(props.model.plan.occurrences.find((round) => round.anchorDate === '2026-11-01').subjects[0].formalDate.kind, 'manual');
+      assert.ok(screen.text().includes('選択した範囲')); assert.equal(props.model.plan.history.length, 0);
+    } finally { d.connection.close(); }
+  });
+}
 
 test('v2 date form does not pretend a lower-priority repeating rule replaces the current one-off exception', async () => {
   const f = await fixture(); const d = await f.device();
@@ -172,6 +192,7 @@ test('v2 date cancellation refuses an intervening source change instead of remov
   try {
     await d.repository.commit(seeds()); const source = await form(d); await source.controller.actions.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-28' } });
     const { screen } = await form(d); await screen.press('適用中の日時指定を解除…');
+    await choose(screen, '元指定の全期間');
     await source.controller.actions.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-29' } }); const before = (await listSharingOutbox(d.database, groupId)).length;
     await assert.rejects(screen.press('表示した適用期間の指定を解除する'), { code: 'sharing/v2-stale-settings' }); assert.equal((await listSharingOutbox(d.database, groupId)).length, before);
   } finally { d.connection.close(); }

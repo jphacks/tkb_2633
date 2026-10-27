@@ -16,7 +16,7 @@ import { commonFrame, commonFrames } from './common-frames.ts';
 import { frameAtOperation } from './authority-context.ts';
 import { v2SubjectOccurrenceId } from './occurrence-id.ts';
 import { observedDateRules } from './formal-rule-view.ts';
-import { selectManualRule } from './period-rules.ts';
+import { manualRuleMatches, selectManualRule, uncancelledRuleRanges } from './period-rules.ts';
 import { materializeRuleTarget } from './rule-target.ts';
 import { v2ConfigurationTimeline } from './configuration-timeline.ts';
 import { v2CompletionHistory } from './completion-history.ts';
@@ -180,7 +180,8 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
           const first = rule.selector.scope === 'period' ? rule.selector.range.from : rule.selector.from;
           const last = rule.selector.scope === 'period' ? rule.selector.range.through : null;
           const from = addDays(range.from, -delta); const through = addDays(range.through, -delta);
-          bounds.push({ from: from > first ? from : first, through: last && last < through ? last : through });
+          const bound = { from: from > first ? from : first, through: last && last < through ? last : through };
+          if (bound.from <= bound.through) for (const part of uncancelledRuleRanges(fact, bound)) bounds.push({ from: part.from, through: part.through ?? bound.through });
         } catch { issue('repeatingMappingNeedsReview', chore.id, null, rule.subjectUserId, [fact.operationId]); }
       }
       const merged: { from: LocalDate; through: LocalDate }[] = [];
@@ -206,7 +207,8 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       const targetDate = targetCivilDate(fact.rule.target, timeZone); if (targetDate < range.from || targetDate > range.through) continue;
       const source = view.byId(fact.sourceRequestId ?? fact.operationId);
       if (!source) { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); continue; }
-      try { const frame = frameAtOperation(view, input.archive, source, chore.id, selector.anchorDate, fact.rule.ruleVersion).frame; frames.set(frame.id, frame); }
+      try { const frame = frameAtOperation(view, input.archive, source, chore.id, selector.anchorDate, fact.rule.ruleVersion).frame;
+        if (manualRuleMatches(fact, frame)) frames.set(frame.id, frame); }
       catch { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); }
     }
     const retainedHistoricalFrames = new Set<string>();
@@ -319,7 +321,7 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
         needsAssignment: context.assignmentConflictIds.length > 0 || context.configuredAssignees.length > 0 && context.assigneeIds.length === 0 || context.config.policy.completion === 'perMember' && requiredSubjects.length === 0,
         completed: planned.some((slot) => slot.required) && planned.filter((slot) => slot.required).every((slot) => slot.completed),
         historical: !currentSlice, activeInPeriod: Boolean((currentSlice?.configuration && currentSlice.configuration.active !== false
-          || allRules.some((fact) => fact.rule.choreId === chore.id && fact.rule.selector.scope === 'once' && fact.rule.selector.occurrenceId === frame.id)) && (past || chore.enabled)),
+          || allRules.some((fact) => fact.rule.choreId === chore.id && fact.rule.selector.scope === 'once' && manualRuleMatches(fact, frame))) && (past || chore.enabled)),
         extensionRequestIds: window.sources, subjects: planned });
     }
   }

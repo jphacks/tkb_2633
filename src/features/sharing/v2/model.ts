@@ -77,7 +77,11 @@ export interface AssignmentChangeRequest {
   originalMemberIds: string[]; originalAssignmentIds: string[]; originalClaimOperationIds: string[];
   memberIds: string[]; scope: 'once' | 'from'; fixed: boolean; reference: DateTarget; timeZone: string;
 }
-export interface ManualRuleFact extends CausalStamp { rule: ManualRule; confirmation?: ConfirmationProof; sourceRequestId?: string }
+export interface ManualRuleFact extends CausalStamp {
+  rule: ManualRule; confirmation?: ConfirmationProof; sourceRequestId?: string;
+  /** Local projection of observed, authorized cancellations; never part of a signed designation. */
+  excludedSelectors?: RuleSelector[];
+}
 export interface SharedOccurrence {
   id: string; choreId: string; anchorDate: LocalDate;
   windowStart: LocalDate; windowEnd: LocalDate; ruleVersion: number;

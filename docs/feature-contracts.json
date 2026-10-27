@@ -2570,5 +2570,56 @@
         "name": "v2 a failed read-only month change does not claim that data was saved or the unloaded day was empty"
       }
     ]
+  },
+  {
+    "feature": "v2-scoped-date-cancellation",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 a one-round cancellation preserves the repeating date on both sides and the source completion instruction"
+      },
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 bounded and future date cancellations preserve the untouched original ranges without resurrecting them after a new exception"
+      },
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 cancelling an approved future window expansion removes only the chosen rounds and preserves its proof elsewhere"
+      }
+    ]
+  },
+  {
+    "feature": "v2-date-cancellation-source-and-permission-binding",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 scoped cancellation rejects a forged occurrence or another starting round and rolls back its outbox"
+      },
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 signed scoped cancellations converge after reverse and duplicate delivery and cannot cancel a later unseen rule"
+      },
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 a scoped date removal is bound to its subject and cannot borrow another chores rule or inject projection fields"
+      },
+      {
+        "file": "tests/sharing-v2-date-cancellation.test.mjs",
+        "name": "v2 scoped removal excludes moved inverse-query anchors while retaining any completion on its recorded day"
+      }
+    ]
+  },
+  {
+    "feature": "v2-date-cancellation-explicit-scope-ui",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-form.test.mjs",
+        "name": "v2 cancellation defaults to one round and changing its explicit range never edits the date draft or another subject"
+      },
+      {
+        "file": "tests/sharing-v2-date-form.test.mjs",
+        "name": "v2 date cancellation names the entire source period and preserves real history until explicit confirmation"
+      }
+    ]
   }
 ]

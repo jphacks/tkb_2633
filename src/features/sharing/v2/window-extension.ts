@@ -7,6 +7,7 @@ import type { VerifiedSharedRoster } from '../roster.ts';
 import { targetCivilDate, instantMilliseconds } from './date-target.ts';
 import type { ConfirmationProof } from './confirmation.ts';
 import type { SharedOperation } from '../operations.ts';
+import { dateRuleCancelledAt } from './date-cancellations.ts';
 
 function administratorBacked(proof: ConfirmationProof | null, view: V2HistoryView, epochs: ReadonlyMap<string, VerifiedSharedRoster>): boolean {
   if (!proof) return false;
@@ -20,11 +21,10 @@ export function expandedCommonWindow(input: { frame: SharedOccurrence; timeZone:
   let before = daysBetween(input.frame.windowStart, input.frame.anchorDate); let after = daysBetween(input.frame.anchorDate, input.frame.windowEnd);
   const sources: string[] = []; const reviews: string[] = [];
   const cancellations = input.at ? input.view.observed(input.view.ofType('designationCancel'), input.at) : input.view.ofType('designationCancel');
-  const cancelled = new Set(cancellations.flatMap((op) => op.payload.targetOperationIds as string[]));
   const byRequest = new Map(input.approvedRules.map((rule) => [rule.sourceRequestId, rule]));
   for (const request of input.requests) {
     if (request.kind !== 'approved' || !request.formal || request.proposal.choreId !== input.frame.choreId) continue;
-    const rule = byRequest.get(request.requestId); if (!rule || cancelled.has(rule.operationId) || rule.rule.ruleVersion !== input.frame.ruleVersion) continue;
+    const rule = byRequest.get(request.requestId); if (!rule || dateRuleCancelledAt(cancellations, rule.operationId, input.frame) || rule.rule.ruleVersion !== input.frame.ruleVersion) continue;
     if (request.proposal.extensionScope === 'once' ? request.proposal.occurrenceId !== input.frame.id : request.proposal.anchorDate > input.frame.anchorDate) continue;
     if (!administratorBacked(request.confirmation, input.view, input.receiptEpochs)) continue;
     if (request.proposal.extensionScope === 'future' && request.formal.precision !== 'date' && rule.rule.timeZoneAtCreation !== input.timeZone) {

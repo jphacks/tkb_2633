@@ -3,7 +3,7 @@ import type { ManualRuleFact, SharedOccurrence } from './model.ts';
 import type { V2DateRequestState } from './request-state.ts';
 import type { V2HistoryView } from './history-view.ts';
 import { approvedRequestRuleId } from './formal-rules.ts';
-import { ruleSelectorMatches } from './period-rules.ts';
+import { manualRuleMatches, ruleSelectorMatches } from './period-rules.ts';
 import { counterofferDesignationOptions } from './date-options.ts';
 
 /** A valid historical action does not silently acknowledge an as-yet unseen contradictory answer. */
@@ -24,7 +24,7 @@ export function unresolvedRequestReviews(input: { occurrence: SharedOccurrence; 
     const stack = [...input.candidates]; const visited = new Set<string>();
     while (stack.length) {
       const fact = stack.pop()!; if (visited.has(fact.operationId)) continue; visited.add(fact.operationId);
-      if (fact.rule.reviewedRequestIds?.includes(state.requestId) && ruleSelectorMatches(fact.rule.selector, input.occurrence)
+      if (fact.rule.reviewedRequestIds?.includes(state.requestId) && manualRuleMatches(fact, input.occurrence)
         && state.conflictIds.every((id) => { const answer = input.view.byId(id); return answer && causallyPrecedes(answer, fact); })) acknowledged = true;
       for (const id of fact.rule.basisRuleIds ?? []) {
         if (possible.has(id)) dependsOnDispute = true;

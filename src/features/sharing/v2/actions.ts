@@ -9,6 +9,7 @@ import { v2ReadPoint } from './view-point.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { frameAtOperation } from './authority-context.ts';
 import { nextV2CommonOccurrence } from './next-occurrence.ts';
+import { cancellationScopeMatches } from './date-cancellations.ts';
 import { v2DatePermissionId, v2SubjectOccurrenceId } from './occurrence-id.ts';
 import { recordedInstructionAt } from './recorded-instruction.ts';
 import { buildV2CommonPlan } from './common-plan.ts';
@@ -340,7 +341,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         return [draft('requestDecision', null, { requestId, decision, target, referenceDecisionId, ...(allowDuringCooldown ? { allowDuringCooldown: true } : {}) })];
       }),
     approveSubstitution: (completionOperationId: string, decision: 'approve' | 'reject') => repository.commit([draft('completionApproval', null, { completionOperationId, decision })]),
-    cancelDates: (ref: V2RoundReference, targetOperationIds: string[], edit: { expectedRuleIds?: readonly string[] } = {}) => repository.commitCurrent(async (state) => {
+    cancelDates: (ref: V2RoundReference, targetOperationIds: string[], edit: { expectedRuleIds?: readonly string[]; selector?: RuleSelector } = {}) => repository.commitCurrent(async (state) => {
       const context = frame(state, ref); const rules = observedDateRules(state.assessment.view, point(state), state.assessment.formalRulesAt(point(state)), true);
       if (edit.expectedRuleIds) {
         const selected = selectManualRule(observedDateRules(state.assessment.view, point(state), state.assessment.formalRulesAt(point(state))), context.frame, ref.subjectUserId, state.assessment.view.field('settings', 'settings', 'timeZone', point(state))?.value as string);
@@ -348,7 +349,10 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         if (!sameIds(edit.expectedRuleIds, currentIds)) throw new V2StaleSettingsError();
       }
       if (targetOperationIds.some((id) => !rules.some((fact) => fact.operationId === id && fact.rule.choreId === context.frame.choreId && fact.rule.subjectUserId === ref.subjectUserId))) throw new Error('取り消す日時指定を確認してください。');
-      return [draft('designationCancel', null, { targetOperationIds })];
+      if (edit.selector && targetOperationIds.some((id) => !cancellationScopeMatches(rules.find((fact) => fact.operationId === id)!.rule, edit.selector!, context.frame))) {
+        throw new Error('解除する範囲は、表示した家事回から指定してください。周期が変わった元指定は適用期間全体の解除で確認してください。');
+      }
+      return [draft('designationCancel', null, { targetOperationIds, ...(edit.selector ? { selector: edit.selector } : {}) })];
     }),
   };
 }

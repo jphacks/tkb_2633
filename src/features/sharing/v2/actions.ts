@@ -14,9 +14,9 @@ import { buildV2CommonPlan } from './common-plan.ts';
 import { v2CompletionHistory } from './completion-history.ts';
 import { observedDateRules } from './formal-rule-view.ts';
 import { selectManualRule } from './period-rules.ts';
-import { materializeRuleTarget } from './rule-target.ts';
+import { v2DateChangeOriginal } from './date-change-original.ts';
 import { dateChangeContextAtOperation } from './receiver-authority.ts';
-import { targetCivilDate, targetReferenceTime, validateDesignationTarget } from './date-target.ts';
+import { targetCivilDate, validateDesignationTarget } from './date-target.ts';
 import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
@@ -237,11 +237,10 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       const target = validateDesignationTarget(input.mode, input.target);
       const rules = observedDateRules(view, at, state.assessment.formalRulesAt(at)); const selected = selectManualRule(rules, context.frame, ref.subjectUserId, zone);
       const originals = selected.kind === 'conflict' ? selected.candidates : selected.kind === 'selected' ? [selected.fact] : [];
-      const targets = originals.map((fact) => { const result = materializeRuleTarget(fact.rule, context.frame, zone); if (result.kind !== 'target') throw new Error('周期や時刻の適用を確認してください。'); return result.target; });
-      const original = targets.sort((a, b) => targetReferenceTime(a, zone) - targetReferenceTime(b, zone))[0] ?? { precision: 'date', date: ref.anchorDate };
+      const { original, unresolved } = v2DateChangeOriginal(originals.map((fact) => fact.rule), context.frame, zone);
       const basisRuleIds = selected.kind === 'selected' ? selected.equivalentOperationIds : originals.map((fact) => fact.operationId);
       if (input.expectedRuleIds && canonicalJson([...input.expectedRuleIds].sort()) !== canonicalJson([...basisRuleIds].sort())) throw new V2StaleSettingsError();
-      if (selected.kind === 'conflict' && (!input.confirmDateConflict || !input.expectedRuleIds)) throw new V2StaleSettingsError();
+      if ((selected.kind === 'conflict' || unresolved) && (!input.confirmDateConflict || !input.expectedRuleIds)) throw new V2StaleSettingsError();
       const selector = input.selector ?? { scope: 'once', occurrenceId: context.frame.id, anchorDate: ref.anchorDate };
       const proposedOptions = { strict: originals.some((fact) => fact.rule.strict), adminLocked: originals.some((fact) => fact.rule.adminLocked),
         forbidEarlier: originals.some((fact) => fact.rule.forbidEarlier), ...input.options };

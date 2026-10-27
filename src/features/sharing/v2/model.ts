@@ -67,7 +67,7 @@ export interface ManualRule extends DesignationOptions {
 }
 export interface DateChangeRequest {
   requesterUserId: string; choreId: string; anchorDate: LocalDate; occurrenceId: string; subjectUserId: string | null;
-  originalDesignationId: string | null; original: DateTarget; proposed: DateTarget;
+  originalDesignationId: string | null; original: DateTarget | null; proposed: DateTarget;
   proposedMode: DesignationMode; proposedOptions: DesignationOptions; selector: RuleSelector; extensionScope: 'once' | 'future';
   basisRuleIds?: string[];
   reviewedRequestIds?: string[];

@@ -55,7 +55,9 @@ export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: S
       : fact.rule.selector.scope === 'once' ? raw : raw.precision === 'date'
         ? { ...raw, date: addDays(raw.date, daysBetween(fact.rule.referenceAnchorDate, occurrence.anchorDate)) }
         : (() => { throw new Error('A shared timezone is required to compare repeating clock times'); })();
-    return canonicalJson({ mode: fact.rule.mode, target,
+    const reviewSource = 'kind' in target && target.kind === 'review' ? { target: raw, referenceAnchorDate: fact.rule.referenceAnchorDate,
+      timeZoneAtCreation: fact.rule.timeZoneAtCreation, ruleVersion: fact.rule.ruleVersion } : null;
+    return canonicalJson({ mode: fact.rule.mode, target, reviewSource,
     strict: fact.rule.strict, adminLocked: fact.rule.adminLocked, forbidEarlier: fact.rule.forbidEarlier,
     allowDuringCooldown: fact.rule.allowDuringCooldown === true });
   };

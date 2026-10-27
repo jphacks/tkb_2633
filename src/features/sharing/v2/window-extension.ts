@@ -23,7 +23,7 @@ export function expandedCommonWindow(input: { frame: SharedOccurrence; timeZone:
   const cancelled = new Set(cancellations.flatMap((op) => op.payload.targetOperationIds as string[]));
   const byRequest = new Map(input.approvedRules.map((rule) => [rule.sourceRequestId, rule]));
   for (const request of input.requests) {
-    if (request.kind !== 'approved' || request.proposal.choreId !== input.frame.choreId) continue;
+    if (request.kind !== 'approved' || !request.formal || request.proposal.choreId !== input.frame.choreId) continue;
     const rule = byRequest.get(request.requestId); if (!rule || cancelled.has(rule.operationId) || rule.rule.ruleVersion !== input.frame.ruleVersion) continue;
     if (request.proposal.extensionScope === 'once' ? request.proposal.occurrenceId !== input.frame.id : request.proposal.anchorDate > input.frame.anchorDate) continue;
     if (!administratorBacked(request.confirmation, input.view, input.receiptEpochs)) continue;

@@ -88,7 +88,7 @@ test('v2 signed roster upgrades preserve every approved device, rotate epochs an
   const old = approveSharedDevice(createSharedRoster(groupId, 'owner', owner), owner, 'member', member);
   const next = upgradeSharedRoster(old, owner);
   assert.equal(old.body.schemaVersion, 1); assert.equal(next.body.schemaVersion, 2);
-  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2-draft-14');
+  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2-draft-15');
   assert.deepEqual(next.body.members, old.body.members);
   const fields = { ...rosterCloudFields(next), headSequence: 0, lastOperationId: null, snapshotId: null, snapshotThroughSequence: 0 };
   assert.equal(parseSharedCloudGroup(fields, groupId).group.schemaVersion, 2);

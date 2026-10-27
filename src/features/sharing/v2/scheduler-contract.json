@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-14",
+  "version": "liflow-shared-2-draft-15",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -47,7 +47,8 @@
     "src/features/sharing/v2/assignment-state.ts",
     "src/features/sharing/v2/confirmed-facts.ts",
     "src/features/sharing/v2/receipt-context.ts",
-    "src/features/sharing/operations.ts"
+    "src/features/sharing/operations.ts",
+    "src/features/sharing/v2/date-change-original.ts"
   ],
-  "sourceSha256": "7bcaf93157aa28e53f6a13a45307c8e268fb8e255918313deef152fdf5f78c57"
+  "sourceSha256": "a82ddbcf61c608561bdb16cd34b8dc10f2bdc5e87e381da16ee0e6967b196d85"
 }

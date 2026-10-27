@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-14';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-15';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -137,7 +137,7 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
     if ('reviewedRequestIds' in payload) ids(payload.reviewedRequestIds, false);
     if (payload.requesterUserId !== binding.authorUserId) throw new Error('Request author mismatch');
     assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId); idOrNull(payload.subjectUserId); idOrNull(payload.originalDesignationId);
-    target(payload.original); choice(payload.proposedMode, ['deadline', 'day', 'fixed']);
+    if (payload.original !== null) target(payload.original); choice(payload.proposedMode, ['deadline', 'day', 'fixed']);
     validateDesignationTarget(payload.proposedMode as 'deadline' | 'day' | 'fixed', payload.proposed as unknown as DateTarget);
     Object.values(record(payload.proposedOptions, ['strict', 'adminLocked', 'forbidEarlier', 'allowDuringCooldown'], ['strict', 'adminLocked', 'forbidEarlier'])).forEach(flag);
     selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;

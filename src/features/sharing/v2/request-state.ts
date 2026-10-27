@@ -27,10 +27,10 @@ interface Summary {
 export interface V2DateRequestState {
   requestId: string;
   kind: Summary['kind'] | 'pendingDelivery' | 'tooLate' | 'expired' | 'blocked';
-  original: DateTarget;
+  original: DateTarget | null;
   originalWasConflicted: boolean;
   originalRuleIds: string[];
-  formal: DateTarget;
+  formal: DateTarget | null;
   proposal: DateChangeRequest;
   deadline: ApprovalDeadline;
   confirmation: ConfirmationProof | null;
@@ -50,13 +50,14 @@ export function deriveV2DateRequest(input: {
   decisions: readonly AuthenticatedSharedOperation[];
   receipts: ReadonlyMap<string, V2ServerReceipt>;
   archive: readonly VerifiedSharedRoster[];
-  context: { permission: DateChangePermission; assigneeIds: readonly string[]; timeZone: string; originalWasConflicted?: boolean; basisRuleIds?: readonly string[] };
+  context: { permission: DateChangePermission; assigneeIds: readonly string[]; timeZone: string; originalWasConflicted?: boolean; originalMissingTime?: boolean; basisRuleIds?: readonly string[] };
   confirmedServerTime?: number;
 }): V2DateRequestState {
   const request = input.request.operation;
   if (request.schemaVersion !== 2 || request.entityType !== 'changeRequest') throw new Error('Expected an authenticated v2 date request');
   const proposal = request.payload as unknown as DateChangeRequest;
-  const original = normalizeDateTarget(proposal.original);
+  if ((proposal.original === null) !== (input.context.originalMissingTime === true)) throw new Error('Missing original time must be verified from the observed rule');
+  const original = proposal.original === null ? null : normalizeDateTarget(proposal.original);
   const proposed = validateDesignationTarget(proposal.proposedMode, proposal.proposed);
   const requestReceipt = input.receipts.get(request.operationId);
   const deadline = approvalDeadline({ serverRequestedAt: requestReceipt?.receivedAtMs ?? null,

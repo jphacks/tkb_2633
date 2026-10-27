@@ -6,11 +6,17 @@ import { initializeTestEnvironment, assertFails } from '@firebase/rules-unit-tes
 import { doc, getDocFromServer, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
 import { createSharingCloud } from '../src/platform/sharing/firestore-cloud.ts';
 import { createDeviceIdentity, encryptSharedOperation, signSharedOperation, wrapGroupKey } from '../src/features/sharing/crypto.ts';
-import { createSharedRoster, upgradeSharedRoster, sharedAuthorIdentity } from '../src/features/sharing/roster.ts';
+import { createSharedRoster, upgradeSharedRoster, sharedAuthorIdentity, approveSharedDevice } from '../src/features/sharing/roster.ts';
 import { v2AuthorProofDigest, bindV2ServerReceipt } from '../src/features/sharing/v2/server-receipts.ts';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { buildSharedReplica } from '../src/features/sharing/replica.ts';
 import { createEncryptedSharedSnapshot } from '../src/features/sharing/snapshots.ts';
+import { createDatabase } from './helpers/sqlite.mjs';
+import { initializeV2EventStore, createV2EventRepository } from '../src/platform/storage/sharing-v2-events.ts';
+import { createV2Synchronizer } from '../src/features/sharing/v2/synchronizer.ts';
+import { loadSharedFacts, loadSharedReplica, listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
+import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
+import { v2OccurrenceId } from '../src/features/sharing/v2/occurrence-id.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -51,6 +57,7 @@ test('v2 cloud commits immutable server receipts with encrypted events, bounds r
     }
   }
   const recovered = await f.cloud.readReceipts(groupId, facts.map((fact) => fact.operation.operationId));
+  assert.deepEqual(await f.cloud.readReceipts(groupId, facts.map((fact) => fact.operation.operationId), { deadlineAtMs: Date.now() - 1 }), []);
   assert.equal(recovered.length, 205); assert.deepEqual(recovered.find((receipt) => receipt.operationId === 'operation-1'), first.serverReceipt);
   const page = await f.cloud.pull(groupId, 0); const second = await f.cloud.pull(groupId, 100); const third = await f.cloud.pull(groupId, 200);
   assert.deepEqual([page.events.length, second.events.length, third.events.length], [100, 100, 5]);
@@ -111,4 +118,56 @@ test('v2 Rules require an explicit owner-preserving protocol upgrade snapshot an
   const batch = writeBatch(f.store); batch.update(f.root, { schemaVersion: 1, keyVersion: 3, rosterRevision: 3, rosterJson: 'downgrade', updatedAt: serverTimestamp() });
   batch.set(doc(f.root, 'rosters', '3'), { rosterJson: 'downgrade', createdAt: serverTimestamp() });
   await assertFails(batch.commit());
+});
+test('v2 real gateway and Rules synchronize isolated SQLite users through key rotation, snapshot, edit, completion and targeted undo', async () => {
+  const f = await fixture(); const memberIdentity = await createDeviceIdentity(crypto); const key2 = await crypto.randomBytes(32);
+  function device(userId, identity, cloud, keys) {
+    const h = createDatabase(); let archive = [f.roster];
+    const repository = createV2EventRepository(h.database, { groupId, userId, householdId: 'local', identity, anchor: f.roster,
+      archive: () => archive, assertWritable: () => {} });
+    const sync = createV2Synchronizer({ database: h.database, groupId, userId, identity, crypto, cloud, repository,
+      readRecord: async () => ({ groupId, userId, status: 'active', anchor: f.roster, rosterArchive: archive }),
+      saveArchive: async (value) => { archive = value; }, readKey: async (version) => keys.get(version)?.slice(),
+      saveKey: async (version, bytes) => { keys.set(version, bytes.slice()); }, serialized: async (work) => work(),
+      changed: () => {}, assertCurrentAccount: () => {} });
+    return { ...h, repository, sync, keys };
+  }
+  const owner = device('owner', f.identity, f.cloud, new Map([[1, f.key]]));
+  const memberCloud = createSharingCloud(environment.authenticatedContext('member').firestore(), 'member', () => 'member');
+  const member = device('member', memberIdentity, memberCloud, new Map());
+  try {
+    await initializeV2EventStore(owner.database, { groupId, userId: 'owner', householdId: 'local' });
+    const change = (operationId, entityType, entityId, payload, operationType = 'patch') => ({ operationId, entityType, entityId, payload, operationType });
+    await owner.repository.commit([
+      change('policy', 'groupPolicy', 'policy', { configuration: createGroupPolicy('family') }),
+      change('settings', 'settings', 'settings', { timeZone: 'Asia/Tokyo', anchorDate: '2026-10-27' }),
+      change('chore', 'chore', 'floor', { name: '床掃除', enabled: true }),
+      change('configuration', 'chorePolicy', 'floor', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate: '2026-10-27',
+        intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
+    ]);
+    await owner.sync.sync({ force: true });
+    const next = approveSharedDevice(f.roster, f.identity, 'member', memberIdentity);
+    const snapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
+      next, f.identity, key2, 'membership-v2', 4, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
+    const wrapped = await Promise.all([['owner', f.identity], ['member', memberIdentity]].map(([uid, identity]) => wrapGroupKey(crypto, groupId, 2, key2, f.identity, identity, uid)));
+    await f.cloud.prepareSnapshot(snapshot, next); await f.cloud.commitMembership(f.roster, next, wrapped, 4, snapshot.manifest); owner.keys.set(2, key2);
+    await initializeV2EventStore(member.database, { groupId, userId: 'member', householdId: 'local' });
+    await member.sync.sync({ force: true });
+    const occurrenceId = v2OccurrenceId(groupId, 'floor', '2026-10-27');
+    await member.repository.commit([change('member-edit', 'chore', 'floor', { name: '床を拭く', instructions: ['道具を用意する'] }),
+      change('member-work', 'completion', occurrenceId, { choreId: 'floor', anchorDate: '2026-10-27',
+        completedAt: new Date(Date.now() - 60_000).toISOString(), completedByMemberId: 'member', subjectUserId: null,
+        originalAssigneeIds: [], ruleVersion: 1, outcome: 'completed' }, 'complete')]);
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
+    const hash = (device) => device.connection.prepare('SELECT fact_hash FROM sharing_v2_projection').get().fact_hash;
+    assert.equal(hash(owner), hash(member)); assert.equal((await loadSharedReplica(owner.database, groupId)).completions.length, 1);
+    await member.repository.commit([change('member-undo', 'completion', occurrenceId, { targetOperationId: 'member-work' }, 'undo')]);
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
+    assert.equal(hash(owner), hash(member)); assert.equal((await loadSharedReplica(owner.database, groupId)).completions.length, 0);
+    for (const d of [owner, member]) {
+      assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
+      assert.deepEqual(JSON.parse(d.connection.prepare('SELECT rejected_json FROM sharing_v2_projection').get().rejected_json), []);
+      assert.equal(d.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    }
+  } finally { owner.connection.close(); member.connection.close(); }
 });

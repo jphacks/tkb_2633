@@ -1434,5 +1434,27 @@
     "tests": [
       { "file": "tests/sharing-v2-receipts.test.mjs", "name": "v2 immutable receipt security cases remain wired into the CI Firestore emulator command alongside all v1 cases" }
     ]
+  },
+  {
+    "feature": "sharing-v2-explicit-receipt-synchronizer",
+    "tests": [
+      { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 coordinator delivers signed facts and independent receipts between two isolated users and converges without changing v1 defaults" },
+      { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 lost upload response retains its outbox and the retry adopts the same immutable server receipt" },
+      { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 coordinator refuses event receipt gaps and account changes without advancing the receive cursor" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-recovery-account-binding",
+    "tests": [
+      { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 coordinator rejects a repository bound to another account or device before opening its synchronization path" },
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 receipt recovery refuses another user database before any partial progress write" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-bounded-recovery-and-confirmation",
+    "tests": [
+      { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 backlog confirmations coalesce projection and observer updates while preserving all 205 original receipts and 100-event pages" },
+      { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 snapshot receipt recovery checkpoints bounded progress across restarts without applying an incomplete snapshot" }
+    ]
   }
 ]

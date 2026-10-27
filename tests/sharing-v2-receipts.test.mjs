@@ -79,6 +79,7 @@ test('v2 immutable receipt security cases remain wired into the CI Firestore emu
   for (const file of ['firestore-rules.integration.mjs', 'sharing-cloud.integration.mjs', 'sharing-flow.integration.mjs', 'sharing-v2-cloud.integration.mjs']) assert.ok(command.includes(`tests/${file}`));
   const source = readFileSync(new URL('./sharing-v2-cloud.integration.mjs', import.meta.url), 'utf8');
   for (const title of ['v2 cloud commits immutable server receipts', 'v2 Rules deny forged receipt clocks',
-    'v2 compacted events retain their original server receipt', 'v2 Rules require an explicit owner-preserving protocol upgrade snapshot']) assert.ok(source.includes(title));
+    'v2 compacted events retain their original server receipt', 'v2 Rules require an explicit owner-preserving protocol upgrade snapshot',
+    'v2 real gateway and Rules synchronize isolated SQLite users']) assert.ok(source.includes(title));
   assert.ok(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').includes('npm run test:sharing-cloud'));
 });

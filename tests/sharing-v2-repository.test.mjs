@@ -171,3 +171,13 @@ test('v2 delayed former-administrator edits lose privileged effects at server de
     assert.equal((await loadSharedFacts(d.database, groupId)).length, 6); assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
   } finally { d.connection.close(); }
 });
+test('v2 receipt recovery refuses another user database before any partial progress write', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const receipts = receiptsFor(await loadSharedFacts(owner.database, groupId));
+    await assert.rejects(owner.repository.readReceiptCache(member.database), { code: 'sharing/access-denied' });
+    await assert.rejects(owner.repository.evidenceForServerReceipts(receipts).record(member.database), { code: 'sharing/access-denied' });
+    assert.equal(member.connection.prepare('SELECT COUNT(*) AS count FROM sharing_v2_server_receipts').get().count, 0);
+    assert.equal(member.state(), null);
+  } finally { owner.connection.close(); member.connection.close(); }
+});

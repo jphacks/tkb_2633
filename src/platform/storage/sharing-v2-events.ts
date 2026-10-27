@@ -106,10 +106,15 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     return assessment;
   }
   return {
+    scope: Object.freeze({ groupId: options.groupId, userId: options.userId, householdId: options.householdId, deviceId: options.identity.deviceId }),
+    readReceiptCache: async (transaction: SQLiteDatabase) => {
+      await assertV2Binding(transaction, options); return readV2ServerReceiptsInside(transaction, options.groupId);
+    },
     project: async (transaction: SQLiteDatabase, replica: SharedReplica) => { await project(transaction, replica); },
     evidenceForServerReceipts(receipts: readonly V2ServerReceipt[]): SharedLedgerEvidence {
       let stored: ReadonlyMap<string, V2ServerReceipt> = new Map();
       return { record: async (transaction) => {
+        await assertV2Binding(transaction, options);
         const changed = await persistV2ServerReceiptsInside(transaction, options.groupId, receipts);
         stored = await readV2ServerReceiptsInside(transaction, options.groupId); return changed;
       }, acknowledge: async (transaction, operation) => {

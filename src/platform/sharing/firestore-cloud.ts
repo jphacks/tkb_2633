@@ -84,10 +84,13 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
         || typeof data?.wrappedKeyJson !== 'string' || data.wrappedKeyJson.length > 10_000) throw new Error('Missing device key envelope');
       return JSON.parse(data.wrappedKeyJson) as WrappedGroupKey;
     },
-    async readReceipts(groupId: string, operationIds: readonly string[]): Promise<V2ServerReceipt[]> {
+    async readReceipts(groupId: string, operationIds: readonly string[], options?: { deadlineAtMs: number }): Promise<V2ServerReceipt[]> {
       checkAccount(); if (operationIds.length > 1000) throw new Error('Receipt recovery page exceeds 1000 operations');
+      if (options && !Number.isSafeInteger(options.deadlineAtMs)) throw new Error('Invalid receipt recovery deadline');
+      const deadline = Math.min(options?.deadlineAtMs ?? Number.MAX_SAFE_INTEGER, Date.now() + 25_000);
       const ids = [...new Set(operationIds)]; ids.forEach(assertSharedIdentifier); const result: V2ServerReceipt[] = [];
       for (let offset = 0; offset < ids.length; offset += 30) {
+        if (Date.now() >= deadline) return result;
         const page = await getDocsFromServer(query(collection(reference(groupId), 'receipts'), where(documentId(), 'in', ids.slice(offset, offset + 30))));
         checkAccount(); result.push(...page.docs.map((item) => parseV2FirestoreReceipt(item.data(), groupId, item.id)));
       }

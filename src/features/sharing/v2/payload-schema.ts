@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-18';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-19';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -143,9 +143,11 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
     selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;
   }
   if (entityType === 'requestDecision') {
-    record(payload, ['requestId', 'decision', 'target', 'referenceDecisionId']); assertSharedIdentifier(payload.requestId);
+    const required = ['requestId', 'decision', 'target', 'referenceDecisionId'];
+    record(payload, [...required, 'allowDuringCooldown'], required); assertSharedIdentifier(payload.requestId);
     choice(payload.decision, ['approve', 'reject', 'counteroffer', 'acceptCounteroffer']); idOrNull(payload.referenceDecisionId);
     if (payload.decision === 'counteroffer') target(payload.target); else if (payload.target !== null) throw new Error('Only a counteroffer supplies a target');
+    if ('allowDuringCooldown' in payload && (payload.decision !== 'counteroffer' || payload.allowDuringCooldown !== true)) throw new Error('Only a counteroffer may add an explicit recent-work exception');
     if ((payload.decision === 'acceptCounteroffer') !== (payload.referenceDecisionId !== null)) throw new Error('Counteroffer acceptance needs exactly its proposal reference'); return;
   }
   if (entityType === 'completionApproval') { record(payload, ['completionOperationId', 'decision']); assertSharedIdentifier(payload.completionOperationId); choice(payload.decision, ['approve', 'reject']); return; }

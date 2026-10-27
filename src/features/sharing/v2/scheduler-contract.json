@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-18",
+  "version": "liflow-shared-2-draft-19",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -49,7 +49,8 @@
     "src/features/sharing/v2/receipt-context.ts",
     "src/features/sharing/operations.ts",
     "src/features/sharing/v2/date-change-original.ts",
-    "src/features/sharing/v2/decision-review.ts"
+    "src/features/sharing/v2/decision-review.ts",
+    "src/features/sharing/v2/date-options.ts"
   ],
-  "sourceSha256": "0e3e997625628bc067173200a6e29ff95986f1a4cab2d7b58f09889e89583ba3"
+  "sourceSha256": "608759108807d018f465015aebf8b8483e99444f653996848739e80cbe8735b3"
 }

@@ -6,12 +6,17 @@ import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import type { V2DateDecision } from '../v2/decision-review';
 import type { DateTarget } from '../v2/model';
 import type { V2DateRequestState } from '../v2/request-state';
+import { canonicalJson } from '../operations';
+import { V2ActionConfirmationError } from '../v2/actions';
+import type { CalendarConflict } from '../v2/private-availability';
 import { V2Flag, v2FormStyles as styles } from './form-controls';
 import { V2DateTargetFields } from './date-target-fields';
 import { v2InitialTargetFields, v2TargetFromEditedForm, v2TargetLabel } from './target-form';
+import { V2DateConfirmation } from './date-confirmation';
+import type { V2DateConfirmationKind } from './date-confirmation';
 
 type Props = { model: V2GroupScreenModel; actions: V2GroupController['actions']; busy: boolean; header?: ReactElement;
-  run: (work: () => Promise<unknown>) => Promise<void> };
+  run: (work: () => Promise<unknown>) => Promise<void>; readOwnCalendar?: (target: DateTarget) => Promise<CalendarConflict> };
 const labels: Record<V2DateRequestState['kind'], string> = {
   pendingDelivery: '端末に保存済み · 申請の送信待ち', awaiting: '必要な回答を待っています', counteroffered: '代替日時が提案されています',
   approved: '承認済み', rejected: '拒否されました', expired: '期限切れ', tooLate: '受付時に申請期限を過ぎていました',
@@ -29,12 +34,16 @@ export function V2DateRequests(props: Props) {
 }
 
 /** The displayed request and its review revision stay together until the user explicitly reloads. */
-function DateRequestCard({ model, actions, busy, run, requestId }: Props & { requestId: string }) {
+function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar }: Props & { requestId: string }) {
   const liveRequest = model.requests.find((request) => request.requestId === requestId)!;
   const liveReview = model.requestReviews.find((review) => review.requestId === requestId)!;
   const [displayed, setDisplayed] = useState(() => ({ request: liveRequest, review: liveReview }));
   const [draft, setDraft] = useState(() => ({ offerOpen: false, reviewed: false, fields: v2InitialTargetFields(liveRequest.proposal.proposed, liveRequest.timeZone) }));
   const input = useRef(draft); const inFlight = useRef(false);
+  const inputRevision = useRef(0); const confirmed = useRef({ recentWork: false, highLoad: false, calendar: false });
+  const confirmedFor = useRef<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ kind: V2DateConfirmationKind; decision: V2DateDecision; referenceDecisionId: string | null; revision: number } | null>(null);
+  const [calendarStatus, setCalendarStatus] = useState<{ target: DateTarget; kind: CalendarConflict['kind'] } | null>(null);
   const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false); const [error, setError] = useState<string | null>(null);
   const request = displayed.request; const review = displayed.review;
   const stale = review.revision !== liveReview.revision;
@@ -42,7 +51,8 @@ function DateRequestCard({ model, actions, busy, run, requestId }: Props & { req
   const disabled = busy || saving || stale || saved || !model.plan.initialized || zoneChanged;
   const canAnswer = !disabled && (request.kind !== 'conflict' || draft.reviewed);
   const nameOf = (uid: string) => model.plan.members.find((member) => member.userId === uid)?.displayName ?? '以前のメンバー';
-  const edit = (patch: Partial<typeof draft>) => { if (inFlight.current) return; input.current = { ...input.current, ...patch }; setDraft(input.current); setError(null); };
+  const resetConfirmation = () => { setConfirmation(null); setCalendarStatus(null); confirmedFor.current = null; confirmed.current = { recentWork: false, highLoad: false, calendar: false }; };
+  const edit = (patch: Partial<typeof draft>) => { if (inFlight.current) return; inputRevision.current++; input.current = { ...input.current, ...patch }; setDraft(input.current); setError(null); resetConfirmation(); };
   const field = (name: keyof typeof draft.fields, value: string) => edit({ fields: { ...input.current.fields, [name]: value,
     ...(['day', 'clock'].includes(name) ? { clockChoice: '' } : ['endDay', 'endClock'].includes(name) ? { endClockChoice: '' } : {}) } });
   const answer = async (decision: V2DateDecision, referenceDecisionId: string | null = null) => {
@@ -53,21 +63,35 @@ function DateRequestCard({ model, actions, busy, run, requestId }: Props & { req
       if (decision === 'counteroffer') target = v2TargetFromEditedForm({ mode: request.proposal.proposedMode, ...input.current.fields,
         timeZone: request.timeZone }, request.proposal.proposed, v2InitialTargetFields(request.proposal.proposed, request.timeZone));
     } catch (cause) { setError(cause instanceof Error ? cause.message : '代替日時を確認してください。'); return; }
+    const ask = (kind: V2DateConfirmationKind) => setConfirmation({ kind, decision, referenceDecisionId, revision: inputRevision.current });
+    const offer = request.counteroffers.find((entry) => entry.operationId === referenceDecisionId);
+    const chosen = decision === 'approve' ? request.proposal.proposed : decision === 'counteroffer' ? target : offer?.target;
+    const actionKey = canonicalJson({ decision, referenceDecisionId, chosen: chosen ?? null, inputRevision: inputRevision.current, review: review.revision });
+    if (confirmedFor.current !== actionKey) { resetConfirmation(); confirmedFor.current = actionKey; }
+    const round = model.plan.occurrences.find((entry) => entry.id === request.proposal.occurrenceId);
+    const assignees = round?.subjects.find((entry) => entry.subjectUserId === request.proposal.subjectUserId)?.assigneeIds ?? [];
     inFlight.current = true; setSaving(true); setError(null);
     try { await run(async () => {
-      try { await actions.decide(requestId, decision, target, referenceDecisionId, { expectedReviewRevision: review.revision }); }
+      if (chosen && request.proposal.proposedMode === 'fixed' && assignees.includes(model.viewerUserId) && readOwnCalendar && !confirmed.current.calendar) {
+        const reading = await readOwnCalendar(chosen); setCalendarStatus({ target: chosen, kind: reading.kind });
+        if (reading.kind === 'conflict') { ask('calendar'); return; }
+      }
+      try { await actions.decide(requestId, decision, target, referenceDecisionId, { expectedReviewRevision: review.revision,
+        confirmRecentWork: confirmed.current.recentWork, confirmHighLoad: confirmed.current.highLoad }); }
       catch (cause) {
+        if (cause instanceof V2ActionConfirmationError) { ask(cause.reason); return; }
         if (cause instanceof Error && 'code' in cause && cause.code === 'sharing/v2-authority-denied') {
           setError('申請後に担当・固定日時・実施順序や権限が変わっています。現在の家事回を確認し、必要なら申請し直してください。'); return;
         }
-        throw cause;
+        setError(cause instanceof Error ? cause.message : '回答を保存できませんでした。入力を確認してください。'); return;
       }
-      setSaved(true);
+      setSaved(true); setConfirmation(null);
     }); } finally { inFlight.current = false; setSaving(false); }
   };
   const reload = () => {
     if (busy || inFlight.current) return;
     setDisplayed({ request: liveRequest, review: liveReview }); setSaved(false); setError(null);
+    inputRevision.current++; resetConfirmation();
     input.current = { offerOpen: false, reviewed: false, fields: v2InitialTargetFields(liveRequest.proposal.proposed, liveRequest.timeZone) }; setDraft(input.current);
   };
   const selector = request.proposal.selector;
@@ -79,16 +103,17 @@ function DateRequestCard({ model, actions, busy, run, requestId }: Props & { req
     <Text style={styles.caption}>指定の種類：{request.proposal.proposedMode === 'fixed' ? '固定日時に実施' : request.proposal.proposedMode === 'deadline' ? '期限までに実施' : 'この日に実施'}</Text>
     <Text style={styles.caption}>適用範囲：{selector.scope === 'once' ? `今回だけ（基準日 ${selector.anchorDate}）` : selector.scope === 'ongoing' ? `${selector.from}から無期限` : `${selector.range.from}〜${selector.range.through ?? '無期限'}`}</Text>
     <Text style={styles.caption}>承認後の期間拡張：{request.proposal.extensionScope === 'future' ? '今後の家事回にも適用' : '今回の家事回だけ'}</Text>
-    <Text style={styles.caption}>条件：{[
+    <Text style={styles.caption}>申請した条件：{[
       request.proposal.proposedOptions.strict ? '指定日時を厳守' : null, request.proposal.proposedOptions.adminLocked ? '管理者による固定' : null,
       request.proposal.proposedOptions.forbidEarlier ? '前倒しを禁止' : null, request.proposal.proposedOptions.allowDuringCooldown ? '最近の実施があっても再指定' : null,
     ].filter(Boolean).join('・') || '追加条件なし'}</Text>
     <Text style={styles.body}>{labels[request.kind]}</Text>
     {request.deadline.kind === 'open' ? <Text style={styles.caption}>回答期限：{label({ precision: 'instant', at: new Date(request.deadline.expiresAt).toISOString() })}</Text> : null}
-    {request.kind === 'approved' && request.formal ? <Text style={styles.body}>確定した日時：{label(request.formal)}</Text>
+    {request.kind === 'approved' && request.formal ? <><Text style={styles.body}>確定した日時：{label(request.formal)}</Text>
+      {request.formalOptions?.allowDuringCooldown ? <Text style={styles.caption}>確定した条件：最近の実施があっても再指定します。</Text> : null}</>
       : <Text style={styles.caption}>必要な承認の受付確認までは元の正式予定を維持します。端末時計による自動承認はしません。</Text>}
     {review.answers.map((item) => <Text key={item.operationId} style={styles.caption}>{nameOf(item.authorUserId)}：{answerLabels[item.decision]}
-      {item.target ? ` · ${label(item.target)}` : ''} · {item.kind === 'pendingDelivery' ? '送信待ち' : item.kind === 'eligible' ? '受付確認済み' : item.kind === 'late' ? '期限後の回答' : item.kind === 'requestClosed' ? '締切後の回答' : item.kind === 'staleCounteroffer' ? '旧代替案への回答' : item.kind === 'unauthorized' ? '権限を確認できません' : item.kind === 'invalidCausality' ? '回答の前提を確認できません' : '受付済み'}</Text>)}
+      {item.target ? ` · ${label(item.target)}` : ''}{item.allowDuringCooldown ? ' · 最近の実施があっても再指定' : ''} · {item.kind === 'pendingDelivery' ? '送信待ち' : item.kind === 'eligible' ? '受付確認済み' : item.kind === 'late' ? '期限後の回答' : item.kind === 'requestClosed' ? '締切後の回答' : item.kind === 'staleCounteroffer' ? '旧代替案への回答' : item.kind === 'unauthorized' ? '権限を確認できません' : item.kind === 'invalidCausality' ? '回答の前提を確認できません' : '受付済み'}</Text>)}
     {review.pendingAnswer ? <Text style={styles.caption}>回答を端末に保存しています。{['expired', 'tooLate', 'rejected', 'blocked'].includes(request.kind)
       ? '送信待ちの回答は履歴に残し、この申請を自動で承認済みに戻しません。' : '正式な承認はサーバーの受付後に判定します。'}</Text> : null}
     {saved ? <Text accessibilityLiveRegion="polite" style={styles.body}>回答を端末に保存しました。正式な確定は受付と必要な同意の確認後です。</Text> : null}
@@ -104,6 +129,7 @@ function DateRequestCard({ model, actions, busy, run, requestId }: Props & { req
     </View> : null}
     {request.counteroffers.map((offer) => <View key={offer.operationId} style={{ gap: 8 }}>
       <Text style={styles.body}>代替日時：{label(offer.target)}</Text>
+      {offer.options.allowDuringCooldown ? <Text style={styles.caption}>最近の実施があっても再指定する条件を含みます。本人の承諾まで確定しません。</Text> : null}
       <Text style={styles.caption}>承諾期限：{label({ precision: 'instant', at: new Date(offer.expiresAt).toISOString() })}。必要な本人の承諾で確定し、管理者へ再承認は求めません。</Text>
       {review.acceptableCounterofferIds.includes(offer.operationId) ? <AppButton title={`この代替日時を承諾（${label(offer.target)}）`} disabled={!canAnswer} onPress={() => answer('acceptCounteroffer', offer.operationId)} /> : null}
     </View>)}
@@ -113,6 +139,12 @@ function DateRequestCard({ model, actions, busy, run, requestId }: Props & { req
       <AppButton title="この日時を代替案として送る" disabled={!canAnswer} onPress={() => answer('counteroffer')} />
       <AppButton title="代替案を送らず戻る" variant="quiet" disabled={disabled} onPress={() => edit({ offerOpen: false })} />
     </View> : <AppButton title="代替日時を提案…" variant="secondary" disabled={disabled} onPress={() => edit({ offerOpen: true })} /> : null}
+    {request.proposal.proposedMode === 'fixed' ? <Text style={styles.caption}>{calendarStatus ? `${label(calendarStatus.target)}の本人用Calendar：${calendarStatus.kind === 'clear' ? '取得済み情報の範囲では重複なし' : calendarStatus.kind === 'conflict' ? '予定と重複しています' : '最新の予定を確認できません'}`
+      : '本人用Calendarは未確認です。他のメンバーの予定内容は表示しません。'}</Text> : null}
+    {confirmation ? <V2DateConfirmation kind={confirmation.kind} disabled={!canAnswer} confirmLabel="確認して回答を保存"
+      onConfirm={() => { if (confirmation.revision !== inputRevision.current) { resetConfirmation(); return; }
+        confirmed.current[confirmation.kind] = true; setConfirmation(null); return answer(confirmation.decision, confirmation.referenceDecisionId); }}
+      onCancel={resetConfirmation} /> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </Card>;
 }

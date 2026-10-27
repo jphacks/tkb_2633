@@ -28,7 +28,7 @@ export async function fixture({ mode = 'day', original = date('2026-10-30'), pro
     receipts.set(op.operationId, receipt); return receipt;
   }
   deliver(request);
-  function decide(device, decision, { observed = [request, ...decisions], target = null, referenceDecisionId = null, at = start + 1000, delivered = true } = {}) {
+  function decide(device, decision, { observed = [request, ...decisions], target = null, referenceDecisionId = null, at = start + 1000, delivered = true, allowDuringCooldown } = {}) {
     const context = {};
     for (const fact of observed) {
       const op = fact.operation;
@@ -42,7 +42,7 @@ export async function fixture({ mode = 'day', original = date('2026-10-30'), pro
       keyVersion: archive.at(-1).body.keyVersion, deviceSequence: (context[identities[device].deviceId] ?? 0) + 1,
       logicalClock: Math.max(0, ...observed.map((fact) => fact.operation.logicalClock)) + 1, context, receiptContext,
       recordedAt: new Date(start + 500).toISOString(), entityType: 'requestDecision', entityId: operationId, operationType: 'patch',
-      payload: { requestId: 'request', decision, target, referenceDecisionId } }, identities[device]);
+      payload: { requestId: 'request', decision, target, referenceDecisionId, ...(allowDuringCooldown === undefined ? {} : { allowDuringCooldown }) } }, identities[device]);
     decisions.push(fact); if (delivered) deliver(fact, at); return fact;
   }
   const state = (extra = {}) => deriveV2DateRequest({ request, decisions, receipts, archive, context: { permission: approval, assigneeIds, timeZone: 'Asia/Tokyo' }, ...extra });

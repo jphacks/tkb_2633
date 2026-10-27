@@ -8,7 +8,8 @@ import { normalizeDateTarget, validateDesignationTarget } from './date-target.ts
 import { maximalCausalFacts } from './causal-facts.ts';
 import { bindV2ServerReceipt } from './server-receipts.ts';
 import type { V2ServerReceipt } from './server-receipts.ts';
-import type { DateChangeRequest, DateTarget } from './model.ts';
+import type { DateChangeRequest, DateTarget, DesignationOptions } from './model.ts';
+import { counterofferDesignationOptions } from './date-options.ts';
 import type { DateChangePermission, V2DateDecisionAudience } from './permissions.ts';
 import { v2DateDecisionAudience } from './permissions.ts';
 
@@ -20,7 +21,7 @@ export type { ConfirmationProof } from './confirmation.ts';
 type Decision = 'approve' | 'reject' | 'counteroffer' | 'acceptCounteroffer';
 type AuditKind = 'eligible' | 'pendingDelivery' | 'late' | 'unauthorized' | 'invalidCausality' | 'requestClosed' | 'staleCounteroffer';
 interface DecisionNode { op: SharedOperation; receipt: V2ServerReceipt; decision: Decision; target: DateTarget | null; offerId: string | null; admin: boolean }
-interface Choice { target: DateTarget; proof: ConfirmationProof; confirmedAt: number }
+interface Choice { target: DateTarget; options: DesignationOptions; proof: ConfirmationProof; confirmedAt: number }
 interface Summary {
   kind: 'awaiting' | 'counteroffered' | 'approved' | 'rejected' | 'conflict';
   choices: Choice[]; offers: DecisionNode[]; conflictIds: string[];
@@ -32,11 +33,12 @@ export interface V2DateRequestState {
   originalWasConflicted: boolean;
   originalRuleIds: string[];
   formal: DateTarget | null;
+  formalOptions: DesignationOptions | null;
   proposal: DateChangeRequest;
   deadline: ApprovalDeadline;
   confirmation: ConfirmationProof | null;
   confirmedAt: number | null;
-  counteroffers: { operationId: string; target: DateTarget; expiresAt: number }[];
+  counteroffers: { operationId: string; target: DateTarget; options: DesignationOptions; expiresAt: number }[];
   conflictIds: string[];
   decisions: { operationId: string; kind: AuditKind }[];
   timeZone: string;
@@ -65,7 +67,7 @@ export function deriveV2DateRequest(input: {
   const requestReceipt = input.receipts.get(request.operationId);
   const deadline = approvalDeadline({ serverRequestedAt: requestReceipt?.receivedAtMs ?? null,
     original, originalReferenceAt: input.context.originalReferenceAt, proposed, timeZone: input.context.timeZone });
-  const result: V2DateRequestState = { requestId: request.operationId, kind: 'pendingDelivery', original, formal: original,
+  const result: V2DateRequestState = { requestId: request.operationId, kind: 'pendingDelivery', original, formal: original, formalOptions: null,
     originalWasConflicted: input.context.originalWasConflicted ?? false, originalRuleIds: [...(input.context.basisRuleIds ?? [])].sort(compareOperationIds),
     proposal, deadline, confirmation: null, confirmedAt: null, counteroffers: [], conflictIds: [], decisions: [], timeZone: input.context.timeZone,
     audience: v2DateDecisionAudience(input.context.permission, input.context.assigneeIds, request.authorUserId) };
@@ -126,26 +128,27 @@ export function deriveV2DateRequest(input: {
       }
       if (node.receipt.receivedAtMs > offerDeadline(offer.target!)) { audit.set(node.op.operationId, 'late'); continue; }
       const latest = latestNodes(observed.filter((candidate) => candidate.decision === 'counteroffer'));
-      if (!latest.some((candidate) => keyOf(candidate.target!) === keyOf(offer.target!))) {
+      if (!latest.some((candidate) => keyOf(candidate.target!, optionsOf(candidate)) === keyOf(offer.target!, optionsOf(offer)))) {
         audit.set(node.op.operationId, 'staleCounteroffer'); continue;
       }
     }
     eligible.push(node); audit.set(node.op.operationId, 'eligible');
   }
   result.decisions = [...audit].sort(([a], [b]) => compareOperationIds(a, b)).map(([operationId, kind]) => ({ operationId, kind }));
-  if (automatic) return { ...result, kind: 'approved', formal: proposed, confirmation: proofOf(request), confirmedAt: requestReceipt.receivedAtMs };
+  if (automatic) return { ...result, kind: 'approved', formal: proposed, formalOptions: proposal.proposedOptions, confirmation: proofOf(request), confirmedAt: requestReceipt.receivedAtMs };
   const summary = summarize(eligible);
-  result.counteroffers = summary.offers.map((node) => ({ operationId: node.op.operationId, target: node.target!, expiresAt: offerDeadline(node.target!) }));
+  result.counteroffers = summary.offers.map((node) => ({ operationId: node.op.operationId, target: node.target!, options: optionsOf(node), expiresAt: offerDeadline(node.target!) }));
   result.conflictIds = summary.conflictIds;
   if (summary.kind === 'approved') {
-    return { ...result, kind: 'approved', formal: summary.choices[0].target,
+    return { ...result, kind: 'approved', formal: summary.choices[0].target, formalOptions: summary.choices[0].options,
       confirmation: combine('all', [proofOf(request), combine('any', summary.choices.map((choice) => choice.proof))]),
       confirmedAt: Math.min(...summary.choices.map((choice) => choice.confirmedAt)) };
   }
   if (summary.kind !== 'rejected' && serverTime > deadline.expiresAt) return { ...result, kind: 'expired' };
   return { ...result, kind: summary.kind };
 
-  function keyOf(target: DateTarget): string { return canonicalJson(normalizeDateTarget(target)); }
+  function keyOf(target: DateTarget, options: DesignationOptions = proposal.proposedOptions): string { return canonicalJson({ target: normalizeDateTarget(target), options }); }
+  function optionsOf(node: DecisionNode): DesignationOptions { return counterofferDesignationOptions(proposal.proposedOptions, node.op.payload.allowDuringCooldown); }
   function offerDeadline(target: DateTarget): number {
     const alternative = approvalDeadline({ serverRequestedAt: requestReceipt!.receivedAtMs, original, originalReferenceAt: input.context.originalReferenceAt, proposed: target, timeZone: input.context.timeZone });
     return alternative.kind === 'open' ? Math.min(deadline.kind === 'open' ? deadline.expiresAt : -Infinity, alternative.expiresAt) : -Infinity;
@@ -166,20 +169,20 @@ export function deriveV2DateRequest(input: {
     const recipientCohorts = recipients.map((uid) => memberVotes.get(uid) ?? []);
     const conflictIds = new Set<string>();
     const choiceOf = (node: DecisionNode): string => node.decision === 'reject' ? 'reject'
-      : node.decision === 'approve' ? keyOf(proposed) : node.decision === 'counteroffer' ? `offer:${keyOf(node.target!)}`
-        : keyOf(byId.get(node.offerId!)!.target!);
+      : node.decision === 'approve' ? keyOf(proposed) : node.decision === 'counteroffer' ? `offer:${keyOf(node.target!, optionsOf(node))}`
+        : keyOf(byId.get(node.offerId!)!.target!, optionsOf(byId.get(node.offerId!)!));
     for (const cohort of [...normalCohorts, ...recipientCohorts]) {
       if (new Set(cohort.map(choiceOf)).size > 1) cohort.forEach((node) => conflictIds.add(node.op.operationId));
     }
     const choices: Choice[] = [];
     const normalVotes = normalCohorts.map((cohort) => cohort.filter((node) => node.decision === 'approve'));
-    if (normalVotes.every((cohort) => cohort.length > 0)) choices.push({ target: proposed,
+    if (normalVotes.every((cohort) => cohort.length > 0)) choices.push({ target: proposed, options: proposal.proposedOptions,
       proof: combine('all', normalVotes.map((cohort) => combine('any', cohort.map((node) => proofOf(node.op))))),
       confirmedAt: Math.max(...normalVotes.map((cohort) => Math.min(...cohort.map((node) => node.receipt.receivedAtMs)))) });
     for (const offer of offers) {
       const offerVotes = recipientCohorts.map((cohort) => cohort.filter((node) => node.decision === 'acceptCounteroffer'
-        && keyOf(byId.get(node.offerId!)!.target!) === keyOf(offer.target!)));
-      if (offerVotes.every((cohort) => cohort.length > 0)) choices.push({ target: offer.target!,
+        && keyOf(byId.get(node.offerId!)!.target!, optionsOf(byId.get(node.offerId!)!)) === keyOf(offer.target!, optionsOf(offer))));
+      if (offerVotes.every((cohort) => cohort.length > 0)) choices.push({ target: offer.target!, options: optionsOf(offer),
         proof: combine('all', offerVotes.map((cohort) => combine('any', cohort.map((node) =>
           combine('all', [proofOf(byId.get(node.offerId!)!.op), proofOf(node.op)]))))),
         confirmedAt: Math.max(...offerVotes.map((cohort) => Math.min(...cohort.map((node) => node.receipt.receivedAtMs)))) });
@@ -187,12 +190,12 @@ export function deriveV2DateRequest(input: {
     // A concurrent replacement offer cannot silently invalidate a target someone already accepted.
     for (const node of votes.filter((candidate) => candidate.decision === 'acceptCounteroffer')) {
       const offer = byId.get(node.offerId!)!;
-      if (!offers.some((current) => keyOf(current.target!) === keyOf(offer.target!))) {
+      if (!offers.some((current) => keyOf(current.target!, optionsOf(current)) === keyOf(offer.target!, optionsOf(offer)))) {
         conflictIds.add(node.op.operationId); offers.forEach((current) => conflictIds.add(current.op.operationId));
       }
     }
     const rejected = normalCohorts.some((cohort) => cohort.some((node) => node.decision === 'reject'));
-    if (new Set(choices.map((choice) => keyOf(choice.target))).size > 1 || rejected && choices.length) {
+    if (new Set(choices.map((choice) => keyOf(choice.target, choice.options))).size > 1 || rejected && choices.length) {
       values.forEach((node) => conflictIds.add(node.op.operationId));
     }
     return { kind: conflictIds.size ? 'conflict' : rejected ? 'rejected' : choices.length ? 'approved'

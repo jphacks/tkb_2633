@@ -2309,5 +2309,60 @@
         "name": "v2 approval labels distinguish repeated hours, exact sub-minute times and years without changing ordinary compact labels"
       }
     ]
+  },
+  {
+    "feature": "v2-date-answer-placement-warnings",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-answer-warnings.test.mjs",
+        "name": "v2 approving a date rechecks newly increased load without silently skipping its confirmation"
+      },
+      {
+        "file": "tests/sharing-v2-date-answer-warnings.test.mjs",
+        "name": "v2 a counteroffers new day and its affected members consent both require load confirmation"
+      },
+      {
+        "file": "tests/sharing-v2-date-answer-warnings.test.mjs",
+        "name": "v2 an explicitly confirmed recent-work counteroffer preserves its override through consent and a second SQLite"
+      }
+    ]
+  },
+  {
+    "feature": "v2-counteroffer-condition-consent-and-authority",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-answer-warnings.test.mjs",
+        "name": "v2 counteroffers at the same instant with different recent-work conditions cannot borrow each others consent"
+      },
+      {
+        "file": "tests/sharing-v2-date-answer-warnings.test.mjs",
+        "name": "v2 recent-work exceptions cannot be appended to approvals or authored by a member as a counteroffer"
+      }
+    ]
+  },
+  {
+    "feature": "v2-date-answer-local-confirmations",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 a new counteroffer warns about recent work and keeps the exception explicit through member consent"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 consent checks only the viewers Calendar and needs confirmation for its exact target"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 counteroffer warning acknowledgements cannot be reused after changing its input"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 approval load warnings can be cancelled and a later scheduling change invalidates their old confirmation"
+      },
+      {
+        "file": "tests/sharing-v2-date-requests-ui.test.mjs",
+        "name": "v2 stale own Calendar remains unknown instead of claiming that an accepted fixed target is free"
+      }
+    ]
   }
 ]

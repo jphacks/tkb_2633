@@ -6,13 +6,14 @@ import { decisionFixture, range } from './helpers/sharing-v2-decision-fixture.mj
 import { groupId, draft, seeds, receiptsFor, now } from './helpers/sharing-v2-repository-fixture.mjs';
 import { ref } from './helpers/sharing-v2-decision-fixture.mjs';
 import { chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
+import { v2TargetLabel } from '../src/features/sharing/v2-ui/target-form.ts';
 import { listSharingOutbox, loadSharedFacts, applyReceivedSharedFacts } from '../src/platform/storage/sharing-ledger.ts';
 
 const file = 'src/features/sharing/v2-ui/date-requests.tsx';
-async function ui(f, who, platform) {
+async function ui(f, who, platform, extra = {}) {
   const controller = who === 'owner' ? f.a : f.b;
   const props = { model: await controller.readModel(range), actions: controller.actions, busy: false,
-    run: async (work) => { await work(); props.model = await controller.readModel(range); } };
+    run: async (work) => { await work(); props.model = await controller.readModel(range); }, ...extra };
   const screen = screenHarness(file, { exportName: 'V2DateRequests', props, platform });
   return { props, screen, update: async () => { props.model = await controller.readModel(range); screen.render(); } };
 }
@@ -144,6 +145,79 @@ for (const platform of ['ios', 'android']) {
       assert.equal(props.model.requestReviews[0].pendingAnswer, true); assert.ok(screen.text().includes('この申請を自動で承認済みに戻しません'));
       assert.equal(screen.nodes().some((node) => node.props.accessibilityLabel === '日時変更を承認'), false);
       assert.deepEqual(props.model.requests[0].formal, { precision: 'date', date: '2026-10-30' }); assert.equal(props.model.plan.history.length, 0);
+    } finally { f.close(); }
+  });
+  test(`${platform} v2 a new counteroffer warns about recent work and keeps the exception explicit through member consent`, async () => {
+    const f = await decisionFixture({ intervalDays: 3, anchorDate: '2026-10-24' });
+    try {
+      await f.a.actions.complete({ ...ref, anchorDate: '2026-10-24' }); await f.deliver(f.owner);
+      const { screen } = await ui(f, 'owner', platform); await screen.press('代替日時を提案…'); await screen.change('実施日', '2026-10-28');
+      const before = (await listSharingOutbox(f.owner.database, groupId)).length;
+      await screen.press('この日時を代替案として送る'); assert.ok(screen.text().includes('最近実施されています'));
+      assert.equal((await listSharingOutbox(f.owner.database, groupId)).length, before);
+      await screen.press('確認して回答を保存'); await f.deliver(f.owner);
+      const member = await ui(f, 'member', platform); assert.ok(member.screen.text().includes('最近の実施があっても再指定'));
+      await member.screen.press('この代替日時を承諾（2026年10月28日）'); assert.ok(member.screen.text().includes('最近実施されています'));
+      await member.screen.press('確認して回答を保存'); await f.deliver(f.member);
+      assert.equal((await f.a.readModel(range)).requests[0].formalOptions.allowDuringCooldown, true);
+    } finally { f.close(); }
+  });
+  test(`${platform} v2 consent checks only the viewers Calendar and needs confirmation for its exact target`, async () => {
+    const f = await decisionFixture({ fixed: true }); let reads = 0;
+    try {
+      const owner = await ui(f, 'owner', platform, { readOwnCalendar: async () => { throw new Error('Other assignees cannot use the owners calendar'); } });
+      await owner.screen.press('代替日時を提案…'); await owner.screen.press('この日時を代替案として送る'); await f.deliver(f.owner);
+      const member = await ui(f, 'member', platform, { readOwnCalendar: async () => { reads++; return { kind: 'conflict' }; } });
+      const title = `この代替日時を承諾（${v2TargetLabel(f.request.payload.proposed, 'Asia/Tokyo', { includeYear: true })}）`;
+      const before = (await listSharingOutbox(f.member.database, groupId)).length;
+      await member.screen.press(title); assert.ok(member.screen.text().includes('指定する時間帯にはカレンダーに予定が入っています'));
+      assert.equal((await listSharingOutbox(f.member.database, groupId)).length, before);
+      await member.screen.press('確認して回答を保存'); await f.deliver(f.member);
+      assert.equal(reads, 1); assert.equal((await f.a.readModel(range)).requests[0].kind, 'approved');
+      const all = await loadSharedFacts(f.member.database, groupId); assert.equal(JSON.stringify(all).includes('calendarBinding'), false);
+    } finally { f.close(); }
+  });
+  test(`${platform} v2 counteroffer warning acknowledgements cannot be reused after changing its input`, async () => {
+    const f = await decisionFixture({ intervalDays: 3, anchorDate: '2026-10-24' });
+    try {
+      await f.a.actions.complete({ ...ref, anchorDate: '2026-10-24' }); await f.deliver(f.owner);
+      const { screen } = await ui(f, 'owner', platform); await screen.press('代替日時を提案…'); await screen.change('実施日', '2026-10-28');
+      await screen.press('この日時を代替案として送る'); const confirm = screen.button('確認して回答を保存');
+      const input = screen.nodes().find((node) => node.type === 'TextInput' && node.props.accessibilityLabel === '実施日');
+      input.props.onChangeText('2026-10-29'); await confirm.props.onPress(); await screen.flush();
+      assert.equal((await f.owner.repository.readState()).assessment.view.ofType('requestDecision').length, 0);
+      await screen.press('この日時を代替案として送る'); assert.ok(screen.text().includes('最近実施されています'));
+      await screen.press('確認して回答を保存');
+      assert.deepEqual((await f.owner.repository.readState()).assessment.view.ofType('requestDecision')[0].payload.target, { precision: 'date', date: '2026-10-29' });
+    } finally { f.close(); }
+  });
+  test(`${platform} v2 approval load warnings can be cancelled and a later scheduling change invalidates their old confirmation`, async () => {
+    const f = await decisionFixture();
+    try {
+      await f.owner.repository.commit([draft('limit', 'settings', 'settings', { heavyDailyLimit: 1 }),
+        draft('floor-load', 'chore', 'floor', { load: 'heavy' }), draft('mop', 'chore', 'mop', { name: '水拭き', load: 'heavy', enabled: true }),
+        draft('mop-cfg', 'chorePolicy', 'mop', { configuration: seeds()[3].payload.configuration })]);
+      await f.a.actions.changeDate({ ...ref, choreId: 'mop' }, { mode: 'day', target: { precision: 'date', date: '2026-10-31' }, confirmHighLoad: true });
+      const { screen, update } = await ui(f, 'owner', platform);
+      await screen.press('日時変更を承認'); assert.ok(screen.text().includes('家事の負荷が高く'));
+      await screen.press('取り消す'); assert.equal((await f.owner.repository.readState()).assessment.view.ofType('requestDecision').length, 0);
+      await screen.press('日時変更を承認'); const previous = screen.button('確認して回答を保存');
+      await f.a.actions.complete({ ...ref, choreId: 'mop' }); const before = (await listSharingOutbox(f.owner.database, groupId)).length;
+      await previous.props.onPress(); await screen.flush(); await update();
+      assert.equal((await listSharingOutbox(f.owner.database, groupId)).length, before);
+      assert.ok(screen.text().includes('入力は保持しています')); assert.equal(screen.button('日時変更を承認').props.disabled, true);
+      assert.throws(() => screen.button('確認して回答を保存'), /missing button/);
+    } finally { f.close(); }
+  });
+  test(`${platform} v2 stale own Calendar remains unknown instead of claiming that an accepted fixed target is free`, async () => {
+    const f = await decisionFixture({ fixed: true });
+    try {
+      const [offer] = await f.a.actions.decide(f.request.operationId, 'counteroffer', f.request.payload.proposed); await f.deliver(f.owner);
+      const { screen } = await ui(f, 'member', platform, { readOwnCalendar: async () => ({ kind: 'unknown', reason: 'stale' }) });
+      await screen.press(`この代替日時を承諾（${v2TargetLabel(f.request.payload.proposed, 'Asia/Tokyo', { includeYear: true })}）`);
+      assert.ok(screen.text().includes('最新の予定を確認できません')); assert.equal(screen.text().includes('重複なし'), false);
+      const decision = (await f.member.repository.readState()).assessment.view.ofType('requestDecision').find((op) => op.authorUserId === 'member');
+      assert.equal(decision.payload.referenceDecisionId, offer.operationId); assert.equal(Object.hasOwn(decision.payload, 'calendar'), false);
     } finally { f.close(); }
   });
 }

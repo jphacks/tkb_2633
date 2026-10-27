@@ -195,16 +195,18 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
     assert.equal(requests(owner)[0].kind, 'awaiting'); assert.deepEqual(requests(owner), requests(member));
     await owner.repository.commit([change('date-counteroffer', 'requestDecision', 'date-counteroffer', {
-      requestId: 'date-request', decision: 'counteroffer', target: day(addLocalDays(anchorDate, 4)), referenceDecisionId: null,
+      requestId: 'date-request', decision: 'counteroffer', target: day(addLocalDays(anchorDate, 4)), referenceDecisionId: null, allowDuringCooldown: true,
     })]);
     await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
     assert.equal(requests(member)[0].kind, 'counteroffered'); assert.deepEqual(requests(member)[0].formal, day(anchorDate));
+    assert.equal(requests(member)[0].counteroffers[0].options.allowDuringCooldown, true);
     await member.repository.commit([change('date-consent', 'requestDecision', 'date-consent', {
       requestId: 'date-request', decision: 'acceptCounteroffer', target: null, referenceDecisionId: 'date-counteroffer',
     })]);
     assert.equal(requests(member)[0].kind, 'counteroffered');
     await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
     assert.equal(requests(owner)[0].kind, 'approved'); assert.deepEqual(requests(owner)[0].formal, day(addLocalDays(anchorDate, 4)));
+    assert.equal(requests(owner)[0].formalOptions.allowDuringCooldown, true);
     assert.deepEqual(requests(owner), requests(member)); assert.equal(hash(owner), hash(member));
     let actionId = 0; const actionOptions = { makeId: () => `assignment-action-${++actionId}`, now: () => new Date() };
     const ownerActions = createV2PlannerActions(owner.repository, actionOptions); const memberActions = createV2PlannerActions(member.repository, actionOptions);
@@ -231,6 +233,7 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     assert.deepEqual((await restored.repository.readState()).assessment.assignmentRequests, (await owner.repository.readState()).assessment.assignmentRequests);
     const rules = (d) => JSON.parse(d.connection.prepare('SELECT formal_rules_json FROM sharing_v2_projection').get().formal_rules_json);
     const firstRule = rules(owner)[0]; assert.ok(firstRule.confirmation); assert.deepEqual(rules(restored), rules(owner));
+    assert.equal(firstRule.rule.allowDuringCooldown, true);
     await member.repository.commit([change('next-date-request', 'changeRequest', 'next-date-request', {
       requesterUserId: 'member', choreId: 'approval-floor', anchorDate, occurrenceId: requestOccurrence, subjectUserId: null,
       originalDesignationId: firstRule.operationId, original: firstRule.rule.target, proposed: day(addLocalDays(anchorDate, 5)), proposedMode: 'day',

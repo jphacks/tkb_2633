@@ -62,6 +62,22 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     if (edit.expectedAssignmentIds && !sameIds(edit.expectedAssignmentIds, context.assignmentOperationIds)
       || edit.expectedConflictIds && !sameIds(edit.expectedConflictIds, context.assignmentConflictIds)) throw new V2StaleSettingsError();
   }
+  function datePlacementReview(state: State, ref: V2RoundReference, target: DateTarget, plan = buildV2CommonPlan(state,
+    { from: ref.anchorDate, through: ref.anchorDate, asOfDate: ref.anchorDate })) {
+    const civil = targetCivilDate(target, plan.timeZone);
+    const subject = plan.occurrences.find((round) => round.choreId === ref.choreId && round.anchorDate === ref.anchorDate)?.subjects.find((slot) => slot.subjectUserId === ref.subjectUserId);
+    const targetPlan = buildV2CommonPlan(state, { from: addDays(civil, -14), through: addDays(civil, 14), asOfDate: ref.anchorDate });
+    const loads = new Map(targetPlan.chores.map((chore) => [chore.id, chore.load])); const load = loads.get(ref.choreId);
+    const assignees = subject?.assigneeIds ?? frame(state, ref).assigneeIds;
+    let count = 0;
+    for (const round of targetPlan.occurrences) for (const slot of round.subjects) {
+      if (slot.id === subject?.id || !slot.required || slot.completed || slot.suggestedDate !== civil || loads.get(round.choreId) !== load) continue;
+      if (!assignees.length || !slot.assigneeIds.length || slot.assigneeIds.some((uid) => assignees.includes(uid))) count++;
+    }
+    const limit = plan.commonSettings[load === 'heavy' ? 'heavyDailyLimit' : 'normalDailyLimit'];
+    return { subject, recentWork: subject?.minimumNextExecutionDay !== null && subject?.minimumNextExecutionDay !== undefined && civil < subject.minimumNextExecutionDay,
+      highLoad: load !== 'light' && typeof limit === 'number' && count + 1 > limit };
+  }
   const undoTargets = (targetOperationIds: readonly string[]) => repository.commitCurrent(async (state) => {
     const view = state.assessment.view; const result: SharedOperationDraft[] = [];
     for (const targetOperationId of new Set(targetOperationIds)) {
@@ -255,20 +271,11 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       const civil = targetCivilDate(target, zone);
       if (subject?.dependencyNotBefore && civil < subject.dependencyNotBefore) throw new Error('先に必要な家事の実施日より後を指定してください。');
       if (subject?.dependencyBlocked && !subject.dependencyNotBefore) throw new Error('先に必要な家事の予定を確認してください。');
-      if (subject?.minimumNextExecutionDay && civil < subject.minimumNextExecutionDay) {
+      const placement = datePlacementReview(state, ref, target, plan);
+      if (placement.recentWork) {
         if (!input.confirmRecentWork) throw new V2ActionConfirmationError('recentWork'); proposedOptions.allowDuringCooldown = true;
       }
-      const targetPlan = buildV2CommonPlan(state, { from: addDays(civil, -14), through: addDays(civil, 14), asOfDate: ref.anchorDate });
-      const load = plan.chores.find((chore) => chore.id === ref.choreId)?.load;
-      const assignees = ref.subjectUserId === null ? context.assigneeIds : [ref.subjectUserId];
-      let count = 0;
-      for (const round of targetPlan.occurrences) for (const slot of round.subjects) {
-        if (slot.id === subject?.id || !slot.required || slot.completed || slot.suggestedDate !== civil
-          || targetPlan.chores.find((chore) => chore.id === round.choreId)?.load !== load) continue;
-        if (!assignees.length || !slot.assigneeIds.length || slot.assigneeIds.some((uid) => assignees.includes(uid))) count++;
-      }
-      const limit = plan.commonSettings[load === 'heavy' ? 'heavyDailyLimit' : 'normalDailyLimit'];
-      if (load !== 'light' && typeof limit === 'number' && count + 1 > limit && !input.confirmHighLoad) throw new V2ActionConfirmationError('highLoad');
+      if (placement.highLoad && !input.confirmHighLoad) throw new V2ActionConfirmationError('highLoad');
       const request = draft('changeRequest', null, { requesterUserId: scope.userId, choreId: ref.choreId, anchorDate: ref.anchorDate,
         occurrenceId: context.frame.id, subjectUserId: ref.subjectUserId, originalDesignationId: selected.kind === 'selected' ? selected.fact.operationId : null,
         original, proposed: target, proposedMode: input.mode, proposedOptions, selector, extensionScope: input.extensionScope ?? 'once',
@@ -292,7 +299,24 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         if (edit.expectedDecisionIds && !sameIds(edit.expectedDecisionIds, review.answers.map((answer) => answer.operationId))
           || edit.expectedReviewRevision !== undefined && edit.expectedReviewRevision !== review.revision) throw new V2StaleSettingsError();
         if (['approved', 'rejected', 'expired', 'tooLate', 'blocked'].includes(current.kind)) return [];
-        return [draft('requestDecision', null, { requestId, decision, target, referenceDecisionId })];
+        let allowDuringCooldown = false;
+        if (decision !== 'reject') {
+          const offer = decision === 'acceptCounteroffer' ? current.counteroffers.find((entry) => entry.operationId === referenceDecisionId) : null;
+          const chosen = decision === 'approve' ? current.proposal.proposed : decision === 'counteroffer' ? target : offer?.target;
+          if (!chosen) throw new Error('最新の代替日時を確認してください。');
+          const p = current.proposal;
+          const context = frameAtOperation(state.assessment.view, state.archive, point(state), p.choreId, p.anchorDate);
+          const placement = datePlacementReview(state, { choreId: p.choreId, anchorDate: p.anchorDate, ruleVersion: context.config.ruleVersion, subjectUserId: p.subjectUserId }, validateDesignationTarget(p.proposedMode, chosen));
+          if (placement.recentWork) {
+            if (decision !== 'counteroffer' && !(offer?.options ?? p.proposedOptions).allowDuringCooldown) {
+              throw new Error('申請後に最近の実施が見つかりました。管理者の代替案で再指定条件を明示し、本人の承諾を確認してください。');
+            }
+            if (!edit.confirmRecentWork) throw new V2ActionConfirmationError('recentWork');
+            allowDuringCooldown = decision === 'counteroffer';
+          }
+          if (placement.highLoad && !edit.confirmHighLoad) throw new V2ActionConfirmationError('highLoad');
+        }
+        return [draft('requestDecision', null, { requestId, decision, target, referenceDecisionId, ...(allowDuringCooldown ? { allowDuringCooldown: true } : {}) })];
       }),
     approveSubstitution: (completionOperationId: string, decision: 'approve' | 'reject') => repository.commit([draft('completionApproval', null, { completionOperationId, decision })]),
     cancelDates: (ref: V2RoundReference, targetOperationIds: string[], edit: { expectedRuleIds?: readonly string[] } = {}) => repository.commitCurrent(async (state) => {

@@ -4,6 +4,7 @@ import type { V2DateRequestState } from './request-state.ts';
 import type { V2HistoryView } from './history-view.ts';
 import { approvedRequestRuleId } from './formal-rules.ts';
 import { ruleSelectorMatches } from './period-rules.ts';
+import { counterofferDesignationOptions } from './date-options.ts';
 
 /** A valid historical action does not silently acknowledge an as-yet unseen contradictory answer. */
 export function unresolvedRequestReviews(input: { occurrence: SharedOccurrence; subjectUserId: string | null;
@@ -17,7 +18,8 @@ export function unresolvedRequestReviews(input: { occurrence: SharedOccurrence; 
     const request = input.view.byId(state.requestId); if (!request) continue;
     const possible = new Set([approvedRequestRuleId(request, proposal.proposed),
       ...input.view.ofType('requestDecision').filter((op) => op.payload.requestId === state.requestId && op.payload.decision === 'counteroffer')
-        .map((op) => approvedRequestRuleId(request, op.payload.target as unknown as import('./model.ts').DateTarget))]);
+        .map((op) => approvedRequestRuleId(request, op.payload.target as unknown as import('./model.ts').DateTarget,
+          counterofferDesignationOptions(proposal.proposedOptions, op.payload.allowDuringCooldown)))]);
     let dependsOnDispute = state.kind === 'conflict'; let acknowledged = false;
     const stack = [...input.candidates]; const visited = new Set<string>();
     while (stack.length) {

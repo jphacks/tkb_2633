@@ -6,7 +6,10 @@ import type { DateTarget } from './model.ts';
 
 type State = Awaited<ReturnType<ReturnType<typeof createV2EventRepository>['readState']>>;
 export type V2DateDecision = 'approve' | 'reject' | 'counteroffer' | 'acceptCounteroffer';
-export interface V2DateDecisionEdit { expectedDecisionIds?: readonly string[]; expectedReviewRevision?: string }
+export interface V2DateDecisionEdit {
+  expectedDecisionIds?: readonly string[]; expectedReviewRevision?: string;
+  confirmRecentWork?: boolean; confirmHighLoad?: boolean;
+}
 
 const globalContextTypes = new Set(['settings', 'groupPolicy', 'chorePolicy', 'dependency', 'designation', 'designationCancel', 'assignmentRule', 'assignmentCancel',
   'claim', 'claimRelease', 'claimResolution', 'assignmentRequest', 'assignmentDecision']);
@@ -16,10 +19,12 @@ function createReviewer(state: State, viewerUserId: string) {
   const epoch = state.archive.at(-1)!; const view = state.assessment.view;
   const requests = new Map(state.assessment.requestStates.map((request) => [request.requestId, request]));
   const choreIds = new Set(state.assessment.requestStates.map((request) => request.proposal.choreId));
+  const scheduledChores = new Set(view.ofType('chorePolicy').map((op) => op.entityId));
   const contextIds = new Map<string, string[]>(); const globalIds: string[] = [];
   const decisions = new Map<string, SharedOperation[]>();
   for (const op of view.ready) {
-    if (globalContextTypes.has(op.entityType)) globalIds.push(op.operationId);
+    if (globalContextTypes.has(op.entityType) || op.entityType === 'completion' || op.entityType === 'completionApproval'
+      || op.entityType === 'chore' && scheduledChores.has(op.entityId) && ('load' in op.payload || 'enabled' in op.payload)) globalIds.push(op.operationId);
     else for (const id of new Set([op.payload.choreId, op.entityId])) if (typeof id === 'string' && choreIds.has(id)) {
       const ids = contextIds.get(id) ?? []; ids.push(op.operationId); contextIds.set(id, ids);
     }
@@ -39,6 +44,7 @@ function createReviewer(state: State, viewerUserId: string) {
       operationId: op.operationId, authorUserId: op.authorUserId, recordedAt: op.recordedAt!,
       decision: op.payload.decision as V2DateDecision, target: op.payload.target as unknown as DateTarget | null,
       referenceDecisionId: op.payload.referenceDecisionId as string | null,
+      allowDuringCooldown: op.payload.allowDuringCooldown === true,
       kind: audit.get(op.operationId) ?? (state.receipts.has(op.operationId) ? 'recorded' as const : 'pendingDelivery' as const),
     })).sort((a, b) => a.operationId < b.operationId ? -1 : a.operationId > b.operationId ? 1 : 0);
     const revision = sharedDocumentDigest({ request, viewerUserId, answers, commonRevision, choreRevision: choreRevisions.get(request.proposal.choreId)! });

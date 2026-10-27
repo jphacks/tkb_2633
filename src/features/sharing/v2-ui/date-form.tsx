@@ -13,6 +13,7 @@ import { V2Choices, V2Flag, V2TextField, v2FormStyles as styles } from './form-c
 import { v2InitialTargetFields, v2RuleSelectorFromForm, v2TargetFromEditedForm, v2TargetLabel } from './target-form';
 import type { V2ValidityChoice } from './target-form';
 import { V2DateTargetFields } from './date-target-fields';
+import { V2DateConfirmation } from './date-confirmation';
 
 const ruleIdsOf = (formal: V2SubjectPlan['formalDate']) => formal.kind === 'automatic' ? [] : formal.kind === 'manual' ? formal.equivalentRuleIds : formal.ruleIds;
 const sameIds = (a: readonly string[], b: readonly string[]) => canonicalJson([...a].sort()) === canonicalJson([...b].sort());
@@ -134,11 +135,10 @@ function DateEditor(props: Props) {
       value={options[key]} disabled={disabled || !admin} onChange={(value) => edit({ options: { ...input.current.options, [key]: value } })} />)}
     {!admin ? <Text style={styles.caption}>元の厳守・固定・前倒し禁止の条件を維持して申請します。</Text> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-    {confirmation && confirmation.kind !== 'cancel' ? <View style={{ gap: 8 }}><Text accessibilityRole="alert" style={styles.error}>{confirmation.kind === 'highLoad' ? 'この日は家事の負荷が高くなっています。この日に指定しますか？'
-      : confirmation.kind === 'recentWork' ? '最近実施されていますが、もう一度指定しますか？' : '指定する時間帯にはカレンダーに予定が入っています。本当に指定しますか？'}</Text>
-      <AppButton title="指定する" disabled={disabled} onPress={() => { if (confirmation.revision !== inputRevision.current || confirmation.kind === 'cancel') { setConfirmation(null); return; }
-        confirmed.current[confirmation.kind] = true; setConfirmation(null); return submit(); }} />
-      <AppButton title="取り消す" variant="quiet" disabled={disabled} onPress={() => { setConfirmation(null); confirmed.current = { recentWork: false, highLoad: false, calendar: false }; }} /></View>
+    {confirmation && confirmation.kind !== 'cancel' ? <V2DateConfirmation kind={confirmation.kind} disabled={disabled}
+      onConfirm={() => { if (confirmation.revision !== inputRevision.current || confirmation.kind === 'cancel') { setConfirmation(null); return; }
+        confirmed.current[confirmation.kind] = true; setConfirmation(null); return submit(); }}
+      onCancel={() => { setConfirmation(null); confirmed.current = { recentWork: false, highLoad: false, calendar: false }; }} />
       : <AppButton title="日時を指定・申請する" disabled={disabled} onPress={submit} />}
     {admin && displayed.rules.length ? <View style={{ gap: 8 }}>
       {confirmation?.kind === 'cancel' ? <><Text style={styles.error}>{displayed.rules.some((fact) => fact.rule.selector.scope !== 'once') ? '次の元指定を適用期間全体から解除します。今回以外の回にも影響します。実施履歴は残ります。' : 'この回の日時指定を解除します。実施履歴は残ります。'}</Text>

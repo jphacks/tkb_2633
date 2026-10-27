@@ -1852,5 +1852,52 @@
         "name": "v2 round-scoped history retains subject-specific work, approvals and undo without scanning every completion for each round"
       }
     ]
+  },
+  {
+    "feature": "v2-assignment-cadence-mapping-review",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 an approved old-cadence assignment unseen by a concurrent configuration remains reviewable through later unrelated edits until explicitly mapped"
+      },
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 pending assignment requests survive unrelated configuration edits and ambiguous future mapping cannot be silently discarded"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 one-off assignments that no longer map to the revised cadence remain explicit review items until an administrator cancels or remaps their source"
+      }
+    ]
+  },
+  {
+    "feature": "v2-assignment-nondestructive-remap",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 assignment remapping atomically cancels its original source and assigns an explicit new round without deleting history or partially committing an invalid replacement"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 cancelling an assignment preserves its approval and real work history while preventing later approval from reviving it"
+      },
+      {
+        "file": "tests/sharing-v2-assignment-requests.test.mjs",
+        "name": "v2 assignment cancellation refuses non-administrators, unrelated entity sources and unknown source IDs without changing the formal assignee"
+      }
+    ]
+  },
+  {
+    "feature": "v2-stale-assignment-controls",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 assignment forms retain displayed assignment bases and refuse stale assignment, resolution, request and checkbox changes"
+      },
+      {
+        "file": "tests/sharing-v2-screen.test.mjs",
+        "name": "v2 a stale checkbox cannot silently register substitution after another member became the assignee"
+      }
+    ]
   }
 ]

@@ -22,13 +22,13 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId };
   const canComplete = owns && round.activeInPeriod && !subject.pendingCompletionIds.length && !subject.dependencyBlocked && !subject.dependencyAwaitingCompletion && !round.assignmentConflictIds.length;
   const onToggle = busy ? undefined : subject.completed ? undo.length ? () => run(() => actions.undoMany(undo)) : undefined
-    : canComplete ? () => run(() => actions.complete(ref)) : undefined;
+    : canComplete ? () => run(() => actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] })) : undefined;
   const category = subject.subjectUserId ? `各人が実施 · ${nameOf(subject.subjectUserId)}` : round.assigneeIds.length
     ? `${round.claimState === 'provisional' ? '暫定担当' : '担当'}：${round.assigneeIds.map(nameOf).join('・')}` : '全員共通 · 担当未確定';
   const formal = subject.formalDate;
   const schedules = relatedWork.filter((record) => record.active && record.schedule).map((record) => record.schedule!);
   const recordedWindow = subject.completed && schedules.length && schedules.every((schedule) => schedule.windowStart === schedules[0].windowStart && schedule.windowEnd === schedules[0].windowEnd) ? schedules[0] : null;
-  const assignmentPending = model.assignmentRequests.some((request) => request.proposal.occurrenceId === round.id && request.proposal.requesterUserId === viewer
+  const assignmentPending = model.assignmentRequests.some((request) => !request.cancelled && request.proposal.occurrenceId === round.id && request.proposal.requesterUserId === viewer
     && ['pendingDelivery', 'awaiting'].includes(request.kind));
   return <View style={styles.card}>
     <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={showStatus && subject.completed} deemphasized={subject.cooldownSuppressed || subject.virtuallyConsumed} onOpen={onOpen} onToggle={onToggle} />
@@ -38,7 +38,8 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
       {showActions && (!subject.completed || recordedWindow) ? <Text style={styles.caption}>{subject.completed ? '実施時点の期間' : '実施できる期間'}：
         {formatJapaneseDate(recordedWindow?.windowStart ?? subject.executionWindowStart)}〜{formatJapaneseDate(recordedWindow?.windowEnd ?? subject.executionWindowEnd)}</Text> : null}
       {round.claimState === 'provisional' ? <Text style={styles.notice}>引き受けが重なっています。暫定担当のまま実施でき、管理者が正式な担当を決めます。</Text> : null}
-      {round.assignmentConflictIds.length ? <Text style={styles.notice}>担当が競合しています。管理者による確認が必要です。</Text> : null}
+      {round.assignmentConflictIds.length ? <Text style={styles.notice}>{round.assignmentMappingReviewIds.length
+        ? '周期の変更に合わせて、以前の担当指定をどう適用するか確認してください。' : '担当が競合しています。管理者による確認が必要です。'}</Text> : null}
       {formal.kind === 'conflict' || formal.kind === 'review' || subject.requestReviewIds.length ? <Text style={styles.notice}>日時の確認が必要です。実施した記録は保持されます。</Text> : null}
       {subject.dependencyAwaitingCompletion ? <Text style={styles.notice}>先に必要な家事の完了を待っています。</Text> : null}
       {subject.cooldownSuppressed ? <Text style={styles.caption}>最近実施済み · {subject.minimumNextExecutionDay ? formatJapaneseDate(subject.minimumNextExecutionDay) : ''}以降に再実施できます。</Text> : null}
@@ -57,7 +58,8 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
           ? <AppButton title="引き受けを解除" compact variant="quiet" disabled={busy} onPress={() => run(() => actions.releaseClaim(ref))} /> : null}
         {showActions && round.assignmentFixed && owns && !subject.completed ? <AppButton title={assignmentPending ? '担当変更を申請中' : onAssignmentRequest ? '担当の変更を申請' : '自分の担当解除を申請'} compact variant="quiet" disabled={busy || assignmentPending}
           onPress={onAssignmentRequest ?? (() => run(() => { const remaining = round.assigneeIds.filter((uid) => uid !== viewer); return actions.requestAssignment(ref,
-            { memberIds: remaining, start: 'this', scope: 'once', fixed: remaining.length > 0 && round.assignmentFixed }); }))} /> : null}
+            { memberIds: remaining, start: 'this', scope: 'once', fixed: remaining.length > 0 && round.assignmentFixed,
+              expectedAssignmentIds: round.assignmentOperationIds, expectedConflictIds: round.assignmentConflictIds }); }))} /> : null}
       </View>
     </View>
   </View>;

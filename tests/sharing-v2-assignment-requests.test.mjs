@@ -118,3 +118,50 @@ test('v2 knowing an automatic date request before its receipt cannot retroactive
   deliver(f, req, '2026-10-27T10:10:00Z'); deliver(f, work, '2026-10-27T10:11:00Z'); accepted(f);
   const record = f.plan().history.find((entry) => entry.operationId === work.operationId); assert.equal(record.instruction.kind, 'automatic'); assert.equal(record.fulfillment, 'notApplicable');
 });
+
+test('v2 an approved old-cadence assignment unseen by a concurrent configuration remains reviewable through later unrelated edits until explicitly mapped', async () => {
+  const f = await fixture({ preset: 'assigned', members: ['a'] }); const base = observed(f); const req = request(f, { memberIds: ['b'], scope: 'from' }); const withRequest = observed(f);
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 2, effectiveFrom: anchorDate, intervalDays: 3 } }, { entityId: 'floor', observed: base });
+  vote(f, req, 'approve', { actor: 'owner2', observed: withRequest }); accepted(f);
+  let plan = f.plan(); assert.ok(plan.occurrences[0].assignmentConflictIds.includes(approvedV2AssignmentId(req))); assert.equal(plan.occurrences[0].needsAssignment, true);
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 3, effectiveFrom: anchorDate, intervalDays: 3, windowAfterDays: 4, assignmentSourceVersion: 2 } }, { entityId: 'floor' }); accepted(f);
+  plan = f.plan(); assert.ok(plan.occurrences[0].assignmentConflictIds.includes(approvedV2AssignmentId(req)));
+  const s = f.state(); const at = v2ReadPoint(s.assessment.view, f.archive.at(-1)); const frame = frameAtOperation(s.assessment.view, f.archive, at, 'floor', anchorDate, 3, { allowAssignmentConflict: true });
+  f.make('assignmentRule', { choreId: 'floor', memberIds: ['b'], fromOccurrenceId: f.occurrence(), fromAnchorDate: anchorDate, scope: 'from', fixed: false, ruleVersion: 3, basisRuleIds: frame.assignmentOperationIds }); accepted(f);
+  plan = f.plan(); assert.deepEqual(plan.occurrences[0].assignmentConflictIds, []); assert.deepEqual(plan.occurrences[0].assigneeIds, ['b']); assert.equal(plan.occurrences[1].needsAssignment, false);
+});
+
+test('v2 an administrator cannot approve an old pending assignment after intentionally replacing its cadence without inheriting its assignment source', async () => {
+  const f = await fixture({ preset: 'assigned', members: ['a'] }); const req = request(f, { memberIds: ['b'], scope: 'from' });
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 2, effectiveFrom: anchorDate, intervalDays: 3 } }, { entityId: 'floor' }); accepted(f);
+  const answer = vote(f, req); assert.ok(f.state().assessment.rejected.some((entry) => entry.operationId === answer.operationId));
+  assert.equal(f.state().assessment.assignmentRequests[0].kind, 'awaiting'); assert.deepEqual(f.plan().occurrences[0].assigneeIds, ['a']);
+});
+
+test('v2 cancelling an assignment preserves its approval and real work history while preventing later approval from reviving it', async () => {
+  const f = await fixture({ preset: 'assigned', members: ['a'] }); const req = request(f, { memberIds: ['b'] }); vote(f, req); f.complete({ actor: 'b' }); accepted(f);
+  const history = f.plan().history; const cancellation = f.make('assignmentCancel', { targetOperationIds: [req.operationId] }); accepted(f);
+  assert.equal(f.state().assessment.assignmentRequests[0].kind, 'approved'); assert.equal(f.state().assessment.assignmentRequests[0].cancelled, true);
+  assert.deepEqual(f.plan().history, history); assert.deepEqual(context(f).frame.assigneeIds, ['a']);
+  assert.ok(f.state().assessment.view.byId(req.operationId)); assert.ok(f.state().assessment.view.byId(cancellation.operationId));
+  const late = vote(f, req); assert.ok(f.state().assessment.rejected.some((entry) => entry.operationId === late.operationId));
+});
+
+test('v2 one-off assignments that no longer map to the revised cadence remain explicit review items until an administrator cancels or remaps their source', async () => {
+  const f = await fixture(); const oldAnchor = '2026-11-03';
+  const assignment = f.make('assignmentRule', { choreId: 'floor', memberIds: ['a'], fromOccurrenceId: f.occurrence(oldAnchor), fromAnchorDate: oldAnchor, scope: 'once', fixed: true, ruleVersion: 1 });
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, anchorDate: '2026-10-28', intervalDays: 4, ruleVersion: 2, effectiveFrom: '2026-10-28' } }, { entityId: 'floor' }); accepted(f);
+  assert.ok(f.plan().issues.some((issue) => issue.kind === 'oneOffAssignmentMappingNeedsReview' && issue.operationIds.includes(assignment.operationId)));
+  f.make('assignmentCancel', { targetOperationIds: [assignment.operationId] }); accepted(f);
+  assert.equal(f.plan().issues.some((issue) => issue.kind === 'oneOffAssignmentMappingNeedsReview'), false);
+  assert.ok(f.state().assessment.view.byId(assignment.operationId));
+});
+
+test('v2 assignment cancellation refuses non-administrators, unrelated entity sources and unknown source IDs without changing the formal assignee', async () => {
+  const f = await fixture({ preset: 'assigned', members: ['a'] }); const req = request(f, { memberIds: ['b'] }); vote(f, req); accepted(f);
+  const denied = f.make('assignmentCancel', { targetOperationIds: [req.operationId] }, { actor: 'a' });
+  const unrelated = f.make('assignmentCancel', { targetOperationIds: [f.facts[0].operation.operationId] });
+  const missing = f.make('assignmentCancel', { targetOperationIds: ['another-group-source'] });
+  const state = f.state(); assert.deepEqual(state.assessment.rejected.map((entry) => entry.operationId).sort(), [denied, unrelated, missing].map((op) => op.operationId).sort());
+  assert.equal(state.assessment.assignmentRequests[0].cancelled, false); assert.deepEqual(f.plan().occurrences[0].assigneeIds, ['b']);
+});

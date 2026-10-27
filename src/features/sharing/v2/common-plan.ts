@@ -49,6 +49,8 @@ export interface V2PlannedOccurrence extends SharedOccurrence {
   completed: boolean; historical: boolean; extensionRequestIds: string[]; subjects: V2SubjectPlan[];
   activeInPeriod: boolean;
   assignmentConflictIds: string[];
+  assignmentOperationIds: string[];
+  assignmentMappingReviewIds: string[];
 }
 export interface V2CommonPlan {
   groupId: string; algorithm: string; timeZone: string; initialized: boolean;
@@ -188,6 +190,11 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
         for (const bound of merged) for (const frame of commonFrames(view.groupId, chore.id, slice.configuration, bound.from, bound.through)) frames.set(frame.id, frame);
       } catch { issue('planningRangeNeedsReview', chore.id); }
     }
+    for (const fact of assignmentProjection?.facts ?? []) {
+      if (fact.payload.choreId !== chore.id || fact.payload.scope !== 'once' || fact.payload.fromAnchorDate < range.from || fact.payload.fromAnchorDate > range.through
+        || frames.has(fact.payload.fromOccurrenceId)) continue;
+      issue('oneOffAssignmentMappingNeedsReview', chore.id, fact.payload.fromOccurrenceId, null, [fact.sourceRequestId ?? fact.operationId]);
+    }
     // A moved one-off date stays visible even when its anchor falls outside the displayed date range.
     for (const fact of allRules.filter((rule) => rule.rule.choreId === chore.id && rule.rule.selector.scope === 'once')) {
       const selector = fact.rule.selector; if (selector.scope !== 'once') continue;
@@ -299,6 +306,8 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
         claimantUserIds: usesClaims ? [...new Set(context.claims.activeClaimOperationIds.map((id) => view.byId(id)!.authorUserId))].sort() : [],
         claimOperationIds: [...context.claims.activeClaimOperationIds], assignmentFixed: context.assignmentFixed,
         assignmentConflictIds: [...context.assignmentConflictIds],
+        assignmentOperationIds: [...context.assignmentOperationIds],
+        assignmentMappingReviewIds: [...context.assignmentMappingReviewIds],
         needsAssignment: context.assignmentConflictIds.length > 0 || context.configuredAssignees.length > 0 && context.assigneeIds.length === 0 || context.config.policy.completion === 'perMember' && requiredSubjects.length === 0,
         completed: planned.some((slot) => slot.required) && planned.filter((slot) => slot.required).every((slot) => slot.completed),
         historical: !currentSlice, activeInPeriod: Boolean((currentSlice?.configuration && currentSlice.configuration.active !== false

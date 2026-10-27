@@ -12,6 +12,7 @@ import { V2HistoryConflictError } from './history-view.ts';
 import { v2AssignmentLineage } from './assignment-lineage.ts';
 import { maximalConfirmedFacts } from './confirmed-facts.ts';
 import type { V2AssignmentFact } from './assignment-state.ts';
+import { observedV2AssignmentCancellations } from './assignment-state.ts';
 
 export function rosterAtOperation(archive: readonly VerifiedSharedRoster[], operation: SharedOperation): VerifiedSharedRoster {
   const epoch = archive[operation.keyVersion - 1];
@@ -40,18 +41,24 @@ export function frameAtOperation(view: V2HistoryView, archive: readonly Verified
   const base = config.policy.assignment.mode === 'all' ? config.targetMemberIds ?? configuredMembers : config.policy.assignment.memberIds;
   const assignmentVersions = v2AssignmentLineage(view, operation, choreId, config);
   const projection = view.assignmentsAt(operation);
+  const cancelledAssignments = projection ? null : observedV2AssignmentCancellations(view, operation);
   const allAssignments: V2AssignmentFact[] = projection?.facts ?? view.observed(view.ofType('assignmentRule'), operation)
+    .filter((fact) => !cancelledAssignments!.has(fact.operationId))
     .map((fact) => ({ ...fact, payload: fact.payload as unknown as V2AssignmentFact['payload'] }));
-  const matching = allAssignments.filter((fact) => fact.payload.choreId === choreId
-    && assignmentVersions.has(fact.payload.ruleVersion as number) && (fact.payload.scope === 'once' ? fact.payload.fromOccurrenceId === frame.id : (fact.payload.fromAnchorDate as string) <= anchorDate));
+  const applicable = allAssignments.filter((fact) => fact.payload.choreId === choreId && fact.payload.ruleVersion <= config.ruleVersion
+    && (fact.payload.scope === 'once' ? fact.payload.fromOccurrenceId === frame.id : fact.payload.fromAnchorDate <= anchorDate));
+  const matching = applicable.filter((fact) => assignmentVersions.has(fact.payload.ruleVersion));
   const once = matching.filter((fact) => fact.payload.scope === 'once');
   const assignments = maximalConfirmedFacts(once.length ? once : matching, (fact) => fact.payload.basisRuleIds ?? []);
-  const assignmentReviews = (projection?.requests ?? []).filter((request) => request.kind === 'conflict' && request.proposal.choreId === choreId
+  const allOnce = applicable.filter((fact) => fact.payload.scope === 'once');
+  const unmapped = applicable.some((fact) => !assignmentVersions.has(fact.payload.ruleVersion))
+    ? maximalConfirmedFacts(allOnce.length ? allOnce : applicable, (fact) => fact.payload.basisRuleIds ?? []).filter((fact) => !assignmentVersions.has(fact.payload.ruleVersion)) : [];
+  const assignmentReviews = (projection?.requests ?? []).filter((request) => !request.cancelled && request.kind === 'conflict' && request.proposal.choreId === choreId
     && assignmentVersions.has(request.proposal.ruleVersion) && (request.proposal.scope === 'once' ? request.proposal.occurrenceId === frame.id : request.proposal.anchorDate <= anchorDate))
     .filter((request) => !assignments.some((fact) => fact.payload.reviewedAssignmentRequestIds?.includes(request.requestId)
       && request.conflictIds.every((id) => { const vote = view.byId(id); return vote && causallyPrecedes(vote, fact); })));
   const valueConflict = new Set(assignments.map((fact) => canonicalJson({ memberIds: [...fact.payload.memberIds].sort(), fixed: fact.payload.fixed }))).size > 1;
-  let assignmentConflict = assignmentReviews.length > 0 || valueConflict;
+  let assignmentConflict = assignmentReviews.length > 0 || valueConflict || unmapped.length > 0;
   const configuredAssignees = valueConflict ? [...new Set(assignments.flatMap((fact) => fact.payload.memberIds as string[]))]
     : assignments.length ? assignments[0].payload.memberIds as string[] : base;
   const assigneeIds = configuredAssignees.filter((uid) => activeMemberIds.includes(uid)).sort();
@@ -68,8 +75,9 @@ export function frameAtOperation(view: V2HistoryView, archive: readonly Verified
     resolutions: resolutions.map((op) => ({ ...op, ...op.payload }) as unknown as ClaimResolution) });
   const useClaims = config.policy.completion === 'one' && !assigneeIds.length;
   return { frame, config, configuredAssignees: [...configuredAssignees], activeMemberIds, claims,
-    assignmentOperationIds: assignments.map((fact) => fact.operationId).sort(), assignmentReviewRequestIds: assignmentReviews.map((state) => state.requestId).sort(),
-    assignmentConflictIds: assignmentConflict ? [...new Set([...assignments.map((fact) => fact.operationId), ...assignmentReviews.flatMap((state) => state.conflictIds), ...concurrentResolutions.map((fact) => fact.operationId)])].sort() : [],
+    assignmentOperationIds: [...new Set([...assignments, ...unmapped].map((fact) => fact.operationId))].sort(), assignmentReviewRequestIds: assignmentReviews.map((state) => state.requestId).sort(),
+    assignmentMappingReviewIds: unmapped.map((fact) => fact.operationId).sort(),
+    assignmentConflictIds: assignmentConflict ? [...new Set([...assignments.map((fact) => fact.operationId), ...unmapped.map((fact) => fact.operationId), ...assignmentReviews.flatMap((state) => state.conflictIds), ...concurrentResolutions.map((fact) => fact.operationId)])].sort() : [],
     assigneeIds: useClaims ? claims.assigneeIds : assigneeIds,
     assignmentFixed: assignments.some((fact) => fact.payload.fixed === true)
       || useClaims && maximalCausalFacts(resolutions).some((fact) => fact.payload.fixed === true),

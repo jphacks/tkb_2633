@@ -32,6 +32,7 @@ import { expandedCommonWindow } from './window-extension.ts';
 import { createV2AssignmentHistory, v2AssignmentRequestReference } from './assignment-state.ts';
 import { v2ReadPoint } from './view-point.ts';
 import { v2ConfirmedReceiptContext, v2ObservedReceipts } from './receipt-context.ts';
+import { v2AssignmentLineage } from './assignment-lineage.ts';
 type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
 
 export class V2AuthorityError extends Error { readonly code = 'sharing/v2-authority-denied'; }
@@ -260,9 +261,18 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     adminOnly(); const target = observedTarget(view, op, op.payload.completionOperationId as string, 'completion');
     requireAuthority(target.operationType === 'complete', 'Approval must reference an actual completion fact'); return;
   }
+  if (op.entityType === 'assignmentCancel') {
+    adminOnly(); for (const id of op.payload.targetOperationIds as string[]) {
+      const source = view.byId(id); requireAuthority(source && ['assignmentRule', 'assignmentRequest'].includes(source.entityType) && causallyPrecedes(source, op), 'Cancel an observed signed assignment source only');
+    } return;
+  }
   if (op.entityType === 'assignmentDecision') {
     adminOnly(); const request = observedTarget(view, op, op.payload.requestId as string, 'assignmentRequest');
     if (op.payload.decision === 'reject') return;
+    requireAuthority(!view.assignmentsAt(op)?.requests.find((state) => state.requestId === request.operationId)?.cancelled, 'This assignment request has been cancelled');
+    const current = view.field('chorePolicy', request.payload.choreId as string, 'configuration', op)?.value as unknown as SharedChoreConfiguration | undefined;
+    requireAuthority(current && ((current.effectiveFrom ?? current.anchorDate) > (request.payload.anchorDate as string)
+      || v2AssignmentLineage(view, op, request.payload.choreId as string, current).has(request.payload.ruleVersion as number)), 'Review the changed common cadence before approving this assignment');
     const context = frameAtOperation(view, archive, op, request.payload.choreId as string, request.payload.anchorDate as LocalDate, request.payload.ruleVersion as number);
     const sameIds = (left: unknown, right: readonly string[]) => canonicalJson([...(left as string[])].sort()) === canonicalJson([...right].sort());
     requireAuthority(sameIds(request.payload.originalMemberIds, context.assigneeIds) && sameIds(request.payload.originalAssignmentIds, context.assignmentOperationIds)

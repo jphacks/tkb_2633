@@ -23,6 +23,7 @@ export interface V2AssignmentFact extends CausalStamp {
 export interface V2AssignmentRequestState {
   requestId: string; kind: 'pendingDelivery' | 'awaiting' | 'expired' | 'tooLate' | 'approved' | 'rejected' | 'conflict';
   proposal: AssignmentChangeRequest; deadline: ApprovalDeadline; confirmation: ConfirmationProof | null;
+  cancelled: boolean;
   decisions: { operationId: string; kind: 'pendingDelivery' | 'late' | 'requestClosed' | 'eligible' }[]; conflictIds: string[];
 }
 export interface V2AssignmentProjection { facts: V2AssignmentFact[]; requests: V2AssignmentRequestState[] }
@@ -35,7 +36,9 @@ export function createV2AssignmentHistory(view: V2HistoryView, archive: readonly
   return (at: SharedOperation): V2AssignmentProjection => {
     if (generation !== view.ready.length) { cache.clear(); generation = view.ready.length; }
     const key = canonicalJson([at.keyVersion, at.context, at.receiptContext ?? null]); const known = cache.get(key); if (known) return known;
-    const facts: V2AssignmentFact[] = view.observed(view.ofType('assignmentRule'), at).map((op) => ({ ...op, payload: op.payload as unknown as V2AssignmentFact['payload'] }));
+    const cancelled = observedV2AssignmentCancellations(view, at);
+    const facts: V2AssignmentFact[] = view.observed(view.ofType('assignmentRule'), at).filter((op) => !cancelled.has(op.operationId))
+      .map((op) => ({ ...op, payload: op.payload as unknown as V2AssignmentFact['payload'] }));
     const requests: V2AssignmentRequestState[] = [];
     const decisions = new Map<string, SharedOperation[]>();
     for (const op of view.observed(view.ofType('assignmentDecision'), at)) {
@@ -43,8 +46,8 @@ export function createV2AssignmentHistory(view: V2HistoryView, archive: readonly
     }
     for (const op of view.observed(view.ofType('assignmentRequest'), at)) {
       const answers = decisions.get(op.operationId) ?? [];
-      const state = deriveV2AssignmentRequest(op, answers, archive, evidence ? { ...evidence, receipts: v2ObservedReceipts([op, ...answers], at, evidence.receipts) } : undefined, serverTime); requests.push(state);
-      if (state.kind !== 'approved') continue;
+      const state = { ...deriveV2AssignmentRequest(op, answers, archive, evidence ? { ...evidence, receipts: v2ObservedReceipts([op, ...answers], at, evidence.receipts) } : undefined, serverTime), cancelled: cancelled.has(op.operationId) }; requests.push(state);
+      if (state.kind !== 'approved' || state.cancelled) continue;
       facts.push({ ...op, operationId: approvedV2AssignmentId(op), confirmation: state.confirmation!, sourceRequestId: op.operationId,
         payload: { choreId: state.proposal.choreId, memberIds: state.proposal.memberIds, fromOccurrenceId: state.proposal.occurrenceId,
           fromAnchorDate: state.proposal.anchorDate, scope: state.proposal.scope, fixed: state.proposal.fixed, ruleVersion: state.proposal.ruleVersion,
@@ -53,6 +56,10 @@ export function createV2AssignmentHistory(view: V2HistoryView, archive: readonly
     const result = { facts, requests }; cache.set(key, result);
     while (cache.size > 256) cache.delete(cache.keys().next().value!); return result;
   };
+}
+
+export function observedV2AssignmentCancellations(view: V2HistoryView, at: SharedOperation): ReadonlySet<string> {
+  return new Set(view.observed(view.ofType('assignmentCancel'), at).flatMap((op) => op.payload.targetOperationIds as string[]));
 }
 
 export function approvedV2AssignmentId(request: SharedOperation): string {
@@ -73,7 +80,7 @@ export function deriveV2AssignmentRequest(request: SharedOperation, input: reado
   const proposal = request.payload as unknown as AssignmentChangeRequest;
   const receipt = evidence?.receipts.get(request.operationId);
   const deadline = approvalDeadline({ serverRequestedAt: receipt?.receivedAtMs ?? null, original: proposal.reference, proposed: proposal.reference, timeZone: proposal.timeZone });
-  const result: V2AssignmentRequestState = { requestId: request.operationId, kind: 'pendingDelivery', proposal, deadline, confirmation: null, decisions: [], conflictIds: [] };
+  const result: V2AssignmentRequestState = { requestId: request.operationId, kind: 'pendingDelivery', proposal, deadline, confirmation: null, cancelled: false, decisions: [], conflictIds: [] };
   if (!receipt || !evidence) return result;
   const proof = evidence.facts.get(request.operationId); if (!proof) throw new Error('Missing assignment request author proof'); bindV2ServerReceipt(receipt, proof, archive);
   if (deadline.kind !== 'open') return { ...result, kind: deadline.kind };

@@ -20,10 +20,11 @@ import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
 import { expandedCommonWindow } from './window-extension.ts';
-import { v2AssignmentRequestReference } from './assignment-state.ts';
+import { v2AssignmentRequestReference, approvedV2AssignmentId, observedV2AssignmentCancellations } from './assignment-state.ts';
 import type { DateTarget, DesignationMode, DesignationOptions, GroupKind, GroupPolicy, RuleSelector, SharedChoreConfiguration } from './model.ts';
 
 export interface V2RoundReference { choreId: string; anchorDate: LocalDate; ruleVersion: number; subjectUserId: string | null }
+export interface V2AssignmentEdit { expectedAssignmentIds?: readonly string[]; expectedConflictIds?: readonly string[] }
 export class V2ActionConfirmationError extends Error {
   readonly code = 'sharing/v2-confirmation-required';
   readonly reason: 'recentWork' | 'highLoad';
@@ -44,6 +45,11 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     return { ...at, authorUserId: scope.userId, authorDeviceId: scope.deviceId, deviceSequence: (at.context[scope.deviceId] ?? 0) + 1 };
   }
   const frame = (state: State, ref: V2RoundReference) => frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion);
+  const sameIds = (a: readonly string[], b: readonly string[]) => canonicalJson([...a].sort()) === canonicalJson([...b].sort());
+  function expectAssignment(context: ReturnType<typeof frame>, edit: V2AssignmentEdit) {
+    if (edit.expectedAssignmentIds && !sameIds(edit.expectedAssignmentIds, context.assignmentOperationIds)
+      || edit.expectedConflictIds && !sameIds(edit.expectedConflictIds, context.assignmentConflictIds)) throw new V2StaleSettingsError();
+  }
   const undoTargets = (targetOperationIds: readonly string[]) => repository.commitCurrent(async (state) => {
     const view = state.assessment.view; const result: SharedOperationDraft[] = [];
     for (const targetOperationId of new Set(targetOperationIds)) {
@@ -69,6 +75,15 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
   }
   const configureFields = (choreId: string, edits: readonly NonNullable<V2ConfigurationFieldEdit>[], effectiveFrom: LocalDate) =>
     repository.commitCurrent(async (state) => configurationFieldDrafts(state, choreId, edits, effectiveFrom));
+  function assignmentCancellations(state: State, ids: readonly string[]): SharedOperationDraft[] {
+    const at = point(state); const view = state.assessment.view; const cancelled = observedV2AssignmentCancellations(view, at);
+    const sources = [...new Set(ids.map((id) => {
+      const source = view.byId(id); if (source && ['assignmentRule', 'assignmentRequest'].includes(source.entityType)) return id;
+      const request = view.ofType('assignmentRequest').find((op) => approvedV2AssignmentId(op) === id);
+      if (!request) throw new Error('解除する担当指定を確認してください。'); return request.operationId;
+    }))].filter((id) => !cancelled.has(id));
+    return sources.length ? [draft('assignmentCancel', null, { targetOperationIds: sources })] : [];
+  }
   return {
     readPlan: async (range: Parameters<typeof buildV2CommonPlan>[1]) => buildV2CommonPlan(await repository.readState(), range),
     addChore: (name: string, instructions: string[] = []) => {
@@ -109,10 +124,11 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       if (!current) throw new Error('グループ設定を同期してください。');
       return [draft('groupPolicy', 'policy', { configuration: { ...current.value as object, ...patch } })];
     }),
-    complete: (ref: V2RoundReference, input: { performedAt?: string; performerUserId?: string; additionalWork?: boolean } = {}) => {
+    complete: (ref: V2RoundReference, input: { performedAt?: string; performerUserId?: string; additionalWork?: boolean; expectedAssigneeIds?: readonly string[] } = {}) => {
       const performedAt = input.performedAt ?? options.now().toISOString();
       return repository.commitCurrent(async (state) => {
         const context = frame(state, ref); const at = point(state); const view = state.assessment.view;
+        if (input.expectedAssigneeIds && !sameIds(input.expectedAssigneeIds, ref.subjectUserId === null ? context.assigneeIds : [ref.subjectUserId])) throw new V2StaleSettingsError();
         const history = v2CompletionHistory(view, at, state.receipts);
         if (!input.additionalWork && history.some((record) => record.occurrenceId === context.frame.id && record.subjectUserId === ref.subjectUserId && record.active && record.outcome === 'completed')) return [];
         const instruction = recordedInstructionAt(view, at, context.frame, ref.subjectUserId, state.assessment.formalRulesAt(at));
@@ -142,38 +158,56 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       if (!targets.length) return [];
       return [draft('claimRelease', null, { choreId: ref.choreId, anchorDate: ref.anchorDate, occurrenceId: context.frame.id, userId: scope.userId, targetOperationIds: targets })];
     }),
-    resolveClaims: (ref: V2RoundReference, assigneeIds: string[], fixed: boolean) => repository.commitCurrent(async (state) => {
+    resolveClaims: (ref: V2RoundReference, assigneeIds: string[], fixed: boolean, expectedClaimIds?: readonly string[]) => repository.commitCurrent(async (state) => {
       const context = frame(state, ref);
+      if (expectedClaimIds && !sameIds(expectedClaimIds, context.claims.activeClaimOperationIds)) throw new V2StaleSettingsError();
       return [draft('claimResolution', null, { choreId: ref.choreId, anchorDate: ref.anchorDate, occurrenceId: context.frame.id,
         claimOperationIds: context.claims.activeClaimOperationIds, assigneeIds, fixed })];
     }),
-    assign: (ref: V2RoundReference, memberIds: string[], start: 'this' | 'next', fixed: boolean) => repository.commitCurrent(async (state) => {
+    assign: (ref: V2RoundReference, memberIds: string[], start: 'this' | 'next', fixed: boolean, edit: V2AssignmentEdit = {}) => repository.commitCurrent(async (state) => {
       const context = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
       const anchor = start === 'next' ? addDays(ref.anchorDate, context.config.intervalDays) : ref.anchorDate;
       const next = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, anchor, ref.ruleVersion, { allowAssignmentConflict: true });
+      expectAssignment(next, edit);
       return [draft('assignmentRule', null, { choreId: ref.choreId, fromOccurrenceId: next.frame.id, fromAnchorDate: anchor,
         scope: 'from', memberIds, fixed, ruleVersion: next.config.ruleVersion, basisRuleIds: next.assignmentOperationIds })];
     }),
-    resolveAssignment: (ref: V2RoundReference, memberIds: string[], scope: 'once' | 'from', fixed: boolean) => repository.commitCurrent(async (state) => {
+    resolveAssignment: (ref: V2RoundReference, memberIds: string[], scope: 'once' | 'from', fixed: boolean, edit: V2AssignmentEdit = {}) => repository.commitCurrent(async (state) => {
       const context = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
+      expectAssignment(context, edit);
       return [draft('assignmentRule', null, { choreId: ref.choreId, fromOccurrenceId: context.frame.id, fromAnchorDate: ref.anchorDate, scope, memberIds, fixed,
         ruleVersion: ref.ruleVersion, basisRuleIds: context.assignmentOperationIds,
         ...(context.assignmentReviewRequestIds.length ? { reviewedAssignmentRequestIds: context.assignmentReviewRequestIds } : {}) })];
     }),
-    requestAssignment: (ref: V2RoundReference, input: { memberIds: string[]; start: 'this' | 'next'; scope: 'once' | 'from'; fixed: boolean }) => repository.commitCurrent(async (state) => {
+    cancelAssignments: (sourceOperationIds: readonly string[]) => repository.commitCurrent(async (state) => assignmentCancellations(state, sourceOperationIds)),
+    remapAssignments: (sourceOperationIds: readonly string[], ref: V2RoundReference, memberIds: string[], scope: 'once' | 'from', fixed: boolean, edit: V2AssignmentEdit = {}) => repository.commitCurrent(async (state) => {
+      const cancellations = assignmentCancellations(state, sourceOperationIds); if (!cancellations.length) return [];
+      const at = point(state); const context = frameAtOperation(state.assessment.view, state.archive, at, ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
+      expectAssignment(context, edit);
+      const sources = new Set(cancellations[0].payload.targetOperationIds as string[]);
+      if ([...sources].some((id) => state.assessment.view.byId(id)?.payload.choreId !== ref.choreId)) throw new Error('同じ家事の中で担当を対応付けてください。');
+      const remaining = state.assessment.view.assignmentsAt(at)?.facts.filter((fact) => fact.payload.choreId === ref.choreId && !sources.has(fact.sourceRequestId ?? fact.operationId)) ?? [];
+      const reviews = context.assignmentReviewRequestIds.filter((id) => !sources.has(id));
+      return [...cancellations, draft('assignmentRule', null, { choreId: ref.choreId, memberIds, fromOccurrenceId: context.frame.id, fromAnchorDate: ref.anchorDate,
+        scope, fixed, ruleVersion: ref.ruleVersion, basisRuleIds: [...new Set(remaining.map((fact) => fact.operationId))].sort(),
+        ...(reviews.length ? { reviewedAssignmentRequestIds: reviews } : {}) })];
+    }),
+    requestAssignment: (ref: V2RoundReference, input: { memberIds: string[]; start: 'this' | 'next'; scope: 'once' | 'from'; fixed: boolean } & V2AssignmentEdit) => repository.commitCurrent(async (state) => {
       const current = frame(state, ref); const anchor = input.start === 'next' ? addDays(ref.anchorDate, current.config.intervalDays) : ref.anchorDate;
       const at = point(state); const context = frame(state, { ...ref, anchorDate: anchor });
+      expectAssignment(context, input);
       const reference = v2AssignmentRequestReference(state.assessment.view, at, context.frame,
         context.config.policy.completion === 'perMember' ? context.subjectUserIds : [], state.assessment.formalRulesAt(at));
       const proposal = { requesterUserId: scope.userId, choreId: ref.choreId, anchorDate: anchor, occurrenceId: context.frame.id,
         ruleVersion: context.config.ruleVersion, originalMemberIds: context.assigneeIds, originalAssignmentIds: context.assignmentOperationIds,
         originalClaimOperationIds: context.claims.activeClaimOperationIds, memberIds: [...input.memberIds].sort(), scope: input.scope, fixed: input.fixed, ...reference };
-      if (state.assessment.assignmentRequests.some((request) => ['pendingDelivery', 'awaiting'].includes(request.kind)
+      if (state.assessment.assignmentRequests.some((request) => !request.cancelled && ['pendingDelivery', 'awaiting'].includes(request.kind)
         && canonicalJson(request.proposal) === canonicalJson(proposal))) return [];
       return [draft('assignmentRequest', null, proposal)];
     }),
     answerAssignment: (requestId: string, decision: 'approve' | 'reject') => repository.commitCurrent(async (state) => {
       const request = state.assessment.assignmentRequests.find((entry) => entry.requestId === requestId); if (!request) throw new Error('担当変更の申請を同期してください。');
+      if (request.cancelled) throw new Error('この担当変更の指定は解除されています。現在の担当を確認してください。');
       if (request.kind === (decision === 'approve' ? 'approved' : 'rejected')) return [];
       if (!['pendingDelivery', 'awaiting'].includes(request.kind)) throw new Error('この申請は締め切られています。現在の担当を確認してください。');
       const previous = state.assessment.view.ofType('assignmentDecision').find((op) => op.payload.requestId === requestId && op.authorDeviceId === scope.deviceId);

@@ -217,6 +217,9 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     assert.equal((await owner.repository.readState()).assessment.assignmentRequests[0].kind, 'awaiting');
     await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
     assert.equal((await owner.repository.readState()).assessment.assignmentRequests[0].kind, 'approved'); assert.equal(hash(owner), hash(member));
+    await ownerActions.remapAssignments([assignmentRequest.operationId], { ...assignmentRef, anchorDate: addLocalDays(anchorDate, 7) }, ['owner'], 'once', false);
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    assert.equal((await member.repository.readState()).assessment.assignmentRequests[0].cancelled, true); assert.equal(hash(owner), hash(member));
     const sequence = (await getDocFromServer(f.root)).data().headSequence;
     const approvedSnapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
       next, f.identity, key2, 'approved-requests-v2', sequence, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
@@ -247,6 +250,7 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     for (const d of [member, restored]) assert.deepEqual(buildV2CommonPlan(await d.repository.readState(), planRange), ownerPlan);
     const planned = ownerPlan.occurrences.find((entry) => entry.id === requestOccurrence);
     assert.equal(planned.subjects[0].suggestedDate, addLocalDays(anchorDate, 5));
+    assert.deepEqual(ownerPlan.occurrences.find((entry) => entry.choreId === 'approval-floor' && entry.anchorDate === addLocalDays(anchorDate, 7)).assigneeIds, ['owner']);
     for (const d of [owner, member, restored]) assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
   } finally { owner.connection.close(); member.connection.close(); restored?.connection.close(); }
 });

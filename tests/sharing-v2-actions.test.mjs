@@ -248,3 +248,61 @@ test('v2 repository persists an explicit confirmed-receipt context so a pending 
     assert.equal(plan.history[0].schedule.commonWindow.end, '2026-10-29'); assert.equal(plan.occurrences[0].windowEnd, '2026-10-31'); assert.equal(plan.occurrences[0].completed, true);
   } finally { d.connection.close(); }
 });
+
+test('v2 pending assignment requests survive unrelated configuration edits and ambiguous future mapping cannot be silently discarded', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    const initial = seeds(); initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['member']); await owner.repository.commit(initial);
+    const a = actions(owner); const b = actions(member);
+    const send = async (facts, cursor) => { for (const d of [owner, member]) {
+      const old = await readSharingCheckpoint(d.database, groupId); await applyReceivedSharedFacts(d.database, groupId, facts, String(cursor), d.repository.project, old.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    } };
+    await send(await loadSharedFacts(owner.database, groupId), 4);
+    const [req] = await b.requestAssignment(ref, { memberIds: [], start: 'next', scope: 'once', fixed: false });
+    await send((await loadSharedFacts(member.database, groupId)).filter((fact) => fact.operation.operationId === req.operationId), 5);
+    await assert.rejects(a.patchChoreConfiguration('floor', 1, { intervalDays: 3 }, '2026-10-27'), { code: 'sharing/v2-assignment-remap-required' });
+    assert.equal((await a.readPlan(range)).occurrences[0].configuration.ruleVersion, 1);
+    await a.patchChoreConfiguration('floor', 1, { windowAfterDays: 4 }, '2026-10-27'); await a.answerAssignment(req.operationId, 'approve');
+    await send(await loadSharedFacts(owner.database, groupId), 8);
+    let plan = await a.readPlan(range); assert.deepEqual(plan.occurrences.find((round) => round.anchorDate === '2026-11-03').assigneeIds, []);
+    assert.equal(plan.occurrences[0].configuration.assignmentSourceVersion, 1);
+    await a.patchChoreConfiguration('floor', 2, { intervalDays: 1 }, '2026-10-27'); plan = await a.readPlan(range);
+    assert.deepEqual(plan.occurrences.find((round) => round.anchorDate === '2026-11-03').assigneeIds, []); assert.equal(plan.occurrences[0].configuration.assignmentSourceVersion, 2);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 assignment remapping atomically cancels its original source and assigns an explicit new round without deleting history or partially committing an invalid replacement', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d); const oldRef = { ...ref, anchorDate: '2026-11-03' };
+    const [source] = await a.resolveAssignment(oldRef, ['member'], 'once', true);
+    await a.configureChore('floor', { policy: chorePolicyFromPreset('common'), anchorDate: '2026-10-28', intervalDays: 4, windowBeforeDays: 2, windowAfterDays: 2,
+      effectiveFrom: '2026-10-28', active: true }, { expectedRuleVersion: 1, preserveAssignments: false });
+    const target = { ...ref, anchorDate: '2026-11-01', ruleVersion: 2 }; let plan = await a.readPlan(range);
+    assert.ok(plan.issues.some((issue) => issue.kind === 'oneOffAssignmentMappingNeedsReview'));
+    const count = (await listSharingOutbox(d.database, groupId)).length;
+    await assert.rejects(a.remapAssignments([source.operationId], target, ['unknown'], 'once', false), { code: 'sharing/v2-authority-denied' });
+    assert.equal((await listSharingOutbox(d.database, groupId)).length, count); assert.equal((await d.repository.readState()).assessment.view.ofType('assignmentCancel').length, 0);
+    const changes = await a.remapAssignments([source.operationId], target, ['owner'], 'once', false);
+    assert.deepEqual(changes.map((op) => op.entityType), ['assignmentCancel', 'assignmentRule']);
+    plan = await a.readPlan(range); assert.equal(plan.issues.some((issue) => issue.kind === 'oneOffAssignmentMappingNeedsReview'), false);
+    assert.deepEqual(plan.occurrences.find((round) => round.anchorDate === target.anchorDate).assigneeIds, ['owner']);
+    assert.equal((await a.remapAssignments([source.operationId], target, ['member'], 'once', true)).length, 0);
+    assert.ok((await d.repository.readState()).assessment.view.byId(source.operationId));
+  } finally { d.connection.close(); }
+});
+
+test('v2 assignment forms retain displayed assignment bases and refuse stale assignment, resolution, request and checkbox changes', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d); await a.assign(ref, ['owner'], 'this', true);
+    const displayed = (await a.readPlan(range)).occurrences[0]; const edit = { expectedAssignmentIds: displayed.assignmentOperationIds, expectedConflictIds: displayed.assignmentConflictIds };
+    await a.assign(ref, ['member'], 'this', true, edit); const count = (await listSharingOutbox(d.database, groupId)).length;
+    for (const change of [() => a.assign(ref, ['owner'], 'this', false, edit), () => a.resolveAssignment(ref, ['owner'], 'once', false, edit),
+      () => a.requestAssignment(ref, { memberIds: [], start: 'this', scope: 'once', fixed: false, ...edit }), () => a.complete(ref, { expectedAssigneeIds: ['owner'] })]) {
+      await assert.rejects(change(), { code: 'sharing/v2-stale-settings' });
+    }
+    assert.equal((await listSharingOutbox(d.database, groupId)).length, count); const plan = await a.readPlan(range);
+    assert.deepEqual(plan.occurrences[0].assigneeIds, ['member']); assert.equal(plan.history.length, 0);
+  } finally { d.connection.close(); }
+});

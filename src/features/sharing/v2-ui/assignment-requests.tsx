@@ -15,10 +15,10 @@ export function V2AssignmentRequests({ model, actions, busy, run }: { model: V2G
     return <Card key={request.requestId}><SectionHeading title={chore?.name ?? '家事の担当変更'} />
       <Text style={styles.body}>{v2TargetLabel({ precision: 'date', date: request.proposal.anchorDate }, model.plan.timeZone)}{request.proposal.scope === 'from' ? 'から' : 'の回だけ'}</Text>
       <Text style={styles.body}>申請する担当：{request.proposal.memberIds.length ? request.proposal.memberIds.map(nameOf).join('・') : '担当なし'}</Text>
-      <Text style={styles.caption}>{labels[request.kind]}{answerPending ? ' · 回答の送信待ち' : ''}</Text>
+      <Text style={styles.caption}>{labels[request.kind]}{request.cancelled ? ' · 担当指定は解除済み' : answerPending ? ' · 回答の送信待ち' : ''}</Text>
       {request.kind === 'pendingDelivery' || request.kind === 'awaiting' ? <Text style={styles.caption}>正式な担当は承認の受付確認まで変わりません。</Text> : null}
       {request.deadline.kind === 'open' ? <Text style={styles.caption}>回答期限：{v2TargetLabel({ precision: 'instant', at: new Date(request.deadline.expiresAt).toISOString() }, model.plan.timeZone)}</Text> : null}
-      {admin && ['pendingDelivery', 'awaiting'].includes(request.kind) ? <View style={styles.buttons}>
+      {admin && !request.cancelled && ['pendingDelivery', 'awaiting'].includes(request.kind) ? <View style={styles.buttons}>
         <AppButton title="担当変更を承認" compact disabled={busy || answerPending} onPress={() => run(() => actions.answerAssignment(request.requestId, 'approve'))} />
         <AppButton title="担当変更を拒否" compact variant="secondary" disabled={busy || answerPending} onPress={() => run(() => actions.answerAssignment(request.requestId, 'reject'))} />
       </View> : null}

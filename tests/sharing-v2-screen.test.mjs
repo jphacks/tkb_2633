@@ -147,4 +147,13 @@ for (const platform of ['ios', 'android']) {
       assert.deepEqual(props.model.plan.occurrences[0].assigneeIds, []); assert.equal(props.model.plan.planHash, (await memberCard.controller.readModel(range)).plan.planHash);
     } finally { owner.connection.close(); member.connection.close(); }
   });
+  test(`${platform} v2 a stale checkbox cannot silently register substitution after another member became the assignee`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const stale = await card(d, platform); await stale.controller.actions.assign(ref, ['member'], 'this', true);
+      const checkbox = stale.screen.nodes().find((node) => node.props.accessibilityRole === 'checkbox');
+      await assert.rejects(checkbox.props.onPress(), { code: 'sharing/v2-stale-settings' });
+      const current = await stale.controller.readModel(range); assert.equal(current.plan.history.length, 0); assert.deepEqual(current.plan.occurrences[0].assigneeIds, ['member']);
+    } finally { d.connection.close(); }
+  });
 }

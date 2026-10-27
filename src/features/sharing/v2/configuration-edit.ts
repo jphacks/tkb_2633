@@ -52,7 +52,7 @@ export function prepareV2ConfigurationEdit(input: { view: V2HistoryView; archive
     const lineage = v2AssignmentLineage(input.view, input.at, input.choreId, old);
     const assignments = (input.view.assignmentsAt(input.at)?.facts ?? input.view.observed(input.view.ofType('assignmentRule'), input.at))
       .filter((op) => op.payload.choreId === input.choreId && lineage.has(op.payload.ruleVersion as number));
-    const pendingRequests = (input.view.assignmentsAt(input.at)?.requests ?? []).filter((request) => ['pendingDelivery', 'awaiting', 'conflict'].includes(request.kind)
+    const pendingRequests = (input.view.assignmentsAt(input.at)?.requests ?? []).filter((request) => !request.cancelled && ['pendingDelivery', 'awaiting', 'conflict'].includes(request.kind)
       && request.proposal.choreId === input.choreId && lineage.has(request.proposal.ruleVersion));
     const samePolicy = canonicalJson(old.policy) === canonicalJson(configuration.policy);
     if ((assignments.length || pendingRequests.length) && input.preserveAssignments !== false) {

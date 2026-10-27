@@ -8,10 +8,10 @@ import type { LocalDate } from '../../../domain/shared/types.ts';
 import { isSharedTimeZone } from '../group-clock.ts';
 
 export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 'assignmentRule', 'claim', 'claimRelease',
-  'claimResolution', 'assignmentRequest', 'assignmentDecision', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
+  'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-8';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-9';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -103,6 +103,7 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   if (entityType === 'assignmentDecision') {
     record(payload, ['requestId', 'decision']); assertSharedIdentifier(payload.requestId); choice(payload.decision, ['approve', 'reject']); return;
   }
+  if (entityType === 'assignmentCancel') { record(payload, ['targetOperationIds']); ids(payload.targetOperationIds, false); return; }
   if (entityType === 'claim' || entityType === 'claimRelease') {
     record(payload, entityType === 'claim' ? ['choreId', 'anchorDate', 'occurrenceId', 'userId'] : ['choreId', 'anchorDate', 'occurrenceId', 'userId', 'targetOperationIds']);
     assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId);

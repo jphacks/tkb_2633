@@ -236,3 +236,19 @@ test('v2 clock rules bind their authoring group timezone and repeating rules req
   assert.equal(materializeRuleTarget(once, occurrence, 'America/New_York').kind, 'target');
   fact.payload.configuration.timeZoneAtCreation = 'UTC'; assert.throws(() => f.validate(), /group timezone/);
 });
+
+test('v2 administrator counteroffers cannot bypass another fixed shared chore for the same assignee', async () => {
+  const f = await fixture('assigned', ['a']);
+  const original = time('2026-10-27T01:00:00Z', '2026-10-27T02:00:00Z');
+  const locked = f.designation('owner', original, { adminLocked: true });
+  f.make('owner', 'chore', { name: '別の家事', enabled: true }, { entityId: 'second' });
+  f.make('owner', 'chorePolicy', { configuration: config('assigned', ['a']) }, { entityId: 'second' });
+  f.designation('owner', time('2026-10-27T03:00:00Z', '2026-10-27T04:00:00Z'), { choreId: 'second' });
+  const request = f.make('a', 'changeRequest', { requesterUserId: 'a', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
+    originalDesignationId: locked.operationId, original, proposed: time('2026-10-27T05:00:00Z', '2026-10-27T06:00:00Z'), proposedMode: 'fixed',
+    proposedOptions: { strict: false, adminLocked: true, forbidEarlier: false }, selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' });
+  f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'counteroffer', target: time('2026-10-27T03:30:00Z', '2026-10-27T04:30:00Z'), referenceDecisionId: null });
+  assert.throws(() => f.validate(), /Counteroffer conflicts/); f.operations.pop();
+  f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'counteroffer', target: time('2026-10-27T04:00:00Z', '2026-10-27T05:00:00Z'), referenceDecisionId: null });
+  f.validate();
+});

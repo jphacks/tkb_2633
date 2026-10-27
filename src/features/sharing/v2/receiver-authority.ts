@@ -57,6 +57,7 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   evidence?: V2ReceiptEvidence) {
   const pending = new Set(replica.pendingOperationIds); const rejected: V2RejectedOperation[] = [];
   const provisionalOperationIds: string[] = [];
+  const receiptEpochs = new Map<string, VerifiedSharedRoster>();
   const unconfirmedFrontier = new Map<string, number>();
   const dots = new Map(replica.operations.map((op) => [`${op.authorDeviceId}:${op.deviceSequence}`, op]));
   const { view, accept } = createV2AuthorityIndex(replica.groupId);
@@ -69,16 +70,17 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
         if (receipt) {
           const fact = evidence.facts.get(op.operationId); if (!fact) throw new Error('Missing receipt author proof');
           const receivedEpoch = bindV2ServerReceipt(receipt, fact, archive);
+          receiptEpochs.set(op.operationId, receivedEpoch);
           for (const [device, count] of Object.entries(op.context)) {
             if (count <= (migration?.frontier[device] ?? 0)) continue;
             const ancestor = dots.get(`${device}:${count}`); const prior = ancestor && evidence.receipts.get(ancestor.operationId);
             if (!prior) throw new V2AwaitingReceiptError('Fetch the observed fact receipt before applying its descendant');
             if (prior.uploadSequence >= receipt.uploadSequence) throw new V2ReceiptCausalityError('A future server event cannot retroactively establish observed authority');
           }
-          authorizeV2Operation(view, archive, op, migration); authorizeV2Operation(view, archive, op, migration, receivedEpoch);
+          authorizeV2Operation(view, archive, op, migration, undefined, receiptEpochs); authorizeV2Operation(view, archive, op, migration, receivedEpoch, receiptEpochs);
         } else if (evidence.pendingLocalIds.has(op.operationId)) {
-          authorizeV2Operation(view, archive, op, migration);
-          authorizeV2Operation(view, archive, op, migration, archive.at(-1)); provisionalOperationIds.push(op.operationId);
+          authorizeV2Operation(view, archive, op, migration, undefined, receiptEpochs);
+          authorizeV2Operation(view, archive, op, migration, archive.at(-1), receiptEpochs); provisionalOperationIds.push(op.operationId);
         } else throw new V2AwaitingReceiptError('Fetch the immutable receipt before applying this received fact');
       } else authorizeV2Operation(view, archive, op, migration);
       accept(op);
@@ -90,18 +92,21 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
         : error instanceof Error ? error : new Error('Invalid business authority') });
     }
   }
-  return { view, rejected, provisionalOperationIds };
+  return { view, rejected, provisionalOperationIds, receiptEpochs: receiptEpochs as ReadonlyMap<string, VerifiedSharedRoster> };
 }
 
 export function validateV2DeliveredAuthority(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], fact: AuthenticatedSharedOperation,
-  receipt: V2ServerReceipt, migration?: VerifiedLegacyMigration): void {
+  receipt: V2ServerReceipt, migration?: VerifiedLegacyMigration, requestEpochs?: ReadonlyMap<string, VerifiedSharedRoster>): void {
   const receivedEpoch = bindV2ServerReceipt(receipt, fact, archive);
-  authorizeV2Operation(view, archive, fact.operation, migration);
-  authorizeV2Operation(view, archive, fact.operation, migration, receivedEpoch);
+  if (fact.operation.entityType === 'requestDecision' && !requestEpochs?.has(fact.operation.payload.requestId as string)) {
+    throw new V2AwaitingReceiptError('The request delivery epoch is required before validating its decision');
+  }
+  authorizeV2Operation(view, archive, fact.operation, migration, undefined, requestEpochs);
+  authorizeV2Operation(view, archive, fact.operation, migration, receivedEpoch, requestEpochs);
 }
 
 function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, migration?: VerifiedLegacyMigration,
-  receivedEpoch?: VerifiedSharedRoster): void {
+  receivedEpoch?: VerifiedSharedRoster, requestEpochs?: ReadonlyMap<string, VerifiedSharedRoster>): void {
   const originalEpoch = rosterAtOperation(archive, op); const epoch = receivedEpoch ?? originalEpoch; const admin = epoch.body.ownerUserId === op.authorUserId;
   sharedAuthorIdentity(originalEpoch, op.authorUserId, op.authorDeviceId, op.keyVersion);
   if (receivedEpoch) sharedAuthorIdentity(receivedEpoch, op.authorUserId, op.authorDeviceId, op.keyVersion);
@@ -154,7 +159,7 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   }
   if (op.entityType === 'requestDecision') {
     const request = observedTarget(view, op, op.payload.requestId as string, 'changeRequest');
-    const context = dateContext(view, archive, request);
+    const context = dateContext(view, archive, request, undefined, undefined, requestEpochs?.get(request.operationId));
     if (op.payload.decision === 'acceptCounteroffer') {
       const proposed = observedTarget(view, op, op.payload.referenceDecisionId as string, 'requestDecision');
       const recipients = context.permission.kind === 'approvalRequired' && context.permission.approver === 'assignee'
@@ -167,7 +172,11 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
       requireAuthority(admin && !(permission.kind === 'approvalRequired' && permission.approver === 'assignee')
         || permission.kind === 'approvalRequired' && permission.approver === 'assignee' && context.assigneeIds.includes(op.authorUserId), 'Decision requires the designated approver');
     }
-    if (op.payload.target !== null) validateDesignationTarget(context.mode, op.payload.target as unknown as DateTarget);
+    if (op.payload.target !== null) {
+      const target = validateDesignationTarget(context.mode, op.payload.target as unknown as DateTarget);
+      requireAuthority(!fixedConflictAtOperation(view, archive, op, target, context.assigneeIds,
+        { occurrenceId: context.frame.id, subjectUserId: request.payload.subjectUserId as string | null }), 'Counteroffer conflicts with a fixed shared assignment');
+    }
     return;
   }
   if (op.entityType === 'designationCancel') {
@@ -232,8 +241,8 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   throw new V2AuthorityError('Unsupported v2 business operation');
 }
 
-export function dateChangeContextAtOperation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation) {
-  return dateContext(view, archive, op);
+export function dateChangeContextAtOperation(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, receivedEpoch?: VerifiedSharedRoster) {
+  return dateContext(view, archive, op, undefined, undefined, receivedEpoch);
 }
 function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster[], op: SharedOperation, rule?: ManualRule, proposedOverride?: DateTarget,
   receivedEpoch?: VerifiedSharedRoster) {

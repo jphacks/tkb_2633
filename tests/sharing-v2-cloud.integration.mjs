@@ -17,6 +17,8 @@ import { createV2Synchronizer } from '../src/features/sharing/v2/synchronizer.ts
 import { loadSharedFacts, loadSharedReplica, listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
 import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 import { v2OccurrenceId } from '../src/features/sharing/v2/occurrence-id.ts';
+import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
+import { addDays as addLocalDays } from '../src/domain/scheduling/local-date.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -135,6 +137,7 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
   const owner = device('owner', f.identity, f.cloud, new Map([[1, f.key]]));
   const memberCloud = createSharingCloud(environment.authenticatedContext('member').firestore(), 'member', () => 'member');
   const member = device('member', memberIdentity, memberCloud, new Map());
+  let restored;
   try {
     await initializeV2EventStore(owner.database, { groupId, userId: 'owner', householdId: 'local' });
     const change = (operationId, entityType, entityId, payload, operationType = 'patch') => ({ operationId, entityType, entityId, payload, operationType });
@@ -169,5 +172,45 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
       assert.deepEqual(JSON.parse(d.connection.prepare('SELECT rejected_json FROM sharing_v2_projection').get().rejected_json), []);
       assert.equal(d.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     }
-  } finally { owner.connection.close(); member.connection.close(); }
+    const anchorDate = sharedLocalDate(new Date(Date.now() + 7 * 86400000), 'Asia/Tokyo');
+    const requestOccurrence = v2OccurrenceId(groupId, 'approval-floor', anchorDate);
+    const day = (date) => ({ precision: 'date', date });
+    await owner.repository.commit([
+      change('approval-chore', 'chore', 'approval-floor', { name: '承認検査用の家事', enabled: true }),
+      change('approval-policy', 'chorePolicy', 'approval-floor', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate,
+        intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
+    ]);
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    const requests = (d) => JSON.parse(d.connection.prepare('SELECT request_states_json FROM sharing_v2_projection').get().request_states_json);
+    await member.repository.commit([change('date-request', 'changeRequest', 'date-request', {
+      requesterUserId: 'member', choreId: 'approval-floor', anchorDate, occurrenceId: requestOccurrence, subjectUserId: null,
+      originalDesignationId: null, original: day(anchorDate), proposed: day(addLocalDays(anchorDate, 3)), proposedMode: 'day',
+      proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false },
+      selector: { scope: 'once', occurrenceId: requestOccurrence, anchorDate }, extensionScope: 'once',
+    })]);
+    assert.equal(requests(member)[0].kind, 'pendingDelivery');
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
+    assert.equal(requests(owner)[0].kind, 'awaiting'); assert.deepEqual(requests(owner), requests(member));
+    await owner.repository.commit([change('date-counteroffer', 'requestDecision', 'date-counteroffer', {
+      requestId: 'date-request', decision: 'counteroffer', target: day(addLocalDays(anchorDate, 4)), referenceDecisionId: null,
+    })]);
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true });
+    assert.equal(requests(member)[0].kind, 'counteroffered'); assert.deepEqual(requests(member)[0].formal, day(anchorDate));
+    await member.repository.commit([change('date-consent', 'requestDecision', 'date-consent', {
+      requestId: 'date-request', decision: 'acceptCounteroffer', target: null, referenceDecisionId: 'date-counteroffer',
+    })]);
+    assert.equal(requests(member)[0].kind, 'counteroffered');
+    await member.sync.sync({ force: true }); await owner.sync.sync({ force: true });
+    assert.equal(requests(owner)[0].kind, 'approved'); assert.deepEqual(requests(owner)[0].formal, day(addLocalDays(anchorDate, 4)));
+    assert.deepEqual(requests(owner), requests(member)); assert.equal(hash(owner), hash(member));
+    const sequence = (await getDocFromServer(f.root)).data().headSequence;
+    const approvedSnapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
+      next, f.identity, key2, 'approved-requests-v2', sequence, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
+    await f.cloud.prepareSnapshot(approvedSnapshot, next); await f.cloud.publishSnapshot(approvedSnapshot.manifest, next);
+    restored = device('member', memberIdentity, memberCloud, new Map());
+    await initializeV2EventStore(restored.database, { groupId, userId: 'member', householdId: 'local' });
+    await restored.sync.sync({ force: true });
+    assert.deepEqual(requests(restored), requests(owner)); assert.equal(hash(restored), hash(owner));
+    for (const d of [owner, member, restored]) assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
+  } finally { owner.connection.close(); member.connection.close(); restored?.connection.close(); }
 });

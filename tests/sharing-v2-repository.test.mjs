@@ -13,6 +13,7 @@ import { v2OccurrenceId, v2DatePermissionId } from '../src/features/sharing/v2/o
 import { loadSharedFacts, loadSharedReplica, listSharingOutbox, applyReceivedSharedFacts, readSharingCheckpoint, applySharingSnapshot } from '../src/platform/storage/sharing-ledger.ts';
 import { createEncryptedSharedSnapshot, openEncryptedSharedSnapshot } from '../src/features/sharing/snapshots.ts';
 import { migrateLocalDatabase } from '../src/platform/storage/migrations.ts';
+import { withIsolatedSqliteTransaction } from '../src/platform/storage/isolated-transaction.ts';
 const { ensureLocalHousehold } = await import('../src/platform/storage/repository.ts');
 
 const groupId = 'v2-repository'; const scope = { groupId, userId: 'owner', householdId: 'group-local' };
@@ -206,5 +207,87 @@ test('v2 server order prevents predicted future grants from retroactively author
       logicalClock: 7, context: { [f.owner.deviceId]: 5, [f.member.deviceId]: 1 }, payload: { configuration: configuration('legitimate') } }, f.member);
     await applyReceivedSharedFacts(d.database, groupId, [legitimate], '7', d.repository.project, '6', now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor([legitimate])));
     assert.ok(d.state().accepted.includes('legitimate')); assert.ok(d.state().accepted.includes('future-grant'));
+  } finally { d.connection.close(); }
+});
+
+const requestDraft = (authorUserId = 'member') => draft('request-date', 'changeRequest', 'request-date', {
+  requesterUserId: authorUserId, choreId: 'floor', anchorDate: '2026-10-27', occurrenceId: v2OccurrenceId(groupId, 'floor', '2026-10-27'),
+  subjectUserId: null, originalDesignationId: null, original: { precision: 'date', date: '2026-10-27' }, proposed: { precision: 'date', date: '2026-10-30' },
+  proposedMode: 'day', proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false },
+  selector: { scope: 'once', occurrenceId: v2OccurrenceId(groupId, 'floor', '2026-10-27'), anchorDate: '2026-10-27' }, extensionScope: 'once',
+});
+const requestStates = (d) => JSON.parse(d.connection.prepare('SELECT request_states_json FROM sharing_v2_projection').get().request_states_json);
+async function receiveRequestFacts(d, facts, cursor, receipts) {
+  const checkpoint = await readSharingCheckpoint(d.database, groupId);
+  await applyReceivedSharedFacts(d.database, groupId, facts, String(cursor), d.repository.project, checkpoint.cursor,
+    now().getTime(), d.repository.evidenceForServerReceipts(receipts));
+}
+
+test('v2 request receipts atomically project pending and approved dates on two databases and survive restart and an encrypted snapshot', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member); const restored = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const initial = await loadSharedFacts(owner.database, groupId); const initialReceipts = receiptsFor(initial);
+    await receiveRequestFacts(owner, initial, 4, initialReceipts); await receiveRequestFacts(member, initial, 4, initialReceipts);
+    await member.repository.commit([requestDraft()]); const request = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.operationId === 'request-date');
+    assert.equal(requestStates(member)[0].kind, 'pendingDelivery');
+    const requestReceipt = { ...receiptsFor([request])[0], uploadSequence: 5 };
+    await receiveRequestFacts(owner, [request], 5, [requestReceipt]); await receiveRequestFacts(member, [request], 5, [requestReceipt]);
+    assert.equal(requestStates(owner)[0].kind, 'awaiting'); assert.deepEqual(requestStates(owner), requestStates(member));
+    await owner.repository.commit([draft('approve-date', 'requestDecision', 'approve-date', { requestId: 'request-date', decision: 'approve', target: null, referenceDecisionId: null })]);
+    assert.equal(requestStates(owner)[0].kind, 'awaiting'); assert.equal(requestStates(owner)[0].decisions[0].kind, 'pendingDelivery');
+    const approval = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === 'approve-date');
+    const approvalReceipt = { ...receiptsFor([approval])[0], uploadSequence: 6, receivedAtMs: now().getTime() + 1000 };
+    await receiveRequestFacts(owner, [approval], 6, [approvalReceipt]); await receiveRequestFacts(member, [approval], 6, [approvalReceipt]);
+    const confirmed = requestStates(owner); assert.equal(confirmed[0].kind, 'approved'); assert.deepEqual(confirmed[0].formal, { precision: 'date', date: '2026-10-30' });
+    assert.deepEqual(requestStates(member), confirmed); assert.deepEqual(member.state(), owner.state());
+    assert.equal((await listSharingOutbox(member.database, groupId)).length, 0); assert.equal((await listSharingOutbox(owner.database, groupId)).length, 0);
+    const restarted = createV2EventRepository(owner.database, { ...owner.options, now: () => new Date('2036-01-01T00:00:00Z') });
+    const replica = await loadSharedReplica(owner.database, groupId);
+    await withIsolatedSqliteTransaction(owner.database, (tx) => restarted.project(tx, replica)); assert.deepEqual(requestStates(owner), confirmed);
+    const resolve = (uid, device, version) => sharedAuthorIdentity(f.archive[version - 1], uid, device, version); const key = await crypto.randomBytes(32);
+    const encrypted = await createEncryptedSharedSnapshot(crypto, replica, await loadSharedFacts(owner.database, groupId), f.archive.at(-1), f.owner, key, 'request-snapshot', 6, resolve);
+    const opened = await openEncryptedSharedSnapshot(crypto, encrypted, key, f.archive.at(-1), resolve);
+    await applySharingSnapshot(restored.database, groupId, opened, restored.repository.project, null, now().getTime(),
+      restored.repository.evidenceForServerReceipts([...initialReceipts, requestReceipt, approvalReceipt]));
+    assert.deepEqual(requestStates(restored), confirmed); assert.deepEqual(restored.state(), owner.state());
+  } finally { owner.connection.close(); member.connection.close(); restored.connection.close(); }
+});
+test('v2 an offline approval delivered after expiry is retained and acknowledged without changing the formal date', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const initial = await loadSharedFacts(owner.database, groupId);
+    for (const d of [owner, member]) await applyReceivedSharedFacts(d.database, groupId, initial, '4', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(initial)));
+    await member.repository.commit([requestDraft()]); const request = (await loadSharedFacts(member.database, groupId)).find((fact) => fact.operation.operationId === 'request-date');
+    const requestReceipt = { ...receiptsFor([request])[0], uploadSequence: 5 };
+    await receiveRequestFacts(owner, [request], 5, [requestReceipt]);
+    const expiresAt = requestStates(owner)[0].deadline.expiresAt;
+    await owner.repository.commit([draft('late-approval', 'requestDecision', 'late-approval', { requestId: 'request-date', decision: 'approve', target: null, referenceDecisionId: null })]);
+    const approval = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === 'late-approval');
+    await receiveRequestFacts(owner, [approval], 6, [{ ...receiptsFor([approval])[0], uploadSequence: 6, receivedAtMs: expiresAt + 1 }]);
+    const state = requestStates(owner)[0]; assert.equal(state.kind, 'expired'); assert.deepEqual(state.formal, state.original);
+    assert.equal(state.decisions[0].kind, 'late'); assert.equal((await listSharingOutbox(owner.database, groupId)).length, 0);
+    assert.ok((await loadSharedFacts(owner.database, groupId)).some((fact) => fact.operation.operationId === 'late-approval'));
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+test('v2 an administrator request delivered after ownership transfer loses automatic approval and only its delivery-epoch administrator can approve', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const initial = await loadSharedFacts(d.database, groupId);
+    await applyReceivedSharedFacts(d.database, groupId, initial, '4', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(initial)));
+    await d.repository.commit([requestDraft('owner')]); const request = (await loadSharedFacts(d.database, groupId)).find((fact) => fact.operation.operationId === 'request-date');
+    assert.equal(requestStates(d)[0].kind, 'pendingDelivery');
+    f.archive.push(transferSharedOwnership(f.archive.at(-1), f.owner, { userId: 'member', deviceId: f.member.deviceId }));
+    const requestReceipt = { ...receiptsFor([request])[0], uploadSequence: 5, receivedKeyVersion: 3 };
+    await receiveRequestFacts(d, [request], 5, [requestReceipt]);
+    assert.equal(requestStates(d)[0].kind, 'awaiting', 'the author was an administrator at the click, but no longer at server acceptance');
+    const oldApproval = signSharedOperation({ schemaVersion: 2, operationId: 'former-owner-approval', groupId, authorUserId: 'owner', authorDeviceId: f.owner.deviceId,
+      deviceSequence: 6, logicalClock: 6, context: { [f.owner.deviceId]: 5 }, keyVersion: 2, recordedAt: now().toISOString(), entityType: 'requestDecision',
+      entityId: 'former-owner-approval', operationType: 'patch', payload: { requestId: 'request-date', decision: 'approve', target: null, referenceDecisionId: null } }, f.owner);
+    const newApproval = signSharedOperation({ ...oldApproval.operation, operationId: 'current-owner-approval', authorUserId: 'member', authorDeviceId: f.member.deviceId,
+      deviceSequence: 1, keyVersion: 3, entityId: 'current-owner-approval' }, f.member);
+    const receipts = [{ ...receiptsFor([oldApproval])[0], uploadSequence: 6, receivedKeyVersion: 3 }, { ...receiptsFor([newApproval])[0], uploadSequence: 7 }];
+    await receiveRequestFacts(d, [newApproval, oldApproval], 7, receipts);
+    assert.equal(requestStates(d)[0].kind, 'approved'); assert.deepEqual(d.state().rejected.map((entry) => entry.operationId), ['former-owner-approval']);
+    assert.equal(requestStates(d)[0].decisions[0].operationId, 'current-owner-approval');
   } finally { d.connection.close(); }
 });

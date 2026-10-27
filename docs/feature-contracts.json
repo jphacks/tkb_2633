@@ -1491,5 +1491,113 @@
         "name": "v2 clock rules bind their authoring group timezone and repeating rules request review after a timezone change"
       }
     ]
+  },
+  {
+    "feature": "sharing-v2-receipt-backed-request-state",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 requests keep their original formal date until independent request and decision receipts arrive"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 request expiry uses receipt time instead of the original offline click time and accepts exactly the boundary"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 requests at or inside one hour cannot become automatically approved when an offline request arrives late"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 automatic approval retains a receipt-backed audit fact and explicit deadline options without a fabricated decision"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 roommate requests require every affected assignee and do not accept an administrator self-approval"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 contradictory concurrent votes stay a conflict in every receive order and an explicit causal resolution can settle them"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 an accepted administrator counteroffer confirms once without asking that administrator a second time"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 counteroffer consent belongs to the actual affected member instead of its administrator or another requester"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 earlier counteroffers shorten the consent limit and later alternatives cannot extend the original request expiry"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 a causal answer after a completed request cannot silently reverse its accepted or rejected outcome"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 a concurrent replacement offer and acceptance expose review instead of selecting the last server upload"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 request decisions use the administrator at server receipt and retain independent original author binding"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 equivalent simultaneous approvals retain alternative compact proofs without choosing an arbitrary approving device"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 a different assignee veto rejects the request while contradictory votes by the same assignee require review"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 confirmation evidence cannot be vacuously true without a real positive operation dot"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 request state and civil date deadlines are identical under iOS and Android device timezone settings"
+      },
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 a long counteroffer history keeps every audit fact but only its causal current alternative without proof multiplication"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-request-sqlite-and-snapshot",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 request receipts atomically project pending and approved dates on two databases and survive restart and an encrypted snapshot"
+      },
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 an offline approval delivered after expiry is retained and acknowledged without changing the formal date"
+      },
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 an administrator request delivered after ownership transfer loses automatic approval and only its delivery-epoch administrator can approve"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-counteroffer-fixed-overlap",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-authority.test.mjs",
+        "name": "v2 administrator counteroffers cannot bypass another fixed shared chore for the same assignee"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-causal-maxima-compatibility",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-requests.test.mjs",
+        "name": "v2 causal maxima retain the pairwise semantics including duplicate facts and self context without quadratic pair scans"
+      }
+    ]
   }
 ]

@@ -1,4 +1,4 @@
-import { canonicalJson, causallyPrecedes } from '../operations.ts';
+import { canonicalJson } from '../operations.ts';
 import type { CausalStamp } from './model.ts';
 
 export function uniqueCausalFacts<T extends CausalStamp>(input: readonly T[]): T[] {
@@ -12,5 +12,14 @@ export function uniqueCausalFacts<T extends CausalStamp>(input: readonly T[]): T
 }
 export function maximalCausalFacts<T extends CausalStamp>(input: readonly T[]): T[] {
   const facts = uniqueCausalFacts(input);
-  return facts.filter((fact) => !facts.some((other) => fact !== other && causallyPrecedes(fact, other)));
+  const observed = new Map<string, { first: number; second: number; operationId: string }>();
+  for (const fact of facts) for (const [device, count] of Object.entries(fact.context)) {
+    const previous = observed.get(device);
+    if (!previous || count > previous.first) observed.set(device, { first: count, second: previous?.first ?? 0, operationId: fact.operationId });
+    else previous.second = Math.max(previous.second, count);
+  }
+  return facts.filter((fact) => {
+    const frontier = observed.get(fact.authorDeviceId);
+    return !frontier || (frontier.operationId === fact.operationId ? frontier.second : frontier.first) < fact.deviceSequence;
+  });
 }

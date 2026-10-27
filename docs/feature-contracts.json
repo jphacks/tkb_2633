@@ -1390,7 +1390,7 @@
       { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver retains simultaneous claims as provisional and refuses a later claim that observed another assignee" },
       { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver checks release targets and administrator resolution without deleting the provisional work history" },
       { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver requires locked date changes to be requests and prevents another member from approving an administrator-only change" },
-      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver preserves roommate assignee consent and accepts only the requester acceptance of the administrator counteroffer" },
+      { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver preserves roommate assignee consent and requires the affected member to accept an administrator counteroffer" },
       { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver targets undo to the observed completion and recorder or historical administrator" },
       { "file": "tests/sharing-v2-authority.test.mjs", "name": "v2 receiver keeps each-member identities separate and rejects forged subjects, performers and original assignments" }
     ]
@@ -1411,6 +1411,28 @@
       { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 receive quarantines signed unauthorized edits and their forged privileges but commits independent changes and receive position" },
       { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 projection rejects missing or altered original author proofs before changing derived state or cursor" },
       { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 encrypted snapshots retain original proofs, restore authority state and refuse manifest protocol tampering" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-server-receipt-proof",
+    "tests": [
+      { "file": "tests/sharing-v2-receipts.test.mjs", "name": "v2 receipts require a committed Firestore timestamp and bind hidden author proof rather than device clock or a plaintext hash" },
+      { "file": "tests/sharing-v2-receipts.test.mjs", "name": "v2 receipts cannot change group, operation, author, proof digest or original membership generation" },
+      { "file": "tests/sharing-v2-receipts.test.mjs", "name": "v2 receipt storage is idempotent, immutable and transaction-local with rollback on any conflicting evidence" },
+      { "file": "tests/sharing-v2-receipts.test.mjs", "name": "v2 server delivery checks ownership at original operation and receipt while preserving previously accepted historical authority" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-confirmed-snapshot-outbox",
+    "tests": [
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 snapshots without independent server receipts remain unconfirmed and cannot acknowledge the original offline outbox" },
+      { "file": "tests/sharing-v2-repository.test.mjs", "name": "v2 delayed former-administrator edits lose privileged effects at server delivery without erasing original facts or ordinary member edits" }
+    ]
+  },
+  {
+    "feature": "sharing-v2-receipt-cloud-security-regression",
+    "tests": [
+      { "file": "tests/sharing-v2-receipts.test.mjs", "name": "v2 immutable receipt security cases remain wired into the CI Firestore emulator command alongside all v1 cases" }
     ]
   }
 ]

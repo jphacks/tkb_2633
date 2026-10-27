@@ -6,8 +6,9 @@ import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { initializeV2EventStore, createV2EventRepository } from '../src/platform/storage/sharing-v2-events.ts';
 import { initializeSharedProjection } from '../src/platform/storage/sharing-projection.ts';
 import { createDeviceIdentity, signSharedOperation } from '../src/features/sharing/crypto.ts';
-import { createSharedRoster, approveSharedDevice, sharedAuthorIdentity } from '../src/features/sharing/roster.ts';
+import { createSharedRoster, approveSharedDevice, sharedAuthorIdentity, transferSharedOwnership } from '../src/features/sharing/roster.ts';
 import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
+import { v2AuthorProofDigest } from '../src/features/sharing/v2/server-receipts.ts';
 import { loadSharedFacts, loadSharedReplica, listSharingOutbox, applyReceivedSharedFacts, readSharingCheckpoint, applySharingSnapshot } from '../src/platform/storage/sharing-ledger.ts';
 import { createEncryptedSharedSnapshot, openEncryptedSharedSnapshot } from '../src/features/sharing/snapshots.ts';
 import { migrateLocalDatabase } from '../src/platform/storage/migrations.ts';
@@ -15,6 +16,10 @@ const { ensureLocalHousehold } = await import('../src/platform/storage/repositor
 
 const groupId = 'v2-repository'; const scope = { groupId, userId: 'owner', householdId: 'group-local' };
 const now = () => new Date('2026-10-27T01:00:00Z');
+const receiptsFor = (facts) => facts.map((fact) => ({ schemaVersion: 2, groupId,
+  operationId: fact.operation.operationId, authorUserId: fact.operation.authorUserId, authorDeviceId: fact.operation.authorDeviceId,
+  receivedKeyVersion: fact.operation.keyVersion, uploadSequence: fact.operation.logicalClock,
+  authorProofDigest: v2AuthorProofDigest(fact), receivedAtMs: now().getTime() }));
 const draft = (operationId, entityType, entityId, payload) => ({ operationId, entityType, entityId, payload, operationType: 'patch' });
 const seeds = () => [
   draft('policy', 'groupPolicy', 'policy', { configuration: createGroupPolicy('family') }),
@@ -41,7 +46,9 @@ async function fixture() {
 test('v2 repository binds a fresh database and preserves every personal table and v1 workspace without in-place conversion', async () => {
   const personal = createDatabase(); const legacy = createDatabase();
   const dump = (h) => ({ schema: h.connection.prepare("SELECT name, sql FROM sqlite_master ORDER BY name").all(),
-    version: h.connection.prepare('PRAGMA user_version').get(), rows: h.connection.prepare('SELECT * FROM chore_definitions ORDER BY id').all() });
+    version: h.connection.prepare('PRAGMA user_version').get(),
+    rows: Object.fromEntries(h.connection.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
+      .map(({ name }) => [name, h.connection.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all().sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))])) });
   try {
     await migrateLocalDatabase(personal.database); await ensureLocalHousehold(personal.database);
     const before = dump(personal); await assert.rejects(initializeV2EventStore(personal.database, scope), /個人DB/); assert.deepEqual(dump(personal), before);
@@ -71,7 +78,8 @@ test('v2 receive quarantines signed unauthorized edits and their forged privileg
   const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
   try {
     await owner.repository.commit(seeds()); const initial = await loadSharedFacts(owner.database, groupId);
-    await applyReceivedSharedFacts(member.database, groupId, initial, '4', member.repository.project, null);
+    await applyReceivedSharedFacts(member.database, groupId, initial, '4', member.repository.project, null,
+      now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(initial)));
     const before = member.state();
     await assert.rejects(member.repository.commit([draft('forbidden-local', 'chore', 'floor', { enabled: false })]), { code: 'sharing/v2-authority-denied' });
     assert.deepEqual(member.state(), before); assert.equal((await listSharingOutbox(member.database, groupId)).length, 0);
@@ -82,7 +90,8 @@ test('v2 receive quarantines signed unauthorized edits and their forged privileg
       entityType: 'chore', entityId: 'floor', operationType: 'patch', payload: { enabled: false } }, f.member);
     const independent = signSharedOperation({ ...invalid.operation, operationId: 'independent-remote', deviceSequence: 2,
       logicalClock: 6, context: { ...context, [f.member.deviceId]: 1 }, payload: { instructions: ['ほこりを取る'] } }, f.member);
-    await applyReceivedSharedFacts(owner.database, groupId, [independent, invalid], '6', owner.repository.project, null);
+    await applyReceivedSharedFacts(owner.database, groupId, [independent, invalid], '6', owner.repository.project, null,
+      now().getTime(), owner.repository.evidenceForServerReceipts(receiptsFor([...initial, invalid, independent])));
     assert.deepEqual(owner.state().rejected.map((op) => op.operationId), ['forbidden-remote']);
     assert.ok(owner.state().accepted.includes('independent-remote')); assert.equal((await readSharingCheckpoint(owner.database, groupId)).sequence, 6);
     assert.ok((await loadSharedReplica(owner.database, groupId)).operations.some((op) => op.operationId === 'forbidden-remote'));
@@ -93,10 +102,12 @@ test('v2 projection rejects missing or altered original author proofs before cha
   try {
     await owner.repository.commit(seeds()); const facts = await loadSharedFacts(owner.database, groupId);
     const tampered = facts.map((fact, index) => index === 2 ? { ...fact, authorSignature: '0'.repeat(128) } : fact);
-    await assert.rejects(applyReceivedSharedFacts(receiver.database, groupId, tampered, '4', receiver.repository.project, null));
+    await assert.rejects(applyReceivedSharedFacts(receiver.database, groupId, tampered, '4', receiver.repository.project, null,
+      now().getTime(), receiver.repository.evidenceForServerReceipts(receiptsFor(facts))));
     assert.equal(receiver.state(), null); assert.equal((await readSharingCheckpoint(receiver.database, groupId)).cursor, null);
     assert.equal((await loadSharedReplica(receiver.database, groupId)).operations.length, 0);
-    await applyReceivedSharedFacts(receiver.database, groupId, facts, '4', receiver.repository.project, null);
+    await applyReceivedSharedFacts(receiver.database, groupId, facts, '4', receiver.repository.project, null,
+      now().getTime(), receiver.repository.evidenceForServerReceipts(receiptsFor(facts)));
     assert.equal(receiver.state().accepted.length, 4);
   } finally { owner.connection.close(); receiver.connection.close(); }
 });
@@ -105,15 +116,58 @@ test('v2 encrypted snapshots retain original proofs, restore authority state and
   try {
     await owner.repository.commit(seeds()); const replica = await loadSharedReplica(owner.database, groupId); const facts = await loadSharedFacts(owner.database, groupId);
     const resolve = (uid, device, version) => sharedAuthorIdentity(f.archive[version - 1], uid, device, version); const key = await crypto.randomBytes(32);
+    const receipts = receiptsFor(facts);
+    await applyReceivedSharedFacts(owner.database, groupId, facts, '4', owner.repository.project, null,
+      now().getTime(), owner.repository.evidenceForServerReceipts(receipts));
     const encrypted = await createEncryptedSharedSnapshot(crypto, replica, facts, f.archive.at(-1), f.owner, key, 'snapshot-v2', 4, resolve);
     assert.equal(encrypted.manifest.body.schemaVersion, 2);
     const opened = await openEncryptedSharedSnapshot(crypto, encrypted, key, f.archive.at(-1), resolve);
     const erased = { ...opened, base: { ...opened.base, operations: opened.base.operations.slice(1) }, facts: opened.facts.slice(1) };
-    await assert.rejects(applySharingSnapshot(receiver.database, groupId, erased, receiver.repository.project, null), /cannot discard/);
+    await assert.rejects(applySharingSnapshot(receiver.database, groupId, erased, receiver.repository.project, null,
+      now().getTime(), receiver.repository.evidenceForServerReceipts(receipts)), /cannot discard/);
     assert.equal(receiver.state(), null); assert.equal((await readSharingCheckpoint(receiver.database, groupId)).cursor, null);
-    await applySharingSnapshot(receiver.database, groupId, opened, receiver.repository.project, null);
+    await applySharingSnapshot(receiver.database, groupId, opened, receiver.repository.project, null,
+      now().getTime(), receiver.repository.evidenceForServerReceipts(receipts));
     assert.deepEqual(receiver.state(), owner.state()); assert.deepEqual((await loadSharedReplica(receiver.database, groupId)).frontier, replica.frontier);
     await assert.rejects(openEncryptedSharedSnapshot(crypto, { ...encrypted, manifest: { ...encrypted.manifest, body: { ...encrypted.manifest.body, schemaVersion: 1 } } },
       key, f.archive.at(-1), resolve), /manifest/);
   } finally { owner.connection.close(); receiver.connection.close(); }
+});
+test('v2 snapshots without independent server receipts remain unconfirmed and cannot acknowledge the original offline outbox', async () => {
+  const f = await fixture(); const owner = await f.device(); const receiver = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const replica = await loadSharedReplica(owner.database, groupId); const facts = await loadSharedFacts(owner.database, groupId);
+    const key = await crypto.randomBytes(32); const resolve = (uid, device, version) => sharedAuthorIdentity(f.archive[version - 1], uid, device, version);
+    const sealed = await createEncryptedSharedSnapshot(crypto, replica, facts, f.archive.at(-1), f.owner, key, 'without-receipts', 4, resolve);
+    const snapshot = await openEncryptedSharedSnapshot(crypto, sealed, key, f.archive.at(-1), resolve);
+    await applySharingSnapshot(receiver.database, groupId, snapshot, receiver.repository.project, null,
+      now().getTime(), receiver.repository.evidenceForServerReceipts([]));
+    assert.equal(receiver.state().accepted.length, 0); assert.equal(receiver.state().rejected.length, 4);
+    assert.ok(receiver.state().rejected.every((entry) => entry.kind === 'unconfirmed'));
+    await applySharingSnapshot(owner.database, groupId, snapshot, owner.repository.project, null,
+      now().getTime(), owner.repository.evidenceForServerReceipts([]));
+    assert.equal((await listSharingOutbox(owner.database, groupId)).length, 4);
+    assert.equal(owner.connection.prepare('SELECT COUNT(*) AS count FROM sharing_operations').get().count, 4);
+    await applyReceivedSharedFacts(owner.database, groupId, facts, '4', owner.repository.project, '4',
+      now().getTime(), owner.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    assert.equal((await listSharingOutbox(owner.database, groupId)).length, 0);
+    assert.equal(JSON.parse(owner.connection.prepare('SELECT provisional_ids_json FROM sharing_v2_projection').get().provisional_ids_json).length, 0);
+  } finally { owner.connection.close(); receiver.connection.close(); }
+});
+test('v2 delayed former-administrator edits lose privileged effects at server delivery without erasing original facts or ordinary member edits', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const original = await loadSharedFacts(d.database, groupId);
+    await d.repository.commit([draft('old-admin-policy', 'groupPolicy', 'policy', { configuration: createGroupPolicy('roommates') }),
+      draft('ordinary-name', 'chore', 'floor', { name: '説明の訂正' })]);
+    const facts = await loadSharedFacts(d.database, groupId);
+    f.archive.push(transferSharedOwnership(f.archive.at(-1), f.owner, { userId: 'member', deviceId: f.member.deviceId }));
+    const receipts = receiptsFor(facts).map((receipt) => ['old-admin-policy', 'ordinary-name'].includes(receipt.operationId)
+      ? { ...receipt, receivedKeyVersion: 3 } : receipt);
+    await applyReceivedSharedFacts(d.database, groupId, facts, '6', d.repository.project, null,
+      now().getTime(), d.repository.evidenceForServerReceipts(receipts));
+    assert.deepEqual(d.state().rejected.map((entry) => entry.operationId), ['old-admin-policy']);
+    assert.ok(d.state().accepted.includes('ordinary-name')); assert.ok(d.state().accepted.includes(original[0].operation.operationId));
+    assert.equal((await loadSharedFacts(d.database, groupId)).length, 6); assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
+  } finally { d.connection.close(); }
 });

@@ -54,7 +54,7 @@ export function evaluateDateChangePermission(input: DateChangeContext): DateChan
   if (input.beforeWindow && !input.policy.allowBeforeWindow && !grant.changeBeforeWindow || input.afterWindow && !input.policy.allowAfterWindow) {
     return { kind: 'approvalRequired', approver: 'admin', reason: 'outsideWindow' };
   }
-  if (!owns && !grant.changeOthers) return { kind: 'approvalRequired', approver: 'assignee', reason: 'othersAssignment' };
+  if (!owns && !grant.changeOthers) return { kind: 'approvalRequired', approver: input.assigneeIds.length ? 'assignee' : 'admin', reason: 'othersAssignment' };
   if (input.adminLocked) {
     return canAutomaticallyApprove ? { kind: 'allowed', needsRequest: true, automaticallyApproved: true }
       : { kind: 'approvalRequired', approver: 'admin', reason: 'fixed' };

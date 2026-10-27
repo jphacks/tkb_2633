@@ -2,6 +2,7 @@ import { assertJsonRecord, assertSharedIdentifier, canonicalJson } from './opera
 import { sharedRosterDigest, validateSharedRoster } from './roster.ts';
 import type { SignedSharedRoster, VerifiedSharedRoster } from './roster.ts';
 import type { EncryptedSharedOperation } from './crypto.ts';
+import type { V2ServerReceipt } from './v2/server-receipts.ts';
 
 export interface SharedCloudGroup {
   schemaVersion: 1 | 2;
@@ -25,6 +26,8 @@ export interface SharedCloudEvent {
   uploadSequence: number;
   envelope: EncryptedSharedOperation;
   envelopeJson: string;
+  authorProofDigest?: string;
+  serverReceipt?: V2ServerReceipt;
 }
 export class SharingAccessError extends Error { readonly code = 'sharing/access-denied'; }
 export class SharingKeyVersionError extends Error { readonly code = 'sharing/key-version-changed'; }
@@ -94,13 +97,17 @@ export function parseSharedCloudEvent(operationId: string, value: unknown, group
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid cloud event');
   const { createdAt: _created, ...fields } = value as Record<string, unknown>;
   assertJsonRecord(fields);
-  if (Object.keys(fields).sort().join(',') !== 'authorDeviceId,authorUserId,envelopeJson,keyVersion,schemaVersion,uploadSequence'
+  const expectedFields = fields.schemaVersion === 2 ? 'authorDeviceId,authorProofDigest,authorUserId,envelopeJson,keyVersion,schemaVersion,uploadSequence'
+    : 'authorDeviceId,authorUserId,envelopeJson,keyVersion,schemaVersion,uploadSequence';
+  if (Object.keys(fields).sort().join(',') !== expectedFields
     || ![1, 2].includes(fields.schemaVersion as number) || !Number.isSafeInteger(fields.uploadSequence) || (fields.uploadSequence as number) < 1
     || typeof fields.envelopeJson !== 'string' || fields.envelopeJson.length > 800_000) throw new Error('Invalid cloud event metadata');
+  if (fields.schemaVersion === 2 && (typeof fields.authorProofDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(fields.authorProofDigest))) throw new Error('Missing authenticated v2 receipt commitment');
   const envelope = JSON.parse(fields.envelopeJson) as EncryptedSharedOperation;
   if (envelope.schemaVersion !== fields.schemaVersion || envelope.operationId !== operationId || envelope.groupId !== groupId || envelope.authorUserId !== fields.authorUserId
     || envelope.authorDeviceId !== fields.authorDeviceId || envelope.keyVersion !== fields.keyVersion) throw new Error('Cloud event header mismatch');
-  return { operationId, uploadSequence: fields.uploadSequence as number, envelope, envelopeJson: fields.envelopeJson };
+  return { operationId, uploadSequence: fields.uploadSequence as number, envelope, envelopeJson: fields.envelopeJson,
+    ...(fields.schemaVersion === 2 ? { authorProofDigest: fields.authorProofDigest as string } : {}) };
 }
 
 export function sameSharedRoster(left: SignedSharedRoster, right: SignedSharedRoster): boolean {

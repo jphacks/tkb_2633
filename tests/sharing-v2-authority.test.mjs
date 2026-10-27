@@ -112,7 +112,7 @@ test('v2 receiver requires locked date changes to be requests and prevents anoth
   f.make('b', 'requestDecision', decision); assert.throws(() => f.validate(), /designated approver/); f.operations.pop();
   f.make('owner', 'requestDecision', decision); f.validate();
 });
-test('v2 receiver preserves roommate assignee consent and accepts only the requester acceptance of the administrator counteroffer', async () => {
+test('v2 receiver preserves roommate assignee consent and requires the affected member to accept an administrator counteroffer', async () => {
   const f = await fixture('assigned', ['a'], createGroupPolicy('roommates'));
   f.designation('owner', date('2026-10-28')); assert.throws(() => f.validate(), /requires a signed request/); f.operations.pop();
   const request = f.make('owner', 'changeRequest', { requesterUserId: 'owner', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
@@ -122,8 +122,10 @@ test('v2 receiver preserves roommate assignee consent and accepts only the reque
   f.make('a', 'requestDecision', { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null }); f.validate();
   const proposal = f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'counteroffer', target: date('2026-10-29'), referenceDecisionId: null });
   f.make('b', 'requestDecision', { requestId: request.operationId, decision: 'acceptCounteroffer', target: null, referenceDecisionId: proposal.operationId });
-  assert.throws(() => f.validate(), /Only the requester/); f.operations.pop();
-  f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'acceptCounteroffer', target: null, referenceDecisionId: proposal.operationId }); f.validate();
+  assert.throws(() => f.validate(), /affected consenting member/); f.operations.pop();
+  f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'acceptCounteroffer', target: null, referenceDecisionId: proposal.operationId });
+  assert.throws(() => f.validate(), /affected consenting member/); f.operations.pop();
+  f.make('a', 'requestDecision', { requestId: request.operationId, decision: 'acceptCounteroffer', target: null, referenceDecisionId: proposal.operationId }); f.validate();
 });
 test('v2 receiver targets undo to the observed completion and recorder or historical administrator', async () => {
   const f = await fixture(); const work = f.complete('a'); f.validate();

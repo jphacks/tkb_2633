@@ -18,6 +18,10 @@ export interface SharedLocalAuthor {
   schemaVersion?: 1 | 2; recordedAt?: string;
   now?: () => Date;
 }
+export interface SharedLedgerEvidence {
+  record: (transaction: SQLiteDatabase) => Promise<boolean>;
+  acknowledge?: (transaction: SQLiteDatabase, operation: SharedOperation) => Promise<boolean>;
+}
 const tails = new WeakMap<SQLiteDatabase, Promise<unknown>>();
 
 /** Shared ledger operations serialize on their own connection; never wrap a personal repository transaction. */
@@ -190,6 +194,7 @@ export function applyReceivedSharedOperations(
   db: SQLiteDatabase, groupId: string, input: readonly SharedOperation[], cursor: string,
   apply: (db: SQLiteDatabase, replica: SharedReplica) => Promise<void>, now = Date.now(),
   proofs?: ReadonlyMap<string, string>, expectedCursor?: string | null,
+  evidence?: SharedLedgerEvidence,
 ): Promise<SharedReplica> {
   if (input.length > 100) return Promise.reject(new Error('Shared receive batch exceeds 100'));
   const operations = input.map((op) => validateSharedOperation(op, groupId));
@@ -200,15 +205,20 @@ export function applyReceivedSharedOperations(
         const old = await db.getFirstAsync<{ cursor: string }>('SELECT cursor FROM sharing_cursors WHERE group_id = ?', groupId);
         if ((old?.cursor ?? null) !== expectedCursor) throw new Error('Shared receive position changed concurrently');
       }
-      let changed = false;
+      let changed = await evidence?.record(db) ?? false;
       const base = (await loadSnapshotInside(db, groupId))?.base;
       for (const op of operations) {
         if (op.deviceSequence <= (base?.frontier[op.authorDeviceId] ?? 0)) {
           // Validates old ID/dot receipts, but never resurrects a compacted edit.
-          buildSharedReplica(groupId, [op], base); continue;
+          buildSharedReplica(groupId, [op], base);
+          if (proofs?.has(op.operationId) && evidence?.acknowledge && await evidence.acknowledge(db, op)) {
+            await db.runAsync('DELETE FROM sharing_outbox WHERE operation_id=?', op.operationId);
+            await db.runAsync('DELETE FROM sharing_operations WHERE operation_id=?', op.operationId);
+          }
+          continue;
         }
         changed = (await insertOperation(db, op, proofs?.get(op.operationId))) || changed;
-        if (proofs?.has(op.operationId)) await db.runAsync('DELETE FROM sharing_outbox WHERE operation_id = ?', op.operationId);
+        if (proofs?.has(op.operationId) && (!evidence?.acknowledge || await evidence.acknowledge(db, op))) await db.runAsync('DELETE FROM sharing_outbox WHERE operation_id = ?', op.operationId);
       }
       result = await loadReplicaInside(db, groupId);
       if (changed) await apply(db, result);
@@ -264,9 +274,9 @@ export function deferSharingUpload(db: SQLiteDatabase, operationId: string, now:
 
 export function applyReceivedSharedFacts(db: SQLiteDatabase, groupId: string, facts: readonly AuthenticatedSharedOperation[],
   cursor: string, apply: (transaction: SQLiteDatabase, replica: SharedReplica) => Promise<void>, expectedCursor: string | null,
-  now = Date.now()): Promise<SharedReplica> {
+  now = Date.now(), evidence?: SharedLedgerEvidence): Promise<SharedReplica> {
   return applyReceivedSharedOperations(db, groupId, facts.map((fact) => fact.operation), cursor, apply, now,
-    new Map(facts.map((fact) => [fact.operation.operationId, fact.authorSignature])), expectedCursor);
+    new Map(facts.map((fact) => [fact.operation.operationId, fact.authorSignature])), expectedCursor, evidence);
 }
 
 /** Persist the original proof independently of the current transport-key envelope. */
@@ -325,7 +335,7 @@ export function readSharingCheckpoint(db: SQLiteDatabase, groupId: string): Prom
 /** A newer authenticated snapshot acknowledges observed dots and keeps all still-offline edits. */
 export function applySharingSnapshot(db: SQLiteDatabase, groupId: string, snapshot: VerifiedSharedSnapshot,
   apply: (transaction: SQLiteDatabase, replica: SharedReplica) => Promise<void>, expectedCursor: string | null,
-  now = Date.now()): Promise<SharedReplica> {
+  now = Date.now(), evidence?: SharedLedgerEvidence): Promise<SharedReplica> {
   if (snapshot.base.groupId !== groupId || !Number.isSafeInteger(snapshot.throughSequence) || snapshot.throughSequence < 0) return Promise.reject(new Error('Invalid received snapshot'));
   return serial(db, async () => {
     let result!: SharedReplica;
@@ -339,10 +349,21 @@ export function applySharingSnapshot(db: SQLiteDatabase, groupId: string, snapsh
       await db.runAsync(`INSERT INTO sharing_snapshot_state (group_id, snapshot_id, through_sequence, snapshot_json) VALUES (?, ?, ?, ?)
         ON CONFLICT(group_id) DO UPDATE SET snapshot_id=excluded.snapshot_id, through_sequence=excluded.through_sequence, snapshot_json=excluded.snapshot_json`,
       groupId, snapshot.snapshotId, snapshot.throughSequence, JSON.stringify(snapshot));
+      await evidence?.record(db);
       for (const [device, sequence] of Object.entries(snapshot.base.frontier)) {
-        await db.runAsync(`DELETE FROM sharing_outbox WHERE operation_id IN
+        if (evidence?.acknowledge) {
+          const rows = await db.getAllAsync<{ operation_json: string }>('SELECT operation_json FROM sharing_operations WHERE group_id=? AND author_device_id=? AND device_sequence<=?', groupId, device, sequence);
+          for (const row of rows) {
+            const operation = validateSharedOperation(JSON.parse(row.operation_json), groupId);
+            if (!await evidence.acknowledge(db, operation)) continue;
+            await db.runAsync('DELETE FROM sharing_outbox WHERE operation_id=?', operation.operationId);
+            await db.runAsync('DELETE FROM sharing_operations WHERE operation_id=?', operation.operationId);
+          }
+        } else {
+          await db.runAsync(`DELETE FROM sharing_outbox WHERE operation_id IN
           (SELECT operation_id FROM sharing_operations WHERE group_id = ? AND author_device_id = ? AND device_sequence <= ?)`, groupId, device, sequence);
-        await db.runAsync('DELETE FROM sharing_operations WHERE group_id = ? AND author_device_id = ? AND device_sequence <= ?', groupId, device, sequence);
+          await db.runAsync('DELETE FROM sharing_operations WHERE group_id = ? AND author_device_id = ? AND device_sequence <= ?', groupId, device, sequence);
+        }
       }
       await apply(db, result);
       await db.runAsync(`INSERT INTO sharing_cursors (group_id, cursor, last_successful_sync_at) VALUES (?, ?, ?)

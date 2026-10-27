@@ -75,7 +75,7 @@ test('v2 encryption authenticates the business schema and preserves original sig
   assert.throws(() => parseSharedCloudEvent(value.operationId, { schemaVersion: 1, authorUserId: 'owner', authorDeviceId: identity.deviceId,
     keyVersion: 1, uploadSequence: 1, envelopeJson: JSON.stringify(encrypted) }, groupId));
   assert.equal(parseSharedCloudEvent(value.operationId, { schemaVersion: 2, authorUserId: 'owner', authorDeviceId: identity.deviceId,
-    keyVersion: 1, uploadSequence: 1, envelopeJson: JSON.stringify(encrypted) }, groupId).envelope.schemaVersion, 2);
+    keyVersion: 1, uploadSequence: 1, authorProofDigest: 'a'.repeat(64), envelopeJson: JSON.stringify(encrypted) }, groupId).envelope.schemaVersion, 2);
 });
 test('v2 signed roster upgrades preserve every approved device, rotate epochs and cannot downgrade or hide behind schema1 metadata', async () => {
   const owner = await createDeviceIdentity(crypto); const member = await createDeviceIdentity(crypto);

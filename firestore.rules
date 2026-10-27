@@ -14,7 +14,7 @@ service cloud.firestore {
       return g.keys().hasOnly(['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds', 'deviceOwners',
         'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
         'headSequence', 'lastOperationId', 'snapshotId', 'snapshotThroughSequence', 'createdAt', 'updatedAt'])
-        && g.schemaVersion == 1 && safeId(g.ownerUserId) && safeId(g.ownerDeviceId)
+        && g.schemaVersion in [1, 2] && safeId(g.ownerUserId) && safeId(g.ownerDeviceId)
         && g.memberIds is list && g.memberIds.size() <= 16 && g.memberIds.toSet().size() == g.memberIds.size()
         && g.deviceOwners is map && g.deviceOwners.size() <= 64
         && g.deviceOwners.values().toSet().hasOnly(g.memberIds)
@@ -38,6 +38,14 @@ service cloud.firestore {
     function ownerForWrite(groupId) {
       return exists(groupPath(groupId)) ? ownerOf(group(groupId)) : ownerOf(afterGroup(groupId));
     }
+    function validProofDigest(value) { return value is string && value.matches('^[a-f0-9]{64}$'); }
+    function receiptMatchesEvent(groupId, operationId, event) {
+      let receipt = getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/receipts/$(operationId)).data;
+      return receipt.schemaVersion == 2 && receipt.authorUserId == event.authorUserId
+        && receipt.authorDeviceId == event.authorDeviceId && receipt.keyVersion == event.keyVersion
+        && receipt.uploadSequence == event.uploadSequence && receipt.authorProofDigest == event.authorProofDigest
+        && receipt.createdAt == event.createdAt;
+    }
 
     match /sharingGroups/{groupId} {
       allow get: if memberOf(resource.data);
@@ -59,12 +67,19 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.uploadSequence == request.resource.data.headSequence
           && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.authorUserId == request.auth.uid)
         || (ownerOf(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerUserId', 'ownerDeviceId', 'memberIds',
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds',
             'deviceOwners', 'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
             'snapshotId', 'snapshotThroughSequence', 'updatedAt'])
           && request.resource.data.keyVersion == resource.data.keyVersion + 1
           && request.resource.data.revokedUserIds == [] && !request.resource.data.rotationRequired
           && rosterWritten(groupId, request.resource.data)
+          && (request.resource.data.schemaVersion == resource.data.schemaVersion
+            || (resource.data.schemaVersion == 1 && request.resource.data.schemaVersion == 2
+              && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.ownerDeviceId == resource.data.ownerDeviceId
+              && request.resource.data.memberIds == resource.data.memberIds && request.resource.data.deviceOwners == resource.data.deviceOwners
+              && request.resource.data.snapshotId != resource.data.snapshotId
+              && request.resource.data.snapshotThroughSequence == resource.data.headSequence
+              && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion))
           && ((request.resource.data.snapshotId == resource.data.snapshotId && request.resource.data.snapshotThroughSequence == resource.data.snapshotThroughSequence)
             || (request.resource.data.snapshotThroughSequence == resource.data.headSequence
               && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion
@@ -95,8 +110,13 @@ service cloud.firestore {
         allow read: if memberOf(group(groupId));
         allow create: if memberOf(group(groupId)) && !group(groupId).rotationRequired
           && safeId(operationId)
-          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'envelopeJson', 'createdAt'])
-          && request.resource.data.schemaVersion == 1 && request.resource.data.authorUserId == request.auth.uid
+          && request.resource.data.schemaVersion == group(groupId).schemaVersion && request.resource.data.authorUserId == request.auth.uid
+          && (request.resource.data.schemaVersion == 1
+            ? request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'envelopeJson', 'createdAt'])
+            : request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'envelopeJson', 'authorProofDigest', 'createdAt'])
+              && validProofDigest(request.resource.data.authorProofDigest)
+              && !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/receipts/$(operationId))
+              && receiptMatchesEvent(groupId, operationId, request.resource.data))
           && group(groupId).deviceOwners[request.resource.data.authorDeviceId] == request.auth.uid
           && request.resource.data.keyVersion == group(groupId).keyVersion
           && request.resource.data.envelopeJson is string && request.resource.data.envelopeJson.size() <= 800000
@@ -105,6 +125,22 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time;
         allow update: if false;
         allow delete: if ownerOf(group(groupId)) && resource.data.uploadSequence <= group(groupId).snapshotThroughSequence;
+      }
+      match /receipts/{operationId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if memberOf(group(groupId)) && group(groupId).schemaVersion == 2 && !group(groupId).rotationRequired
+          && safeId(operationId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'authorProofDigest', 'createdAt'])
+          && request.resource.data.schemaVersion == 2 && request.resource.data.authorUserId == request.auth.uid
+          && group(groupId).deviceOwners[request.resource.data.authorDeviceId] == request.auth.uid
+          && request.resource.data.keyVersion == group(groupId).keyVersion
+          && validProofDigest(request.resource.data.authorProofDigest) && request.resource.data.createdAt == request.time
+          && request.resource.data.uploadSequence == group(groupId).headSequence + 1
+          && !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(operationId))
+          && afterGroup(groupId).headSequence == request.resource.data.uploadSequence && afterGroup(groupId).lastOperationId == operationId
+          && receiptMatchesEvent(groupId, operationId,
+            getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(operationId)).data);
+        allow update, delete: if false;
       }
       match /keyEnvelopes/{keyId} {
         allow read: if memberOf(group(groupId)) && resource.data.userId == request.auth.uid;

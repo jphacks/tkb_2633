@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { createWidgetCompletionSync } = await import('../src/features/widgets/widget-completion-sync.ts');
+const { createPlannerRefreshController } = await import('../src/features/planner/refresh-controller.ts');
 
 function fixture(overrides = {}) {
   const entries = ['one', 'two'].map((id) => ({ id, choreId: id, windowStart: '2026-10-24', windowEnd: '2026-10-24' }));
@@ -73,4 +74,42 @@ test('a completion saved by another caller is reloaded before acknowledging the 
   });
   assert.equal((await synchronize()).snapshot.completions.length, 1);
   assert.equal(loads, 2);
+});
+
+test('cancelling a queued planner refresh preserves durable widget actions for foreground recovery', async () => {
+  const entry = { id: 'one', choreId: 'one', windowStart: '2026-10-24', windowEnd: '2026-10-24' };
+  const pending = new Set(['one']);
+  const completions = [];
+  let saves = 0;
+  const synchronize = createWidgetCompletionSync({
+    async pendingIds() { return [...pending]; },
+    async load() { return { scheduleEntries: [entry], completions: [...completions] }; },
+    async complete(saved) {
+      saves += 1;
+      completions.push({ id: 'done', choreId: saved.choreId, outcome: 'completed', scheduleEntryId: saved.id });
+      return true;
+    },
+    publish() { assert.fail('the refresh controller owns native publication'); },
+  });
+  const controller = createPlannerRefreshController({
+    load: (ids) => synchronize(ids, { publish: false }),
+    weather: async () => null,
+    publish(snapshot, canPublishWidget) {
+      assert.equal(canPublishWidget, true);
+      assert.equal(snapshot.completions.length, 1, 'acknowledge only after the local completion is saved');
+      pending.clear();
+    },
+  });
+  const cancelled = controller.refresh({ widgetCompletionIds: ['one'] });
+  controller.invalidate();
+  await cancelled;
+  assert.equal(saves, 0);
+  assert.deepEqual([...pending], ['one']);
+
+  // A foreground resume has no transient callback IDs; the native queue is the source of truth.
+  await controller.refresh({ force: true });
+  assert.equal(saves, 1);
+  assert.equal(pending.size, 0);
+  await controller.refresh({ force: true });
+  assert.equal(saves, 1, 'a later refresh must not duplicate the recovered completion');
 });

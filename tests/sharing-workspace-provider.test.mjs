@@ -43,3 +43,70 @@ for (const [platform, name] of [
   } finally { disposeForeground?.(); disposeBoot?.(); }
   assert.equal(unsubscribed, 1);
 });
+
+for (const [platform, groupIds, name] of [
+  ['ios', ['broken', 'healthy'], 'ios backgrounding during a failed listener setup never opens subsequent workspaces'],
+  ['android', ['broken', 'healthy'], 'android backgrounding during a failed listener setup never opens subsequent workspaces'],
+  ['ios', ['broken'], 'ios backgrounding during the last failed listener setup never starts periodic recovery'],
+  ['android', ['broken'], 'android backgrounding during the last failed listener setup never starts periodic recovery'],
+]) test(name, async () => {
+  const effects = [], opened = []; let appStateListener, recoveries = 0;
+  const groups = groupIds.map((groupId) => ({ userId: 'owner', groupId, status: 'active' }));
+  const appState = { currentState: 'active', addEventListener: (_event, listener) => { appStateListener = listener; return { remove() {} }; } };
+  const screen = screenHarness('src/hooks/use-workspace.tsx', { platform, exportName: 'WorkspaceProvider', effect: (callback) => effects.push(callback),
+    mocks: {
+      '@/components/planner-ui': {}, '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
+      './use-planner-data': { usePlannerData: () => ({ database: {} }) },
+      '@/platform/storage/repository': { drainPlannerDatabaseOperations: async () => {} },
+      '@/platform/sharing/auth': { observeSharingUser: () => () => {} }, 'react-native': { AppState: appState },
+      '@/platform/sharing/workspaces': {
+        readSharingSelection: async () => null, hasSharingSessionEnabled: async () => true,
+        sharingSessionUser: async () => ({ uid: 'owner' }), knownSharingWorkspaces: async () => groups,
+        openSharedWorkspace: async (group) => {
+          opened.push(group.groupId);
+          if (group.groupId === 'broken') { appState.currentState = 'background'; appStateListener('background'); throw new Error('DB open interrupted'); }
+          return { watch: () => () => {} };
+        },
+        subscribeSharingChanges: () => () => {}, syncKnownSharingWorkspaces: async () => { recoveries++; },
+      },
+    } });
+  const disposeBoot = effects[0](); let disposeForeground;
+  try {
+    await screen.flush(); disposeForeground = effects.at(-1)(); await screen.flush();
+    assert.deepEqual(opened, ['broken']);
+    assert.equal(recoveries, 0, 'a failed final group must not start recovery after the app has backgrounded');
+  } finally { disposeForeground?.(); disposeBoot?.(); }
+});
+
+for (const [platform, name] of [
+  ['ios', 'ios one unreadable group does not disable healthy foreground listeners or periodic recovery'],
+  ['android', 'android one unreadable group does not disable healthy foreground listeners or periodic recovery'],
+]) test(name, async () => {
+  const effects = [], watches = []; let unsubscribed = 0, recoveries = 0;
+  const groups = ['broken', 'healthy'].map((groupId) => ({ userId: 'owner', groupId, status: 'active' }));
+  const appState = { currentState: 'active', addEventListener: () => ({ remove() {} }) };
+  const screen = screenHarness('src/hooks/use-workspace.tsx', { platform, exportName: 'WorkspaceProvider', effect: (callback) => effects.push(callback),
+    mocks: {
+      '@/components/planner-ui': {}, '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
+      './use-planner-data': { usePlannerData: () => ({ database: {} }) },
+      '@/platform/storage/repository': { drainPlannerDatabaseOperations: async () => {} },
+      '@/platform/sharing/auth': { observeSharingUser: () => () => {} },
+      'react-native': { AppState: appState },
+      '@/platform/sharing/workspaces': {
+        readSharingSelection: async () => null, hasSharingSessionEnabled: async () => true,
+        sharingSessionUser: async () => ({ uid: 'owner' }), knownSharingWorkspaces: async () => groups,
+        openSharedWorkspace: async (group) => {
+          if (group.groupId === 'broken') throw new Error('protected database cannot open');
+          return { watch: () => { watches.push(group.groupId); return () => { unsubscribed++; }; } };
+        },
+        subscribeSharingChanges: () => () => {}, syncKnownSharingWorkspaces: async () => { recoveries++; },
+      },
+    } });
+  const disposeBoot = effects[0](); let disposeForeground;
+  try {
+    await screen.flush(); disposeForeground = effects.at(-1)(); await screen.flush();
+    assert.deepEqual(watches, ['healthy']);
+    assert.equal(recoveries, 1, 'a failed group must not prevent the recovery coordinator from being started');
+  } finally { disposeForeground?.(); disposeBoot?.(); }
+  assert.equal(unsubscribed, 1);
+});

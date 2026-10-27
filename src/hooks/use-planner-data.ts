@@ -98,9 +98,13 @@ export function PlannerDataProvider({ children, databaseOverride }: { children: 
       subscription.remove();
       clearTimeout(midnightTimer);
       controller.invalidate();
-      const snapshot = controller.getSnapshot().snapshot;
-      if (shared && snapshot) void syncDailyHouseworkDigest(expoLocalNotificationGateway, { ...snapshot,
-        notificationScope: sharedGoogleNamespace(shared.userId, shared.groupId), settings: { ...snapshot.settings, notificationsEnabled: false } }).catch(() => undefined);
+      // Access revocation or a failed initial read can clear the snapshot before
+      // unmount. Cancellation needs only the scope, never a readable old group.
+      if (shared) void syncDailyHouseworkDigest(expoLocalNotificationGateway, {
+        notificationScope: sharedGoogleNamespace(shared.userId, shared.groupId),
+        scheduleEntries: [], chores: [], completions: [],
+        settings: { notificationHour: 9, notificationMinute: 0, notificationsEnabled: false, setupCompleted: false },
+      }).catch(() => undefined);
     };
   }, [controller, database, shared]);
 

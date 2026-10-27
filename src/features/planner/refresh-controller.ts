@@ -28,10 +28,11 @@ export function createPlannerRefreshController<Snapshot>(dependencies: {
     state = next;
     for (const listener of listeners) listener();
   };
-  const publish = (snapshot: Snapshot, canPublishWidget: boolean) => {
+  const publish = (snapshot: Snapshot, canPublishWidget: boolean, current: number) => {
     if (state.snapshot === snapshot && !state.loading && state.error === null && lastCanPublishWidget === canPublishWidget) return;
     lastCanPublishWidget = canPublishWidget;
     update({ snapshot, loading: false, error: null });
+    if (current !== revision) { lastCanPublishWidget = undefined; return; }
     // Native side effects never turn a successful database read into a screen failure.
     const failed = () => {
       if (state.snapshot === snapshot && lastCanPublishWidget === canPublishWidget) lastCanPublishWidget = undefined;
@@ -49,9 +50,10 @@ export function createPlannerRefreshController<Snapshot>(dependencies: {
       try {
         const result = await dependencies.load([...request.ids], request.force);
         if (current !== revision) continue;
-        publish(result.snapshot, result.canPublishWidget);
+        publish(result.snapshot, result.canPublishWidget, current);
+        if (current !== revision) continue;
         const weather = dependencies.weather(result.snapshot, () => current === revision).then((snapshot) => {
-          if (snapshot && current === revision) publish(snapshot, result.canPublishWidget);
+          if (snapshot && current === revision) publish(snapshot, result.canPublishWidget, current);
         }).catch((error: unknown) => {
           if (current === revision) update({ ...state, error: error instanceof Error ? error.message : '天気に合わせて予定を保存できませんでした' });
         });
@@ -80,6 +82,11 @@ export function createPlannerRefreshController<Snapshot>(dependencies: {
       requested.force ||= options.force === true || Boolean(options.widgetCompletionIds?.length);
       return schedule();
     },
-    invalidate() { revision += 1; },
+    invalidate() {
+      revision += 1;
+      // A deferred drain must not adopt the new revision for a request made
+      // before backgrounding/unmounting and recreate obsolete native outputs.
+      requested = null;
+    },
   };
 }

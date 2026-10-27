@@ -8,7 +8,7 @@ import type { SharedReplica } from '../../features/sharing/replica.ts';
 import type { DeviceSecretIdentity } from '../../features/sharing/crypto.ts';
 import { signSharedOperation } from '../../features/sharing/crypto.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
-import { sharedAuthorIdentity } from '../../features/sharing/roster.ts';
+import { sharedAuthorIdentity, sharedRosterDigest } from '../../features/sharing/roster.ts';
 import type { PlannerSnapshot } from './repository.ts';
 import { createLocalSharedOperations, loadSharedReplica } from './sharing-ledger.ts';
 import { cacheSharedScheduleIfCurrent, persistSharedProjection, readSharedPrivateSettings, sharedProjectionToken } from './sharing-projection.ts';
@@ -21,7 +21,7 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
   roster: () => VerifiedSharedRoster; makeId: () => string; now?: () => Date; afterCommit?: () => void; authorize?: () => void;
 }): SharedRepositoryAdapter & { project: (transaction: SQLiteDatabase, replica: SharedReplica) => Promise<void> } {
   const clock = options.now ?? (() => new Date());
-  let cached: { token: string; privateSettings: string; roster: VerifiedSharedRoster; snapshot: PlannerSnapshot } | undefined;
+  let cached: { token: string; privateSettings: string; rosterDigest: string; snapshot: PlannerSnapshot } | undefined;
   function build(replica: SharedReplica, now: Date, privateSettings?: Parameters<typeof buildSharedPlannerSnapshot>[1]['privateSettings']) {
     return buildSharedPlannerSnapshot(replica, { householdId: options.householdId, now, privateSettings,
       activeMemberIds: options.roster().body.members.map((member) => member.userId) });
@@ -35,14 +35,17 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
       options.authorize?.();
       const meta = await database.getFirstAsync<{ projection_token: string }>('SELECT projection_token FROM sharing_workspace_metadata WHERE singleton=1');
       const privateSettings = await readSharedPrivateSettings(database, options.householdId);
-      const privateSignature = JSON.stringify(privateSettings); const currentRoster = options.roster();
-      if (cached && cached.token === meta?.projection_token && cached.privateSettings === privateSignature && cached.roster === currentRoster
+      options.authorize?.();
+      const privateSignature = JSON.stringify(privateSettings); const rosterDigest = sharedRosterDigest(options.roster());
+      if (cached && cached.token === meta?.projection_token && cached.privateSettings === privateSignature && cached.rosterDigest === rosterDigest
         && cached.snapshot.today === sharedLocalDate(now, cached.snapshot.timeZone!)) return cached.snapshot;
       for (let attempt = 0; attempt < 4; attempt++) {
         const replica = await loadSharedReplica(database, options.groupId);
+        options.authorize?.();
         const snapshot = build(replica, now, privateSettings); const token = sharedProjectionToken(replica, snapshot);
         if (await cacheSharedScheduleIfCurrent(database, token, snapshot)) {
-          cached = { token, privateSettings: privateSignature, roster: currentRoster, snapshot }; return snapshot;
+          options.authorize?.();
+          cached = { token, privateSettings: privateSignature, rosterDigest, snapshot }; return snapshot;
         }
       }
       throw new Error('共有データが更新されています。もう一度開いてください。');
@@ -54,6 +57,9 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
       let result: unknown; const googleOrigins = new Set<string>();
       const operations = await createLocalSharedOperations(database, { groupId: options.groupId, userId: options.userId,
         deviceId: identity.deviceId, keyVersion: roster.body.keyVersion }, async (transaction, replica) => {
+        // Waiting for another SQLite writer may outlive the account/membership
+        // that authorized this call. Check again inside the actual transaction.
+        options.authorize?.();
         const now = clock(); const snapshot = build(replica, now);
         const context: SharedMutationContext = { replica, snapshot, userId: options.userId, now, makeId: options.makeId };
         if (kind !== 'importGoogleTaskChanges' && kind !== 'importGoogleTaskCompletions') {
@@ -82,7 +88,9 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
         }
         result = count; return drafts;
       }, async (transaction, replica) => {
+        options.authorize?.();
         await persistSharedProjection(transaction, replica, build(replica, clock()), { userId: options.userId, importedGoogleOccurrenceIds: googleOrigins });
+        options.authorize?.();
       }, (op) => signSharedOperation(op, identity).authorSignature);
       // Network errors belong to the delivery status, never to an already committed local edit.
       if (operations.length) options.afterCommit?.();

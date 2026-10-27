@@ -946,5 +946,136 @@
         "name": "Expo headless timer compatibility patch is idempotent for TypeScript and compiled registrations and rejects unsupported native lifecycles"
       }
     ]
+  },
+  {
+    "feature": "planner-refresh-lifecycle-cancellation",
+    "tests": [
+      {
+        "file": "tests/planner-refresh-controller.test.mjs",
+        "name": "invalidation before a queued refresh starts prevents reads and native output publication"
+      },
+      {
+        "file": "tests/planner-refresh-controller.test.mjs",
+        "name": "invalidation discards both an in-flight result and an older queued refresh without losing the next resume"
+      },
+      {
+        "file": "tests/planner-refresh-controller.test.mjs",
+        "name": "invalidation from a snapshot subscriber stops native publication and weather without suppressing a later same-snapshot resume"
+      },
+      {
+        "file": "tests/widget-completion-sync.test.mjs",
+        "name": "cancelling a queued planner refresh preserves durable widget actions for foreground recovery"
+      }
+    ]
+  },
+  {
+    "feature": "shared-reminders-without-readable-snapshot",
+    "tests": [
+      {
+        "file": "tests/planner-workspace-lifecycle.test.mjs",
+        "name": "ios leaving a shared planner cancels only its reminder namespace even when its snapshot is unavailable: no snapshot"
+      },
+      {
+        "file": "tests/planner-workspace-lifecycle.test.mjs",
+        "name": "android leaving a shared planner cancels only its reminder namespace even when its snapshot is unavailable: no snapshot"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-workspace-failure-and-budget-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "one unavailable shared database does not prevent later groups or the selected group reminders from syncing"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a private Google-state read failure is isolated to its group while the original error remains observable"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a shared worker does not start another Google phase after its time budget has already expired"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "ios one unreadable group does not disable healthy foreground listeners or periodic recovery"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "android one unreadable group does not disable healthy foreground listeners or periodic recovery"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "opening a shared database consumes the same worker budget instead of granting a fresh interval"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a database that finishes opening after the worker deadline does not start a cloud sync"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "ios backgrounding during a failed listener setup never opens subsequent workspaces"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "android backgrounding during a failed listener setup never opens subsequent workspaces"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "ios backgrounding during the last failed listener setup never starts periodic recovery"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "android backgrounding during the last failed listener setup never starts periodic recovery"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-failed-initialization-releases-connections",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "failed shared database initialization closes only its new handle and a retry can open a fresh connection"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "failed sharing registry initialization releases its handle before retrying instead of leaking connections"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-rejoin-generation-rejects-late-rosters",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a delayed roster result from an archived workspace cannot update a newly requested local generation"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-snapshot-reuses-identical-roster",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "revalidating an unchanged shared roster reuses the snapshot instead of repeating the full planner and native outputs"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-authorization-rechecked-at-commit",
+    "tests": [
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "an authorization change during a shared cache read cannot return the previously authorized snapshot"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "a local shared edit waiting for SQLite cannot commit after account or membership authorization is revoked"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "revocation during a shared projection rolls back both the local edit and its outbox atomically"
+      }
+    ]
   }
 ]

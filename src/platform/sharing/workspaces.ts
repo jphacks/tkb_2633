@@ -40,7 +40,9 @@ let registryPromise: Promise<SQLiteDatabase> | null = null;
 export function sharingRegistryDatabase(): Promise<SQLiteDatabase> {
   if (!registryPromise) {
     const pending = (async () => { const db = await openDatabaseAsync('sharing-index.db', { useNewConnection: true }, await sharingDatabaseDirectory());
-      await initializeSharingRegistry(db); return db; })(); registryPromise = pending;
+      try { await initializeSharingRegistry(db); return db; }
+      catch (error) { await db.closeAsync().catch(() => undefined); throw error; }
+    })(); registryPromise = pending;
     void pending.catch(() => { if (registryPromise === pending) registryPromise = null; });
   }
   return registryPromise;
@@ -108,126 +110,135 @@ async function buildWorkspace(selection: SharingSelection) {
     roster = verifySharedRosterArchive(anchor, record.rosterArchive).at(-1);
   }
   const database = await openSharingDatabase(userId, groupId, generation);
-  await initializeSharedProjection(database, { ...selection, householdId: LOCAL_HOUSEHOLD_ID }); await initializeSharingLedger(database);
-  const cloud = createSharingCloud(getSharingServices().firestore, userId, () => getSharingServices().auth.currentUser?.uid ?? null);
-  const assertGeneration = (current: SharingWorkspaceRecord) => { if (current.localGeneration !== generation) throw new SharingAccessError('再参加前のデータは読み取り専用で保持されています。'); };
-  const readRecord = async () => { const latest = await readSharingWorkspace(registry, userId, groupId); if (!latest) throw new Error('共有グループが見つかりません。'); assertGeneration(latest); record = latest; return latest; };
-  const update = async (change: (prior: SharingWorkspaceRecord) => SharingWorkspaceRecord) => { record = await updateSharingWorkspace(registry, userId, groupId, (prior) => { assertGeneration(prior); return change(prior); }); changed(selection); return record; };
-  let sync: (options?: { force?: boolean; budgetMs?: number }) => Promise<SharingSyncResult>;
-  let debounce: ReturnType<typeof setTimeout> | undefined;
-  const authorize = () => {
-    if (record?.lastErrorCode === 'sharing/scheduler-version-mismatch') throw new SharingSchedulerVersionError();
-    if (record && ['sharing/access-denied', 'permission-denied'].includes(record.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
-    if (getSharingServices().auth.currentUser?.uid !== userId || !record || !['active', 'creating'].includes(record.status)) throw new SharingAccessError('この共有グループは現在編集できません。');
-  };
-  const adapter = createSharedPlannerRepository(database, { ...selection, householdId: LOCAL_HOUSEHOLD_ID, identity, makeId: randomUUID,
-    roster: () => { if (!roster) throw new Error('参加承認と初回同期を完了してください。'); return roster; }, authorize,
-    afterCommit: () => { changed(selection); clearTimeout(debounce); debounce = setTimeout(() => { void sync().catch(() => undefined); }, 350); } });
-  // A process may stop after saving its create intent. Bootstrap IDs make this recovery idempotent.
-  if (record.status === 'creating' && record.creation) {
-    const creation = record.creation;
-    await createLocalSharedOperations(database, { groupId, userId, deviceId: identity.deviceId, keyVersion: 1 },
-      sharedGroupBootstrap({ groupId, ownerUserId: userId, ownerDisplayName: creation.ownerDisplayName, name: record.displayName,
-        timeZone: creation.timeZone, anchorDate: creation.anchorDate as Parameters<typeof sharedGroupBootstrap>[0]['anchorDate'] }),
-      adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature);
-  }
-  registerSharedRepositoryAdapter(database, adapter);
-  const deps: SharedSyncDependencies = { ...selection, database, identity, crypto: nativeSharingCrypto, cloud, readRecord,
-    saveArchive: async (archive) => {
-      const next = archive.at(-1)!;
-      record = await updateSharingWorkspace(registry, userId, groupId, (previous) => {
-        if ((previous.rosterArchive.at(-1)?.body.revision ?? 0) > next.body.revision) throw new Error('Membership changed concurrently');
-        return { ...previous, rosterArchive: archive };
-      }); roster = next;
-    },
-    readKey: (version) => loadSharingGroupKey(userId, groupId, version), saveKey: (version, bytes) => saveSharingGroupKey(userId, groupId, version, bytes),
-    project: adapter.project, serialized: (work) => withPlannerDatabaseOperation(database, work), changed: () => changed(selection) };
-  const synchronizer = createSharedSynchronizer(deps);
-  const manager = createSharedGroupManager({ ...deps, sync: (options) => synchronizer.sync(options), makeId: randomUUID,
-    markLeft: async () => { await update((previous) => ({ ...previous, status: 'left', lastErrorCode: null })); } });
-  let serviceRun: Promise<SharingSyncResult> | null = null; let runRequested = false; let forceRequested = false;
-  sync = (options = {}) => {
-    if (serviceRun) { runRequested = true; forceRequested ||= Boolean(options.force); return serviceRun; }
-    const pending = (async () => {
-      try {
-        const current = await readRecord();
-        if (['left', 'removed'].includes(current.status)) throw new SharingAccessError('このグループからは退出済みです。');
-        if (current.status === 'creating') {
-          if (!current.creation || !roster) throw new Error('作成途中の共有グループを復旧できません。');
-          await cloud.createGroup(roster, current.creation.wrappedKey); await update((previous) => ({ ...previous, status: 'active' }));
-        } else if (current.status === 'joining') {
-          if (!current.join) throw new Error('参加要求が見つかりません。');
-          try { await cloud.submitJoinRequest(current.join.invitation, current.join.request); }
+  let unregister: (() => void) | undefined;
+  try {
+    await initializeSharedProjection(database, { ...selection, householdId: LOCAL_HOUSEHOLD_ID }); await initializeSharingLedger(database);
+    const cloud = createSharingCloud(getSharingServices().firestore, userId, () => getSharingServices().auth.currentUser?.uid ?? null);
+    const assertGeneration = (current: SharingWorkspaceRecord) => { if (current.localGeneration !== generation) throw new SharingAccessError('再参加前のデータは読み取り専用で保持されています。'); };
+    const readRecord = async () => { const latest = await readSharingWorkspace(registry, userId, groupId); if (!latest) throw new Error('共有グループが見つかりません。'); assertGeneration(latest); record = latest; return latest; };
+    const update = async (change: (prior: SharingWorkspaceRecord) => SharingWorkspaceRecord) => { record = await updateSharingWorkspace(registry, userId, groupId, (prior) => { assertGeneration(prior); return change(prior); }); changed(selection); return record; };
+    let sync: (options?: { force?: boolean; budgetMs?: number }) => Promise<SharingSyncResult>;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const authorize = () => {
+      if (record) assertGeneration(record);
+      if (record?.lastErrorCode === 'sharing/scheduler-version-mismatch') throw new SharingSchedulerVersionError();
+      if (record && ['sharing/access-denied', 'permission-denied'].includes(record.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
+      if (getSharingServices().auth.currentUser?.uid !== userId || !record || !['active', 'creating'].includes(record.status)) throw new SharingAccessError('この共有グループは現在編集できません。');
+    };
+    const adapter = createSharedPlannerRepository(database, { ...selection, householdId: LOCAL_HOUSEHOLD_ID, identity, makeId: randomUUID,
+      roster: () => { if (!roster) throw new Error('参加承認と初回同期を完了してください。'); return roster; }, authorize,
+      afterCommit: () => { changed(selection); clearTimeout(debounce); debounce = setTimeout(() => { void sync().catch(() => undefined); }, 350); } });
+    // A process may stop after saving its create intent. Bootstrap IDs make this recovery idempotent.
+    if (record.status === 'creating' && record.creation) {
+      const creation = record.creation;
+      await createLocalSharedOperations(database, { groupId, userId, deviceId: identity.deviceId, keyVersion: 1 },
+        sharedGroupBootstrap({ groupId, ownerUserId: userId, ownerDisplayName: creation.ownerDisplayName, name: record.displayName,
+          timeZone: creation.timeZone, anchorDate: creation.anchorDate as Parameters<typeof sharedGroupBootstrap>[0]['anchorDate'] }),
+        adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature);
+    }
+    unregister = registerSharedRepositoryAdapter(database, adapter);
+    const deps: SharedSyncDependencies = { ...selection, database, identity, crypto: nativeSharingCrypto, cloud, readRecord,
+      saveArchive: async (archive) => {
+        const next = archive.at(-1)!;
+        record = await updateSharingWorkspace(registry, userId, groupId, (previous) => {
+          assertGeneration(previous);
+          if ((previous.rosterArchive.at(-1)?.body.revision ?? 0) > next.body.revision) throw new Error('Membership changed concurrently');
+          return { ...previous, rosterArchive: archive };
+        }); roster = next;
+      },
+      readKey: (version) => loadSharingGroupKey(userId, groupId, version), saveKey: (version, bytes) => saveSharingGroupKey(userId, groupId, version, bytes),
+      project: adapter.project, serialized: (work) => withPlannerDatabaseOperation(database, work), changed: () => changed(selection) };
+    const synchronizer = createSharedSynchronizer(deps);
+    const manager = createSharedGroupManager({ ...deps, sync: (options) => synchronizer.sync(options), makeId: randomUUID,
+      markLeft: async () => { await update((previous) => ({ ...previous, status: 'left', lastErrorCode: null })); } });
+    let serviceRun: Promise<SharingSyncResult> | null = null; let runRequested = false; let forceRequested = false;
+    sync = (options = {}) => {
+      if (serviceRun) { runRequested = true; forceRequested ||= Boolean(options.force); return serviceRun; }
+      const pending = (async () => {
+        try {
+          const current = await readRecord();
+          if (['left', 'removed'].includes(current.status)) throw new SharingAccessError('このグループからは退出済みです。');
+          if (current.status === 'creating') {
+            if (!current.creation || !roster) throw new Error('作成途中の共有グループを復旧できません。');
+            await cloud.createGroup(roster, current.creation.wrappedKey); await update((previous) => ({ ...previous, status: 'active' }));
+          } else if (current.status === 'joining') {
+            if (!current.join) throw new Error('参加要求が見つかりません。');
+            try { await cloud.submitJoinRequest(current.join.invitation, current.join.request); }
+            catch (error) {
+              // An approval may have atomically consumed the invitation while the app was closed.
+              const actual = await cloud.readInvitation(current.join.invitation.body.inviteId);
+              if (actual.status !== 'used' || actual.usedBy !== userId) throw error;
+            }
+          }
+          let result;
+          try { result = await synchronizer.sync(options); }
           catch (error) {
-            // An approval may have atomically consumed the invitation while the app was closed.
-            const actual = await cloud.readInvitation(current.join.invitation.body.inviteId);
-            if (actual.status !== 'used' || actual.usedBy !== userId) throw error;
+            if (!(error instanceof SharingKeyVersionError) || roster?.body.ownerDeviceId !== identity.deviceId) throw error;
+            await manager.repairDepartures(); result = await synchronizer.sync(options);
           }
-        }
-        let result;
-        try { result = await synchronizer.sync(options); }
-        catch (error) {
-          if (!(error instanceof SharingKeyVersionError) || roster?.body.ownerDeviceId !== identity.deviceId) throw error;
-          await manager.repairDepartures(); result = await synchronizer.sync(options);
-        }
-        if (!result.waitingForApproval) {
-          const replica = await loadSharedReplica(database, groupId);
-          if (!replica.entities.some((entity) => entity.entityType === 'member' && entity.entityId === `member:${userId}`)) {
-            await createLocalSharedOperations(database, { groupId, userId, deviceId: identity.deviceId, keyVersion: roster!.body.keyVersion },
-              [{ operationId: randomUUID(), entityType: 'member', entityId: `member:${userId}`, operationType: 'patch', payload: { userId, displayName: user.displayName?.trim() || 'メンバー' } }],
-              adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature);
-            result = await synchronizer.sync({ ...options, force: true });
+          if (!result.waitingForApproval) {
+            const replica = await loadSharedReplica(database, groupId);
+            if (!replica.entities.some((entity) => entity.entityType === 'member' && entity.entityId === `member:${userId}`)) {
+              await createLocalSharedOperations(database, { groupId, userId, deviceId: identity.deviceId, keyVersion: roster!.body.keyVersion },
+                [{ operationId: randomUUID(), entityType: 'member', entityId: `member:${userId}`, operationType: 'patch', payload: { userId, displayName: user.displayName?.trim() || 'メンバー' } }],
+                adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature);
+              result = await synchronizer.sync({ ...options, force: true });
+            }
+            const name = replica.entities.find((entity) => entity.entityType === 'settings' && entity.entityId === 'settings')?.fields.name;
+            await update((previous) => ({ ...previous, status: 'active', displayName: typeof name === 'string' ? name : previous.displayName,
+              lastSuccessfulSyncAt: Date.now(), lastErrorCode: null }));
           }
-          const name = replica.entities.find((entity) => entity.entityType === 'settings' && entity.entityId === 'settings')?.fields.name;
-          await update((previous) => ({ ...previous, status: 'active', displayName: typeof name === 'string' ? name : previous.displayName,
-            lastSuccessfulSyncAt: Date.now(), lastErrorCode: null }));
+          return result;
+        } catch (error) {
+          const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'sharing/failed';
+          const disposition = sharedAccessDisposition({ errorCode: code, currentAccountUserId: getSharingServices().auth.currentUser?.uid ?? null,
+            userId, deviceId: identity.deviceId, status: record?.status, roster });
+          let removed = disposition === 'removed';
+          if (disposition === 'check-membership') {
+            try { removed = !await cloud.hasMembership(groupId); } catch { /* A network error does not prove removal. */ }
+          }
+          await update((previous) => ({ ...previous, ...(removed ? { status: 'removed' as const } : {}), lastErrorCode: code })).catch(() => undefined); throw error;
         }
-        return result;
-      } catch (error) {
-        const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'sharing/failed';
-        const disposition = sharedAccessDisposition({ errorCode: code, currentAccountUserId: getSharingServices().auth.currentUser?.uid ?? null,
-          userId, deviceId: identity.deviceId, status: record?.status, roster });
-        let removed = disposition === 'removed';
-        if (disposition === 'check-membership') {
-          try { removed = !await cloud.hasMembership(groupId); } catch { /* A network error does not prove removal. */ }
-        }
-        await update((previous) => ({ ...previous, ...(removed ? { status: 'removed' as const } : {}), lastErrorCode: code })).catch(() => undefined); throw error;
-      }
-    })(); serviceRun = pending;
-    void pending.finally(() => {
-      if (serviceRun === pending) serviceRun = null; changed(selection);
-      if (runRequested) { const force = forceRequested; runRequested = false; forceRequested = false;
-        setTimeout(() => { void sync({ force }).catch(() => undefined); }, 0); }
-    }).catch(() => undefined); return pending;
-  };
-  return { ...selection, database, adapter, cloud, identity, manager, sync, record: readRecord,
-    roster: () => roster, checkpoint: () => readSharingCheckpoint(database, groupId), watch: (callback: () => void, failed: (error: unknown) => void) => cloud.watch(groupId, callback, failed),
-    async cancelJoinRequest() {
-      const prior = await readRecord(); if (prior.status !== 'joining' || !prior.join) throw new Error('参加申請が見つかりません。');
-      const cancelled = await cloud.cancelOwnJoinRequest(prior.join.invitation, prior.join.request);
-      if (!cancelled) throw new Error('参加は承認済みです。同期してからメンバー・端末の管理で解除してください。');
-      await update((previous) => ({ ...previous, status: 'left', lastErrorCode: null }));
-    },
-    async maintainHistory() {
-      if (roster?.body.ownerDeviceId !== identity.deviceId || record?.status !== 'active') return;
-      const { group } = await cloud.readGroup(groupId);
-      if (group.rotationRequired) return;
-      if (group.headSequence - group.snapshotThroughSequence >= 256) await manager.publishSnapshot();
-      await cloud.compactHistory(groupId);
-    },
-    async resolveConflict(entityType: SharedEntityType, entityId: string, field: string, candidateId: string) {
-      authorize(); const current = roster!;
-      await withPlannerDatabaseOperation(database, () => createLocalSharedOperations(database,
-        { groupId, userId, deviceId: identity.deviceId, keyVersion: current.body.keyVersion }, async (_transaction, replica) => {
-          const entity = replica.entities.find((item) => item.entityType === entityType && item.entityId === entityId);
-          const candidate = entity?.conflicts[field]?.find((item) => item.operationId === candidateId);
-          if (!entity || !candidate) throw new Error('競合の内容が更新されました。もう一度選び直してください。');
-          const restored = Object.fromEntries(Object.entries(entity.fields).filter(([, value]) => value !== null));
-          return [{ operationId: randomUUID(), entityType, entityId, operationType: field === '$alive' ? candidate.value ? 'restore' as const : 'delete' as const : 'patch' as const,
-            payload: field === '$alive' ? candidate.value ? restored : {} : { [field]: candidate.value } }];
-        }, adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature));
-      changed(selection); void sync({ force: true }).catch(() => undefined);
-    } };
+      })(); serviceRun = pending;
+      void pending.finally(() => {
+        if (serviceRun === pending) serviceRun = null; changed(selection);
+        if (runRequested) { const force = forceRequested; runRequested = false; forceRequested = false;
+          setTimeout(() => { void sync({ force }).catch(() => undefined); }, 0); }
+      }).catch(() => undefined); return pending;
+    };
+    return { ...selection, database, adapter, cloud, identity, manager, sync, record: readRecord,
+      roster: () => roster, checkpoint: () => readSharingCheckpoint(database, groupId), watch: (callback: () => void, failed: (error: unknown) => void) => cloud.watch(groupId, callback, failed),
+      async cancelJoinRequest() {
+        const prior = await readRecord(); if (prior.status !== 'joining' || !prior.join) throw new Error('参加申請が見つかりません。');
+        const cancelled = await cloud.cancelOwnJoinRequest(prior.join.invitation, prior.join.request);
+        if (!cancelled) throw new Error('参加は承認済みです。同期してからメンバー・端末の管理で解除してください。');
+        await update((previous) => ({ ...previous, status: 'left', lastErrorCode: null }));
+      },
+      async maintainHistory() {
+        if (roster?.body.ownerDeviceId !== identity.deviceId || record?.status !== 'active') return;
+        const { group } = await cloud.readGroup(groupId);
+        if (group.rotationRequired) return;
+        if (group.headSequence - group.snapshotThroughSequence >= 256) await manager.publishSnapshot();
+        await cloud.compactHistory(groupId);
+      },
+      async resolveConflict(entityType: SharedEntityType, entityId: string, field: string, candidateId: string) {
+        authorize(); const current = roster!;
+        await withPlannerDatabaseOperation(database, () => createLocalSharedOperations(database,
+          { groupId, userId, deviceId: identity.deviceId, keyVersion: current.body.keyVersion }, async (_transaction, replica) => {
+            const entity = replica.entities.find((item) => item.entityType === entityType && item.entityId === entityId);
+            const candidate = entity?.conflicts[field]?.find((item) => item.operationId === candidateId);
+            if (!entity || !candidate) throw new Error('競合の内容が更新されました。もう一度選び直してください。');
+            const restored = Object.fromEntries(Object.entries(entity.fields).filter(([, value]) => value !== null));
+            return [{ operationId: randomUUID(), entityType, entityId, operationType: field === '$alive' ? candidate.value ? 'restore' as const : 'delete' as const : 'patch' as const,
+              payload: field === '$alive' ? candidate.value ? restored : {} : { [field]: candidate.value } }];
+          }, adapter.project, (operation) => signSharedOperation(operation, identity).authorSignature));
+        changed(selection); void sync({ force: true }).catch(() => undefined);
+      } };
+  } catch (error) {
+    unregister?.();
+    await database.closeAsync().catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function createSharingWorkspace(name: string, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): Promise<SharedWorkspace> {
@@ -280,25 +291,36 @@ export async function requestSharingWorkspace(linkText: string): Promise<SharedW
 export async function syncKnownSharingWorkspaces(budgetMs = 20_000): Promise<void> {
   if (!await hasSharingSessionEnabled()) return;
   const start = Date.now(); const records = await knownSharingWorkspaces();
+  const failures: unknown[] = [];
   for (const record of records.filter((item) => !['left', 'removed'].includes(item.status))) {
     const remaining = budgetMs - (Date.now() - start); if (remaining < 1000) break;
-    const workspace = await openSharedWorkspace(record); await workspace.sync({ budgetMs: remaining }).catch(() => undefined);
-    if (Date.now() - start < budgetMs - 5000) await workspace.maintainHistory().catch(() => undefined);
-    const state = await loadGoogleSyncState(workspace.database);
-    if (state?.enabled) {
-      const { syncGoogleTasks } = await import('../../features/google-sync/coordinator');
-      await syncGoogleTasks(workspace.database).catch(() => undefined);
+    try {
+      const workspace = await openSharedWorkspace(record);
+      const syncBudget = budgetMs - (Date.now() - start); if (syncBudget < 1000) break;
+      await workspace.sync({ budgetMs: syncBudget }).catch(() => undefined);
+      if (Date.now() - start < budgetMs - 5000) await workspace.maintainHistory().catch(() => undefined);
+      if (budgetMs - (Date.now() - start) < 1000) continue;
+      const state = await loadGoogleSyncState(workspace.database);
+      if (state?.enabled && budgetMs - (Date.now() - start) >= 1000) {
+        const { syncGoogleTasks } = await import('../../features/google-sync/coordinator');
+        await syncGoogleTasks(workspace.database).catch(() => undefined);
+      }
+    } catch (error) { failures.push(error); }
+  }
+  if (budgetMs - (Date.now() - start) >= 1000) try {
+    const selection = await readSharingSelection();
+    if (selection && records.some((record) => record.userId === selection.userId && record.groupId === selection.groupId && record.status === 'active')) {
+      const workspace = await openSharedWorkspace(selection); const snapshot = await workspace.adapter.readSnapshot(new Date());
+      const { syncDailyHouseworkDigest } = await import('../../features/notifications/daily-housework-digest');
+      const { expoLocalNotificationGateway } = await import('../notifications/expo-local-notification-gateway');
+      const { sharedGoogleNamespace } = await import('../../features/google-sync/workspace-policy');
+      await syncDailyHouseworkDigest(expoLocalNotificationGateway, { ...snapshot, notificationScope: sharedGoogleNamespace(selection.userId, selection.groupId),
+        notificationTitle: `${snapshot.household.name}の家事` }).catch(() => undefined);
     }
-  }
-  const selection = await readSharingSelection();
-  if (selection && records.some((record) => record.userId === selection.userId && record.groupId === selection.groupId && record.status === 'active')) {
-    const workspace = await openSharedWorkspace(selection); const snapshot = await workspace.adapter.readSnapshot(new Date());
-    const { syncDailyHouseworkDigest } = await import('../../features/notifications/daily-housework-digest');
-    const { expoLocalNotificationGateway } = await import('../notifications/expo-local-notification-gateway');
-    const { sharedGoogleNamespace } = await import('../../features/google-sync/workspace-policy');
-    await syncDailyHouseworkDigest(expoLocalNotificationGateway, { ...snapshot, notificationScope: sharedGoogleNamespace(selection.userId, selection.groupId),
-      notificationTitle: `${snapshot.household.name}の家事` }).catch(() => undefined);
-  }
+  } catch (error) { failures.push(error); }
+  // A broken workspace cannot starve unrelated groups, but the worker must still
+  // observe the original storage failure after those groups have had a chance.
+  if (failures.length) throw failures[0];
 }
 
 /** Native OAuth is shared by the process, while connection settings and Task IDs remain per workspace. */

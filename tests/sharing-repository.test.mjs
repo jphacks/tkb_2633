@@ -29,6 +29,83 @@ async function fixture() {
   return { ...h, scope, identity, roster, adapter, snapshot, commits: () => commits, close: () => { unregister(); h.connection.close(); } };
 }
 
+test('revalidating an unchanged shared roster reuses the snapshot instead of repeating the full planner and native outputs', async () => {
+  const h = await fixture(); let denied = false;
+  try {
+    await repository.setChoreEnabled(h.database, choreId, true);
+    const adapter = createSharedPlannerRepository(h.database, { ...h.scope, identity: h.identity,
+      roster: () => structuredClone(h.roster), makeId: () => 'unused-test-operation', now: () => now,
+      authorize: () => { if (denied) throw new Error('access revoked'); } });
+    const first = await adapter.readSnapshot(now);
+    const read = h.database.getAllAsync.bind(h.database); let bulkReads = 0;
+    h.database.getAllAsync = async (...args) => { bulkReads++; return read(...args); };
+    assert.equal(await adapter.readSnapshot(now), first);
+    assert.equal(bulkReads, 0, 'a fresh validation of the same signed membership must not reload the event ledger');
+    await repository.updateChoreSettings(h.database, choreId, { cycleDays: 9 });
+    const changed = await adapter.readSnapshot(now);
+    assert.notEqual(changed, first);
+    assert.equal(changed.chores.find((chore) => chore.id === choreId).recommendedCycleDays, 9);
+    denied = true;
+    await assert.rejects(adapter.readSnapshot(now), /access revoked/, 'cached content never bypasses current authorization');
+  } finally { h.close(); }
+});
+
+test('an authorization change during a shared cache read cannot return the previously authorized snapshot', async () => {
+  const h = await fixture(); let denied = false;
+  try {
+    const adapter = createSharedPlannerRepository(h.database, { ...h.scope, identity: h.identity,
+      roster: () => h.roster, makeId: () => 'unused-read-operation', now: () => now,
+      authorize: () => { if (denied) throw new Error('access revoked during read'); } });
+    await adapter.readSnapshot(now);
+    const get = h.database.getFirstAsync.bind(h.database);
+    h.database.getFirstAsync = async (...args) => {
+      const value = await get(...args);
+      if (args[0].includes('SELECT projection_token FROM sharing_workspace_metadata')) denied = true;
+      return value;
+    };
+    await assert.rejects(adapter.readSnapshot(now), /access revoked during read/);
+  } finally { h.close(); }
+});
+
+test('a local shared edit waiting for SQLite cannot commit after account or membership authorization is revoked', async () => {
+  const h = await fixture(); let release, entered; let denied = false, sequence = 0;
+  const barrier = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  try {
+    const adapter = createSharedPlannerRepository(h.database, { ...h.scope, identity: h.identity,
+      roster: () => h.roster, makeId: () => `queued-enable-${++sequence}`, now: () => now,
+      authorize: () => { if (denied) throw new Error('access revoked while queued'); } });
+    const before = (await listSharingOutbox(h.database, h.scope.groupId)).length;
+    const held = createLocalSharedOperations(h.database, { ...h.scope, deviceId: h.identity.deviceId, keyVersion: 1 },
+      async () => { entered(); await barrier; return []; }, h.adapter.project);
+    await started;
+    const pending = adapter.mutate('setChoreEnabled', [choreId, true]);
+    denied = true; release(); await held;
+    await assert.rejects(pending, /access revoked while queued/);
+    assert.equal((await h.snapshot()).chores.find((chore) => chore.id === choreId).enabled, false);
+    assert.equal((await listSharingOutbox(h.database, h.scope.groupId)).length, before);
+  } finally { release?.(); h.close(); }
+});
+
+test('revocation during a shared projection rolls back both the local edit and its outbox atomically', async () => {
+  const h = await fixture(); let denied = false, sequence = 0;
+  try {
+    const adapter = createSharedPlannerRepository(h.database, { ...h.scope, identity: h.identity,
+      roster: () => h.roster, makeId: () => `mid-write-${++sequence}`, now: () => now,
+      authorize: () => { if (denied) throw new Error('access revoked during projection'); } });
+    const before = (await listSharingOutbox(h.database, h.scope.groupId)).length;
+    const run = h.database.runAsync.bind(h.database);
+    h.database.runAsync = async (...args) => {
+      const result = await run(...args);
+      if (args[0].includes('INSERT INTO chore_definitions')) denied = true;
+      return result;
+    };
+    await assert.rejects(adapter.mutate('setChoreEnabled', [choreId, true]), /access revoked during projection/);
+    assert.equal(h.connection.prepare('SELECT enabled FROM chore_definitions WHERE id=?').get(choreId).enabled, 0);
+    assert.equal((await listSharingOutbox(h.database, h.scope.groupId)).length, before);
+  } finally { h.close(); }
+});
+
 test('existing repository controls dispatch to a bound group and sign atomic outbox changes without personal catalog seeding', async () => {
   const h = await fixture();
   try {

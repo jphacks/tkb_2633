@@ -77,12 +77,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       stop(); const current = generation;
       const records = await knownSharingWorkspaces(); if (stopped || current !== generation || AppState.currentState !== 'active') return;
       for (const record of records.filter((group) => !['left', 'removed'].includes(group.status))) {
-        const workspace = await openSharedWorkspace(record); if (stopped || current !== generation || AppState.currentState !== 'active') return;
-        // Permission revocation terminates a Firestore listener through its error callback.
-        // Recheck membership there too; a network failure alone never proves removal.
-        const synchronize = () => { void workspace.sync().catch(() => undefined); };
-        subscriptions.push(workspace.watch(synchronize, synchronize));
+        if (stopped || current !== generation || AppState.currentState !== 'active') return;
+        try {
+          const workspace = await openSharedWorkspace(record); if (stopped || current !== generation || AppState.currentState !== 'active') return;
+          // Permission revocation terminates a Firestore listener through its error callback.
+          // Recheck membership there too; a network failure alone never proves removal.
+          const synchronize = () => { void workspace.sync().catch(() => undefined); };
+          subscriptions.push(workspace.watch(synchronize, synchronize));
+        } catch { /* Keep other groups observable; the coordinator records/retries failures. */ }
       }
+      if (stopped || current !== generation || AppState.currentState !== 'active') return;
       void syncKnownSharingWorkspaces().catch(() => undefined);
       interval = setInterval(() => { void syncKnownSharingWorkspaces().catch(() => undefined); }, 10 * 60_000);
     };

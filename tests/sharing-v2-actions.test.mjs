@@ -5,7 +5,7 @@ import { fixture, seeds, now, draft, groupId } from './helpers/sharing-v2-reposi
 import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
 import { chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 import { v2GroupBootstrap } from '../src/features/sharing/v2/bootstrap.ts';
-import { applyReceivedSharedFacts, loadSharedFacts, listSharingOutbox, readSharingCheckpoint } from '../src/platform/storage/sharing-ledger.ts';
+import { applyReceivedSharedFacts, loadSharedFacts, listSharingOutbox, readSharingCheckpoint, withSharingLedgerTransaction } from '../src/platform/storage/sharing-ledger.ts';
 import { receiptsFor } from './helpers/sharing-v2-repository-fixture.mjs';
 const ref = { choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null };
 const range = { from: '2026-10-27', through: '2026-11-10', asOfDate: '2026-10-27' };
@@ -328,4 +328,27 @@ test('v2 completing and undoing before a cadence edit keeps the current round ac
     for (const d of [owner, member]) await applyReceivedSharedFacts(d.database, groupId, facts, '20', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
     assert.equal((await a.readPlan(range)).planHash, (await actions(member).readPlan(range)).planHash);
   } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 displayed round guards check the configuration frontier after waiting for SQLite and keep stale completion, dates, claims and assignments out of the outbox', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d); const displayed = { ...ref, expectedConfigurationIds: ['configuration'] };
+    let release; let entered; const ready = new Promise((resolve) => { entered = resolve; });
+    const held = withSharingLedgerTransaction(d.database, async () => { entered(); await new Promise((resolve) => { release = resolve; }); }); await ready;
+    const update = a.patchChoreConfiguration('floor', 1, { intervalDays: 17 }, '2026-10-27');
+    const rejected = assert.rejects(a.complete(displayed), { code: 'sharing/v2-stale-settings' });
+    release(); await held; await update; await rejected;
+    const count = (await listSharingOutbox(d.database, groupId)).length;
+    for (const operation of [() => a.changeDate(displayed, { mode: 'day', target: { precision: 'date', date: '2026-10-28' } }),
+      () => a.claim(displayed), () => a.releaseClaim(displayed), () => a.resolveClaims(displayed, ['owner'], false),
+      () => a.assign(displayed, ['owner'], 'this', false), () => a.resolveAssignment(displayed, ['owner'], 'once', false),
+      () => a.requestAssignment(displayed, { memberIds: ['owner'], start: 'this', scope: 'once', fixed: false })]) {
+      await assert.rejects(operation(), { code: 'sharing/v2-stale-settings' });
+    }
+    assert.equal((await listSharingOutbox(d.database, groupId)).length, count); assert.equal((await a.readPlan(range)).history.length, 0);
+    const cfg = (await d.repository.readState()).assessment.view.ofType('chorePolicy').at(-1);
+    const [work] = await a.complete({ ...ref, ruleVersion: 2, expectedConfigurationIds: [cfg.operationId] });
+    assert.equal(work.entityType, 'completion'); assert.equal(JSON.stringify(work).includes('expectedConfigurationIds'), false);
+  } finally { d.connection.close(); }
 });

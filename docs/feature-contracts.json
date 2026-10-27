@@ -1946,5 +1946,52 @@
         "name": "v2 completing and undoing before a cadence edit keeps the current round actionable without replacing original history or losing a later real completion"
       }
     ]
+  },
+  {
+    "feature": "v2-displayed-round-configuration-frontier",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 displayed round guards check the configuration frontier after waiting for SQLite and keep stale completion, dates, claims and assignments out of the outbox"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 a past-work form cannot submit against a cadence replaced after its displayed configuration even if the old round ID is still valid"
+      }
+    ]
+  },
+  {
+    "feature": "v2-explicit-past-work-form",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 past-work form requires an actual local date and time and stores performer, recorder and original assignment separately"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 work form rejects future and nonexistent local times and a stale assignee without committing a fact or outbox"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "v2 isolated round navigation records explicit past work in its original group and history instead of routing the ID into a personal chore"
+      }
+    ]
+  },
+  {
+    "feature": "v2-substitution-history-controls",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 a restricted substitute uses the work form to retain a real report awaiting approval and cannot impersonate another performer"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 history displays a restricted substitution as pending and an actual administrator approval completes it without replacing performer or recorder"
+      },
+      {
+        "file": "tests/sharing-v2-forms.test.mjs",
+        "name": "v2 history does not offer another member a cancellation control for work recorded by someone else"
+      }
+    ]
   }
 ]

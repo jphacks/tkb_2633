@@ -12,7 +12,8 @@ async function screenFixture(platform, view = 'home', clock = () => new Date('20
   const preview = await createV2DevelopmentPreview({ development: true, crypto, makeId: () => `screen-${++id}`, now: clock,
     openDatabase: async () => ({ database: h.database, close: async () => h.connection.close() }) });
   let focus; const navigation = []; const props = { development: true, loadSession: async () => preview, view,
-    onBack: () => navigation.push(['back']), onConfiguration: (choreId) => navigation.push(['configuration', choreId]), onHistory: () => navigation.push(['history']) };
+    onBack: () => navigation.push(['back']), onConfiguration: (choreId) => navigation.push(['configuration', choreId]), onHistory: () => navigation.push(['history']),
+    onRound: (occurrenceId, subjectId) => navigation.push(['round', occurrenceId, subjectId]) };
   const screen = screenHarness(screenFile, { exportName: 'V2DevelopmentPreviewScreen', props, platform, focusEffect: (callback) => { focus = callback; } });
   const leave = focus();
   for (let i = 0; i < 30 && !screen.text().includes('検査用の未送信操作'); i++) await screen.flush();
@@ -52,6 +53,22 @@ test('v2 development screen does not initialize a session or install a focus han
 });
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 isolated round navigation records explicit past work in its original group and history instead of routing the ID into a personal chore`, async () => {
+    const f = await screenFixture(platform);
+    try {
+      await f.screen.press('フローリングを掃除する全員共通 · 担当未確定'); const [kind, occurrenceId, subjectId] = f.navigation.pop(); assert.equal(kind, 'round');
+      Object.assign(f.props, { view: 'round', occurrenceId, subjectId }); f.screen.render();
+      assert.ok(f.screen.text().includes('実施を記録'));
+      const choice = f.screen.nodes().find((node) => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === '以前実施した'); choice.props.onPress(); await f.screen.flush();
+      await f.screen.change('実施日', '2026-10-27'); await f.screen.change('実施時刻', '08:00'); await f.screen.press('実施を記録する');
+      const model = await f.preview.readModel(); assert.equal(model.plan.history.length, 1); assert.equal(model.plan.history[0].performedAt, '2026-10-26T23:00:00.000Z');
+      assert.equal(model.plan.history[0].recordedAt, '2026-10-27T01:00:00.000Z');
+      f.props.view = 'history'; f.screen.render(); assert.ok(f.screen.text().includes('実施者：検査ユーザー')); assert.ok(f.screen.text().includes('登録者：検査ユーザー'));
+      await f.screen.press('この完了を取り消す'); assert.equal((await f.preview.readModel()).plan.history[0].active, false);
+      Object.assign(f.props, { view: 'round', subjectId: 'another-group-round' }); f.screen.render();
+      assert.ok(f.screen.text().includes('対象の家事回を表示できません')); assert.equal(f.screen.nodes().some((node) => node.type === 'TextInput'), false);
+    } finally { f.leave(); await f.preview.close(); }
+  });
   test(`${platform} v2 preview keeps an unfinished common round visible on its personal recommended day after midnight without writing a different common anchor`, async () => {
     let instant = new Date('2026-10-27T14:59:00Z'); const f = await screenFixture(platform, 'home', () => instant);
     try {

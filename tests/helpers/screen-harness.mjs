@@ -37,7 +37,7 @@ export function screenHarness(filename, options = {}) {
     react,
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': {
-      ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
+      ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'KeyboardAvoidingView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
       FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
         ...((props.data ?? []).length ? props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })) : [props.ListEmptyComponent]),
         props.ListFooterComponent] }),

@@ -10,8 +10,8 @@ import { v2TargetLabel } from './target-form';
 
 export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false, recommendation }: {
   model: V2GroupScreenModel; round: V2PlannedOccurrence; subject: V2SubjectPlan; actions: V2GroupController['actions']; busy: boolean;
-  run: (work: () => Promise<unknown>) => Promise<void>; onOpen: () => void; onDate: () => void; onAssignment: () => void;
-  onPast: () => void; onAssignmentRequest?: () => void; showActions?: boolean;
+  run: (work: () => Promise<unknown>) => Promise<void>; onOpen: () => void; onDate?: () => void; onAssignment?: () => void;
+  onPast?: () => void; onAssignmentRequest?: () => void; showActions?: boolean;
   recommendation?: V2Recommendation;
 }) {
   const chore = model.plan.chores.find((entry) => entry.id === round.choreId); if (!chore) return null;
@@ -21,7 +21,8 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const relatedWork = model.plan.history.filter((record) => [...subject.completionOperationIds, ...subject.pendingCompletionIds].includes(record.operationId));
   const showStatus = owns || admin || relatedWork.some((record) => record.recorderUserId === viewer || record.performerUserId === viewer) || model.plan.policy?.showCompletionStatus === true;
   const undo = subject.completionOperationIds.filter((id) => model.plan.history.some((record) => record.operationId === id && record.active && (admin || record.recorderUserId === viewer)));
-  const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId };
+  const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId,
+    expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId) };
   const canComplete = owns && round.activeInPeriod && !subject.pendingCompletionIds.length && !subject.dependencyBlocked && !subject.dependencyAwaitingCompletion && !round.assignmentConflictIds.length;
   const onToggle = busy ? undefined : subject.completed ? undo.length ? () => run(() => actions.undoMany(undo)) : undefined
     : canComplete ? () => run(() => actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] })) : undefined;
@@ -51,9 +52,9 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
       {showStatus && subject.completed ? <Text style={styles.caption}>実施者：{[...new Set(relatedWork.filter((record) => record.active).map((record) => nameOf(record.performerUserId)))].join('・')}</Text> : null}
       {showStatus && subject.completed && undo.length < subject.completionOperationIds.length ? <Text style={styles.caption}>ほかの人が登録した完了は、その登録者か管理者が取り消せます。</Text> : null}
       <View style={styles.buttons}>
-        {showActions ? <AppButton title="日時を変更" compact variant="secondary" disabled={busy || !round.activeInPeriod || Boolean(round.assignmentConflictIds.length)} onPress={onDate} /> : null}
-        {showActions && !subject.completed ? <AppButton title={owns ? '以前の実施を記録' : model.plan.policy?.allowSubstitution ? '代行を記録' : '代行を記録（承認が必要）'} compact variant="quiet" disabled={busy || Boolean(round.assignmentConflictIds.length)} onPress={onPast} /> : null}
-        {showActions && admin ? <AppButton title={round.assignmentConflictIds.length ? '担当の競合を解決' : round.claimState === 'provisional' ? '暫定担当を確認' : '担当を変更'} compact variant="quiet" disabled={busy} onPress={onAssignment} /> : null}
+        {showActions && onDate ? <AppButton title="日時を変更" compact variant="secondary" disabled={busy || !round.activeInPeriod || Boolean(round.assignmentConflictIds.length)} onPress={onDate} /> : null}
+        {showActions && onPast && !subject.completed ? <AppButton title={owns ? '以前の実施を記録' : model.plan.policy?.allowSubstitution ? '代行を記録' : '代行を記録（承認が必要）'} compact variant="quiet" disabled={busy || Boolean(round.assignmentConflictIds.length)} onPress={onPast} /> : null}
+        {showActions && onAssignment && admin ? <AppButton title={round.assignmentConflictIds.length ? '担当の競合を解決' : round.claimState === 'provisional' ? '暫定担当を確認' : '担当を変更'} compact variant="quiet" disabled={busy} onPress={onAssignment} /> : null}
         {round.configuration.policy.completion === 'one' && !round.assigneeIds.length && !subject.completed && !round.assignmentConflictIds.length
           ? <AppButton title="引き受ける" compact disabled={busy} onPress={() => run(() => actions.claim(ref))} /> : null}
         {showActions && !subject.completed && round.claimantUserIds.includes(viewer) && !round.assignmentFixed

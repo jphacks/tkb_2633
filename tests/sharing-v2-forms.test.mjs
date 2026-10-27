@@ -1,0 +1,122 @@
+import './helpers/typescript-loader.mjs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { screenHarness } from './helpers/screen-harness.mjs';
+import { fixture, seeds, now, groupId, receiptsFor, draft } from './helpers/sharing-v2-repository-fixture.mjs';
+import { createV2GroupController } from '../src/features/sharing/v2/controller.ts';
+import { loadSharedFacts, applyReceivedSharedFacts, listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
+import { chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
+
+const range = { from: '2026-10-20', through: '2026-11-10', asOfDate: '2026-10-27' };
+const formFile = 'src/features/sharing/v2-ui/completion-form.tsx';
+async function form(d, platform) {
+  let id = 0; const controller = createV2GroupController(d.repository, { makeId: () => `${d.options.userId}-form-${++id}`, now, sync: async () => {} });
+  let props;
+  const update = async () => { const model = await controller.readModel(range); const round = model.plan.occurrences[0];
+    Object.assign(props, { model, round, subject: round.subjects[0] }); };
+  const model = await controller.readModel(range); const round = model.plan.occurrences[0];
+  props = { model, round, subject: round.subjects[0], actions: controller.actions, now, busy: false, run: async (work) => { await work(); await update(); } };
+  const screen = screenHarness(formFile, { exportName: 'V2CompletionForm', props, platform });
+  return { props, controller, screen, update };
+}
+async function select(screen, label) {
+  const node = screen.nodes().find((node) => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label);
+  assert.ok(node, `missing choice: ${label}`); assert.equal(node.props.disabled, false); node.props.onPress(); await screen.flush();
+}
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 past-work form requires an actual local date and time and stores performer, recorder and original assignment separately`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      const initial = seeds(); initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['member']);
+      await d.repository.commit([...initial, draft('owner-name', 'member', 'owner', { userId: 'owner', displayName: '管理者' })]);
+      const { screen, props } = await form(d, platform); await select(screen, '以前実施した');
+      const initialCount = (await listSharingOutbox(d.database, groupId)).length;
+      await screen.press('実施を記録する'); assert.ok(screen.text().includes('日付は年-月-日')); assert.equal((await listSharingOutbox(d.database, groupId)).length, initialCount);
+      await screen.change('実施日', '2026-10-27'); await screen.change('実施時刻', '08:30');
+      assert.equal((await listSharingOutbox(d.database, groupId)).length, initialCount, 'input alone must not invent a completion');
+      await screen.press('実施を記録する'); const record = props.model.plan.history[0];
+      assert.equal(record.performedAt, '2026-10-26T23:30:00.000Z'); assert.equal(record.recordedAt, now().toISOString());
+      assert.equal(record.performerUserId, 'owner'); assert.equal(record.recorderUserId, 'owner'); assert.deepEqual(record.originalAssigneeIds, ['member']);
+      assert.equal(record.acceptance, 'accepted'); assert.equal(props.subject.completed, true); assert.ok(screen.text().includes('端末に保存しました'));
+    } finally { d.connection.close(); }
+  });
+  test(`${platform} v2 work form rejects future and nonexistent local times and a stale assignee without committing a fact or outbox`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const { screen, controller, props } = await form(d, platform); await select(screen, '以前実施した');
+      const count = (await listSharingOutbox(d.database, groupId)).length;
+      await screen.change('実施日', '2026-10-27'); await screen.change('実施時刻', '11:00'); await screen.press('実施を記録する');
+      assert.ok(screen.text().includes('現在より前')); assert.equal((await listSharingOutbox(d.database, groupId)).length, count);
+      await screen.change('実施時刻', '25:00'); await screen.press('実施を記録する'); assert.ok(screen.text().includes('00:00〜23:59'));
+      await screen.change('実施日', '2026-03-08'); await screen.change('実施時刻', '02:30'); props.model = { ...props.model, plan: { ...props.model.plan, timeZone: 'America/New_York' } }; screen.render();
+      await screen.press('実施を記録する'); assert.ok(screen.text().includes('存在しない時刻')); assert.equal((await listSharingOutbox(d.database, groupId)).length, count);
+      props.model = { ...props.model, plan: { ...props.model.plan, timeZone: 'Asia/Tokyo' } }; screen.render();
+      await controller.actions.assign({ choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null }, ['member'], 'this', true);
+      await select(screen, '今実施した'); await assert.rejects(screen.press('実施を記録する'), { code: 'sharing/v2-stale-settings' });
+      assert.equal((await controller.readModel(range)).plan.history.length, 0);
+    } finally { d.connection.close(); }
+  });
+}
+
+test('v2 a restricted substitute uses the work form to retain a real report awaiting approval and cannot impersonate another performer', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    const initial = seeds(); initial[0].payload.configuration.allowSubstitution = false;
+    initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['owner']); await owner.repository.commit(initial);
+    const facts = await loadSharedFacts(owner.database, groupId);
+    await applyReceivedSharedFacts(member.database, groupId, facts, '4', member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    const { screen, props } = await form(member, 'android');
+    const choices = screen.nodes().filter((node) => node.props.accessibilityRole === 'radio'); assert.equal(choices.length, 3, 'two time choices and the actual viewer only');
+    assert.ok(screen.text().includes('承認までは完了扱いにしません')); await screen.press('実施を記録する');
+    const record = props.model.plan.history[0]; assert.equal(record.acceptance, 'pending'); assert.equal(record.performerUserId, 'member');
+    assert.equal(record.recorderUserId, 'member'); assert.deepEqual(record.originalAssigneeIds, ['owner']); assert.equal(props.subject.completed, false);
+    assert.equal(props.subject.pendingCompletionIds.length, 1);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 a past-work form cannot submit against a cadence replaced after its displayed configuration even if the old round ID is still valid', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const { screen, controller } = await form(d, 'ios');
+    await select(screen, '以前実施した'); await screen.change('実施日', '2026-10-27'); await screen.change('実施時刻', '08:00');
+    await controller.actions.patchChoreConfiguration('floor', 1, { intervalDays: 17 }, '2026-10-27');
+    const count = (await listSharingOutbox(d.database, groupId)).length;
+    await assert.rejects(screen.press('実施を記録する'), { code: 'sharing/v2-stale-settings' });
+    assert.equal((await controller.readModel(range)).plan.history.length, 0); assert.equal((await listSharingOutbox(d.database, groupId)).length, count);
+  } finally { d.connection.close(); }
+});
+
+test('v2 history displays a restricted substitution as pending and an actual administrator approval completes it without replacing performer or recorder', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    const initial = seeds(); initial[0].payload.configuration.allowSubstitution = false;
+    initial[3].payload.configuration.policy = chorePolicyFromPreset('assigned', ['owner']); await owner.repository.commit(initial);
+    const initialFacts = await loadSharedFacts(owner.database, groupId);
+    await applyReceivedSharedFacts(member.database, groupId, initialFacts, '4', member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(initialFacts)));
+    const input = await form(member, 'ios'); await input.screen.press('実施を記録する');
+    const facts = await loadSharedFacts(member.database, groupId);
+    await applyReceivedSharedFacts(owner.database, groupId, facts, '5', owner.repository.project, null, now().getTime(), owner.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    const { controller } = await form(owner, 'ios'); let model = await controller.readModel(range);
+    const props = { model, record: model.plan.history[0], actions: controller.actions, busy: false,
+      run: async (work) => { await work(); model = await controller.readModel(range); Object.assign(props, { model, record: model.plan.history[0] }); } };
+    const screen = screenHarness('src/features/sharing/v2-ui/completion-history-card.tsx', { exportName: 'V2CompletionHistoryCard', props });
+    assert.ok(screen.text().includes('代行の承認待ち')); assert.equal(screen.text().includes('実施済み'), false);
+    await screen.press('代行の実施を承認'); assert.ok(screen.text().includes('実施済み')); assert.equal(props.model.plan.occurrences[0].subjects[0].completed, true);
+    assert.equal(props.record.performerUserId, 'member'); assert.equal(props.record.recorderUserId, 'member'); assert.deepEqual(props.record.originalAssigneeIds, ['owner']);
+    await screen.press('この完了を取り消す'); assert.ok(screen.text().includes('取消済み')); assert.equal(props.model.plan.history.length, 1);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 history does not offer another member a cancellation control for work recorded by someone else', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const original = await form(owner, 'ios'); await original.screen.press('実施を記録する');
+    const facts = await loadSharedFacts(owner.database, groupId);
+    await applyReceivedSharedFacts(member.database, groupId, facts, '5', member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    const { controller } = await form(member, 'android'); const model = await controller.readModel(range);
+    const screen = screenHarness('src/features/sharing/v2-ui/completion-history-card.tsx', { exportName: 'V2CompletionHistoryCard', props: {
+      model, record: model.plan.history[0], actions: controller.actions, busy: false, run: async (work) => work() } });
+    assert.ok(screen.text().includes('実施済み')); assert.throws(() => screen.button('この完了を取り消す'), /missing button/);
+  } finally { owner.connection.close(); member.connection.close(); }
+});

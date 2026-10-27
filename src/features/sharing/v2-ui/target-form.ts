@@ -6,8 +6,9 @@ import type { DateTarget, DesignationMode } from '../v2/model.ts';
 import { validateDesignationTarget } from '../v2/date-target.ts';
 
 export function v2LocalTimeInput(date: string, time: string, timeZone: string): string {
-  parseLocalDate(date as LocalDate);
+  try { parseLocalDate(date as LocalDate); } catch { throw new Error('日付は年-月-日（例：2026-10-28）で入力してください。'); }
   const parts = /^(\d{2}):(\d{2})$/u.exec(time); if (!parts) throw new Error('時刻は時:分（例：19:00）で入力してください。');
+  if (Number(parts[1]) > 23 || Number(parts[2]) > 59) throw new Error('時刻は00:00〜23:59で入力してください。');
   const instant = sharedDateAtTime(date as LocalDate, Number(parts[1]), Number(parts[2]), timeZone);
   if (moment(instant).tz(timeZone).format('YYYY-MM-DD HH:mm') !== `${date} ${time}`) throw new Error('この地域には存在しない時刻です。別の時刻を選んでください。');
   return instant.toISOString();

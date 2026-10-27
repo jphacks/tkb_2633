@@ -6,6 +6,7 @@ import { canonicalJson } from '../operations.ts';
 import type { JsonValue, SharedOperation } from '../operations.ts';
 import { sharedLocalDate } from '../group-clock.ts';
 import { v2ReadPoint } from './view-point.ts';
+import { maximalCausalFacts } from './causal-facts.ts';
 import { frameAtOperation } from './authority-context.ts';
 import { v2DatePermissionId, v2SubjectOccurrenceId } from './occurrence-id.ts';
 import { recordedInstructionAt } from './recorded-instruction.ts';
@@ -23,7 +24,9 @@ import { expandedCommonWindow } from './window-extension.ts';
 import { v2AssignmentRequestReference, approvedV2AssignmentId, observedV2AssignmentCancellations } from './assignment-state.ts';
 import type { DateTarget, DesignationMode, DesignationOptions, GroupKind, GroupPolicy, RuleSelector, SharedChoreConfiguration } from './model.ts';
 
-export interface V2RoundReference { choreId: string; anchorDate: LocalDate; ruleVersion: number; subjectUserId: string | null }
+export interface V2RoundReference { choreId: string; anchorDate: LocalDate; ruleVersion: number; subjectUserId: string | null;
+  /** The displayed configuration frontier is an optimistic edit guard, never part of a signed business payload. */
+  expectedConfigurationIds?: readonly string[] }
 export interface V2AssignmentEdit { expectedAssignmentIds?: readonly string[]; expectedConflictIds?: readonly string[] }
 export class V2ActionConfirmationError extends Error {
   readonly code = 'sharing/v2-confirmation-required';
@@ -44,8 +47,14 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
     return { ...at, authorUserId: scope.userId, authorDeviceId: scope.deviceId, deviceSequence: (at.context[scope.deviceId] ?? 0) + 1 };
   }
-  const frame = (state: State, ref: V2RoundReference) => frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion);
   const sameIds = (a: readonly string[], b: readonly string[]) => canonicalJson([...a].sort()) === canonicalJson([...b].sort());
+  function expectConfiguration(state: State, ref: V2RoundReference) {
+    if (ref.expectedConfigurationIds && !sameIds(ref.expectedConfigurationIds,
+      maximalCausalFacts(state.assessment.view.topic('chorePolicy', ref.choreId)).map((op) => op.operationId))) throw new V2StaleSettingsError();
+  }
+  const frame = (state: State, ref: V2RoundReference) => {
+    expectConfiguration(state, ref); return frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion);
+  };
   function expectAssignment(context: ReturnType<typeof frame>, edit: V2AssignmentEdit) {
     if (edit.expectedAssignmentIds && !sameIds(edit.expectedAssignmentIds, context.assignmentOperationIds)
       || edit.expectedConflictIds && !sameIds(edit.expectedConflictIds, context.assignmentConflictIds)) throw new V2StaleSettingsError();
@@ -165,6 +174,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         claimOperationIds: context.claims.activeClaimOperationIds, assigneeIds, fixed })];
     }),
     assign: (ref: V2RoundReference, memberIds: string[], start: 'this' | 'next', fixed: boolean, edit: V2AssignmentEdit = {}) => repository.commitCurrent(async (state) => {
+      expectConfiguration(state, ref);
       const context = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
       const anchor = start === 'next' ? addDays(ref.anchorDate, context.config.intervalDays) : ref.anchorDate;
       const next = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, anchor, ref.ruleVersion, { allowAssignmentConflict: true });
@@ -173,6 +183,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
         scope: 'from', memberIds, fixed, ruleVersion: next.config.ruleVersion, basisRuleIds: next.assignmentOperationIds })];
     }),
     resolveAssignment: (ref: V2RoundReference, memberIds: string[], scope: 'once' | 'from', fixed: boolean, edit: V2AssignmentEdit = {}) => repository.commitCurrent(async (state) => {
+      expectConfiguration(state, ref);
       const context = frameAtOperation(state.assessment.view, state.archive, point(state), ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
       expectAssignment(context, edit);
       return [draft('assignmentRule', null, { choreId: ref.choreId, fromOccurrenceId: context.frame.id, fromAnchorDate: ref.anchorDate, scope, memberIds, fixed,
@@ -181,6 +192,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     }),
     cancelAssignments: (sourceOperationIds: readonly string[]) => repository.commitCurrent(async (state) => assignmentCancellations(state, sourceOperationIds)),
     remapAssignments: (sourceOperationIds: readonly string[], ref: V2RoundReference, memberIds: string[], scope: 'once' | 'from', fixed: boolean, edit: V2AssignmentEdit = {}) => repository.commitCurrent(async (state) => {
+      expectConfiguration(state, ref);
       const cancellations = assignmentCancellations(state, sourceOperationIds); if (!cancellations.length) return [];
       const at = point(state); const context = frameAtOperation(state.assessment.view, state.archive, at, ref.choreId, ref.anchorDate, ref.ruleVersion, { allowAssignmentConflict: true });
       expectAssignment(context, edit);

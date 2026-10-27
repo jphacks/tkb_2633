@@ -1,17 +1,20 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import moment from 'moment-timezone';
 import { AppButton, BackButton, Card, palette, ScreenHeading, SectionHeading, typography } from '../../../components/planner-ui';
 import { AccordionSection } from '../../../components/accordion-section';
 import { V2RoundCard } from '../v2-ui/round-card';
 import { V2ConfigurationEditor } from '../v2-ui/configuration-editor';
+import { V2CompletionForm } from '../v2-ui/completion-form';
+import { V2CompletionHistoryCard } from '../v2-ui/completion-history-card';
+import { V2FormScrollView } from '../v2-ui/form-controls';
 import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2DevelopmentPreview, V2DevelopmentPreviewModel } from './v2-preview-session';
 
 interface PreviewProps {
-  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history'; choreId?: string;
+  development: boolean; loadSession: () => Promise<V2DevelopmentPreview>; view: 'home' | 'configuration' | 'history' | 'round'; choreId?: string;
+  occurrenceId?: string; subjectId?: string; onRound?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void;
 }
 
@@ -21,7 +24,7 @@ export function V2DevelopmentPreviewScreen(props: PreviewProps) {
   return <LivePreview {...props} />;
 }
 
-function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory }: PreviewProps) {
+function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHistory, occurrenceId, subjectId, onRound }: PreviewProps) {
   const [session, setSession] = useState<V2DevelopmentPreview | null>(null); const [model, setModel] = useState<V2DevelopmentPreviewModel | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
@@ -52,25 +55,33 @@ function LivePreview({ loadSession, view, choreId, onBack, onConfiguration, onHi
     <AppButton title="読み込みを再試行" variant="quiet" onPress={() => void refresh()} /></SafeAreaView>;
   const controller = session.controller;
   if (view === 'configuration') return <SafeAreaView style={styles.safe} edges={['top']}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>{notice}
+    <V2FormScrollView contentContainerStyle={styles.page}>{notice}
       {choreId && model.configurations.some((entry) => entry.choreId === choreId) ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === choreId)?.name ?? '共有家事'} />
         <V2ConfigurationEditor model={model} choreId={choreId} controller={controller} onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} onBack={onBack} /></>
         : <><BackButton onPress={onBack} /><Text style={styles.body}>検査する家事を選んでください。</Text></>}
-    </ScrollView>
+    </V2FormScrollView>
   </SafeAreaView>;
+  if (view === 'round') {
+    const round = model.plan.occurrences.find((entry) => entry.id === occurrenceId); const subject = round?.subjects.find((entry) => entry.id === subjectId);
+    return <SafeAreaView style={styles.safe} edges={['top']}><V2FormScrollView contentContainerStyle={styles.page}>
+      {notice}<BackButton onPress={onBack} disabled={busy} />
+      {round && subject ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === round.choreId)?.name ?? '共有家事'} />
+        <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
+          recommendation={model.personal.recommendations.find((entry) => entry.subjectOccurrenceId === subject.id)} onOpen={() => onConfiguration(round.choreId)} />
+        <V2CompletionForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} />
+        <AppButton title="共通の設定を開く" variant="quiet" disabled={busy} onPress={() => onConfiguration(round.choreId)} /></>
+        : <Text style={styles.body}>対象の家事回を表示できません。前の画面で現在の家事回を選んでください。</Text>}
+    </V2FormScrollView></SafeAreaView>;
+  }
   const recommendations = new Map(model.personal.recommendations.map((entry) => [entry.subjectOccurrenceId, entry]));
   const card = (round: V2PlannedOccurrence, subject: V2SubjectPlan) => <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run}
     recommendation={recommendations.get(subject.id)}
-    onOpen={() => onConfiguration(round.choreId)} onDate={() => onConfiguration(round.choreId)} onAssignment={() => onConfiguration(round.choreId)} onPast={() => onConfiguration(round.choreId)} />;
+    onOpen={() => onRound ? onRound(round.id, subject.id) : onConfiguration(round.choreId)} />;
   if (view === 'history') return <SafeAreaView style={styles.safe} edges={['top']}>
     <FlatList data={[...model.plan.history].reverse()} keyExtractor={(record) => record.operationId} contentContainerStyle={styles.page} initialNumToRender={8}
       ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="実施履歴" /></>}
       ListEmptyComponent={<Card><Text style={styles.body}>実施記録はありません。</Text></Card>}
-      renderItem={({ item }) => <Card><SectionHeading title={model.plan.chores.find((chore) => chore.id === item.choreId)?.name ?? '家事'} />
-        <Text style={styles.body}>{moment(item.performedAt).tz(model.plan.timeZone).format('YYYY年M月D日 HH:mm')} · {item.active ? '実施済み' : '取消済み'}</Text>
-        <Text style={styles.caption}>登録：{moment(item.recordedAt).tz(model.plan.timeZone).format('YYYY年M月D日 HH:mm')}</Text>
-        {item.active ? <AppButton title="この完了を取り消す" compact variant="secondary" disabled={busy} onPress={() => run(() => controller.actions.undo(item.operationId))} /> : null}
-      </Card>} />
+      renderItem={({ item }) => <V2CompletionHistoryCard model={model} record={item} actions={controller.actions} busy={busy} run={run} />} />
   </SafeAreaView>;
   const entries = model.plan.occurrences.flatMap((round) => round.subjects.filter((subject) => subject.required && (subject.subjectUserId === null || subject.subjectUserId === model.viewerUserId)).map((subject) => ({ round, subject })));
   const today = entries.filter(({ round, subject }) => round.activeInPeriod && (recommendations.get(subject.id)?.date ?? subject.suggestedDate) === model.plan.range.asOfDate);

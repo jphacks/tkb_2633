@@ -6,7 +6,7 @@ import { initializeTestEnvironment, assertFails } from '@firebase/rules-unit-tes
 import { doc, getDocFromServer, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
 import { createSharingCloud } from '../src/platform/sharing/firestore-cloud.ts';
 import { createDeviceIdentity, encryptSharedOperation, signSharedOperation, wrapGroupKey } from '../src/features/sharing/crypto.ts';
-import { createSharedRoster, upgradeSharedRoster, sharedAuthorIdentity, approveSharedDevice } from '../src/features/sharing/roster.ts';
+import { createSharedRoster, upgradeSharedRoster, sharedAuthorIdentity } from '../src/features/sharing/roster.ts';
 import { v2AuthorProofDigest, bindV2ServerReceipt } from '../src/features/sharing/v2/server-receipts.ts';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { buildSharedReplica } from '../src/features/sharing/replica.ts';
@@ -22,6 +22,8 @@ import { addDays as addLocalDays } from '../src/domain/scheduling/local-date.ts'
 import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
 import { buildV2CommonPlan } from '../src/features/sharing/v2/common-plan.ts';
 import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
+import { createSharedGroupManager } from '../src/features/sharing/group-manager.ts';
+import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -125,17 +127,20 @@ test('v2 Rules require an explicit owner-preserving protocol upgrade snapshot an
   await assertFails(batch.commit());
 });
 test('v2 real gateway and Rules synchronize isolated SQLite users through key rotation, snapshot, edit, completion and targeted undo', async () => {
-  const f = await fixture(); const memberIdentity = await createDeviceIdentity(crypto); const key2 = await crypto.randomBytes(32);
+  const f = await fixture(); const memberIdentity = await createDeviceIdentity(crypto); let key2;
   function device(userId, identity, cloud, keys) {
     const h = createDatabase(); let archive = [f.roster];
     const repository = createV2EventRepository(h.database, { groupId, userId, householdId: 'local', identity, anchor: f.roster,
       archive: () => archive, assertWritable: () => {} });
-    const sync = createV2Synchronizer({ database: h.database, groupId, userId, identity, crypto, cloud, repository,
+    const dependencies = { database: h.database, groupId, userId, identity, crypto, cloud,
       readRecord: async () => ({ groupId, userId, status: 'active', anchor: f.roster, rosterArchive: archive }),
       saveArchive: async (value) => { archive = value; }, readKey: async (version) => keys.get(version)?.slice(),
       saveKey: async (version, bytes) => { keys.set(version, bytes.slice()); }, serialized: async (work) => work(),
-      changed: () => {}, assertCurrentAccount: () => {} });
-    return { ...h, repository, sync, keys };
+      changed: () => {}, assertCurrentAccount: () => {} };
+    const sync = createV2Synchronizer({ ...dependencies, repository }); let managerId = 0;
+    const manager = createSharedGroupManager({ ...dependencies, project: repository.project, sync: sync.sync, verifyMembership: sync.verifyMembership,
+      makeId: () => `v2-manager-${userId}-${++managerId}`, markLeft: async () => {} });
+    return { ...h, repository, sync, keys, manager };
   }
   const owner = device('owner', f.identity, f.cloud, new Map([[1, f.key]]));
   const memberCloud = createSharingCloud(environment.authenticatedContext('member').firestore(), 'member', () => 'member');
@@ -152,11 +157,12 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
         intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
     ]);
     await owner.sync.sync({ force: true });
-    const next = approveSharedDevice(f.roster, f.identity, 'member', memberIdentity);
-    const snapshot = await createEncryptedSharedSnapshot(crypto, await loadSharedReplica(owner.database, groupId), await loadSharedFacts(owner.database, groupId),
-      next, f.identity, key2, 'membership-v2', 4, (uid, id, version) => sharedAuthorIdentity([f.roster, next][version - 1], uid, id, version));
-    const wrapped = await Promise.all([['owner', f.identity], ['member', memberIdentity]].map(([uid, identity]) => wrapGroupKey(crypto, groupId, 2, key2, f.identity, identity, uid)));
-    await f.cloud.prepareSnapshot(snapshot, next); await f.cloud.commitMembership(f.roster, next, wrapped, 4, snapshot.manifest); owner.keys.set(2, key2);
+    const invitation = await owner.manager.createInvitation();
+    const request = createSharedJoinRequest(invitation, 'member', memberIdentity, Date.now());
+    await memberCloud.submitJoinRequest(invitation.invitation, request); await owner.manager.approve(invitation.invitation, request);
+    const next = (await f.cloud.readGroup(groupId)).roster; key2 = owner.keys.get(2); assert.ok(key2);
+    assert.equal(next.body.schemaVersion, 2); assert.equal(next.body.keyVersion, 2);
+    assert.equal((await f.cloud.readInvitation(invitation.invitation.body.inviteId)).status, 'used');
     await initializeV2EventStore(member.database, { groupId, userId: 'member', householdId: 'local' });
     await member.sync.sync({ force: true });
     const occurrenceId = v2OccurrenceId(groupId, 'floor', '2026-10-27');
@@ -320,5 +326,10 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     assert.equal(planned.subjects[0].suggestedDate, addLocalDays(anchorDate, 5));
     assert.deepEqual(ownerPlan.occurrences.find((entry) => entry.choreId === 'approval-floor' && entry.anchorDate === addLocalDays(anchorDate, 7)).assigneeIds, ['owner']);
     for (const d of [owner, member, restored]) assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
+    const beforeRemoval = ownerPlan.history;
+    await owner.manager.removeMembers(['member']); const removed = await f.cloud.readGroup(groupId);
+    assert.equal(removed.roster.body.keyVersion, 3); assert.deepEqual(removed.roster.body.members.map((person) => person.userId), ['owner']);
+    await assert.rejects(member.sync.sync({ force: true })); await assertFails(memberCloud.readGroup(groupId));
+    assert.deepEqual(buildV2CommonPlan(await owner.repository.readState(), planRange).history, beforeRemoval);
   } finally { owner.connection.close(); member.connection.close(); restored?.connection.close(); }
 });

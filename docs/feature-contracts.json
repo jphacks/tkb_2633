@@ -2727,5 +2727,22 @@
         "name": "v2 administrator requirements retain third-party consent while explicit ordinary date delegation remains usable"
       }
     ]
+  },
+  {
+    "feature": "v2-membership-session-protocol-and-account-guard",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-membership-session.test.mjs",
+        "name": "v2 membership sessions expose the same pinned protocol verification without projecting data or reading keys"
+      },
+      {
+        "file": "tests/sharing-v2-membership-session.test.mjs",
+        "name": "v2 membership verification refuses an account switch during its read before saving any archive"
+      },
+      {
+        "file": "tests/sharing-v2-membership-session.test.mjs",
+        "name": "v2 membership verification rejects a foreign signed group and the legacy manager still refuses schema2 by default"
+      }
+    ]
   }
 ]

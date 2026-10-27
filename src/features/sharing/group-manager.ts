@@ -1,7 +1,7 @@
 import type { SharedSyncDependencies, SharingSyncResult } from './synchronizer.ts';
 import { verifyCloudMembership } from './synchronizer.ts';
 import { approveSharedDevice, removeSharedDevice, removeSharedMembers, transferSharedOwnership, sharedAuthorIdentity, sharedRosterDigest } from './roster.ts';
-import type { VerifiedSharedRoster } from './roster.ts';
+import type { SignedSharedRoster, VerifiedSharedRoster } from './roster.ts';
 import { createEncryptedSharedSnapshot } from './snapshots.ts';
 import { createSharedInvitation, encodeCompactSharedInvitation, verifySharedJoinRequest } from './invitations.ts';
 import type { SharedJoinRequest, SignedSharedInvitation } from './invitations.ts';
@@ -13,12 +13,14 @@ import { loadPublishedSharedReplica, loadSharedFacts, readSharingCheckpoint } fr
 export function createSharedGroupManager(deps: SharedSyncDependencies & {
   sync: (options?: { force?: boolean; budgetMs?: number }) => Promise<SharingSyncResult>;
   makeId: () => string; markLeft: () => Promise<void>;
+  verifyMembership?: (current: SignedSharedRoster) => Promise<VerifiedSharedRoster[]>;
 }) {
   let tail: Promise<unknown> = Promise.resolve();
   function serial<T>(work: () => Promise<T>): Promise<T> { const next = tail.then(work, work); tail = next.catch(() => undefined); return next; }
   const now = deps.now ?? Date.now;
+  const verifyMembership = deps.verifyMembership ?? ((roster: SignedSharedRoster) => verifyCloudMembership(deps, roster));
   async function current() {
-    const metadata = await deps.cloud.readGroup(deps.groupId); const archive = await verifyCloudMembership(deps, metadata.roster);
+    const metadata = await deps.cloud.readGroup(deps.groupId); const archive = await verifyMembership(metadata.roster);
     const roster = archive.at(-1)!;
     if (roster.body.ownerUserId !== deps.userId || roster.body.ownerDeviceId !== deps.identity.deviceId) throw new SharingAccessError('この操作は所有者の端末から行ってください。');
     return { ...metadata, roster, archive };

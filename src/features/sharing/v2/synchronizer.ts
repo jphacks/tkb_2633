@@ -1,8 +1,8 @@
 import type { SharedSyncDependencies } from '../synchronizer.ts';
-import { createSharedSynchronizer } from '../synchronizer.ts';
+import { createSharedSynchronizer, verifyCloudMembership } from '../synchronizer.ts';
 import type { AuthenticatedSharedOperation } from '../crypto.ts';
 import type { SharedCloudEvent } from '../cloud-contract.ts';
-import type { VerifiedSharedRoster } from '../roster.ts';
+import type { SignedSharedRoster, VerifiedSharedRoster } from '../roster.ts';
 import type { VerifiedSharedSnapshot } from '../snapshots.ts';
 import type { createV2EventRepository } from '../../../platform/storage/sharing-v2-events.ts';
 import { withIsolatedSqliteTransaction } from '../../../platform/storage/isolated-transaction.ts';
@@ -62,7 +62,11 @@ export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 
     }
     return repository.evidenceForServerReceipts([]);
   }
-  return createSharedSynchronizer({ ...deps,
+  const configured: SharedSyncDependencies = { ...deps,
+    readRecord: async () => { assertCurrentAccount(); const value = await deps.readRecord(); assertCurrentAccount(); return value; },
+    saveArchive: async (archive) => { assertCurrentAccount(); await deps.saveArchive(archive); assertCurrentAccount(); },
     project: async (transaction, replica) => { assertCurrentAccount(); await repository.project(transaction, replica); assertCurrentAccount(); },
-    v2: { schedulerVersion: V2_SCHEDULER_VERSION, eventEvidence, snapshotEvidence } });
+    v2: { schedulerVersion: V2_SCHEDULER_VERSION, eventEvidence, snapshotEvidence } };
+  return { ...createSharedSynchronizer(configured),
+    verifyMembership: (current: SignedSharedRoster) => { assertCurrentAccount(); return verifyCloudMembership(configured, current); } };
 }

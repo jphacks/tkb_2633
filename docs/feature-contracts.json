@@ -2744,5 +2744,29 @@
         "name": "v2 membership verification rejects a foreign signed group and the legacy manager still refuses schema2 by default"
       }
     ]
+  },
+  {
+    "feature": "workspace-protocol-requires-pinned-membership-before-database-selection",
+    "tests": [
+      { "file": "tests/sharing-workspace-protocol.test.mjs", "name": "a pin-only invitation leaves its database format unknown until its full signed archive is available" },
+      { "file": "tests/sharing-workspace-protocol.test.mjs", "name": "workspace protocol verification refuses forged membership, foreign groups and a missing pinned epoch" },
+      { "file": "tests/sharing-workspace-protocol.test.mjs", "name": "cloud protocol discovery fetches bounded missing public epochs and refuses same-revision replacement or rollback" }
+    ]
+  },
+  {
+    "feature": "v2-workspace-database-paths-preserve-every-legacy-generation",
+    "tests": [
+      { "file": "tests/sharing-database-location.test.mjs", "name": "v2 database paths cannot collide with legacy paths for any local generation and retain account isolation" },
+      { "file": "tests/sharing-database-location.test.mjs", "name": "v2 databases fail closed when native backup exclusion has not been confirmed" }
+    ]
+  },
+  {
+    "feature": "v2-workspace-session-nondestructive-bootstrap-and-account-guards",
+    "tests": [
+      { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "v2 workspace creation restores one disabled catalog and explicit family or roommate policy without duplicate bootstrap writes" },
+      { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "a signed v1 to v2 membership transition cannot initialize a database without verified business migration evidence" },
+      { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "v2 workspace reads and edits stop after an account change while committed events and outbox remain intact" },
+      { "file": "tests/sharing-v2-workspace-session.test.mjs", "name": "a mistakenly supplied personal database is rejected without changing any existing table or row" }
+    ]
   }
 ]

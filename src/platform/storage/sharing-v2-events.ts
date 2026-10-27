@@ -31,6 +31,9 @@ function digestPages(values: readonly unknown[]): string[] {
 export async function initializeV2EventStore(database: SQLiteDatabase, scope: V2StoreScope): Promise<void> {
   const tables = new Set((await database.getAllAsync<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table'")).map((row) => row.name));
   if (tables.has('sharing_workspace_metadata') && !tables.has('sharing_v2_binding')) throw new Error('Prepare a separate v2 database before migrating a v1 workspace');
+  if (!tables.has('sharing_v2_binding') && ['households', 'household_settings', 'chore_definitions', 'chore_completions'].some((name) => tables.has(name))) {
+    throw new Error('既存の個人DB構造を共有v2へ変換することはできません。別の共有用DBを準備してください。');
+  }
   if (!tables.has('sharing_v2_binding') && tables.has('sharing_operations') && await database.getFirstAsync('SELECT 1 FROM sharing_operations LIMIT 1')) throw new Error('An existing unbound ledger requires a verified migration');
   await assertSharedProjectionCanInitialize(database);
   await withIsolatedSqliteTransaction(database, async (transaction) => {

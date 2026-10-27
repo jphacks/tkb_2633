@@ -35,7 +35,16 @@ export function sharingDatabaseFilename(userId: string, groupId: string, localGe
   return `group-${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(localGeneration ? [userId, groupId, localGeneration] : [userId, groupId]))))}.db`;
 }
 
+/** Disjoint from every v1 generation, including a user-supplied generation named "v2". */
+export function sharingV2DatabaseFilename(userId: string, groupId: string, localGeneration?: string): string {
+  return sharingDatabaseFilename(userId, groupId, localGeneration).replace(/^group-/u, 'group-v2-');
+}
+
 /** The account is part of the filename: private Google mappings cannot cross Firebase accounts. */
 export async function openSharingDatabase(userId: string, groupId: string, localGeneration?: string) {
   return openDatabaseAsync(sharingDatabaseFilename(userId, groupId, localGeneration), { useNewConnection: true }, await sharingDatabaseDirectory());
+}
+
+export async function openSharingV2Database(userId: string, groupId: string, localGeneration?: string) {
+  return openDatabaseAsync(sharingV2DatabaseFilename(userId, groupId, localGeneration), { useNewConnection: true }, await sharingDatabaseDirectory());
 }

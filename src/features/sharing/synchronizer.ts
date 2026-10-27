@@ -7,11 +7,12 @@ import { decryptAuthenticatedSharedOperation, encryptSharedOperation, sharedDocu
 import type { AuthenticatedSharedOperation, DeviceSecretIdentity, SharingCryptoGateway } from './crypto.ts';
 import { assertSharedCloudAccess, SharingAccessError, SharingKeyVersionError, SharingSchedulerVersionError, SharingSnapshotRequiredError } from './cloud-contract.ts';
 import type { SharedCloudGroup, SharedCloudEvent } from './cloud-contract.ts';
-import { sharedAuthorIdentity, sharedRosterDigest, verifyPinnedSharedRoster, verifySharedRosterArchive, verifySharedRosterTransition } from './roster.ts';
+import { sharedAuthorIdentity, sharedRosterDigest, verifySharedRosterTransition } from './roster.ts';
 import type { SignedSharedRoster, VerifiedSharedRoster } from './roster.ts';
 import { openEncryptedSharedSnapshot } from './snapshots.ts';
 import type { VerifiedSharedSnapshot } from './snapshots.ts';
 import { V2_SCHEDULER_VERSION } from './v2/payload-schema.ts';
+import { readCloudWorkspaceArchive } from './workspace-protocol.ts';
 import { v2AuthorProofDigest } from './v2/server-receipts.ts';
 import type { SharedLedgerEvidence } from '../../platform/storage/sharing-ledger.ts';
 import { acknowledgeSharingUpload, applyReceivedSharedFacts, applySharingSnapshot, deferSharingUpload, listSharingOutbox,
@@ -49,7 +50,6 @@ export async function verifyCloudMembership(deps: SharedSyncDependencies, curren
   if (current.body.revision > 4096 || (last && current.body.revision < last.body.revision)) throw new Error('Shared membership rollback or history limit');
   const pin = 'body' in record.anchor ? { groupId: record.groupId, digest: sharedRosterDigest(record.anchor),
     ownerUserId: record.anchor.body.ownerUserId, ownerIdentity: record.anchor.signer } : record.anchor;
-  const pinRevision = 'body' in record.anchor ? record.anchor.body.revision : record.anchor.revision;
   const cached = verifiedArchives.get(deps);
   if (cached?.pin === pin.digest && cached.archive.length <= current.body.revision) {
     const archive = [...cached.archive];
@@ -61,14 +61,8 @@ export async function verifyCloudMembership(deps: SharedSyncDependencies, curren
     assertSupportedProtocol(deps, latest);
     await deps.saveArchive(archive); verifiedArchives.set(deps, { pin: pin.digest, archive }); return archive;
   }
-  const inputs = [...record.rosterArchive];
-  for (let revision = inputs.length + 1; revision <= current.body.revision; revision++) inputs.push(
-    revision === current.body.revision ? current : await deps.cloud.readRoster(deps.groupId, revision));
-  if (!inputs[pinRevision - 1]) throw new Error('Missing trusted membership pin');
-  const archive = verifySharedRosterArchive(verifyPinnedSharedRoster(inputs[pinRevision - 1], pin), inputs);
-  if (record.join && sharedRosterDigest(archive[record.join.invitation.body.pin.revision - 1]) !== record.join.invitation.body.pin.digest) throw new Error('Invitation does not reach the previously trusted membership chain');
+  const archive = await readCloudWorkspaceArchive(record, current, (groupId, revision) => deps.cloud.readRoster(groupId, revision));
   const latest = archive.at(-1)!;
-  if (sharedRosterDigest(latest) !== sharedRosterDigest(current)) throw new Error('Shared membership changed at an existing revision');
   assertSupportedProtocol(deps, latest);
   await deps.saveArchive(archive); verifiedArchives.set(deps, { pin: pin.digest, archive }); return archive;
 }

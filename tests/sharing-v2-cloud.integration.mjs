@@ -23,6 +23,8 @@ import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
 import { buildV2CommonPlan } from '../src/features/sharing/v2/common-plan.ts';
 import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
 import { createSharedGroupManager } from '../src/features/sharing/group-manager.ts';
+import { createV2WorkspaceSession } from '../src/features/sharing/v2/workspace-session.ts';
+import { readCloudWorkspaceArchive } from '../src/features/sharing/workspace-protocol.ts';
 import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
@@ -49,6 +51,50 @@ async function fixture(schemaVersion = 2) {
   };
   return { identity, key, roster, store, cloud, make, root: doc(store, 'sharingGroups', groupId), switchAccount: () => { active = 'another'; } };
 }
+
+test('v2 workspace sessions restore real encrypted bootstrap and offline edits across approved user devices without private planner adapters', async () => {
+  const f = await fixture(); const ownerDb = createDatabase(); const memberDb = createDatabase();
+  const memberIdentity = await createDeviceIdentity(crypto); const now = new Date(); const anchorDate = sharedLocalDate(now, 'Asia/Tokyo');
+  let ownerArchive = [f.roster]; let memberArchive; let ownerActive = true; let ordinal = 0;
+  let ownerRecord = { userId: 'owner', groupId, status: 'creating', displayName: 'セッション検査', anchor: f.roster, rosterArchive: ownerArchive,
+    creation: { wrappedKey: {}, timeZone: 'Asia/Tokyo', anchorDate, ownerDisplayName: '所有者' } };
+  const ownerKeys = new Map([[1, f.key]]); const memberKeys = new Map();
+  function dependencies(h, userId, identity, cloud, keys, readRecord, saveArchive, archive) {
+    return { database: h.database, householdId: 'v2-session-only', userId, groupId, identity, cloud, crypto, readRecord, saveArchive, archive,
+      readKey: async (version) => keys.get(version)?.slice() ?? null, saveKey: async (version, value) => { keys.set(version, value.slice()); },
+      serialized: async (work) => work(), changed: () => {}, assertCurrentAccount: () => { if (userId === 'owner' && !ownerActive) throw new Error('account changed'); },
+      assertWritable: () => {}, makeId: () => `session-${userId}-${++ordinal}`, markLeft: async () => {} };
+  }
+  const ownerDeps = dependencies(ownerDb, 'owner', f.identity, f.cloud, ownerKeys, async () => ({ ...ownerRecord, rosterArchive: ownerArchive }),
+    async (value) => { ownerArchive = value; }, () => ownerArchive);
+  try {
+    const owner = await createV2WorkspaceSession({ ...ownerDeps, creationKind: 'roommates' }); await owner.synchronizer.sync({ force: true });
+    assert.equal((await f.cloud.readGroup(groupId)).group.headSequence, 23);
+    ownerRecord = { ...ownerRecord, status: 'active' };
+    const invite = await owner.manager.createInvitation(); const request = createSharedJoinRequest(invite, 'member', memberIdentity, Date.now());
+    const memberCloud = createSharingCloud(environment.authenticatedContext('member').firestore(), 'member', () => 'member');
+    await memberCloud.submitJoinRequest(invite.invitation, request); await owner.manager.approve(invite.invitation, request);
+    const joining = { userId: 'member', groupId, status: 'joining', anchor: invite.invitation.body.pin, rosterArchive: [], join: { invitation: invite.invitation, request } };
+    memberArchive = await readCloudWorkspaceArchive(joining, (await memberCloud.readGroup(groupId)).roster, memberCloud.readRoster);
+    const memberDeps = dependencies(memberDb, 'member', memberIdentity, memberCloud, memberKeys, async () => ({ ...joining, rosterArchive: memberArchive }),
+      async (value) => { memberArchive = value; }, () => memberArchive);
+    const member = await createV2WorkspaceSession(memberDeps); await member.synchronizer.sync({ force: true });
+    const range = { from: anchorDate, through: addLocalDays(anchorDate, 14), asOfDate: anchorDate };
+    const initial = await member.controller.readModel(range); assert.equal(initial.plan.policy.kind, 'roommates');
+    assert.equal(initial.plan.chores.length, 20); assert.equal(initial.plan.occurrences.length, 0);
+    const chore = initial.plan.chores[0];
+    await member.repository.commit([{ operationId: 'session-offline-edit', entityType: 'chore', entityId: chore.id, operationType: 'patch', payload: { name: '再起動後も残る変更' } }]);
+    assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 1);
+    const restart = await createV2WorkspaceSession(memberDeps);
+    assert.equal((await restart.controller.readModel(range)).plan.chores.find((item) => item.id === chore.id).name, '再起動後も残る変更');
+    await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+    assert.deepEqual((await owner.controller.readModel(range)).plan, (await restart.controller.readModel(range)).plan);
+    assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 0);
+    ownerActive = false; await assert.rejects(owner.synchronizer.sync({ force: true }), /account changed/u);
+    assert.equal(ownerDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    assert.equal(memberDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+  } finally { ownerDb.connection.close(); memberDb.connection.close(); }
+});
 
 test('v2 cloud commits immutable server receipts with encrypted events, bounds receipt recovery and keeps the same original timestamp on retry', async () => {
   const f = await fixture(); const facts = []; let first;

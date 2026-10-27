@@ -933,5 +933,18 @@
         "name": "android foreground sharing listener errors recheck membership instead of leaving revoked groups actionable until the next interval"
       }
     ]
+  },
+  {
+    "feature": "android-background-timer-lifetime",
+    "tests": [
+      {
+        "file": "tests/expo-headless-timer-lease.test.mjs",
+        "name": "Android background timer lease remains active until the native consumer completes instead of resolving with its placeholder"
+      },
+      {
+        "file": "tests/expo-headless-timer-lease.test.mjs",
+        "name": "Expo headless timer compatibility patch is idempotent for TypeScript and compiled registrations and rejects unsupported native lifecycles"
+      }
+    ]
   }
 ]

@@ -52,3 +52,15 @@ Androidでは最初、QRの枠だけが表示される問題を実機で発見�
 招待URL・QR画像・Googleのメールアドレス・端末識別子・鍵は公開証跡へ含めない。検査用グループは個人データから分離したままで、端末の初期化・アンインストールは行っていない。
 
 OSが自然に起動するBackgroundTask、Apple実サービス認証、外部による独立したセキュリティ監査は、この画面検査のPASSに含めない。
+
+## ネイティブworkerの追加検査とAndroidの待機停止の修正
+
+Android 10でアプリをランチャーの裏へ回し、JobSchedulerからExpoのworkerを強制起動したところ、JavaScriptの100ミリ秒の待機が前面へ戻すまで22.8秒間止まった。Expo TaskManager 58.0.12のplaceholderがすぐにresolveし、React NativeのAppRegistryがheadless taskの終了を通知する一方、実際の家事同期はまだ実行中だった。
+
+インストール後の互換修正で、このplaceholderをnative TaskServiceが実タスクの完了後に解放するまで維持する。native側に解放処理があるSDK58だけを対象とし、未対応の実装へ黙って適用しない。srcと実際のpackage entryであるbuildの双方に適用し、繰り返し適用しても変化しない。npmから取得した未変更の58.0.12にも適用できることを確認した。Androidの分岐内だけを変更し、iOSの処理は変えない。
+
+修正後、Androidを前面へ戻さないまま100ミリ秒の待機が105〜117ミリ秒で完了した。iPhoneで取り消した変更を、Androidの受信位置51から52へ取り込み、未送信0件・業務状態のハッシュ一致を確認した。native側のタスク終了通知も確認しており、単にworkerの開始ログだけを根拠にしていない。初回は省電力ONで通信エラーとなったため、受信の検査時だけOFFへ変更し、完了後に元のONへ戻した。端末設定やネットワークが違う場合の実行を保証する検査ではない。
+
+iPhone 12では、開発用の `triggerTaskWorkerForTestingAsync()` をXCTestから画面操作で呼び、native経由で共通workerが起動・完了することを確認した。これはアプリを前景に置いた開発用強制起動であり、長時間放置後の自然なOS起動やアプリ終了中の自動受信の代わりにはしない。
+
+検査用画面と処理段階の計測は検査後にソースから除去した。強制起動の方法と自然な実行の違いは[Expo SDK58 BackgroundTask](https://docs.expo.dev/versions/v58.0.0/sdk/background-task/)に従って区別する。

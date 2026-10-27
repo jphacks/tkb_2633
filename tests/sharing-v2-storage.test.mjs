@@ -22,7 +22,7 @@ const operation = (change, overrides = {}) => ({ ...change, schemaVersion: 2, gr
   keyVersion: 1, deviceSequence: 1, logicalClock: 1, context: {}, recordedAt, ...overrides });
 const policyDraft = () => draft('policy-one', 'groupPolicy', { configuration: createGroupPolicy('family') }, 'policy');
 const rule = (id = 'day-rule') => ({ id, choreId: 'floor', subjectUserId: null, selector: { scope: 'once', occurrenceId: 'floor.2026-10-27', anchorDate: '2026-10-27' },
-  referenceAnchorDate: '2026-10-27', mode: 'day', target: { precision: 'date', date: '2026-10-27' }, strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'owner', ruleVersion: 1 });
+  referenceAnchorDate: '2026-10-27', timeZoneAtCreation: 'Asia/Tokyo', mode: 'day', target: { precision: 'date', date: '2026-10-27' }, strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'owner', ruleVersion: 1 });
 
 test('v2 event allowlists retain explicit versions and original times while schema1 rejects all v2 fields and entities', () => {
   const value = operation(policyDraft());
@@ -55,7 +55,8 @@ test('v2 policy, date rule, request and completion payloads validate their depen
   assert.ok(validateSharedOperation(operation(draft('day-rule', 'designation', { configuration: rule() }))));
   assert.throws(() => validateSharedOperation(operation(draft('day-rule', 'designation', { configuration: { ...rule(), mode: 'fixed' } }))));
   const request = { requesterUserId: 'owner', choreId: 'floor', anchorDate: '2026-10-27', occurrenceId: 'floor.2026-10-27', subjectUserId: null, originalDesignationId: null,
-    original: { precision: 'date', date: '2026-10-27' }, proposed: { precision: 'date', date: '2026-10-28' }, selector: { scope: 'once', occurrenceId: 'floor.2026-10-27', anchorDate: '2026-10-27' }, extensionScope: 'once' };
+    original: { precision: 'date', date: '2026-10-27' }, proposed: { precision: 'date', date: '2026-10-28' }, proposedMode: 'day',
+    proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, selector: { scope: 'once', occurrenceId: 'floor.2026-10-27', anchorDate: '2026-10-27' }, extensionScope: 'once' };
   assert.ok(validateSharedOperation(operation(draft('request', 'changeRequest', request))));
   assert.throws(() => validateSharedOperation(operation(draft('request', 'changeRequest', { ...request, serverRequestedAt: recordedAt }))));
   const completion = { ...operation(draft('completed', 'completion', { choreId: 'floor', anchorDate: '2026-10-27', completedAt: '2026-10-25T10:00:00Z', completedByMemberId: 'owner',
@@ -82,7 +83,7 @@ test('v2 signed roster upgrades preserve every approved device, rotate epochs an
   const old = approveSharedDevice(createSharedRoster(groupId, 'owner', owner), owner, 'member', member);
   const next = upgradeSharedRoster(old, owner);
   assert.equal(old.body.schemaVersion, 1); assert.equal(next.body.schemaVersion, 2);
-  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2');
+  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2-draft-3');
   assert.deepEqual(next.body.members, old.body.members);
   const fields = { ...rosterCloudFields(next), headSequence: 0, lastOperationId: null, snapshotId: null, snapshotThroughSequence: 0 };
   assert.equal(parseSharedCloudGroup(fields, groupId).group.schemaVersion, 2);

@@ -39,19 +39,23 @@ export interface CausalStamp {
 export type RuleSelector = { scope: 'once'; occurrenceId: string; anchorDate: LocalDate }
   | { scope: 'period'; range: CivilRange }
   | { scope: 'ongoing'; from: LocalDate };
-export interface ManualRule {
+export interface DesignationOptions { strict: boolean; adminLocked: boolean; forbidEarlier: boolean }
+export interface ManualRule extends DesignationOptions {
   id: string;
   choreId: string;
   subjectUserId: string | null;
   selector: RuleSelector;
   referenceAnchorDate: LocalDate;
+  timeZoneAtCreation: string;
   mode: DesignationMode;
   target: DateTarget;
-  strict: boolean;
-  adminLocked: boolean;
-  forbidEarlier: boolean;
   issuerUserId: string;
   ruleVersion: number;
+}
+export interface DateChangeRequest {
+  requesterUserId: string; choreId: string; anchorDate: LocalDate; occurrenceId: string; subjectUserId: string | null;
+  originalDesignationId: string | null; original: DateTarget; proposed: DateTarget;
+  proposedMode: DesignationMode; proposedOptions: DesignationOptions; selector: RuleSelector; extensionScope: 'once' | 'future';
 }
 export interface ManualRuleFact extends CausalStamp { rule: ManualRule }
 export interface SharedOccurrence {

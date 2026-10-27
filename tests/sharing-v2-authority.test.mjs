@@ -8,7 +8,7 @@ import { validateSharedOperation } from '../src/features/sharing/operations.ts';
 import { buildSharedReplica, compactSharedReplica } from '../src/features/sharing/replica.ts';
 import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 import { v2OccurrenceId, v2SubjectOccurrenceId, v2DatePermissionId } from '../src/features/sharing/v2/occurrence-id.ts';
-import { validateV2BusinessHistory, assessV2BusinessHistory } from '../src/features/sharing/v2/receiver-authority.ts';
+import { validateV2BusinessHistory, assessV2BusinessHistory, dateChangeContextAtOperation } from '../src/features/sharing/v2/receiver-authority.ts';
 import { createV2HistoryView } from '../src/features/sharing/v2/history-view.ts';
 import { frameAtOperation } from '../src/features/sharing/v2/authority-context.ts';
 import { commonFrame, commonFrames } from '../src/features/sharing/v2/common-frames.ts';
@@ -44,11 +44,11 @@ async function fixture(preset = 'common', members = [], policy = createGroupPoli
   const occurrenceId = v2OccurrenceId(groupId, 'floor', anchorDate);
   const validate = (facts = operations, rosters = archive) => validateV2BusinessHistory(buildSharedReplica(groupId, facts), rosters);
   const claim = (uid, observed = operations) => make(uid, 'claim', { choreId: 'floor', anchorDate, occurrenceId, userId: uid }, { observed });
-  const designation = (uid, target, { choreId = 'floor', subjectUserId = null, selector, strict = false, adminLocked = false, observed = operations } = {}) => {
+  const designation = (uid, target, { choreId = 'floor', subjectUserId = null, selector, strict = false, adminLocked = false, forbidEarlier = false, observed = operations } = {}) => {
     const id = `op-${String(nextId + 1).padStart(4, '0')}`;
-    return make(uid, 'designation', { configuration: { id, choreId, subjectUserId, referenceAnchorDate: anchorDate,
+    return make(uid, 'designation', { configuration: { id, choreId, subjectUserId, referenceAnchorDate: anchorDate, timeZoneAtCreation: 'Asia/Tokyo',
       selector: selector ?? { scope: 'once', occurrenceId: v2OccurrenceId(groupId, choreId, anchorDate), anchorDate },
-      mode: target.precision === 'interval' ? 'fixed' : 'day', target, strict, adminLocked, forbidEarlier: false, issuerUserId: uid, ruleVersion: 1 } }, { observed });
+      mode: target.precision === 'interval' ? 'fixed' : 'day', target, strict, adminLocked, forbidEarlier, issuerUserId: uid, ruleVersion: 1 } }, { observed });
   };
   const complete = (uid, subjectUserId = null, originalAssigneeIds = [], performer = uid) => make(uid, 'completion', {
     choreId: 'floor', anchorDate, completedAt: '2026-10-26T23:00:00Z', completedByMemberId: performer,
@@ -106,7 +106,7 @@ test('v2 receiver requires locked date changes to be requests and prevents anoth
   const f = await fixture('assigned', ['a']); const locked = f.designation('owner', date('2026-10-28'), { adminLocked: true }); f.validate();
   f.designation('a', date('2026-10-27')); assert.throws(() => f.validate(), /requires a signed request/); f.operations.pop();
   const request = f.make('a', 'changeRequest', { requesterUserId: 'a', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
-    originalDesignationId: locked.operationId, original: date('2026-10-28'), proposed: date('2026-10-30'),
+    originalDesignationId: locked.operationId, original: date('2026-10-28'), proposed: date('2026-10-30'), proposedMode: 'day', proposedOptions: { strict: false, adminLocked: true, forbidEarlier: false },
     selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' }); f.validate();
   const decision = { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null };
   f.make('b', 'requestDecision', decision); assert.throws(() => f.validate(), /designated approver/); f.operations.pop();
@@ -116,7 +116,8 @@ test('v2 receiver preserves roommate assignee consent and requires the affected 
   const f = await fixture('assigned', ['a'], createGroupPolicy('roommates'));
   f.designation('owner', date('2026-10-28')); assert.throws(() => f.validate(), /requires a signed request/); f.operations.pop();
   const request = f.make('owner', 'changeRequest', { requesterUserId: 'owner', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
-    originalDesignationId: null, original: date(anchorDate), proposed: date('2026-10-28'), selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' });
+    originalDesignationId: null, original: date(anchorDate), proposed: date('2026-10-28'), proposedMode: 'day', proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false },
+    selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' });
   f.make('owner', 'requestDecision', { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null });
   assert.throws(() => f.validate(), /designated approver/); f.operations.pop();
   f.make('a', 'requestDecision', { requestId: request.operationId, decision: 'approve', target: null, referenceDecisionId: null }); f.validate();
@@ -170,7 +171,7 @@ test('v2 common frames retain anchors and stable identities across horizons with
   assert.throws(() => commonFrame(groupId, 'floor', configuration, '2026-10-28'));
 });
 test('v2 repeated designations keep the civil-day offset and wall clock across DST and retain one-off targets after a cycle revision', () => {
-  const rule = { id: 'rule', choreId: 'floor', subjectUserId: null, referenceAnchorDate: '2026-03-03', selector: { scope: 'ongoing', from: '2026-03-03' },
+  const rule = { id: 'rule', choreId: 'floor', subjectUserId: null, referenceAnchorDate: '2026-03-03', timeZoneAtCreation: 'America/New_York', selector: { scope: 'ongoing', from: '2026-03-03' },
     mode: 'fixed', target: time('2026-03-04T00:00:00Z', '2026-03-04T01:00:00Z'), ruleVersion: 1 };
   const frame = { id: 'frame', choreId: 'floor', anchorDate: '2026-03-10', ruleVersion: 1 };
   assert.deepEqual(materializeRuleTarget(rule, frame, 'America/New_York'), { kind: 'target', target: time('2026-03-10T23:00:00.000Z', '2026-03-11T00:00:00.000Z') });
@@ -201,4 +202,37 @@ test('v2 invalid received grants cannot authorize descendants and quarantine doe
     assert.equal(result.view.byId(independent.operationId).payload.name, '床掃除の説明');
     assert.equal(result.view.byId(work.operationId).payload.outcome, 'completed');
   }
+});
+test('v2 receiver cannot clear an earlier prohibition at the same time and then bypass it with a second date edit', async () => {
+  const f = await fixture('assigned', ['a']); const original = f.designation('owner', date(anchorDate), { forbidEarlier: true }); f.validate();
+  f.designation('a', date(anchorDate)); assert.throws(() => f.validate(), /requires a signed request/); f.operations.pop();
+  const request = f.make('a', 'changeRequest', { requesterUserId: 'a', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
+    originalDesignationId: original.operationId, original: date(anchorDate), proposed: date(anchorDate), proposedMode: 'day',
+    proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' });
+  f.validate();
+  const context = dateChangeContextAtOperation(createV2HistoryView(buildSharedReplica(groupId, f.operations)), f.archive, request);
+  assert.deepEqual(context.permission, { kind: 'approvalRequired', approver: 'admin', reason: 'strict' });
+});
+test('v2 requests preserve explicit deadline meaning and cannot automatically downgrade a locked fixed time into an earlier deadline', async () => {
+  const f = await fixture('assigned', ['a']);
+  const request = f.make('a', 'changeRequest', { requesterUserId: 'a', choreId: 'floor', anchorDate, occurrenceId: f.occurrenceId, subjectUserId: null,
+    originalDesignationId: null, original: date(anchorDate), proposed: date('2026-10-28'), proposedMode: 'deadline',
+    proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false }, selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate }, extensionScope: 'once' });
+  f.validate(); assert.equal(dateChangeContextAtOperation(createV2HistoryView(buildSharedReplica(groupId, f.operations)), f.archive, request).mode, 'deadline');
+  const locked = await fixture('assigned', ['a']); const target = time('2026-10-27T09:00:00Z', '2026-10-27T10:00:00Z');
+  const fixed = locked.designation('owner', target, { adminLocked: true });
+  const change = locked.make('a', 'changeRequest', { requesterUserId: 'a', choreId: 'floor', anchorDate, occurrenceId: locked.occurrenceId, subjectUserId: null,
+    originalDesignationId: fixed.operationId, original: target, proposed: { precision: 'instant', at: '2026-10-27T08:00:00Z' }, proposedMode: 'deadline',
+    proposedOptions: { strict: false, adminLocked: true, forbidEarlier: false }, selector: { scope: 'once', occurrenceId: locked.occurrenceId, anchorDate }, extensionScope: 'once' });
+  locked.validate(); assert.deepEqual(dateChangeContextAtOperation(createV2HistoryView(buildSharedReplica(groupId, locked.operations)), locked.archive, change).permission,
+    { kind: 'approvalRequired', approver: 'admin', reason: 'fixed' });
+});
+test('v2 clock rules bind their authoring group timezone and repeating rules request review after a timezone change', async () => {
+  const f = await fixture('assigned', ['a']); const fact = f.designation('owner', time('2026-10-27T09:00:00Z', '2026-10-27T10:00:00Z'),
+    { selector: { scope: 'ongoing', from: anchorDate } }); f.validate();
+  const occurrence = { id: f.occurrenceId, choreId: 'floor', anchorDate, ruleVersion: 1 };
+  assert.deepEqual(materializeRuleTarget(fact.payload.configuration, occurrence, 'America/New_York'), { kind: 'review', reason: 'timeZoneChanged' });
+  const once = { ...fact.payload.configuration, selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate } };
+  assert.equal(materializeRuleTarget(once, occurrence, 'America/New_York').kind, 'target');
+  fact.payload.configuration.timeZoneAtCreation = 'UTC'; assert.throws(() => f.validate(), /group timezone/);
 });

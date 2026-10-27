@@ -9,6 +9,7 @@ import { createDeviceIdentity, signSharedOperation } from '../src/features/shari
 import { createSharedRoster, approveSharedDevice, sharedAuthorIdentity, transferSharedOwnership } from '../src/features/sharing/roster.ts';
 import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 import { v2AuthorProofDigest } from '../src/features/sharing/v2/server-receipts.ts';
+import { v2OccurrenceId, v2DatePermissionId } from '../src/features/sharing/v2/occurrence-id.ts';
 import { loadSharedFacts, loadSharedReplica, listSharingOutbox, applyReceivedSharedFacts, readSharingCheckpoint, applySharingSnapshot } from '../src/platform/storage/sharing-ledger.ts';
 import { createEncryptedSharedSnapshot, openEncryptedSharedSnapshot } from '../src/features/sharing/snapshots.ts';
 import { migrateLocalDatabase } from '../src/platform/storage/migrations.ts';
@@ -180,4 +181,30 @@ test('v2 receipt recovery refuses another user database before any partial progr
     assert.equal(member.connection.prepare('SELECT COUNT(*) AS count FROM sharing_v2_server_receipts').get().count, 0);
     assert.equal(member.state(), null);
   } finally { owner.connection.close(); member.connection.close(); }
+});
+test('v2 server order prevents predicted future grants from retroactively authorizing a signed date change while later legitimate changes still work', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const initial = await loadSharedFacts(d.database, groupId);
+    await applyReceivedSharedFacts(d.database, groupId, initial, '4', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(initial)));
+    const base = { schemaVersion: 2, recordedAt: now().toISOString(), groupId, keyVersion: 2, operationType: 'patch' };
+    const configuration = (id) => ({ id, choreId: 'floor', subjectUserId: null, referenceAnchorDate: '2026-10-27', timeZoneAtCreation: 'Asia/Tokyo',
+      selector: { scope: 'once', occurrenceId: v2OccurrenceId(groupId, 'floor', '2026-10-27'), anchorDate: '2026-10-27' },
+      mode: 'day', target: { precision: 'date', date: '2026-10-28' }, strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'member', ruleVersion: 1 });
+    const grant = signSharedOperation({ ...base, operationId: 'future-grant', authorUserId: 'owner', authorDeviceId: f.owner.deviceId,
+      deviceSequence: 5, logicalClock: 5, context: { [f.owner.deviceId]: 4 }, entityType: 'datePermission', entityId: v2DatePermissionId(groupId, 'floor', 'member'),
+      payload: { choreId: 'floor', userId: 'member', enabled: true, rights: { changeDate: true, changeOthers: true, changeBeforeWindow: false } } }, f.owner);
+    const predicted = signSharedOperation({ ...base, operationId: 'predicted', authorUserId: 'member', authorDeviceId: f.member.deviceId,
+      deviceSequence: 1, logicalClock: 6, context: { [f.owner.deviceId]: 5 }, entityType: 'designation', entityId: 'predicted', payload: { configuration: configuration('predicted') } }, f.member);
+    const [predictionReceipt] = receiptsFor([predicted]).map((receipt) => ({ ...receipt, uploadSequence: 5 }));
+    const [grantReceipt] = receiptsFor([grant]).map((receipt) => ({ ...receipt, uploadSequence: 6 }));
+    await applyReceivedSharedFacts(d.database, groupId, [predicted], '5', d.repository.project, '4', now().getTime(), d.repository.evidenceForServerReceipts([predictionReceipt]));
+    assert.ok(!d.state().accepted.includes('predicted'));
+    await applyReceivedSharedFacts(d.database, groupId, [grant], '6', d.repository.project, '5', now().getTime(), d.repository.evidenceForServerReceipts([grantReceipt]));
+    assert.deepEqual(d.state().rejected, [{ operationId: 'predicted', kind: 'unauthorized', reason: 'sharing/v2-receipt-causality' }]);
+    const legitimate = signSharedOperation({ ...predicted.operation, operationId: 'legitimate', entityId: 'legitimate', deviceSequence: 2,
+      logicalClock: 7, context: { [f.owner.deviceId]: 5, [f.member.deviceId]: 1 }, payload: { configuration: configuration('legitimate') } }, f.member);
+    await applyReceivedSharedFacts(d.database, groupId, [legitimate], '7', d.repository.project, '6', now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor([legitimate])));
+    assert.ok(d.state().accepted.includes('legitimate')); assert.ok(d.state().accepted.includes('future-grant'));
+  } finally { d.connection.close(); }
 });

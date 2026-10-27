@@ -5,12 +5,13 @@ import { createGroupPolicy } from './model.ts';
 import type { DateTarget } from './model.ts';
 import type { JsonValue } from '../operations.ts';
 import type { LocalDate } from '../../../domain/shared/types.ts';
+import { isSharedTimeZone } from '../group-clock.ts';
 
 export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 'assignmentRule', 'claim', 'claimRelease',
   'claimResolution', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-3';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -93,19 +94,23 @@ export function validateV2EntityPayload(entityType: V2EntityType, payload: Recor
   }
   if (entityType === 'designation') {
     record(payload, ['configuration']);
-    const data = record(payload.configuration, ['id', 'choreId', 'subjectUserId', 'selector', 'referenceAnchorDate', 'mode', 'target', 'strict', 'adminLocked', 'forbidEarlier', 'issuerUserId', 'ruleVersion']);
+    const data = record(payload.configuration, ['id', 'choreId', 'subjectUserId', 'selector', 'referenceAnchorDate', 'timeZoneAtCreation', 'mode', 'target', 'strict', 'adminLocked', 'forbidEarlier', 'issuerUserId', 'ruleVersion']);
     if (data.id !== binding.operationId || data.issuerUserId !== binding.authorUserId) throw new Error('A designation cannot impersonate another issuer');
     assertSharedIdentifier(data.choreId); idOrNull(data.subjectUserId); selector(data.selector); day(data.referenceAnchorDate); choice(data.mode, ['deadline', 'day', 'fixed']);
     if ((data.selector as RecordValue).scope === 'once' && (data.selector as RecordValue).anchorDate !== data.referenceAnchorDate) throw new Error('One-off designation anchor mismatch');
+    if (!isSharedTimeZone(data.timeZoneAtCreation)) throw new Error('Invalid designation timezone');
     validateDesignationTarget(data.mode as 'deadline' | 'day' | 'fixed', data.target as DateTarget);
     flag(data.strict); flag(data.adminLocked); flag(data.forbidEarlier); integer(data.ruleVersion, 1); return;
   }
   if (entityType === 'designationCancel') { record(payload, ['targetOperationIds']); ids(payload.targetOperationIds, false); return; }
   if (entityType === 'changeRequest') {
-    record(payload, ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'selector', 'extensionScope']);
+    record(payload, ['requesterUserId', 'choreId', 'anchorDate', 'occurrenceId', 'subjectUserId', 'originalDesignationId', 'original', 'proposed', 'proposedMode', 'proposedOptions', 'selector', 'extensionScope']);
     if (payload.requesterUserId !== binding.authorUserId) throw new Error('Request author mismatch');
     assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.occurrenceId); idOrNull(payload.subjectUserId); idOrNull(payload.originalDesignationId);
-    target(payload.original); target(payload.proposed); selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;
+    target(payload.original); choice(payload.proposedMode, ['deadline', 'day', 'fixed']);
+    validateDesignationTarget(payload.proposedMode as 'deadline' | 'day' | 'fixed', payload.proposed as unknown as DateTarget);
+    Object.values(record(payload.proposedOptions, ['strict', 'adminLocked', 'forbidEarlier'])).forEach(flag);
+    selector(payload.selector); choice(payload.extensionScope, ['once', 'future']); return;
   }
   if (entityType === 'requestDecision') {
     record(payload, ['requestId', 'decision', 'target', 'referenceDecisionId']); assertSharedIdentifier(payload.requestId);

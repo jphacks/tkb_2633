@@ -15,7 +15,7 @@ const interval = (start, end) => ({ precision: 'interval', start, end });
 const occurrence = { id: 'occurrence-a', choreId: 'chore-a', anchorDate: '2026-10-27', windowStart: '2026-10-25', windowEnd: '2026-10-29', ruleVersion: 1 };
 function rule(operationId, target, selector = { scope: 'ongoing', from: '2026-01-01' }, clock = {}) {
   return { operationId, authorDeviceId: operationId, deviceSequence: 1, context: {}, ...clock,
-    rule: { id: operationId, choreId: 'chore-a', subjectUserId: null, selector, referenceAnchorDate: '2026-10-27', mode: 'day', target,
+    rule: { id: operationId, choreId: 'chore-a', subjectUserId: null, selector, referenceAnchorDate: '2026-10-27', timeZoneAtCreation: 'Asia/Tokyo', mode: 'day', target,
       strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'owner', ruleVersion: 1 } };
 }
 

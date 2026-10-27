@@ -1456,5 +1456,40 @@
       { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 backlog confirmations coalesce projection and observer updates while preserving all 205 original receipts and 100-event pages" },
       { "file": "tests/sharing-v2-synchronizer.test.mjs", "name": "v2 snapshot receipt recovery checkpoints bounded progress across restarts without applying an incomplete snapshot" }
     ]
+  },
+  {
+    "feature": "sharing-v2-receipt-causal-authority",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-repository.test.mjs",
+        "name": "v2 server order prevents predicted future grants from retroactively authorizing a signed date change while later legitimate changes still work"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-independent-version-contract",
+    "tests": [
+      {
+        "file": "tests/sharing-compatibility.test.mjs",
+        "name": "v2 draft scheduler has an independent source and timezone contract without changing the live v1 contract"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-explicit-date-mode-and-instruction-guards",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-authority.test.mjs",
+        "name": "v2 receiver cannot clear an earlier prohibition at the same time and then bypass it with a second date edit"
+      },
+      {
+        "file": "tests/sharing-v2-authority.test.mjs",
+        "name": "v2 requests preserve explicit deadline meaning and cannot automatically downgrade a locked fixed time into an earlier deadline"
+      },
+      {
+        "file": "tests/sharing-v2-authority.test.mjs",
+        "name": "v2 clock rules bind their authoring group timezone and repeating rules request review after a timezone change"
+      }
+    ]
   }
 ]

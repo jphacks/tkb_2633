@@ -1,0 +1,26 @@
+{
+  "version": "liflow-shared-2-draft-3",
+  "timeZoneVersion": "2026e",
+  "sourceFiles": [
+    "src/features/sharing/v2/model.ts",
+    "src/features/sharing/v2/payload-schema.ts",
+    "src/features/sharing/v2/date-target.ts",
+    "src/features/sharing/v2/approval-deadline.ts",
+    "src/features/sharing/v2/period-rules.ts",
+    "src/features/sharing/v2/causal-facts.ts",
+    "src/features/sharing/v2/claims.ts",
+    "src/features/sharing/v2/completion-state.ts",
+    "src/features/sharing/v2/permissions.ts",
+    "src/features/sharing/v2/authority-context.ts",
+    "src/features/sharing/v2/history-view.ts",
+    "src/features/sharing/v2/receiver-authority.ts",
+    "src/features/sharing/v2/common-frames.ts",
+    "src/features/sharing/v2/occurrence-id.ts",
+    "src/features/sharing/v2/rule-target.ts",
+    "src/features/sharing/v2/fixed-conflict.ts",
+    "src/features/sharing/v2/server-receipts.ts",
+    "src/features/sharing/group-clock.ts",
+    "node_modules/moment-timezone/data/packed/latest.json"
+  ],
+  "sourceSha256": "0a671d0333d9d6db69cfa1ed1b418086417f50eca5ba68600a4d3b1788b9abbc"
+}

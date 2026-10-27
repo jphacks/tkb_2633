@@ -11,9 +11,9 @@ import { frameAtOperation, groupPolicyAt, rosterAtOperation } from './authority-
 import { deriveClaims } from './claims.ts';
 import type { ClaimFact, ClaimRelease, ClaimResolution } from './claims.ts';
 import { evaluateDateChangePermission, mayUndoCompletion } from './permissions.ts';
-import type { DatePermissionFact } from './permissions.ts';
+import type { DatePermissionFact, DateChangePermission } from './permissions.ts';
 import { normalizeDateTarget, targetCivilDate, targetReferenceTime, validateDesignationTarget } from './date-target.ts';
-import type { DateTarget, ManualRule, ManualRuleFact, SharedChoreConfiguration } from './model.ts';
+import type { DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, SharedChoreConfiguration } from './model.ts';
 import { selectManualRule } from './period-rules.ts';
 import { materializeRuleTarget } from './rule-target.ts';
 import { fixedConflictAtOperation } from './fixed-conflict.ts';
@@ -46,6 +46,7 @@ export function validateV2BusinessHistory(replica: SharedReplica, archive: reado
 }
 
 export class V2AwaitingReceiptError extends Error { readonly code = 'sharing/v2-awaiting-receipt'; }
+export class V2ReceiptCausalityError extends Error { readonly code = 'sharing/v2-receipt-causality'; }
 export interface V2RejectedOperation { operationId: string; kind: 'unauthorized' | 'conflict' | 'unconfirmed'; error: Error }
 export interface V2ReceiptEvidence {
   receipts: ReadonlyMap<string, V2ServerReceipt>;
@@ -57,6 +58,7 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
   const pending = new Set(replica.pendingOperationIds); const rejected: V2RejectedOperation[] = [];
   const provisionalOperationIds: string[] = [];
   const unconfirmedFrontier = new Map<string, number>();
+  const dots = new Map(replica.operations.map((op) => [`${op.authorDeviceId}:${op.deviceSequence}`, op]));
   const { view, accept } = createV2AuthorityIndex(replica.groupId);
   const ready = replica.operations.filter((op) => !pending.has(op.operationId))
     .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
@@ -67,6 +69,12 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
         if (receipt) {
           const fact = evidence.facts.get(op.operationId); if (!fact) throw new Error('Missing receipt author proof');
           const receivedEpoch = bindV2ServerReceipt(receipt, fact, archive);
+          for (const [device, count] of Object.entries(op.context)) {
+            if (count <= (migration?.frontier[device] ?? 0)) continue;
+            const ancestor = dots.get(`${device}:${count}`); const prior = ancestor && evidence.receipts.get(ancestor.operationId);
+            if (!prior) throw new V2AwaitingReceiptError('Fetch the observed fact receipt before applying its descendant');
+            if (prior.uploadSequence >= receipt.uploadSequence) throw new V2ReceiptCausalityError('A future server event cannot retroactively establish observed authority');
+          }
           authorizeV2Operation(view, archive, op, migration); authorizeV2Operation(view, archive, op, migration, receivedEpoch);
         } else if (evidence.pendingLocalIds.has(op.operationId)) {
           authorizeV2Operation(view, archive, op, migration);
@@ -215,6 +223,8 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
       : selector.scope === 'period' ? selector.range.from <= anchorDate && (selector.range.through === null || anchorDate <= selector.range.through) : selector.from <= anchorDate,
     'Date rule must include its reference occurrence');
     const context = dateContext(view, archive, op, rule ?? undefined, undefined, receivedEpoch);
+    if (rule) requireAuthority(rule.timeZoneAtCreation === context.zone, 'Designation must bind the group timezone observed by its author');
+    if (!rule && context.proposedOptions.adminLocked && !context.originalRule?.adminLocked) adminOnly();
     requireAuthority(context.permission.kind !== 'denied', 'This date change is forbidden');
     if (rule) requireAuthority(context.permission.kind === 'allowed' && !context.permission.needsRequest, 'This date change requires a signed request and consent');
     return;
@@ -241,10 +251,12 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   requireAuthority(current.kind !== 'conflict', 'Resolve concurrent dates before another change');
   const originalRule = current.kind === 'selected' ? current.fact.rule : null;
   const materialized = originalRule ? materializeRuleTarget(originalRule, context.frame, zone) : null;
-  requireAuthority(!materialized || materialized.kind === 'target', 'Cycle change requires confirmation before changing the date');
+  requireAuthority(!materialized || materialized.kind === 'target', 'Recurrence or timezone change requires confirmation before changing the date');
   const original = materialized?.kind === 'target' ? materialized.target : { precision: 'date' as const, date: anchorDate };
   const proposed = proposedOverride ?? rule?.target ?? op.payload.proposed as unknown as DateTarget;
-  const mode = rule?.mode ?? originalRule?.mode ?? (proposed.precision === 'interval' ? 'fixed' : proposed.precision === 'instant' ? 'deadline' : 'day');
+  const mode: DesignationMode = proposedOverride ? 'day' : rule?.mode ?? op.payload.proposedMode as DesignationMode;
+  const proposedOptions: DesignationOptions = op.entityType === 'designationCancel' ? { strict: false, adminLocked: false, forbidEarlier: false }
+    : rule ? { strict: rule.strict, adminLocked: rule.adminLocked, forbidEarlier: rule.forbidEarlier } : op.payload.proposedOptions as unknown as DesignationOptions;
   if (!proposedOverride) validateDesignationTarget(mode, proposed);
   if (op.entityType === 'changeRequest') {
     requireAuthority(canonicalJson(normalizeDateTarget(op.payload.original as unknown as DateTarget)) === canonicalJson(normalizeDateTarget(original))
@@ -252,11 +264,17 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   }
   const assigneeIds = subject === null ? context.assigneeIds : [subject]; const date = targetCivilDate(proposed, zone);
   const grants = view.observed(view.ofType('datePermission'), op).map((fact) => ({ ...fact, ...fact.payload }) as unknown as DatePermissionFact);
-  return { ...context, assigneeIds, mode, original, proposed, originalRule, zone,
-    permission: evaluateDateChangePermission({ actorUserId: op.authorUserId, adminUserId: epoch.body.ownerUserId,
+  let permission: DateChangePermission = evaluateDateChangePermission({ actorUserId: op.authorUserId, adminUserId: epoch.body.ownerUserId,
       activeMemberIds: epoch.body.members.map((member) => member.userId), choreId, assigneeIds, policy, grants,
       movingEarlier: targetReferenceTime(proposed, zone) < targetReferenceTime(original, zone), beforeWindow: date < context.frame.windowStart,
       afterWindow: date > context.frame.windowEnd, adminLocked: Boolean(originalRule?.adminLocked), strict: Boolean(originalRule?.strict),
       forbidEarlier: Boolean(originalRule?.forbidEarlier),
-      fixedConflict: fixedConflictAtOperation(view, archive, op, proposed, assigneeIds, { occurrenceId: context.frame.id, subjectUserId: subject }), operation: op }) };
+      fixedConflict: fixedConflictAtOperation(view, archive, op, proposed, assigneeIds, { occurrenceId: context.frame.id, subjectUserId: subject }), operation: op });
+  const weakensInstruction = originalRule && (originalRule.adminLocked && !proposedOptions.adminLocked
+    || originalRule.strict && !proposedOptions.strict || originalRule.forbidEarlier && !proposedOptions.forbidEarlier
+    || originalRule.adminLocked && mode !== originalRule.mode);
+  if (permission.kind !== 'denied' && op.authorUserId !== epoch.body.ownerUserId && weakensInstruction) {
+    permission = { kind: 'approvalRequired', approver: 'admin', reason: originalRule.adminLocked ? 'fixed' : 'strict' };
+  }
+  return { ...context, assigneeIds, mode, original, proposed, proposedOptions, originalRule, zone, permission };
 }

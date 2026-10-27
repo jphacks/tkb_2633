@@ -20,6 +20,11 @@ import { bindV2ServerReceipt, v2AuthorProofDigest } from '../../features/sharing
 import type { V2ServerReceipt } from '../../features/sharing/v2/server-receipts.ts';
 
 interface V2StoreScope { userId: string; groupId: string; householdId: string }
+function digestPages(values: readonly unknown[]): string[] {
+  const result: string[] = [];
+  for (let offset = 0; offset < values.length; offset += 1000) result.push(sharedDocumentDigest(values.slice(offset, offset + 1000)));
+  return result;
+}
 
 /** A fresh, explicitly selected DB only. Existing private and v1 workspaces are never converted in place. */
 export async function initializeV2EventStore(database: SQLiteDatabase, scope: V2StoreScope): Promise<void> {
@@ -91,13 +96,11 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     const accepted = assessment.view.ready.map((operation) => operation.operationId);
     const rejected = assessment.rejected.map((entry) => ({ operationId: entry.operationId, kind: entry.kind,
       reason: 'code' in entry.error ? String(entry.error.code) : 'sharing/v2-invalid-business-fact' }));
-    const digests = replica.operations.map((operation) => sharedDocumentDigest(operation));
-    const pages: string[] = []; for (let index = 0; index < digests.length; index += 1000) pages.push(sharedDocumentDigest(digests.slice(index, index + 1000)));
-    const receiptDigests = [...receipts.values()].map((receipt) => sharedDocumentDigest(receipt)); const receiptPages: string[] = [];
-    for (let index = 0; index < receiptDigests.length; index += 1000) receiptPages.push(sharedDocumentDigest(receiptDigests.slice(index, index + 1000)));
-    const provisionalPages: string[] = [];
-    for (let index = 0; index < assessment.provisionalOperationIds.length; index += 1000) provisionalPages.push(sharedDocumentDigest(assessment.provisionalOperationIds.slice(index, index + 1000)));
-    const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-2', pages, receiptPages, provisionalPages, roster: sharedRosterDigest(latest) });
+    const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-3',
+      sources: digestPages(replica.operations.map((operation) => sharedDocumentDigest(operation))),
+      receipts: digestPages([...receipts.values()].map((receipt) => sharedDocumentDigest(receipt))),
+      accepted: digestPages(accepted), rejected: digestPages(rejected), provisional: digestPages(assessment.provisionalOperationIds),
+      roster: sharedRosterDigest(latest) });
     await transaction.runAsync(`INSERT INTO sharing_v2_projection (singleton, fact_hash, accepted_ids_json, rejected_json, pending_ids_json, provisional_ids_json)
       VALUES (1, ?, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET
       fact_hash=excluded.fact_hash, accepted_ids_json=excluded.accepted_ids_json, rejected_json=excluded.rejected_json,

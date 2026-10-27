@@ -11,7 +11,7 @@ import { createSharedInvitation, encodeCompactSharedInvitation, encodeSharedInvi
 import { sharingInvitationQr } from '../src/features/sharing/invitation-qr.ts';
 import { sharedDateAtTime } from '../src/features/sharing/group-clock.ts';
 import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
-import { assertSharedSchedulerVersion, verifySharedSchedulerContract } from '../scripts/check-shared-scheduler-version.mjs';
+import { assertSharedSchedulerVersion, verifySharedSchedulerContract, verifyV2SharedSchedulerContract, sharedSchedulerSourceDigest } from '../scripts/check-shared-scheduler-version.mjs';
 import { sharedGoogleNamespace, sharedGoogleListTitle, sharedGoogleOccurrenceNote } from '../src/features/google-sync/workspace-policy.ts';
 const { syncDailyHouseworkDigest, createDailyHouseworkDigestRequests } = await import('../src/features/notifications/daily-housework-digest.ts');
 const { reconcileGoogleTasks } = await import('../src/features/google-sync/reconcile-google-tasks.ts');
@@ -71,6 +71,22 @@ test('shared scheduler and timezone source changes require a versioned compatibi
   assert.throws(() => assertSharedSchedulerVersion({ ...current, sourceSha256: 'a'.repeat(64) }, current), /without/);
   assert.throws(() => assertSharedSchedulerVersion({ ...current, timeZoneVersion: 'future' }, current), /without/);
   assertSharedSchedulerVersion({ ...current, version: 'liflow-shared-2', sourceSha256: 'a'.repeat(64) }, current);
+});
+
+test('v2 draft scheduler has an independent source and timezone contract without changing the live v1 contract', () => {
+  const live = verifySharedSchedulerContract(); const draft = verifyV2SharedSchedulerContract();
+  assert.equal(live.version, 'liflow-shared-1'); assert.match(draft.version, /^liflow-shared-2-draft-\d+$/u);
+  for (const file of ['model', 'payload-schema', 'approval-deadline', 'receiver-authority', 'occurrence-id', 'common-frames', 'rule-target', 'server-receipts']) {
+    assert.ok(draft.sourceFiles.includes(`src/features/sharing/v2/${file}.ts`));
+  }
+  assert.ok(draft.sourceFiles.includes('node_modules/moment-timezone/data/packed/latest.json'));
+  assert.throws(() => assertSharedSchedulerVersion(draft, draft), /Invalid/);
+  assertSharedSchedulerVersion(draft, draft, { allowDraft: true });
+  assert.throws(() => assertSharedSchedulerVersion({ ...draft, sourceSha256: 'a'.repeat(64) }, draft, { allowDraft: true }), /without/);
+  assert.throws(() => assertSharedSchedulerVersion({ ...draft, timeZoneVersion: 'future' }, draft, { allowDraft: true }), /without/);
+  const files = ['src/features/sharing/v2/model.ts', 'src/features/sharing/v2/receiver-authority.ts'];
+  assert.notEqual(sharedSchedulerSourceDigest(files, () => Buffer.from('original')),
+    sharedSchedulerSourceDigest(files, (file) => Buffer.from(file.endsWith('receiver-authority.ts') ? 'changed' : 'original')));
 });
 
 test('personal and shared reminders use separate namespaces; disabling or refreshing one cannot cancel another', async () => {

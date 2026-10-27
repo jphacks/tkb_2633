@@ -6,13 +6,14 @@ import type { DateTarget, ManualRule, SharedOccurrence } from './model.ts';
 
 /** D6: repeat a civil-day offset and local clock, not an absolute date or a 24-hour UTC increment. */
 export function materializeRuleTarget(rule: ManualRule, occurrence: SharedOccurrence, timeZone: string):
-  { kind: 'target'; target: DateTarget } | { kind: 'review'; reason: 'cycleChanged' | 'invalidInterval' } {
+  { kind: 'target'; target: DateTarget } | { kind: 'review'; reason: 'cycleChanged' | 'timeZoneChanged' | 'invalidInterval' } {
   const target = normalizeDateTarget(rule.target);
   if (rule.selector.scope === 'once') {
     if (rule.selector.occurrenceId !== occurrence.id || rule.selector.anchorDate !== occurrence.anchorDate) throw new Error('One-off rule belongs to another occurrence');
     return { kind: 'target', target };
   }
   if (rule.ruleVersion !== occurrence.ruleVersion) return { kind: 'review', reason: 'cycleChanged' };
+  if (target.precision !== 'date' && rule.timeZoneAtCreation !== timeZone) return { kind: 'review', reason: 'timeZoneChanged' };
   const delta = daysBetween(rule.referenceAnchorDate, occurrence.anchorDate);
   if (target.precision === 'date') return { kind: 'target', target: { precision: 'date', date: addDays(target.date, delta) } };
   const shift = (timestamp: string) => {

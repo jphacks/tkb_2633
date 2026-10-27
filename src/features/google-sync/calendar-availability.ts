@@ -3,6 +3,9 @@ import type { ExternalAvailabilityByDate } from '@/domain/scheduling/contracts';
 import { addDays } from '@/domain/scheduling/local-date';
 import { parseGoogleCompletedAt } from './google-completion-policy';
 import { busyMinutesToBucket } from '@/domain/scheduling/calendar-penalty';
+import { CALENDAR_AVAILABILITY_MAX_AGE_MS, CALENDAR_REFRESH_INTERVAL_MS } from './calendar-timing';
+
+export { CALENDAR_AVAILABILITY_MAX_AGE_MS, CALENDAR_REFRESH_INTERVAL_MS, CALENDAR_RETRY_INTERVAL_MS } from './calendar-timing';
 
 /** Only changes that alter the Scheduler penalty require a new plan; freshness metadata is excluded. */
 export function calendarAvailabilitySignature(availability: ExternalAvailabilityByDate | undefined): string {
@@ -13,9 +16,6 @@ export function calendarAvailabilitySignature(availability: ExternalAvailability
 }
 
 export const GOOGLE_CALENDAR_FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.freebusy';
-export const CALENDAR_AVAILABILITY_MAX_AGE_MS = 36 * 60 * 60 * 1000;
-export const CALENDAR_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-export const CALENDAR_RETRY_INTERVAL_MS = 60 * 60 * 1000;
 export type CalendarAvailabilityStatus = 'idle' | 'syncing' | 'retryPending' | 'permissionRequired' | 'error';
 
 export interface CalendarAvailabilityState {

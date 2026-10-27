@@ -1,4 +1,6 @@
 import { isSharedTimeZone } from './group-clock.ts';
+import { assertSharedIdentifier } from './identifier.ts';
+export { assertSharedIdentifier } from './identifier.ts';
 /** The wire payload is deliberately independent of Expo, Firebase and personal Google state. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type VersionVector = Record<string, number>;
@@ -25,7 +27,6 @@ export interface SharedOperation {
 export const SHARED_SCHEMA_VERSION = 1;
 export const SHARED_SCHEDULER_VERSION = 'liflow-shared-1';
 export const MAX_OPERATION_BYTES = 192 * 1024;
-const IDENTIFIER = /^[A-Za-z0-9_.:@-]{1,200}$/u;
 const FORBIDDEN_FIELDS = new Set(['proto', 'constructor', 'prototype', 'accesstoken', 'refreshtoken',
   'idtoken', 'apikey', 'privatekey', 'clientsecret', 'signingsecretkey', 'agreementsecretkey', 'groupkey',
   'recoverysecret', 'authorization', 'googletaskid', 'googletasklistid', 'freebusy', 'pdfbase64']);
@@ -49,10 +50,6 @@ const FIELDS: Record<SharedEntityType, Set<string>> = {
   completion: new Set(['choreId', 'completedAt', 'completedByMemberId', 'scheduledDate', 'scheduledWindowStart',
     'scheduledWindowEnd', 'completedLocalDate', 'completionNote', 'estimatedDate', 'outcome', 'targetOperationId']),
 };
-
-export function assertSharedIdentifier(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || !IDENTIFIER.test(value)) throw new Error('Invalid shared identifier');
-}
 
 export function assertJsonRecord(value: unknown): asserts value is Record<string, JsonValue> {
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -214,7 +211,7 @@ export function validateSharedOperation(value: unknown, expectedGroupId?: string
   return JSON.parse(encoded) as SharedOperation;
 }
 
-export function causallyPrecedes(left: SharedOperation, right: SharedOperation): boolean {
+export function causallyPrecedes(left: Pick<SharedOperation, 'authorDeviceId' | 'deviceSequence'>, right: Pick<SharedOperation, 'context'>): boolean {
   return (right.context[left.authorDeviceId] ?? 0) >= left.deviceSequence;
 }
 

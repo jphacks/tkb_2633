@@ -1204,5 +1204,153 @@
         "name": "android planner pages show a shared issue warning with a working resolution link only for the active group"
       }
     ]
+  },
+  {
+    "feature": "sharing-v2-domain-policies",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 family and roommate defaults are independent and switching kinds preserves every explicit setting"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 shared chore presets use orthogonal completion and assignment and never encode a private chore into a shared policy"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-dates-and-approval",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 date, deadline instant and fixed intervals reject ambiguous or malformed timestamps without inventing a duration"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 fixed time conflicts require both an overlapping interval and a shared assignee"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 approval grace handles every threshold including one millisecond boundaries using server receipts"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 date-only approval references group 23:59 and an earlier proposal never extends its available time"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 late offline decisions expire while timely server-accepted decisions remain accepted when read much later"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-period-rules",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 period replacement preserves both sides and handles disjoint, boundary and ongoing ranges"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 two-week and calendar-month validity have explicit inclusive endings rather than assuming thirty days"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 manual rule priority and causal replacement preserve old ranges and independent same-time edits as conflicts"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 duplicate rule delivery is idempotent and reused operation IDs with different content are rejected"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-private-availability",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 private Calendar reports only a scoped conflict result and never treats stale, incomplete or foreign data as free"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 private Calendar clips and merges busy intervals without modifying its original cache"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 private relocation obeys explicit allowed times, protects fixed chores and requires roommate consent"
+      },
+      {
+        "file": "tests/sharing-v2-domain.test.mjs",
+        "name": "v2 private relocation searches the original civil day first even when earlier allowed windows exist"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-date-permissions",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 delegation being enabled grants no rights until an explicit scoped grant and concurrent revocation cannot expand them"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 date grants are evaluated at the action causal frontier and later grants never retroactively authorize an unobserved action"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 date permissions keep fixed, strict, outside-window and assignee-consent rules above automatic earlier approval"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-claims",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 concurrent claims keep every claimant provisional regardless of arrival order or duplicate delivery"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 claim release targets only observed own claims and a released resolved winner does not revive losing claims"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 fixed claim assignment cannot be unilaterally released and a concurrent release remains an explicit provisional conflict"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-completion",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 each-member completion stays independent and substitution approval is separate from the immutable work fact"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 completion undo is recorder-or-admin, observed and targeted without removing another independent completion"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 common chores can finish during provisional claims and resolving assignments never erases who actually worked"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 short cycles suppress only the matching subject from the real execution day while daily and weekly anchors stay independent"
+      },
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 work fulfillment is separate from recorded time and exact end completion is valid without changing interval conflict semantics"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-v2-domain-expired-visibility",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-participation.test.mjs",
+        "name": "v2 expired home visibility is exactly five civil days independently of recurrence consumption"
+      }
+    ]
   }
 ]

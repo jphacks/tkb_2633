@@ -1,0 +1,76 @@
+import type { LocalDate } from '../../../domain/shared/types.ts';
+import type { VersionVector } from '../operations.ts';
+import { assertSharedIdentifier } from '../identifier.ts';
+
+export type GroupKind = 'family' | 'roommates';
+export interface GroupPolicy {
+  kind: GroupKind;
+  delegationEnabled: boolean;
+  allowBeforeWindow: boolean;
+  allowAfterWindow: boolean;
+  adminCanFixWithoutConsent: boolean;
+  autoApproveEarlier: boolean;
+  allowSubstitution: boolean;
+  showCompletionStatus: boolean;
+  completionPushEnabled: boolean;
+}
+export type ChorePreset = 'common' | 'eachMember' | 'assigned' | 'personal';
+export interface SharedChorePolicy {
+  completion: 'one' | 'perMember';
+  assignment: { mode: 'open' | 'all' | 'selected'; memberIds: string[] };
+}
+export type DateTarget = { precision: 'date'; date: LocalDate }
+  | { precision: 'instant'; at: string }
+  | { precision: 'interval'; start: string; end: string };
+export type DesignationMode = 'deadline' | 'day' | 'fixed';
+export interface CivilRange { from: LocalDate; through: LocalDate | null }
+export interface InstantRange { start: number; end: number }
+export interface CausalStamp {
+  operationId: string; authorDeviceId: string; deviceSequence: number; context: VersionVector;
+}
+export type RuleSelector = { scope: 'once'; occurrenceId: string }
+  | { scope: 'period'; range: CivilRange }
+  | { scope: 'ongoing'; from: LocalDate };
+export interface ManualRule {
+  id: string;
+  choreId: string;
+  subjectUserId: string | null;
+  selector: RuleSelector;
+  mode: DesignationMode;
+  target: DateTarget;
+  strict: boolean;
+  adminLocked: boolean;
+  forbidEarlier: boolean;
+  issuerUserId: string;
+  ruleVersion: number;
+}
+export interface ManualRuleFact extends CausalStamp { rule: ManualRule }
+export interface SharedOccurrence {
+  id: string; choreId: string; anchorDate: LocalDate;
+  windowStart: LocalDate; windowEnd: LocalDate; ruleVersion: number;
+}
+export interface CompletionFact {
+  operationId: string; occurrenceId: string; subjectUserId: string | null;
+  originalAssigneeIds: string[] | null; performerUserId: string; recorderUserId: string;
+  performedAt: string; recordedAt: string;
+  acceptance: 'accepted' | 'pending';
+}
+
+/** Defaults are used only when creating a policy, never when switching its kind. */
+export function createGroupPolicy(kind: GroupKind): GroupPolicy {
+  if (!['family', 'roommates'].includes(kind)) throw new Error('グループの種類を確認してください。');
+  return { kind, delegationEnabled: kind === 'family', allowBeforeWindow: true,
+    allowAfterWindow: kind === 'roommates', adminCanFixWithoutConsent: kind === 'family',
+    autoApproveEarlier: true, allowSubstitution: true, showCompletionStatus: true, completionPushEnabled: false };
+}
+export function changeGroupKind(policy: GroupPolicy, kind: GroupKind): GroupPolicy {
+  createGroupPolicy(kind);
+  return { ...policy, kind };
+}
+export function chorePolicyFromPreset(preset: Exclude<ChorePreset, 'personal'>, selected: readonly string[] = []): SharedChorePolicy {
+  if (preset === 'eachMember') return { completion: 'perMember', assignment: { mode: 'all', memberIds: [] } };
+  if (preset === 'common') return { completion: 'one', assignment: { mode: 'open', memberIds: [] } };
+  if (preset !== 'assigned' || selected.length === 0 || new Set(selected).size !== selected.length) throw new Error('担当者を選んでください。');
+  selected.forEach(assertSharedIdentifier);
+  return { completion: 'one', assignment: { mode: 'selected', memberIds: [...selected].sort() } };
+}

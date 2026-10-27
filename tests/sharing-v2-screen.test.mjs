@@ -1,0 +1,124 @@
+import './helpers/typescript-loader.mjs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { screenHarness } from './helpers/screen-harness.mjs';
+import { fixture, seeds, now, groupId } from './helpers/sharing-v2-repository-fixture.mjs';
+import { createV2GroupController } from '../src/features/sharing/v2/controller.ts';
+import { applyReceivedSharedFacts, loadSharedFacts } from '../src/platform/storage/sharing-ledger.ts';
+import { receiptsFor } from './helpers/sharing-v2-repository-fixture.mjs';
+import { v2TargetFromForm, v2LocalTimeInput } from '../src/features/sharing/v2-ui/target-form.ts';
+const range = { from: '2026-10-27', through: '2026-11-10', asOfDate: '2026-10-27' };
+const ref = { choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null };
+const ctrl = (d) => { let id = 0; return createV2GroupController(d.repository, { makeId: () => `${d.options.userId}-screen-${++id}`, now, sync: async () => {} }); };
+async function card(d, platform, options = {}) {
+  const controller = ctrl(d); let props;
+  const update = async () => {
+    const model = await controller.readModel(range); Object.assign(props, { model, round: model.plan.occurrences[0], subject: model.plan.occurrences[0].subjects[0] });
+  };
+  const model = await controller.readModel(range);
+  props = { model, round: model.plan.occurrences[0], subject: model.plan.occurrences[0].subjects[0], actions: controller.actions, busy: false,
+    showActions: true, run: async (work) => { await work(); await update(); }, onOpen: () => {}, onDate: () => {}, onPast: () => {}, onAssignment: () => {}, ...options };
+  const screen = screenHarness('src/features/sharing/v2-ui/round-card.tsx', { exportName: 'V2RoundCard', platform, props });
+  return { controller, props, screen };
+}
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 shared card wires claim, completion and targeted undo into the isolated signed repository`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const { screen, props } = await card(d, platform);
+      await screen.press('引き受ける'); assert.deepEqual(props.round.assigneeIds, ['owner']);
+      const checkbox = () => screen.nodes().find((node) => node.props.accessibilityRole === 'checkbox');
+      await checkbox().props.onPress(); await screen.flush(); assert.equal(props.subject.completed, true); assert.equal(checkbox().props.accessibilityState.checked, true);
+      assert.ok(screen.text().includes('実施者：'));
+      await checkbox().props.onPress(); await screen.flush(); assert.equal(props.subject.completed, false); assert.equal(props.model.plan.history.length, 1); assert.equal(props.model.plan.history[0].active, false);
+      await screen.press('引き受けを解除'); assert.deepEqual(props.round.assigneeIds, []);
+      assert.equal(props.model.pendingChanges, 8);
+    } finally { d.connection.close(); }
+  });
+  test(`${platform} v2 assigned cards omit claim controls and expose deliberate substitution without completing another person's task by checkbox`, async () => {
+    const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+    try {
+      await owner.repository.commit(seeds()); await ctrl(owner).actions.assign(ref, ['owner'], 'this', true);
+      const facts = await loadSharedFacts(owner.database, groupId);
+      await applyReceivedSharedFacts(member.database, groupId, facts, '5', member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(facts)));
+      let substitution = 0; const { screen } = await card(member, platform, { onPast: () => { substitution++; } });
+      assert.throws(() => screen.button('引き受ける'), /missing button/);
+      const checkbox = screen.nodes().find((node) => node.props.accessibilityRole === 'checkbox'); assert.equal(checkbox.props.disabled, true);
+      await screen.press('代行を記録'); assert.equal(substitution, 1); assert.equal((await member.repository.readState()).assessment.view.ofType('completion').length, 0);
+    } finally { owner.connection.close(); member.connection.close(); }
+  });
+  test(`${platform} v2 compact cards keep secondary operations in details and show strict fulfillment separately from a real completion`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const controller = ctrl(d);
+      await controller.actions.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-28' }, options: { strict: true } });
+      await controller.actions.complete(ref);
+      const { screen } = await card(d, platform, { showActions: false });
+      assert.ok(screen.text().includes('指定日時の条件は未達成')); assert.equal(screen.nodes().find((node) => node.props.accessibilityRole === 'checkbox').props.accessibilityState.checked, true);
+      assert.throws(() => screen.button('日時を変更'), /missing button/); assert.throws(() => screen.button('以前の実施を記録'), /missing button/);
+    } finally { d.connection.close(); }
+  });
+}
+test('v2 date forms resolve local times in the shared timezone independently of the host OS and reject nonexistent times or invented intervals', () => {
+  const original = process.env.TZ;
+  try {
+    for (const zone of ['Pacific/Honolulu', 'Asia/Tokyo', 'America/New_York']) {
+      process.env.TZ = zone;
+      assert.deepEqual(v2TargetFromForm({ mode: 'fixed', day: '2026-10-27', clock: '19:00', endDay: '2026-10-27', endClock: '19:30', timeZone: 'Asia/Tokyo' }),
+        { precision: 'interval', start: '2026-10-27T10:00:00.000Z', end: '2026-10-27T10:30:00.000Z' });
+      assert.throws(() => v2LocalTimeInput('2026-03-08', '02:30', 'America/New_York'), /存在しない/);
+      assert.throws(() => v2TargetFromForm({ mode: 'fixed', day: '2026-10-27', clock: '19:00', endDay: '', endClock: '', timeZone: 'Asia/Tokyo' }));
+    }
+  } finally { if (original === undefined) delete process.env.TZ; else process.env.TZ = original; }
+});
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 configuration editor automatically saves numeric edits and activation into the signed database without a save button`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const controller = ctrl(d); const props = { model: await controller.readModel(range), choreId: 'floor', controller,
+        onSaved: async () => { props.model = await controller.readModel(range); } };
+      const screen = screenHarness('src/features/sharing/v2-ui/configuration-editor.tsx', { exportName: 'V2ConfigurationEditor', platform, props });
+      await screen.change('共有家事の周期', '１７'); await screen.change('共有家事の基準日より後', '4'); await screen.endEditing('共有家事の周期');
+      for (let i = 0; i < 20 && props.model.configurations[0].configuration.ruleVersion === 1; i++) await screen.flush();
+      assert.equal(props.model.configurations[0].configuration.intervalDays, 17); assert.equal(props.model.configurations[0].configuration.windowAfterDays, 4);
+      assert.equal(props.model.configurations[0].configuration.ruleVersion, 2); assert.throws(() => screen.button('個別設定を保存'), /missing button/);
+      const toggle = screen.nodes().find((node) => node.type === 'Switch' && node.props.accessibilityLabel === '共有家事を有効にする');
+      toggle.props.onValueChange(false);
+      for (let i = 0; i < 20 && props.model.configurations[0].configuration.active !== false; i++) await screen.flush();
+      assert.equal(props.model.configurations[0].configuration.active, false); assert.equal(props.model.plan.chores[0].enabled, false);
+      assert.equal((await controller.readModel(range)).configurations[0].configuration.intervalDays, 17);
+    } finally { d.connection.close(); }
+  });
+  test(`${platform} v2 configuration editor keeps invalid input out of storage and flushes valid changes on background and navigation`, async () => {
+    const f = await fixture(); const d = await f.device();
+    try {
+      await d.repository.commit(seeds()); const controller = ctrl(d); let stateListener; let focus; const effects = [];
+      const props = { model: await controller.readModel(range), choreId: 'floor', controller, onSaved: async () => { props.model = await controller.readModel(range); } };
+      const screen = screenHarness('src/features/sharing/v2-ui/configuration-editor.tsx', { exportName: 'V2ConfigurationEditor', platform, props,
+        effect: (callback) => effects.push(callback), focusEffect: (callback) => { focus = callback; }, appStateListener: (callback) => { stateListener = callback; } });
+      const cleanups = effects.splice(0).map((effect) => effect()); const leave = focus();
+      await screen.change('共有家事の周期', '17'); await screen.change('共有家事の周期', ''); await screen.endEditing('共有家事の周期');
+      assert.equal(props.model.configurations[0].configuration.ruleVersion, 1); assert.ok(screen.text().includes('1〜3650日の整数'));
+      await screen.change('共有家事の周期', '9'); stateListener('background');
+      for (let i = 0; i < 20 && props.model.configurations[0].configuration.intervalDays !== 9; i++) await screen.flush();
+      assert.equal(props.model.configurations[0].configuration.intervalDays, 9);
+      await screen.change('共有家事の基準日より前', '0'); leave();
+      for (let i = 0; i < 20 && props.model.configurations[0].configuration.windowBeforeDays !== 0; i++) await screen.flush();
+      assert.equal(props.model.configurations[0].configuration.windowBeforeDays, 0);
+      for (const cleanup of cleanups) cleanup?.();
+    } finally { d.connection.close(); }
+  });
+}
+
+test('v2 common cadence controls are absent for non-administrators and conflicting or unconfigured policies remain explicit', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const controller = ctrl(d); const model = await controller.readModel(range);
+    const props = { model: { ...model, viewerUserId: 'member' }, choreId: 'floor', controller, onSaved: async () => {} };
+    const screen = screenHarness('src/features/sharing/v2-ui/configuration-editor.tsx', { exportName: 'V2ConfigurationEditor', props });
+    assert.equal(screen.nodes().some((node) => node.type === 'Switch' || node.type === 'TextInput'), false); assert.ok(screen.text().includes('管理者'));
+    props.model = { ...model, configurations: model.configurations.map((entry) => ({ ...entry, configuration: null })) }; screen.render();
+    assert.ok(screen.text().includes('設定が競合')); assert.equal(screen.nodes().some((node) => node.type === 'TextInput'), false);
+  } finally { d.connection.close(); }
+});

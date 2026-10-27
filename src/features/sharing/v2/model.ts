@@ -29,6 +29,10 @@ export interface SharedChoreConfiguration {
   ruleVersion: number;
   effectiveFrom?: LocalDate;
   active?: boolean;
+  /** The subject set does not grow merely because an unrelated cadence edit was authored after someone joined. */
+  targetMemberIds?: string[];
+  /** An unrelated cadence edit retains original assignment facts and their causal conflicts. */
+  assignmentSourceVersion?: number;
 }
 export type DateTarget = { precision: 'date'; date: LocalDate }
   | { precision: 'instant'; at: string }

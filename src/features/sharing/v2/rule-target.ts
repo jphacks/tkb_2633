@@ -23,10 +23,16 @@ export function materializeRuleTarget(rule: ManualRule, occurrence: SharedOccurr
     const date = addDays(sharedLocalDate(new Date(instant), timeZone), delta);
     const shifted = sharedDateAtTime(date, civil.getUTCHours(), civil.getUTCMinutes(), timeZone).getTime()
       + civil.getUTCSeconds() * 1000 + civil.getUTCMilliseconds();
+    const shiftedCivil = new Date(shifted - zone.utcOffset(shifted) * 60_000);
+    if (sharedLocalDate(new Date(shifted), timeZone) !== date || shiftedCivil.getUTCHours() !== civil.getUTCHours()
+      || shiftedCivil.getUTCMinutes() !== civil.getUTCMinutes()) return null;
     return new Date(shifted).toISOString();
   };
-  if (target.precision === 'instant') return { kind: 'target', target: { precision: 'instant', at: shift(target.at) } };
+  if (target.precision === 'instant') {
+    const at = shift(target.at); return at ? { kind: 'target', target: { precision: 'instant', at } } : { kind: 'review', reason: 'invalidInterval' };
+  }
   const start = shift(target.start); const end = shift(target.end);
+  if (!start || !end) return { kind: 'review', reason: 'invalidInterval' };
   if (Date.parse(end) <= Date.parse(start)) return { kind: 'review', reason: 'invalidInterval' };
   return { kind: 'target', target: { precision: 'interval', start, end } };
 }

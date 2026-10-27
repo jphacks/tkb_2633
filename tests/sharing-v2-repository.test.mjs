@@ -428,3 +428,14 @@ test('v2 repository revocation while reading signed facts refuses to return acco
     await assert.rejects(d.repository.readState(), /account changed/); assert.deepEqual(d.state(), before);
   } finally { d.connection.close(); }
 });
+
+test('v2 repository observer failures after commit cannot report a durable edit as a failed transaction', async () => {
+  for (const observer of [() => { throw new Error('observer failed'); }, async () => { throw new Error('async observer failed'); }]) {
+    const f = await fixture(); const d = await f.device();
+    try {
+      const repository = createV2EventRepository(d.database, { ...d.options, afterCommit: observer });
+      assert.equal((await repository.commit(seeds())).length, 4); await Promise.resolve();
+      assert.equal((await listSharingOutbox(d.database, groupId)).length, 4); assert.equal((await repository.readState()).assessment.view.ready.length, 4);
+    } finally { d.connection.close(); }
+  }
+});

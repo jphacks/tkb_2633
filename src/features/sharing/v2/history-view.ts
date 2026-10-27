@@ -2,6 +2,8 @@ import { canonicalJson, causallyPrecedes } from '../operations.ts';
 import type { JsonValue, SharedEntityType, SharedOperation } from '../operations.ts';
 import type { SharedReplica } from '../replica.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
+import { normalizeV2Configuration } from './configuration-normalization.ts';
+import type { SharedChoreConfiguration } from './model.ts';
 
 export class V2HistoryConflictError extends Error { readonly code = 'sharing/v2-history-conflict'; }
 
@@ -40,7 +42,8 @@ export function createV2AuthorityIndex(groupId: string) {
         && (field === '$alive' || Object.hasOwn(op.payload, field)));
       const latest = maximalCausalFacts(writing);
       if (!latest.length) return null;
-      const value = (op: SharedOperation): JsonValue => field === '$alive' ? op.operationType !== 'delete' : op.payload[field];
+      const value = (op: SharedOperation): JsonValue => field === '$alive' ? op.operationType !== 'delete'
+        : type === 'chorePolicy' && field === 'configuration' ? normalizeV2Configuration(op.payload[field] as unknown as SharedChoreConfiguration) as unknown as JsonValue : op.payload[field];
       if (new Set(latest.map((op) => canonicalJson(value(op)))).size > 1) throw new V2HistoryConflictError(`Unresolved ${type}.${field}`);
       return { value: value(latest[0]), operations: latest };
     },

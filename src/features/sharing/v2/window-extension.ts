@@ -6,6 +6,7 @@ import type { V2DateRequestState } from './request-state.ts';
 import type { VerifiedSharedRoster } from '../roster.ts';
 import { targetCivilDate, instantMilliseconds } from './date-target.ts';
 import type { ConfirmationProof } from './confirmation.ts';
+import type { SharedOperation } from '../operations.ts';
 
 function administratorBacked(proof: ConfirmationProof | null, view: V2HistoryView, epochs: ReadonlyMap<string, VerifiedSharedRoster>): boolean {
   if (!proof) return false;
@@ -15,10 +16,11 @@ function administratorBacked(proof: ConfirmationProof | null, view: V2HistoryVie
 }
 /** The common window expands only with an administrator-backed approval, never with someone's private recommendation. */
 export function expandedCommonWindow(input: { frame: SharedOccurrence; timeZone: string; view: V2HistoryView;
-  requests: readonly V2DateRequestState[]; approvedRules: readonly ManualRuleFact[]; receiptEpochs: ReadonlyMap<string, VerifiedSharedRoster> }) {
+  requests: readonly V2DateRequestState[]; approvedRules: readonly ManualRuleFact[]; receiptEpochs: ReadonlyMap<string, VerifiedSharedRoster>; at?: SharedOperation }) {
   let before = daysBetween(input.frame.windowStart, input.frame.anchorDate); let after = daysBetween(input.frame.anchorDate, input.frame.windowEnd);
   const sources: string[] = []; const reviews: string[] = [];
-  const cancelled = new Set(input.view.ofType('designationCancel').flatMap((op) => op.payload.targetOperationIds as string[]));
+  const cancellations = input.at ? input.view.observed(input.view.ofType('designationCancel'), input.at) : input.view.ofType('designationCancel');
+  const cancelled = new Set(cancellations.flatMap((op) => op.payload.targetOperationIds as string[]));
   const byRequest = new Map(input.approvedRules.map((rule) => [rule.sourceRequestId, rule]));
   for (const request of input.requests) {
     if (request.kind !== 'approved' || request.proposal.choreId !== input.frame.choreId) continue;

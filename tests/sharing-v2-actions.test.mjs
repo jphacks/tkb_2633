@@ -34,7 +34,7 @@ test('v2 actions keep bootstrap separate, require explicit activation and protec
     plan = await a.readPlan(range); assert.equal(plan.occurrences[0].anchorDate, '2026-10-29');
     const facts = await loadSharedFacts(owner.database, groupId);
     await applyReceivedSharedFacts(member.database, groupId, facts, String(facts.length), member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(facts)));
-    await assert.rejects(actions(member).configureChore(choreId, { ...plan.occurrences[0].configuration, effectiveFrom: '2026-10-30', active: false }), { code: 'sharing/v2-authority-denied' });
+    await assert.rejects(actions(member).configureChore(choreId, { ...plan.occurrences[0].configuration, effectiveFrom: '2026-10-30', active: false }, { expectedRuleVersion: 1 }), { code: 'sharing/v2-authority-denied' });
     assert.equal((await listSharingOutbox(member.database, groupId)).length, 0);
   } finally { owner.connection.close(); member.connection.close(); }
 });
@@ -91,5 +91,117 @@ test('v2 actions require an explicit high-load confirmation and roll back a canc
     assert.equal((await listSharingOutbox(d.database, groupId)).length, before);
     await a.changeDate(ref, { mode: 'day', target: { precision: 'date', date: ref.anchorDate }, confirmHighLoad: true });
     assert.equal((await a.readPlan(range)).occurrences.find((entry) => entry.choreId === 'floor').subjects[0].formalDate.kind, 'manual');
+  } finally { d.connection.close(); }
+});
+
+test('v2 configuration autosave merges different fields but refuses stale full settings and same-field overwrite', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d);
+    await a.patchChoreConfiguration('floor', 1, { windowAfterDays: 4 }, '2026-10-27');
+    await a.patchChoreConfiguration('floor', 1, { intervalDays: 3 }, '2026-10-27');
+    let plan = await a.readPlan(range); assert.equal(plan.occurrences[0].configuration.windowAfterDays, 4); assert.equal(plan.occurrences[0].configuration.intervalDays, 3);
+    const before = (await listSharingOutbox(d.database, groupId)).length;
+    await assert.rejects(a.patchChoreConfiguration('floor', 1, { windowAfterDays: 5 }, '2026-10-27'), { code: 'sharing/v2-stale-settings' });
+    await assert.rejects(a.configureChore('floor', { ...seeds()[3].payload.configuration, effectiveFrom: ref.anchorDate }, { expectedRuleVersion: 1 }), { code: 'sharing/v2-stale-settings' });
+    assert.equal((await listSharingOutbox(d.database, groupId)).length, before);
+    assert.equal((await a.patchChoreConfiguration('floor', 1, { intervalDays: 3 }, '2026-10-27')).length, 0);
+    plan = await a.readPlan(range); assert.equal(plan.occurrences[0].configuration.ruleVersion, 3);
+  } finally { d.connection.close(); }
+});
+test('v2 cadence edits preserve original fixed assignment facts without copying them', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d); await a.assign(ref, ['member'], 'next', true);
+    const before = (await d.repository.readState()).assessment.view.ofType('assignmentRule').map((op) => op.operationId);
+    await a.patchChoreConfiguration('floor', 1, { windowAfterDays: 3 }, '2026-10-27');
+    const state = await d.repository.readState(); assert.deepEqual(state.assessment.view.ofType('assignmentRule').map((op) => op.operationId), before);
+    const plan = await a.readPlan(range); assert.equal(plan.occurrences[0].configuration.assignmentSourceVersion, 1);
+    assert.deepEqual(plan.occurrences[0].assigneeIds, []); assert.deepEqual(plan.occurrences[1].assigneeIds, ['member']); assert.equal(plan.occurrences[1].assignmentFixed, true);
+    await assert.rejects(a.patchChoreConfiguration('floor', 2, { intervalDays: 3 }, '2026-10-27'), { code: 'sharing/v2-assignment-remap-required' });
+    assert.deepEqual((await d.repository.readState()).assessment.view.ofType('assignmentRule').map((op) => op.operationId), before);
+  } finally { d.connection.close(); }
+});
+test('v2 unrelated configuration edits do not add a newly joined member until an explicit this-or-next assignment', async () => {
+  const { createDeviceIdentity } = await import('../src/features/sharing/crypto.ts');
+  const { approveSharedDevice } = await import('../src/features/sharing/roster.ts');
+  const { sharingTestCrypto } = await import('./helpers/sharing-crypto.mjs');
+  const f = await fixture(); const d = await f.device();
+  try {
+    const initial = seeds(); initial[3].payload.configuration.policy = chorePolicyFromPreset('eachMember'); await d.repository.commit(initial);
+    const late = await createDeviceIdentity(sharingTestCrypto); f.archive.push(approveSharedDevice(f.archive.at(-1), f.owner, 'late', late));
+    const a = actions(d); await a.patchChoreConfiguration('floor', 1, { windowAfterDays: 3 }, '2026-10-27');
+    let plan = await a.readPlan(range); assert.deepEqual(plan.occurrences[0].subjectUserIds, ['member', 'owner']); assert.deepEqual(plan.occurrences[1].subjectUserIds, ['member', 'owner']);
+    await a.assign({ ...ref, ruleVersion: 2 }, ['member', 'owner', 'late'], 'next', false);
+    plan = await a.readPlan(range); assert.deepEqual(plan.occurrences[0].subjectUserIds, ['member', 'owner']); assert.deepEqual(plan.occurrences[1].subjectUserIds, ['late', 'member', 'owner']);
+  } finally { d.connection.close(); }
+});
+test('v2 members may add disabled chores and procedures without gaining activation or cadence rights', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const facts = await loadSharedFacts(owner.database, groupId);
+    await applyReceivedSharedFacts(member.database, groupId, facts, '4', member.repository.project, null, now().getTime(), member.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    const a = actions(member); const [added] = await a.addChore('家族で使う家事', ['道具を用意する']);
+    const plan = await a.readPlan(range); const chore = plan.chores.find((entry) => entry.id === added.entityId);
+    assert.equal(chore.enabled, false); assert.equal(plan.occurrences.some((entry) => entry.choreId === chore.id), false);
+    assert.deepEqual(chore.instructions, ['道具を用意する']);
+    await assert.rejects(a.patchChore(chore.id, { enabled: true }), { code: 'sharing/v2-authority-denied' });
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 date forms cannot silently replace a newer date that was not shown when editing began', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d);
+    const [first] = await a.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-28' }, expectedRuleIds: [] });
+    await assert.rejects(a.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-29' }, expectedRuleIds: [] }), { code: 'sharing/v2-stale-settings' });
+    await a.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-29' }, expectedRuleIds: [first.operationId] });
+    assert.equal((await a.readPlan(range)).occurrences[0].subjects[0].formalDate.target.date, '2026-10-29');
+  } finally { d.connection.close(); }
+});
+
+test('v2 queued configuration fields keep independent displayed revisions when another edit commits during autosave', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d);
+    await a.patchChoreConfiguration('floor', 1, { windowAfterDays: 4 }, '2026-10-27');
+    const operations = await a.patchChoreConfigurationFields('floor', [
+      { field: 'intervalDays', baseRuleVersion: 1, value: 3 }, { field: 'windowAfterDays', baseRuleVersion: 2, value: 5 },
+    ], '2026-10-27');
+    assert.equal(operations.length, 2); const current = (await a.readPlan(range)).occurrences[0].configuration;
+    assert.equal(current.ruleVersion, 3); assert.equal(current.intervalDays, 3); assert.equal(current.windowAfterDays, 5);
+    await assert.rejects(a.patchChoreConfigurationFields('floor', [
+      { field: 'intervalDays', baseRuleVersion: 3, value: 4 }, { field: 'windowAfterDays', baseRuleVersion: 1, value: 6 },
+    ], '2026-10-27'), { code: 'sharing/v2-stale-settings' });
+    assert.equal((await a.readPlan(range)).occurrences[0].configuration.ruleVersion, 3);
+  } finally { d.connection.close(); }
+});
+
+test('v2 generic activation edits preserve an explicit inactive timeline and re-enable without backfilling disabled daily rounds', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    const initial = seeds(); initial[3].payload.configuration.intervalDays = 1;
+    await d.repository.commit(initial); const a = actions(d); await a.patchChore('floor', { enabled: false });
+    await a.patchChore('floor', { enabled: true }, '2026-11-02');
+    const plan = await a.readPlan(range); assert.equal(plan.chores[0].enabled, true);
+    assert.equal(plan.occurrences.some((entry) => entry.anchorDate >= '2026-10-28' && entry.anchorDate < '2026-11-02'), false);
+    assert.ok(plan.occurrences.some((entry) => entry.anchorDate === '2026-11-02' && entry.activeInPeriod));
+    assert.equal(plan.history.length, 0);
+  } finally { d.connection.close(); }
+});
+
+test('v2 completion snapshots retain the approved common window and subject schedule after a later cancellation', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const a = actions(d);
+    await a.changeDate(ref, { mode: 'day', target: { precision: 'date', date: '2026-10-31' }, extensionScope: 'future', expectedRuleIds: [] });
+    const facts = await loadSharedFacts(d.database, groupId);
+    await applyReceivedSharedFacts(d.database, groupId, facts, '5', d.repository.project, null, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+    const [work] = await a.complete(ref); assert.deepEqual(work.payload.recordedCommonWindow, { start: '2026-10-25', end: '2026-10-31' });
+    assert.equal(work.payload.scheduledWindowEnd, '2026-10-31'); assert.equal(work.payload.scheduledDate, '2026-10-31');
+    const before = (await a.readPlan(range)).history;
+    const rule = (await d.repository.readState()).assessment.approvedRules[0]; await a.cancelDates(ref, [rule.operationId]);
+    const plan = await a.readPlan(range); assert.deepEqual(plan.history, before); assert.equal(plan.occurrences[0].windowEnd, '2026-10-29');
+    assert.equal(plan.history[0].schedule.commonWindow.end, '2026-10-31');
   } finally { d.connection.close(); }
 });

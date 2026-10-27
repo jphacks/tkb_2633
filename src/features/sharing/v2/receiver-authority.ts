@@ -26,6 +26,9 @@ import { approvedRequestRule } from './formal-rules.ts';
 import { observedDateRules } from './formal-rule-view.ts';
 import { recordedInstructionAt } from './recorded-instruction.ts';
 import { violatesV2RequiredOrder } from './date-dependencies.ts';
+import { normalizeV2Configuration } from './configuration-normalization.ts';
+import { maximalCausalFacts } from './causal-facts.ts';
+import { expandedCommonWindow } from './window-extension.ts';
 type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
 
 export class V2AuthorityError extends Error { readonly code = 'sharing/v2-authority-denied'; }
@@ -88,7 +91,8 @@ export function assessV2BusinessHistory(replica: SharedReplica, archive: readonl
       if (evidence) for (const id of reviewIds) {
         const state = requestAt(id, op); if (state) reviews.set(id, state);
       }
-      if (evidence && view.ofType('dependency').length && (op.entityType === 'designation' || op.entityType === 'changeRequest' || op.entityType === 'requestDecision' && op.payload.decision === 'counteroffer')) {
+      if (evidence && (op.entityType === 'completion' && 'recordedCommonWindow' in op.payload
+        || view.ofType('dependency').length && (op.entityType === 'designation' || op.entityType === 'changeRequest' || op.entityType === 'requestDecision' && op.payload.decision === 'counteroffer'))) {
         for (const request of view.ofType('changeRequest')) { const state = requestAt(request.operationId, op); if (state) reviews.set(request.operationId, state); }
       }
       if (evidence && op.schemaVersion === 2) {
@@ -199,6 +203,10 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     adminOnly(); if (op.entityType === 'settings') requireAuthority(op.entityId === 'settings', 'Shared settings must use their singleton ID'); return;
   }
   if (op.entityType === 'chore') {
+    if (op.operationType === 'patch' && view.topic('chore', op.entityId).length) {
+      try { if (view.field('chore', op.entityId, '$alive', op)?.value === false) adminOnly(); }
+      catch (error) { if (error instanceof V2HistoryConflictError) adminOnly(); else throw error; }
+    }
     if (op.operationType !== 'patch' || Object.keys(op.payload).some((field) => CHORE_COMMON_FIELDS.has(field)
       && !(field === 'enabled' && op.payload.enabled === false && !view.field('chore', op.entityId, '$alive', op)))) adminOnly();
     return;
@@ -218,6 +226,17 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
     configuration.policy.assignment.memberIds.forEach(member);
     const previous = view.observed(view.topic('chorePolicy', op.entityId), op);
     const maximum = previous.reduce((value, fact) => Math.max(value, (fact.payload.configuration as unknown as SharedChoreConfiguration).ruleVersion), 0);
+    const historicalSubjects = new Set(maximalCausalFacts(previous).flatMap((fact) => {
+      const cfg = fact.payload.configuration as unknown as SharedChoreConfiguration;
+      return cfg.policy.completion === 'perMember' && cfg.policy.assignment.mode === 'all'
+        ? cfg.targetMemberIds ?? rosterAtOperation(archive, fact).body.members.map((entry) => entry.userId) : [];
+    }));
+    for (const uid of configuration.targetMemberIds ?? []) requireAuthority(memberIds.includes(uid) || historicalSubjects.has(uid), 'Cannot add an unapproved completion subject');
+    if (configuration.assignmentSourceVersion) {
+      const source = view.field('chorePolicy', op.entityId, 'configuration', op,
+        (fact) => (fact.payload.configuration as unknown as SharedChoreConfiguration).ruleVersion === configuration.assignmentSourceVersion)?.value as unknown as SharedChoreConfiguration | undefined;
+      requireAuthority(source && canonicalJson(source.policy) === canonicalJson(normalizeV2Configuration(configuration).policy), 'Assignment inheritance must preserve its original completion and assignment policy');
+    }
     requireAuthority(configuration.ruleVersion === maximum + 1, 'Common rule revisions must advance explicitly'); return;
   }
   if (op.entityType === 'datePermission') {
@@ -255,7 +274,7 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
       requireAuthority(!fixedConflictAtOperation(view, archive, op, target, context.assigneeIds,
         { occurrenceId: context.frame.id, subjectUserId: request.payload.subjectUserId as string | null }, formalRules), 'Counteroffer conflicts with a fixed shared assignment');
       requireAuthority(!violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame, subjectUserId: request.payload.subjectUserId as string | null,
-        target, timeZone: context.zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])], receiptEpochs: requestEpochs ?? new Map(), receipts }), 'Counteroffer violates a required chore order');
+        target, mode: context.mode, timeZone: context.zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])], receiptEpochs: requestEpochs ?? new Map(), receipts }), 'Counteroffer violates a required chore order');
     }
     return;
   }
@@ -274,10 +293,14 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   const choreId = rule?.choreId ?? payload.choreId as string;
   const anchorDate = rule?.referenceAnchorDate ?? (payload.anchorDate ?? payload.fromAnchorDate) as LocalDate;
   const ruleVersion = rule?.ruleVersion ?? (op.entityType === 'completion' || op.entityType === 'assignmentRule' ? payload.ruleVersion as number : undefined);
-  const frame = frameAtOperation(view, archive, op, choreId, anchorDate, ruleVersion);
+  const frame = frameAtOperation(view, archive, op, choreId, anchorDate, ruleVersion, { allowAssignmentConflict: op.entityType === 'assignmentRule' });
   const occurrenceId = op.entityType === 'completion' ? v2SubjectOccurrenceId(frame.frame.id, payload.subjectUserId as string | null) : frame.frame.id;
   if (!rule) requireAuthority((payload.occurrenceId ?? payload.fromOccurrenceId ?? op.entityId) === occurrenceId, 'Operation belongs to another common occurrence');
-  if (op.entityType === 'assignmentRule') { adminOnly(); (payload.memberIds as string[]).forEach(member); return; }
+  if (op.entityType === 'assignmentRule') {
+    adminOnly(); (payload.memberIds as string[]).forEach(member);
+    requireAuthority(payload.scope === 'once' || !frame.assignmentConflictIds.some((id) => view.byId(id)?.payload.scope === 'once'), 'Resolve a one-off assignment conflict on its actual occurrence');
+    return;
+  }
   if (op.entityType === 'completion') {
     member(payload.completedByMemberId as string);
     requireAuthority(frame.config.policy.completion === 'one' ? payload.subjectUserId === null : frame.subjectUserIds.includes(payload.subjectUserId as string), 'Completion subject does not belong to this chore');
@@ -290,6 +313,15 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
       if ('scheduledDate' in payload && instruction.kind !== 'unconfirmed') {
         const expectedDate = instruction.kind === 'designated' ? targetCivilDate(instruction.target, instruction.timeZone) : frame.frame.anchorDate;
         requireAuthority(payload.scheduledDate === expectedDate, 'A private recommendation cannot replace the recorded common date');
+      }
+      if ('recordedCommonWindow' in payload) {
+        const common = expandedCommonWindow({ frame: frame.frame, timeZone: instruction.timeZone, view, at: op, requests: [...(reviewedRequests?.values() ?? [])],
+          approvedRules: formalRules, receiptEpochs: requestEpochs ?? new Map() });
+        const date = instruction.kind === 'designated' ? targetCivilDate(instruction.target, instruction.timeZone) : frame.frame.anchorDate;
+        const start = instruction.kind === 'designated' && date < common.windowStart ? date : common.windowStart;
+        const end = instruction.kind === 'designated' && date > common.windowEnd ? date : common.windowEnd;
+        requireAuthority(canonicalJson(payload.recordedCommonWindow) === canonicalJson({ start: common.windowStart, end: common.windowEnd })
+          && payload.scheduledWindowStart === start && payload.scheduledWindowEnd === end, 'Recorded common and subject windows must match the schedule observed when reporting work');
       }
     }
     // Disallowed substitutions remain real reports awaiting approval; they are not accepted completions.
@@ -372,6 +404,7 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
   const originals = current.kind === 'conflict' ? current.candidates.map((fact) => fact.rule) : originalRule ? [originalRule] : [];
   const originalTargets = originals.map((previous) => {
     const materialized = materializeRuleTarget(previous, context.frame, zone);
+    if (cancelling && materialized.kind === 'review') return previous.target;
     requireAuthority(materialized.kind === 'target', 'Recurrence or timezone change requires confirmation before changing the date'); return materialized.target;
   });
   const original = [...originalTargets].sort((a, b) => targetReferenceTime(a, zone) - targetReferenceTime(b, zone))[0]
@@ -405,7 +438,7 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
       reason: extendsFutureWindow ? 'outsideWindow' : originalOptions.adminLocked ? 'fixed' : 'strict' };
   }
   if (!cancelling && permission.kind !== 'denied' && violatesV2RequiredOrder({ view, archive, operation: op, frame: context.frame,
-    subjectUserId: subject, target: proposed, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],
+    subjectUserId: subject, target: proposed, mode, timeZone: zone, formalRules, requests: [...(reviewedRequests?.values() ?? [])],
     receiptEpochs: dependencyEvidence?.epochs ?? new Map(), receipts: dependencyEvidence?.receipts })) permission = { kind: 'denied', reason: 'dependency' };
   return { ...context, assigneeIds, mode, original, proposed, proposedOptions, originalRule, originalOptions, zone, permission,
     originalWasConflicted: current.kind === 'conflict',

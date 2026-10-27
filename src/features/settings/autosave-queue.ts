@@ -17,7 +17,7 @@ export function createAutosaveQueue<Patch extends object>({ save, delayMs = 450 
   const hasPending = () => Object.keys(pending).length > 0;
   const publish = (phase: AutosaveState['phase'], error: string | null = null) => {
     state = { phase, error };
-    for (const listener of listeners) listener();
+    for (const listener of listeners) try { listener(); } catch { /* A view observer cannot discard a pending edit. */ }
   };
   const flush = (): Promise<boolean> => {
     clearTimeout(timer);
@@ -52,6 +52,7 @@ export function createAutosaveQueue<Patch extends object>({ save, delayMs = 450 
           return false;
         }
       }
+      clearTimeout(timer); timer = undefined;
       publish('saved');
       if (!hasPending()) return true;
     }

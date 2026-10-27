@@ -4,14 +4,14 @@ import type { VerifiedSharedRoster } from '../roster.ts';
 import { createV2AuthorityIndex } from './history-view.ts';
 import type { V2HistoryView } from './history-view.ts';
 import { buildV2CommonPlan } from './common-plan.ts';
-import { fixedInterval, targetCivilDate } from './date-target.ts';
-import type { DateTarget, ManualRuleFact, SharedOccurrence } from './model.ts';
+import { fixedInterval, targetCivilDate, targetReferenceTime } from './date-target.ts';
+import type { DateTarget, DesignationMode, ManualRuleFact, SharedOccurrence } from './model.ts';
 import type { V2DateRequestState } from './request-state.ts';
 import type { V2ServerReceipt } from './server-receipts.ts';
 
 /** Authoring and receiving use the same date-based prerequisite plan, including earlier cycles outside the current view. */
 export function violatesV2RequiredOrder(input: { view: V2HistoryView; archive: readonly VerifiedSharedRoster[]; operation: SharedOperation;
-  frame: SharedOccurrence; subjectUserId: string | null; target: DateTarget; timeZone: string; formalRules: readonly ManualRuleFact[];
+  frame: SharedOccurrence; subjectUserId: string | null; target: DateTarget; mode: DesignationMode; timeZone: string; formalRules: readonly ManualRuleFact[];
   requests: readonly V2DateRequestState[]; receiptEpochs: ReadonlyMap<string, VerifiedSharedRoster>; receipts?: ReadonlyMap<string, V2ServerReceipt> }): boolean {
   if (!input.view.ofType('dependency').length) return false;
   const cut = createV2AuthorityIndex(input.view.groupId);
@@ -26,5 +26,6 @@ export function violatesV2RequiredOrder(input: { view: V2HistoryView; archive: r
   if (slot.dependencyBlocked && !slot.dependencyNotBefore) return true;
   if (slot.dependencyNotBefore && targetCivilDate(input.target, input.timeZone) < slot.dependencyNotBefore) return true;
   const interval = fixedInterval(input.target);
-  return Boolean(interval && slot.dependencyNotBeforeInstant !== null && interval.start < slot.dependencyNotBeforeInstant);
+  const exact = interval?.start ?? (input.mode === 'deadline' ? targetReferenceTime(input.target, input.timeZone) : null);
+  return exact !== null && slot.dependencyNotBeforeInstant !== null && exact < slot.dependencyNotBeforeInstant;
 }

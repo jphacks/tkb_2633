@@ -337,3 +337,12 @@ test('appliance autosave restores manufacturer cycles without changing steps or 
     assert.deepEqual(actual.steps, chore.steps); assert.deepEqual(actual.applianceCareSource, chore.applianceCareSource);
   } finally { h.connection.close(); }
 });
+
+test('autosave observer failures cannot discard pending input or abort the durable write', async () => {
+  const writes = []; let observedSaved = false;
+  const queue = createAutosaveQueue({ save: async (patch) => { writes.push(patch); }, delayMs: 60000 });
+  queue.subscribe(() => { throw new Error('view failed'); });
+  queue.subscribe(() => { if (queue.getSnapshot().phase === 'saved') observedSaved = true; });
+  queue.enqueue({ cycleDays: 17 }); assert.equal(await queue.flush(), true);
+  assert.deepEqual(writes, [{ cycleDays: 17 }]); assert.equal(observedSaved, true); assert.equal(queue.getSnapshot().phase, 'saved');
+});

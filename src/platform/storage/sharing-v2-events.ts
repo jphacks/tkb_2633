@@ -107,7 +107,7 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     const requestStates = assessment.requestStates;
     options.assertWritable();
     if (sharedRosterDigest(archive().at(-1)!) !== expectedRoster) throw new SharingAccessError('処理中に共有権限が変わりました。');
-    const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-5',
+    const factHash = sharedDocumentDigest({ protocol: 2, projection: 'v2-authority-5', algorithm: V2_SCHEDULER_VERSION,
       sources: digestPages(replica.operations.map((operation) => sharedDocumentDigest(operation))),
       receipts: digestPages([...receipts.values()].map((receipt) => sharedDocumentDigest(receipt))),
       accepted: digestPages(accepted), rejected: digestPages(rejected), provisional: digestPages(assessment.provisionalOperationIds),
@@ -149,7 +149,8 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
       options.assertWritable();
       for (const draft of drafts) localIds.add(draft.operationId); return drafts;
     }, async (transaction, replica) => { options.assertWritable(); await project(transaction, replica, localIds); }, (op) => signSharedOperation(op, options.identity).authorSignature);
-    options.afterCommit?.(); return created;
+    try { void Promise.resolve(options.afterCommit?.()).catch(() => undefined); } catch { /* A notification cannot undo committed facts or require another business write. */ }
+    return created;
   }
   return {
     scope: Object.freeze({ groupId: options.groupId, userId: options.userId, householdId: options.householdId, deviceId: options.identity.deviceId }),

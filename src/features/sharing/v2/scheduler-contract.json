@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-6",
+  "version": "liflow-shared-2-draft-7",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -39,7 +39,10 @@
     "src/domain/scheduling/calendar-penalty.ts",
     "src/features/sharing/v2/actions.ts",
     "src/features/sharing/v2/bootstrap.ts",
-    "src/features/sharing/v2/date-dependencies.ts"
+    "src/features/sharing/v2/date-dependencies.ts",
+    "src/features/sharing/v2/assignment-lineage.ts",
+    "src/features/sharing/v2/configuration-edit.ts",
+    "src/features/sharing/v2/configuration-normalization.ts"
   ],
-  "sourceSha256": "2a953292b2f7f9150051647faaf62601e69ab86de89ae533bd339737a0b1efe9"
+  "sourceSha256": "a14689e1a274d9b2b12778b3882ce9f94f58de5e5c86322d018d613925bf1052"
 }

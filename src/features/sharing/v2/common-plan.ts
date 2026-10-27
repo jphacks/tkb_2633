@@ -23,7 +23,7 @@ import { v2CompletionHistory } from './completion-history.ts';
 import type { V2CompletionRecord } from './completion-history.ts';
 import { expandedCommonWindow } from './window-extension.ts';
 import { unresolvedRequestReviews } from './request-review.ts';
-import { targetCivilDate, fixedInterval } from './date-target.ts';
+import { targetCivilDate, fixedInterval, targetReferenceTime } from './date-target.ts';
 import { showExpiredOnHome } from './completion-state.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { v2Dependency, cyclicV2Dependencies, dependencyLowerBound } from './dependency-constraints.ts';
@@ -32,7 +32,7 @@ import type { V2Dependency } from './dependency-constraints.ts';
 export type V2Assessment = Pick<ReturnType<typeof assessV2BusinessHistory>, 'view' | 'requestStates' | 'approvedRules' | 'receiptEpochs'>;
 export interface V2PlanIssue { kind: string; choreId: string | null; occurrenceId: string | null; subjectUserId: string | null; operationIds: string[] }
 export type V2FormalDate = { kind: 'automatic' }
-  | { kind: 'manual'; ruleId: string; mode: DesignationMode; target: DateTarget; strict: boolean; allowDuringCooldown: boolean }
+  | { kind: 'manual'; ruleId: string; equivalentRuleIds: string[]; mode: DesignationMode; target: DateTarget; strict: boolean; allowDuringCooldown: boolean }
   | { kind: 'conflict'; ruleIds: string[] } | { kind: 'review'; reason: string; ruleIds: string[] };
 export interface V2SubjectPlan {
   id: string; subjectUserId: string | null; required: boolean; assigneeIds: string[]; formalDate: V2FormalDate;
@@ -45,8 +45,10 @@ export interface V2SubjectPlan {
 export interface V2PlannedOccurrence extends SharedOccurrence {
   configuration: SharedChoreConfiguration; assigneeIds: string[]; subjectUserIds: string[];
   claimState: string; claimOperationIds: string[]; assignmentFixed: boolean; needsAssignment: boolean;
+  claimantUserIds: string[];
   completed: boolean; historical: boolean; extensionRequestIds: string[]; subjects: V2SubjectPlan[];
   activeInPeriod: boolean;
+  assignmentConflictIds: string[];
 }
 export interface V2CommonPlan {
   groupId: string; algorithm: string; timeZone: string; initialized: boolean;
@@ -181,9 +183,9 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
     for (const fact of allRules.filter((rule) => rule.rule.choreId === chore.id && rule.rule.selector.scope === 'once')) {
       const selector = fact.rule.selector; if (selector.scope !== 'once') continue;
       const targetDate = targetCivilDate(fact.rule.target, timeZone); if (targetDate < range.from || targetDate > range.through) continue;
-      const slice = timeline.find((item) => item.configuration && item.from <= selector.anchorDate && (!item.through || selector.anchorDate <= item.through));
-      if (!slice?.configuration) { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); continue; }
-      try { const frame = commonFrame(view.groupId, chore.id, slice.configuration, selector.anchorDate); frames.set(frame.id, frame); }
+      const source = view.byId(fact.sourceRequestId ?? fact.operationId);
+      if (!source) { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); continue; }
+      try { const frame = frameAtOperation(view, input.archive, source, chore.id, selector.anchorDate, fact.rule.ruleVersion).frame; frames.set(frame.id, frame); }
       catch { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); }
     }
     const retainedHistoricalFrames = new Set<string>();
@@ -206,16 +208,19 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
     for (const frame of [...frames.values()].sort((a, b) => compareOperationIds(a.anchorDate, b.anchorDate))) {
       let context: ReturnType<typeof frameAtOperation>;
       try {
-        context = frameAtOperation(view, input.archive, at, chore.id, frame.anchorDate, frame.ruleVersion);
+        context = frameAtOperation(view, input.archive, at, chore.id, frame.anchorDate, frame.ruleVersion, { allowAssignmentConflict: true });
         // Once a round was complete, a later assignment change does not reopen it for a new person.
         const changes = view.observed(view.ofType('assignmentRule'), at).filter((op) => op.payload.choreId === chore.id && op.payload.ruleVersion === frame.ruleVersion
           && (op.payload.scope === 'once' ? op.payload.fromOccurrenceId === frame.id : (op.payload.fromAnchorDate as string) <= frame.anchorDate))
           .sort((a, b) => a.logicalClock - b.logicalClock || compareOperationIds(a.operationId, b.operationId));
         for (const change of changes) {
-          const previous = frameAtOperation(view, input.archive, change, chore.id, frame.anchorDate, frame.ruleVersion);
-          if (completedBefore(frame.id, change, previous)) { context = previous; break; }
+          try {
+            const previous = frameAtOperation(view, input.archive, change, chore.id, frame.anchorDate, frame.ruleVersion);
+            if (completedBefore(frame.id, change, previous)) { context = previous; break; }
+          } catch { /* Resolving a prior ambiguous assignment must not make the now-resolved round disappear. */ }
         }
       } catch { issue('assignmentNeedsReview', chore.id, frame.id); continue; }
+      if (context.assignmentConflictIds.length) issue('assignmentNeedsReview', chore.id, frame.id, null, context.assignmentConflictIds);
       const records = historyByFrame.get(frame.id) ?? []; const actual = records.filter(usable);
       const window = expandedCommonWindow({ frame, timeZone, view, requests: assessment.requestStates, approvedRules: assessment.approvedRules, receiptEpochs: assessment.receiptEpochs });
       if (window.reviews.length) issue('windowExtensionNeedsReview', chore.id, frame.id, null, window.reviews);
@@ -237,7 +242,7 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
         } else if (selected.kind === 'selected') {
           candidates = allRules.filter((fact) => selected.equivalentOperationIds.includes(fact.operationId)); const target = materializeRuleTarget(selected.fact.rule, frame, timeZone);
           if (target.kind === 'review') { formalDate = { kind: 'review', reason: target.reason, ruleIds: selected.equivalentOperationIds }; issue(target.reason, chore.id, frame.id, subjectUserId, selected.equivalentOperationIds); }
-          else { formalDate = { kind: 'manual', ruleId: selected.fact.operationId, mode: selected.fact.rule.mode, target: target.target,
+          else { formalDate = { kind: 'manual', ruleId: selected.fact.operationId, equivalentRuleIds: selected.equivalentOperationIds, mode: selected.fact.rule.mode, target: target.target,
             strict: selected.fact.rule.strict, allowDuringCooldown: selected.fact.rule.allowDuringCooldown === true }; suggestedDate = targetCivilDate(target.target, timeZone); }
         }
         const reviews = unresolvedRequestReviews({ occurrence: frame, subjectUserId, candidates, allRules, requests: assessment.requestStates, view });
@@ -269,12 +274,16 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
           dependencyNotBefore: null, dependencyNotBeforeInstant: null, dependencyBlocked: false, dependencyAwaitingCompletion: false };
       });
       const currentSlice = timeline.find((slice) => slice.version === frame.ruleVersion && slice.from <= frame.anchorDate && (!slice.through || frame.anchorDate <= slice.through));
+      const usesClaims = context.config.policy.completion === 'one' && !context.configuredAssignees.some((uid) => context.activeMemberIds.includes(uid));
       occurrences.push({ ...frame, windowStart: window.windowStart, windowEnd: window.windowEnd, configuration: context.config,
-        assigneeIds: [...context.assigneeIds], subjectUserIds: requiredSubjects.filter((uid): uid is string => uid !== null), claimState: context.claims.kind,
+        assigneeIds: [...context.assigneeIds], subjectUserIds: requiredSubjects.filter((uid): uid is string => uid !== null), claimState: usesClaims ? context.claims.kind : 'notApplicable',
+        claimantUserIds: usesClaims ? [...new Set(context.claims.activeClaimOperationIds.map((id) => view.byId(id)!.authorUserId))].sort() : [],
         claimOperationIds: [...context.claims.activeClaimOperationIds], assignmentFixed: context.assignmentFixed,
-        needsAssignment: context.configuredAssignees.length > 0 && context.assigneeIds.length === 0 || context.config.policy.completion === 'perMember' && requiredSubjects.length === 0,
+        assignmentConflictIds: [...context.assignmentConflictIds],
+        needsAssignment: context.assignmentConflictIds.length > 0 || context.configuredAssignees.length > 0 && context.assigneeIds.length === 0 || context.config.policy.completion === 'perMember' && requiredSubjects.length === 0,
         completed: planned.some((slot) => slot.required) && planned.filter((slot) => slot.required).every((slot) => slot.completed),
-        historical: !currentSlice, activeInPeriod: Boolean(currentSlice?.configuration && currentSlice.configuration.active !== false && (past || chore.enabled)),
+        historical: !currentSlice, activeInPeriod: Boolean((currentSlice?.configuration && currentSlice.configuration.active !== false
+          || allRules.some((fact) => fact.rule.choreId === chore.id && fact.rule.selector.scope === 'once' && fact.rule.selector.occurrenceId === frame.id)) && (past || chore.enabled)),
         extensionRequestIds: window.sources, subjects: planned });
     }
   }
@@ -301,6 +310,11 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       if (record.anchorDate > anchor || !record.active || record.outcome !== 'completed') continue;
       const source = view.byId(record.operationId)!;
       try { choices.push(frameAtOperation(view, input.archive, source, choreId, record.anchorDate, source.payload.ruleVersion as number).frame); } catch { /* The related round remains a review. */ }
+    }
+    for (const fact of allRules) {
+      const selector = fact.rule.selector; if (fact.rule.choreId !== choreId || selector.scope !== 'once' || selector.anchorDate > anchor) continue;
+      const origin = view.byId(fact.sourceRequestId ?? fact.operationId);
+      if (origin) try { choices.push(frameAtOperation(view, input.archive, origin, choreId, selector.anchorDate, fact.rule.ruleVersion).frame); } catch { /* An incompatible exception remains a review. */ }
     }
     let frame = choices.sort((a, b) => compareOperationIds(b.anchorDate, a.anchorDate) || a.ruleVersion - b.ruleVersion)[0] ?? initial;
     const recorded = frame && [...(historyByFrame.get(frame.id) ?? [])].sort((a, b) => view.byId(a.operationId)!.logicalClock - view.byId(b.operationId)!.logicalClock || compareOperationIds(a.operationId, b.operationId))[0];
@@ -357,7 +371,8 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       if (edge.required && edge.minimumGapDays === 0 && end?.instant !== null && end?.instant !== undefined
         && (subject.dependencyNotBeforeInstant === null || end.instant > subject.dependencyNotBeforeInstant)) subject.dependencyNotBeforeInstant = end.instant;
       const fixed = subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'fixed' ? fixedInterval(subject.formalDate.target) : null;
-      const violation = !lower || subject.suggestedDate < lower || edge.minimumGapDays === 0 && end?.instant !== null && fixed && fixed.start < end!.instant!;
+      const exact = fixed?.start ?? (subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'deadline' ? targetReferenceTime(subject.formalDate.target, timeZone) : null);
+      const violation = !lower || subject.suggestedDate < lower || edge.minimumGapDays === 0 && end?.instant !== null && exact !== null && exact < end!.instant!;
       if (!violation) continue;
       if (edge.required && !subject.completed && subject.formalDate.kind === 'automatic' && lower && lower <= subject.executionWindowEnd) {
         subject.suggestedDate = lower; continue;

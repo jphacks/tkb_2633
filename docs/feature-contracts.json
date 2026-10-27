@@ -1727,5 +1727,70 @@
         "name": "v2 receiver refuses new dates and counteroffers before a required predecessor but accepts a later resolving date"
       }
     ]
+  },
+  {
+    "feature": "v2-causal-configuration-revisions",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 larger cadence revisions cannot erase an unseen concurrent future configuration and a causal resolution closes only the disputed period"
+      },
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 generic activation edits preserve an explicit inactive timeline and re-enable without backfilling disabled daily rounds"
+      }
+    ]
+  },
+  {
+    "feature": "v2-original-assignment-lineage",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 assignment conflicts remain visible through unrelated configuration edits and a signed administrator resolution clears them"
+      }
+    ]
+  },
+  {
+    "feature": "v2-completion-window-history",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-actions.test.mjs",
+        "name": "v2 completion snapshots retain the approved common window and subject schedule after a later cancellation"
+      },
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 an unseen concurrent cancellation cannot rewrite the common window captured by a legitimate work report"
+      }
+    ]
+  },
+  {
+    "feature": "v2-field-causal-autosave",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-autosave.test.mjs",
+        "name": "v2 autosave batches valid fields into one revision and does not change another field after its base became stale during a save"
+      },
+      {
+        "file": "tests/sharing-v2-autosave.test.mjs",
+        "name": "v2 autosave does not replay an already committed setting when only the screen refresh fails"
+      }
+    ]
+  },
+  {
+    "feature": "v2-mobile-configuration-and-round-controls",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-screen.test.mjs",
+        "name": "v2 shared card wires claim, completion and targeted undo into the isolated signed repository"
+      },
+      {
+        "file": "tests/sharing-v2-screen.test.mjs",
+        "name": "v2 configuration editor automatically saves numeric edits and activation into the signed database without a save button"
+      },
+      {
+        "file": "tests/sharing-v2-screen.test.mjs",
+        "name": "v2 configuration editor keeps invalid input out of storage and flushes valid changes on background and navigation"
+      }
+    ]
   }
 ]

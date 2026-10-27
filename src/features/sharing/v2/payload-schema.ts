@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-6';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-7';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {
@@ -49,15 +49,20 @@ function groupPolicy(value: unknown): void {
 }
 function chorePolicy(value: unknown): void {
   const required = ['policy', 'anchorDate', 'intervalDays', 'windowBeforeDays', 'windowAfterDays', 'ruleVersion'];
-  const data = record(value, [...required, 'effectiveFrom', 'active'], required);
+  const data = record(value, [...required, 'effectiveFrom', 'active', 'targetMemberIds', 'assignmentSourceVersion'], required);
   day(data.anchorDate); integer(data.intervalDays, 1, 3650); integer(data.windowBeforeDays, 0, 14); integer(data.windowAfterDays, 0, 14); integer(data.ruleVersion, 1);
   if ('effectiveFrom' in data) { day(data.effectiveFrom); if ((data.effectiveFrom as string) < (data.anchorDate as string)) throw new Error('Effective date cannot precede its common anchor'); }
   if ('active' in data) flag(data.active);
+  if ('assignmentSourceVersion' in data) integer(data.assignmentSourceVersion, 1, Number(data.ruleVersion) - 1);
   const policy = record(data.policy, ['completion', 'assignment']); choice(policy.completion, ['one', 'perMember']);
   const assignment = record(policy.assignment, ['mode', 'memberIds']); choice(assignment.mode, ['open', 'all', 'selected']);
   const members = ids(assignment.memberIds, assignment.mode !== 'selected', 16);
   if (assignment.mode !== 'selected' && members.length) throw new Error('Non-selected assignment cannot hide member IDs');
   if (policy.completion === 'perMember' && assignment.mode === 'open') throw new Error('Per-member chores require defined subjects');
+  if ('targetMemberIds' in data) {
+    if (policy.completion !== 'perMember' || assignment.mode !== 'all') throw new Error('Pinned subjects require an each-member policy');
+    ids(data.targetMemberIds, true, 16);
+  }
 }
 
 /** Explicit schema2 records; private Calendar, credentials and arbitrary extension fields are never accepted. */
@@ -144,13 +149,17 @@ export function validateV2CompletionPayload(payload: RecordValue, operationType:
   if (operationType === 'undo') { record(payload, ['targetOperationId']); assertSharedIdentifier(payload.targetOperationId); return; }
   if (operationType !== 'complete') throw new Error('V2 completion facts are immutable');
   const required = ['choreId', 'anchorDate', 'completedAt', 'completedByMemberId', 'subjectUserId', 'originalAssigneeIds', 'ruleVersion', 'outcome'];
-  record(payload, [...required, 'scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate', 'completionNote', 'recordedInstruction'], required);
+  record(payload, [...required, 'scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate', 'completionNote', 'recordedInstruction', 'recordedCommonWindow'], required);
   assertSharedIdentifier(payload.choreId); day(payload.anchorDate); assertSharedIdentifier(payload.completedByMemberId); idOrNull(payload.subjectUserId);
   ids(payload.originalAssigneeIds, true, 16); integer(payload.ruleVersion, 1); choice(payload.outcome, ['completed', 'incomplete']); timestamp(payload.completedAt);
   if (instantMilliseconds(payload.completedAt as string) > instantMilliseconds(recordedAt)) throw new Error('Actual work cannot be recorded before it took place');
   for (const field of ['scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'completedLocalDate']) if (field in payload) day(payload[field]);
   if ('completionNote' in payload) choice(payload.completionNote, ['completedNow', 'alreadyDone']);
   if (payload.scheduledWindowStart && payload.scheduledWindowEnd && payload.scheduledWindowStart > payload.scheduledWindowEnd) throw new Error('Invalid completion window');
+  if ('recordedCommonWindow' in payload) {
+    const window = record(payload.recordedCommonWindow, ['start', 'end']); day(window.start); day(window.end);
+    if ((window.start as string) > (window.end as string) || !['scheduledDate', 'scheduledWindowStart', 'scheduledWindowEnd', 'recordedInstruction'].every((key) => Object.hasOwn(payload, key))) throw new Error('Incomplete recorded common schedule');
+  }
   if ('recordedInstruction' in payload) {
     const info = record(payload.recordedInstruction, ['kind', 'timeZone', 'ruleId', 'mode', 'target', 'strict', 'reason'], ['kind', 'timeZone']);
     if (!isSharedTimeZone(info.timeZone)) throw new Error('Invalid recorded instruction timezone');

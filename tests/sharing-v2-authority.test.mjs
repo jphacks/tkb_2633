@@ -307,3 +307,20 @@ test('v2 an administrator can cancel an explicitly observed conflict candidate w
   const undo = f.make('owner', 'designationCancel', { targetOperationIds: [second.operationId] }); f.validate();
   assert.ok(f.operations.includes(first)); assert.ok(f.operations.includes(second)); assert.equal(undo.payload.targetOperationIds.length, 1);
 });
+
+test('v2 recurring clock instructions require review when the chosen wall time does not exist on the next occurrence', () => {
+  const frame = { id: 'next', choreId: 'floor', anchorDate: '2026-03-08', windowStart: '2026-03-08', windowEnd: '2026-03-08', ruleVersion: 1 };
+  const rule = { id: 'clock', choreId: 'floor', subjectUserId: null, selector: { scope: 'ongoing', from: '2026-03-01' },
+    referenceAnchorDate: '2026-03-01', timeZoneAtCreation: 'America/New_York', mode: 'deadline', target: { precision: 'instant', at: '2026-03-01T07:30:00Z' },
+    strict: false, adminLocked: false, forbidEarlier: false, issuerUserId: 'owner', ruleVersion: 1 };
+  assert.deepEqual(materializeRuleTarget(rule, frame, 'America/New_York'), { kind: 'review', reason: 'invalidInterval' });
+});
+
+test('v2 a member cannot resurrect an administrator-deleted chore by editing its name or procedures', async () => {
+  const f = await fixture(); f.make('owner', 'chore', {}, { entityId: 'floor', operationType: 'delete' }); f.validate();
+  const removed = [...f.operations];
+  for (const payload of [{ name: '復活' }, { instructions: ['手順を変える'] }]) {
+    const op = f.make('a', 'chore', payload, { entityId: 'floor', observed: removed });
+    assert.throws(() => f.validate(), { code: 'sharing/v2-authority-denied' }); f.operations.pop(); assert.ok(op);
+  }
+});

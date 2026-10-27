@@ -15,6 +15,7 @@ export interface V2CompletionRecord {
   performedAt: string; recordedAt: string; active: boolean; outcome: 'completed' | 'incomplete';
   acceptance: 'accepted' | 'pending' | 'rejected'; approvalConflictIds: string[];
   performedTimeConfirmed: boolean; instruction: RecordedInstruction | null;
+  schedule: { date: LocalDate; windowStart: LocalDate; windowEnd: LocalDate; commonWindow: { start: LocalDate; end: LocalDate } } | null;
   fulfillment: 'unknown' | 'notApplicable' | 'unconfirmed' | 'fulfilled' | 'earlier' | 'later';
   strictInstructionFulfilled: boolean | null;
 }
@@ -45,6 +46,8 @@ export function v2CompletionHistory(view: V2HistoryView, at: SharedOperation, re
       performedAt, recordedAt: op.recordedAt!, active: !undone.has(op.operationId), outcome: data.outcome as 'completed' | 'incomplete', acceptance,
       approvalConflictIds: contradictory ? decisions.map((decision) => decision.operationId) : [],
       performedTimeConfirmed: Boolean(received && instantMilliseconds(performedAt) <= received.receivedAtMs), instruction: instruction ?? null, fulfillment,
+      schedule: data.recordedCommonWindow ? { date: data.scheduledDate as LocalDate, windowStart: data.scheduledWindowStart as LocalDate, windowEnd: data.scheduledWindowEnd as LocalDate,
+        commonWindow: data.recordedCommonWindow as unknown as { start: LocalDate; end: LocalDate } } : null,
       strictInstructionFulfilled: instruction?.kind === 'designated' ? !instruction.strict || fulfillment === 'fulfilled' : instruction?.kind === 'automatic' ? true : null };
   }).sort((a, b) => instantMilliseconds(a.performedAt) - instantMilliseconds(b.performedAt) || compareOperationIds(a.operationId, b.operationId));
 }

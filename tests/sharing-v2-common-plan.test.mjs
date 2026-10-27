@@ -242,3 +242,99 @@ test('v2 dependency history keeps an already completed prerequisite satisfied af
   const after = f.plan().occurrences.find((entry) => entry.choreId === 'after' && entry.anchorDate === anchorDate).subjects[0];
   assert.equal(after.dependencyBlocked, false); assert.equal(after.dependencyAwaitingCompletion, false); assert.equal(after.suggestedDate, anchorDate);
 });
+
+test('v2 one-off date exceptions keep their original common anchor and remain active across a cadence revision', async () => {
+  const f = await fixture(); const anchor = '2026-11-10';
+  const once = f.designation(date('2026-11-11'), { day: anchor }); accepted(f);
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, intervalDays: 3, anchorDate: '2026-10-28', effectiveFrom: '2026-10-28', ruleVersion: 2 } }, { entityId: 'floor' }); accepted(f);
+  const plan = f.plan({ from: '2026-11-11', through: '2026-11-11' }); const s = slot(plan, anchor);
+  assert.ok(s, 'the old anchor is still represented even when it is not part of the new cadence');
+  assert.equal(s.formalDate.ruleId, once.operationId); assert.equal(s.suggestedDate, '2026-11-11');
+  assert.equal(plan.occurrences.find((round) => round.anchorDate === anchor).activeInPeriod, true);
+  assert.equal(s.completed, false); assert.equal(plan.history.length, 0);
+});
+test('v2 exact deadlines cannot precede the end of a same-day required fixed task assigned to another member', async () => {
+  const f = await fixture({ preset: 'assigned', members: ['a'] });
+  f.make('chore', { name: '先行作業', enabled: true }, { entityId: 'prepare' });
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, policy: { completion: 'one', assignment: { mode: 'selected', memberIds: ['owner'] } } } }, { entityId: 'prepare' });
+  const { v2OccurrenceId } = await import('../src/features/sharing/v2/occurrence-id.ts');
+  f.designation({ precision: 'interval', start: '2026-10-27T01:00:00Z', end: '2026-10-27T03:00:00Z' }, { choreId: 'prepare', selector: { scope: 'once', occurrenceId: v2OccurrenceId('v2-plan-test', 'prepare', anchorDate), anchorDate } });
+  f.make('dependency', { predecessorChoreId: 'prepare', successorChoreId: 'floor', policyData: { required: true } }, { entityId: 'order' }); accepted(f);
+  const old = f.facts.map((fact) => fact.operation);
+  const invalid = f.designation({ precision: 'instant', at: '2026-10-27T02:00:00Z' }, { mode: 'deadline' });
+  assert.equal(f.state().assessment.rejected.find((entry) => entry.operationId === invalid.operationId)?.kind, 'unauthorized');
+  const valid = f.designation({ precision: 'instant', at: '2026-10-27T03:00:00Z' }, { actor: 'owner2', mode: 'deadline', observed: old });
+  assert.ok(f.state().assessment.view.byId(valid.operationId));
+});
+
+test('v2 assignment conflicts remain visible through unrelated configuration edits and a signed administrator resolution clears them', async () => {
+  const f = await fixture(); const base = f.facts.map((fact) => fact.operation);
+  const assignment = (uid, actor) => f.make('assignmentRule', { choreId: 'floor', fromOccurrenceId: f.occurrence(), fromAnchorDate: anchorDate, scope: 'from', ruleVersion: 1, memberIds: [uid], fixed: true }, { actor, observed: base });
+  const a = assignment('a', 'owner'); const b = assignment('b', 'owner2'); accepted(f);
+  let plan = f.plan(); assert.deepEqual(plan.occurrences[0].assignmentConflictIds, [a.operationId, b.operationId]); assert.equal(plan.occurrences[0].needsAssignment, true);
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 2, effectiveFrom: anchorDate, windowAfterDays: 3, assignmentSourceVersion: 1 } }, { entityId: 'floor' }); accepted(f);
+  plan = f.plan(); assert.deepEqual(plan.occurrences[0].assignmentConflictIds, [a.operationId, b.operationId]);
+  assert.equal(f.state().assessment.view.ofType('assignmentRule').length, 2);
+  f.make('assignmentRule', { choreId: 'floor', fromOccurrenceId: f.occurrence(), fromAnchorDate: anchorDate, scope: 'from', ruleVersion: 2, memberIds: ['b'], fixed: true }); accepted(f);
+  plan = f.plan(); assert.deepEqual(plan.occurrences[0].assignmentConflictIds, []); assert.deepEqual(plan.occurrences[0].assigneeIds, ['b']);
+});
+test('v2 assignment resolution does not reopen work that was already complete before conflicting edits', async () => {
+  const f = await fixture({ preset: 'eachMember' });
+  for (const actor of ['a', 'b', 'owner']) f.complete({ actor, subject: actor });
+  const base = f.facts.map((fact) => fact.operation); const before = f.plan().history;
+  for (const [actor, uid] of [['owner', 'a'], ['owner2', 'b']]) f.make('assignmentRule', { choreId: 'floor', fromOccurrenceId: f.occurrence(), fromAnchorDate: anchorDate,
+    scope: 'from', ruleVersion: 1, memberIds: [uid], fixed: true }, { actor, observed: base }); accepted(f);
+  let plan = f.plan(); assert.equal(plan.occurrences[0].completed, true); assert.deepEqual(plan.occurrences[0].subjectUserIds, ['a', 'b', 'owner']);
+  f.make('assignmentRule', { choreId: 'floor', fromOccurrenceId: f.occurrence(), fromAnchorDate: anchorDate, scope: 'from', ruleVersion: 1, memberIds: ['b'], fixed: true }); accepted(f);
+  plan = f.plan(); assert.equal(plan.occurrences[0].completed, true); assert.deepEqual(plan.history, before);
+});
+test('v2 semantically equal member selections merge across ordering differences without manufacturing a setting conflict', async () => {
+  const f = await fixture({ preset: 'assigned', members: ['a', 'b'] }); const base = f.facts.map((fact) => fact.operation);
+  for (const [actor, memberIds] of [['owner', ['a', 'b']], ['owner2', ['b', 'a']]]) {
+    f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, policy: { completion: 'one', assignment: { mode: 'selected', memberIds } },
+      ruleVersion: 2, effectiveFrom: anchorDate } }, { actor, observed: base, entityId: 'floor' });
+  }
+  accepted(f); const plan = f.plan(); assert.deepEqual(plan.occurrences[0].assigneeIds, ['a', 'b']); assert.equal(plan.occurrences[0].needsAssignment, false);
+});
+
+test('v2 administrators can explicitly cancel a repeating clock rule after timezone changes without rewriting work or silently remapping the clock', async () => {
+  const f = await fixture(); const rule = f.designation({ precision: 'interval', start: '2026-10-27T01:00:00Z', end: '2026-10-27T02:00:00Z' }, { selector: { scope: 'ongoing', from: anchorDate } });
+  f.complete(); accepted(f); const before = f.plan().history;
+  f.make('settings', { timeZone: 'America/New_York' }, { entityId: 'settings' }); accepted(f);
+  assert.equal(slot(f.plan()).formalDate.kind, 'review');
+  f.make('designationCancel', { targetOperationIds: [rule.operationId] }); accepted(f);
+  const plan = f.plan(); assert.deepEqual(plan.history, before); assert.equal(slot(plan).formalDate.kind, 'automatic');
+});
+
+test('v2 larger cadence revisions cannot erase an unseen concurrent future configuration and a causal resolution closes only the disputed period', async () => {
+  const f = await fixture(); const base = f.facts.map((fact) => fact.operation);
+  const a = f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 2, intervalDays: 3, anchorDate: '2026-10-28', effectiveFrom: '2026-10-28' } }, { entityId: 'floor', observed: base });
+  const b = f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 2, intervalDays: 14, anchorDate: '2026-11-10', effectiveFrom: '2026-11-10' } }, { entityId: 'floor', actor: 'owner2', observed: base });
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 3, intervalDays: 5, anchorDate: '2026-11-03', effectiveFrom: '2026-11-03' } }, { entityId: 'floor', observed: [...base, a] }); accepted(f);
+  let plan = f.plan({ from: '2026-11-01', through: '2026-11-20' });
+  assert.ok(plan.occurrences.some((entry) => entry.anchorDate === '2026-11-08')); assert.ok(plan.issues.some((entry) => entry.kind === 'configurationConflict'));
+  assert.equal(plan.occurrences.some((entry) => entry.anchorDate >= '2026-11-10'), false);
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 4, anchorDate: '2026-11-15', effectiveFrom: '2026-11-15' } }, { entityId: 'floor' }); accepted(f);
+  plan = f.plan({ from: '2026-11-15', through: '2026-11-20' }); assert.ok(plan.occurrences.some((entry) => entry.anchorDate === '2026-11-15'));
+  assert.equal(plan.issues.some((entry) => entry.kind === 'configurationConflict'), false); assert.ok(b);
+});
+test('v2 explicit future revisions can recover from a nonmonotonic historical boundary without erasing that historical review', async () => {
+  const f = await fixture();
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 2, anchorDate: '2026-11-10', effectiveFrom: '2026-11-10' } }, { entityId: 'floor' });
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 3, anchorDate: '2026-11-03', effectiveFrom: '2026-11-03' } }, { entityId: 'floor' }); accepted(f);
+  assert.ok(f.plan({ from: '2026-11-03', through: '2026-11-12' }).issues.some((entry) => entry.kind === 'nonmonotonicEffectiveDate'));
+  f.make('chorePolicy', { configuration: { ...f.defaultConfiguration, ruleVersion: 4, anchorDate: '2026-11-15', effectiveFrom: '2026-11-15' } }, { entityId: 'floor' }); accepted(f);
+  const plan = f.plan({ from: '2026-11-15', through: '2026-11-20' }); assert.ok(plan.occurrences.some((entry) => entry.anchorDate === '2026-11-15'));
+  assert.equal(plan.issues.some((entry) => entry.kind === 'nonmonotonicEffectiveDate'), false);
+});
+
+test('v2 an unseen concurrent cancellation cannot rewrite the common window captured by a legitimate work report', async () => {
+  const f = await fixture(); const request = f.make('changeRequest', { requesterUserId: 'owner', choreId: 'floor', anchorDate, occurrenceId: f.occurrence(), subjectUserId: null,
+    originalDesignationId: null, original: date(anchorDate), proposed: date('2026-10-31'), proposedMode: 'day', proposedOptions: { strict: false, adminLocked: false, forbidEarlier: false },
+    selector: { scope: 'once', occurrenceId: f.occurrence(), anchorDate }, extensionScope: 'future' }); accepted(f);
+  const rule = f.state().assessment.approvedRules[0]; assert.ok(rule); const base = f.facts.map((fact) => fact.operation);
+  const work = f.complete({ recordedCommonWindow: { start: '2026-10-25', end: '2026-10-31' }, scheduledDate: '2026-10-31', scheduledWindowStart: '2026-10-25', scheduledWindowEnd: '2026-10-31' });
+  f.make('designationCancel', { targetOperationIds: [rule.operationId] }, { actor: 'owner2', observed: base, operationId: 'aaa-concurrent-cancel' }); accepted(f);
+  const plan = f.plan(); assert.equal(plan.history.find((record) => record.operationId === work.operationId).schedule.commonWindow.end, '2026-10-31');
+  assert.equal(plan.occurrences[0].windowEnd, '2026-10-29'); assert.ok(request);
+});

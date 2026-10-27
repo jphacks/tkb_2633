@@ -9,7 +9,7 @@ import { openSharingDatabase, sharingDatabaseDirectory } from './database-locati
 import { createSharingCloud } from './firestore-cloud.ts';
 import { createSharedRoster, sharedRosterDigest, verifyPinnedSharedRoster, verifySharedRosterArchive } from '../../features/sharing/roster.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
-import { canonicalJson, assertSharedIdentifier } from '../../features/sharing/operations.ts';
+import { canonicalJson } from '../../features/sharing/operations.ts';
 import type { SharedEntityType } from '../../features/sharing/operations.ts';
 import { signSharedOperation, wrapGroupKey } from '../../features/sharing/crypto.ts';
 import { createSharedSynchronizer } from '../../features/sharing/synchronizer.ts';

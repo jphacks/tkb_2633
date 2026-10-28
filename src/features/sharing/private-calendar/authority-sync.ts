@@ -10,11 +10,12 @@ import { assertSharedIdentifier } from '../identifier.ts';
 
 type Cloud = Pick<ReturnType<typeof createPrivateCalendarCloud>, 'authorityPage' | 'commitAuthority'>;
 /** Used for approval/recovery, not per-card rendering. A cloud checkpoint cannot substitute for the pinned signature chain. */
-export async function collectPrivateCalendarAuthorityHistory(cloud: Pick<Cloud, 'authorityPage'>, expected: VerifiedPrivateCalendarAuthority) {
+export async function collectPrivateCalendarAuthorityHistory(cloud: Pick<Cloud, 'authorityPage'>, expected: VerifiedPrivateCalendarAuthority,
+  initialPage?: Awaited<ReturnType<Cloud['authorityPage']>>) {
   const history: SignedPrivateCalendarAuthority[] = []; let current: VerifiedPrivateCalendarAuthority | null = null;
   let bytes = 0; let observedRevision = expected.signed.body.revision; let expectedFound = false;
   while (history.length < 4096) {
-    const page = await cloud.authorityPage(history.length);
+    const page = history.length === 0 && initialPage ? initialPage : await cloud.authorityPage(history.length);
     if (!page || page.head.rootDigest !== expected.anchor.rootDigest || page.head.accountGeneration !== expected.anchor.accountGeneration
       || page.head.ownerUserId !== expected.anchor.ownerUserId || page.head.authorityRevision < observedRevision
       || !page.authorities.length || page.authorities.length > 100) throw new Error('本人端末の署名履歴と確認済みの設定が一致しません。');

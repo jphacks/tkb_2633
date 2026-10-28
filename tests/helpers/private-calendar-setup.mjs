@@ -10,6 +10,7 @@ import { createPrivateCalendarRootSetupStorage } from '../../src/platform/storag
 import { createPrivateCalendarFirstDeviceSetup } from '../../src/features/sharing/private-calendar/first-device-setup.ts';
 import { createPrivateCalendarAuthorityIntentStorage } from '../../src/platform/storage/private-calendar-authority-intents.ts';
 import { createPrivateCalendarKeyOutbox } from '../../src/platform/storage/private-calendar-key-outbox.ts';
+import { createPrivateCalendarPairingStorage } from '../../src/platform/storage/private-calendar-pairing.ts';
 
 /** Real SQLite and the actual protected-vault implementation; no network or personal database. */
 export function privateCalendarSetupFixture(t, options = {}) {
@@ -30,6 +31,7 @@ export function privateCalendarSetupFixture(t, options = {}) {
   const roots = createPrivateCalendarRootSetupStorage({ ownerUserId: userId, crypto: gateway, assertOwner, exclusive: guardedExclusive, readProtected });
   const changes = createPrivateCalendarAuthorityIntentStorage({ ownerUserId: userId, assertOwner, exclusive: guardedExclusive, readProtected });
   const keyOutbox = createPrivateCalendarKeyOutbox({ ownerUserId: userId, crypto: gateway, assertOwner, exclusive: guardedExclusive, readProtected });
+  const pairing = createPrivateCalendarPairingStorage({ ownerUserId: userId, crypto: gateway, assertOwner, exclusive: guardedExclusive, readProtected, vault });
   const controller = cloud => createPrivateCalendarFirstDeviceSetup({ userId, secrets, intents: roots, cloud });
-  return { ...raw, database, userId, values, state, gateway, vault, secrets, roots, changes, keyOutbox, controller, readProtected };
+  return { ...raw, database, userId, values, state, gateway, vault, secrets, roots, changes, keyOutbox, pairing, controller, readProtected };
 }

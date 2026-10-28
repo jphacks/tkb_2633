@@ -17,6 +17,8 @@ import { openPrivateCalendarCache, sealPrivateCalendarCache } from '../src/featu
 import { privateCalendarSetupFixture } from './helpers/private-calendar-setup.mjs';
 import { createPrivateCalendarAuthoritySync } from '../src/features/sharing/private-calendar/authority-sync.ts';
 import { createPrivateCalendarKeyDelivery } from '../src/features/sharing/private-calendar/key-delivery.ts';
+import { createPrivateCalendarPairingController } from '../src/features/sharing/private-calendar/pairing-controller.ts';
+import { privateCalendarPairingReference } from '../src/features/sharing/private-calendar/pairing.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Use the local Firestore emulator only.');
 let env;
@@ -371,4 +373,54 @@ test('private Calendar a non-main generation issuer distributes the same key to 
   const packet = await client(userId).cloud.readKey(authority, other.deviceId); const received = await unwrapPrivateCalendarKey(crypto, packet, authority, other);
   const original = await f.secrets.currentKey(userId, authority); assert.deepEqual(received, original);
   assert.equal(JSON.parse(await f.vault.getItem(`private-calendar-state:${userId}`)).keys.length, 2); received.fill(0); original.fill(0);
+});
+
+test('private Calendar actual pairing and main switch transfer one key and encrypted cache while revocation rejects rejoin and future decryption', async t => {
+  const owner = privateCalendarSetupFixture(t, { userId }); const recipient = privateCalendarSetupFixture(t, { userId }); const left = client(userId); const right = client(userId);
+  const services = (h, cloud) => {
+    const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets: h.secrets, intents: h.changes, cloud });
+    const delivery = createPrivateCalendarKeyDelivery({ userId, secrets: h.secrets, outbox: h.keyOutbox, cloud });
+    return { authoritySync, delivery, pair: createPrivateCalendarPairingController({ userId, secrets: h.secrets, candidates: h.pairing, intents: h.changes, authoritySync, delivery, cloud }) };
+  };
+  await owner.controller(left.cloud).prepareAndResume(); const root = await owner.secrets.authority(userId); const originalIdentity = await owner.secrets.identity(userId);
+  const original = services(owner, left.cloud); const joining = services(recipient, right.cloud);
+  const request = await joining.pair.prepareConfirmedReference(privateCalendarPairingReference(root));
+  assert.equal((await recipient.readProtected()).authority, null); assert.equal((await original.pair.approve(request.request)).kind, 'approved');
+  assert.equal((await joining.pair.join()).kind, 'ready'); const secondIdentity = await recipient.secrets.identity(userId);
+  const mainChanged = await original.authoritySync.change({ devices: [originalIdentity, secondIdentity], mainDeviceId: secondIdentity.deviceId, keyVersion: 1 });
+  const authority = (await joining.authoritySync.refresh()).authority; assert.equal(authority.digest, mainChanged.authority.digest);
+  const key = await recipient.secrets.currentKey(userId, authority); const firstKey = await owner.secrets.currentKey(userId, authority); assert.deepEqual(key, firstKey);
+  const fetchedAt = '2026-10-28T00:00:00.000Z'; const calendarBinding = 'pairing-private-google-binding';
+  const cache = { ownerUserId: userId, accountGeneration: authority.anchor.accountGeneration, mainDeviceId: secondIdentity.deviceId, mainRevision: authority.signed.body.revision,
+    calendarBinding, timeZone: 'Asia/Tokyo', fetchedAt, coverage: { start: fetchedAt, end: '2026-10-29T00:00:00.000Z' }, intervals: [{ start: '2026-10-28T01:00:00.000Z', end: '2026-10-28T02:00:00.000Z' }] };
+  const encrypted = await sealPrivateCalendarCache(crypto, { authority, accountKey: key, calendarBinding, cache, mainDevice: secondIdentity, sequence: 1 });
+  await right.cloud.uploadCache(authority, encrypted);
+  assert.deepEqual(await openPrivateCalendarCache(crypto, await left.cloud.readCache(authority), { authority, accountKey: firstKey, calendarBinding }), cache);
+  await assert.rejects(() => sealPrivateCalendarCache(crypto, { authority, accountKey: firstKey, calendarBinding, cache, mainDevice: originalIdentity, sequence: 2 }));
+  const removed = await original.authoritySync.change({ devices: [originalIdentity], mainDeviceId: originalIdentity.deviceId, keyVersion: 2 }); const final = removed.authority;
+  await assert.rejects(() => original.pair.approve(request.request)); await assert.rejects(() => joining.pair.join(), /解除/u);
+  assert.equal((await recipient.readProtected()).hasStoredKeys, true); assert.equal((await recipient.readProtected()).hasCurrentKey, false);
+  const nextKey = await owner.secrets.createCurrentKey(userId, final);
+  const next = await sealPrivateCalendarCache(crypto, { authority: final, accountKey: nextKey, calendarBinding,
+    cache: { ...cache, mainDeviceId: originalIdentity.deviceId, mainRevision: final.signed.body.revision }, mainDevice: originalIdentity, sequence: 2 });
+  await left.cloud.uploadCache(final, next);
+  await assert.rejects(() => openPrivateCalendarCache(crypto, next, { authority: final, accountKey: key, calendarBinding }));
+  assert.equal(JSON.parse(await owner.vault.getItem(`private-calendar-state:${userId}`)).keys.length, 2); key.fill(0); firstKey.fill(0); nextKey.fill(0);
+});
+
+test('private Calendar a tampered actual approval archive cannot establish a new device pin even for the same authenticated UID', async t => {
+  const owner = privateCalendarSetupFixture(t, { userId }); const recipient = privateCalendarSetupFixture(t, { userId }); const cloud = client(userId).cloud;
+  const services = h => {
+    const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets: h.secrets, intents: h.changes, cloud });
+    const delivery = createPrivateCalendarKeyDelivery({ userId, secrets: h.secrets, outbox: h.keyOutbox, cloud });
+    return createPrivateCalendarPairingController({ userId, secrets: h.secrets, candidates: h.pairing, intents: h.changes, authoritySync, delivery, cloud });
+  };
+  await owner.controller(cloud).prepareAndResume(); const root = await owner.secrets.authority(userId);
+  const candidate = await services(recipient).prepareConfirmedReference(privateCalendarPairingReference(root)); await services(owner).approve(candidate.request);
+  await env.withSecurityRulesDisabled(async context => {
+    const reference = doc(context.firestore(), 'privateCalendars', userId, 'authorities', '2'); const value = (await getDocFromServer(reference)).data();
+    const signed = JSON.parse(value.authorityJson); signed.signature = '0'.repeat(128); await updateDoc(reference, { authorityJson: canonicalJson(signed), authorityDigest: sharedDocumentDigest(signed) });
+  });
+  await assert.rejects(() => services(recipient).join()); assert.equal((await recipient.readProtected()).authority, null); assert.equal((await recipient.readProtected()).hasStoredKeys, false);
+  assert.equal((await recipient.pairing.read()).status, 'prepared');
 });

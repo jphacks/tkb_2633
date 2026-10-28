@@ -3818,5 +3818,64 @@
         "name": "private Calendar a non-main generation issuer distributes the same key to the new main through real Rules and transport"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-explicit-protected-pairing-and-revocation",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar explicit pairing retains an untrusted protected candidate until signed approval and then imports the same key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar pairing candidate and nonce survive SQLite and runtime reconstruction without storing a trust pin in SQL"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar unconfirmed substituted stale and foreign account references cannot generate an identity or formal trust"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar tampered pairing proof and stale requests after revocation cannot approve or restore a removed device"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar intervening authority changes require a renewed explicit request and never silently rebase an old approval"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar lost approval and key replies recover fixed intents without creating another device or envelope"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar corrupt protected pairing candidates fail closed and cannot replace the original identity or pin"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar prepared out-of-band reference is copied before asynchronous reads and remains recoverable after an owner switch"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar an unapproved signer in a substituted Cloud approval cannot create a formal pin or fetch a key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar a protected candidate committed just before an owner switch recovers the exact request and nonce"
+      },
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native pairing protects the confirmed reference separately and refuses release or other-account access"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar actual pairing and main switch transfer one key and encrypted cache while revocation rejects rejoin and future decryption"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar a tampered actual approval archive cannot establish a new device pin even for the same authenticated UID"
+      }
+    ]
   }
 ]

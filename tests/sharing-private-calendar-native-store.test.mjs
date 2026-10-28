@@ -10,6 +10,7 @@ import * as cacheStorage from '../src/platform/storage/private-calendar-cache.ts
 import * as rootSetupStorage from '../src/platform/storage/private-calendar-root-setup.ts';
 import * as authorityIntentStorage from '../src/platform/storage/private-calendar-authority-intents.ts';
 import * as keyOutboxStorage from '../src/platform/storage/private-calendar-key-outbox.ts';
+import * as pairingStorage from '../src/platform/storage/private-calendar-pairing.ts';
 import { privateCalendarDatabaseFilename } from '../src/features/sharing/private-calendar/database-name.ts';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { createHash } from 'node:crypto';
@@ -19,6 +20,7 @@ import { sealPrivateCalendarCache } from '../src/features/sharing/private-calend
 import { auditPrivateCalendarCacheState } from '../src/features/sharing/development/private-calendar-cache-audit.ts';
 import { PRIVATE_CALENDAR_STORE_QA_USER_ID } from '../src/features/sharing/development/private-calendar-store-audit.ts';
 import { createPrivateCalendarFirstDeviceSetup } from '../src/features/sharing/private-calendar/first-device-setup.ts';
+import { privateCalendarPairingReference } from '../src/features/sharing/private-calendar/pairing.ts';
 import { privateCalendarCloudFields } from '../src/features/sharing/private-calendar/cloud-contract.ts';
 
 function fixture(values = new Map([['jp.jphacks.tkb2633.sharing:original', 'preserved']])) {
@@ -36,6 +38,7 @@ function fixture(values = new Map([['jp.jphacks.tkb2633.sharing:original', 'pres
     '../storage/private-calendar-root-setup.ts': rootSetupStorage,
     '../storage/private-calendar-authority-intents.ts': authorityIntentStorage,
     '../storage/private-calendar-key-outbox.ts': keyOutboxStorage,
+    '../storage/private-calendar-pairing.ts': pairingStorage,
     './firebase-services.ts': { getSharingServices: () => { authReads++; return { auth: { currentUser } }; } },
     './native-private-calendar-crypto': { nativePrivateCalendarCrypto: crypto },
     './database-location': { openPrivateCalendarDatabase: async (ownerUserId, development) => {
@@ -65,6 +68,7 @@ test('private Calendar development key storage is release-blocked and uses a sep
     assert.throws(() => f.module.developmentPrivateCalendarRootSetup('development-calendar-private-store'), /開発/u);
     assert.throws(() => f.module.developmentPrivateCalendarAuthorityIntents('development-calendar-private-store'), /開発/u);
     assert.throws(() => f.module.developmentPrivateCalendarKeyOutbox('development-calendar-private-store'), /開発/u);
+    assert.throws(() => f.module.developmentPrivateCalendarPairing('development-calendar-private-store'), /開発/u);
     assert.equal(f.calls.length, 0); assert.equal(f.opens.length, 0); assert.equal(f.authReads(), 0);
     globalThis.__DEV__ = true; const qa = f.module.developmentPrivateCalendarSecrets();
     await assert.rejects(() => qa.identity('private-owner'), /アカウント/u); assert.equal(f.opens.length, 0);
@@ -177,4 +181,18 @@ test('private Calendar Native key outbox remains lazy and uses only the authenti
   assert.ok(f.calls.every(call => call.options.keychainService === 'jp.jphacks.tkb2633.private-calendar'));
   const count = f.calls.length; f.auth('another-owner'); await assert.rejects(() => outbox.pending(authority, 0), /アカウント/u); assert.equal(f.calls.length, count);
   assert.equal(f.values.get('jp.jphacks.tkb2633.sharing:original'), 'preserved'); key.fill(0);
+});
+
+test('private Calendar Native pairing protects the confirmed reference separately and refuses release or other-account access', async t => {
+  const owner = fixture(); t.after(owner.close); owner.auth('private-owner'); let authority;
+  await createPrivateCalendarFirstDeviceSetup({ userId: 'private-owner', secrets: owner.module.nativePrivateCalendarSecrets, intents: owner.module.nativePrivateCalendarRootSetup('private-owner'),
+    cloud: { async createRoot(root) { authority = root; return { head: privateCalendarCloudFields(root) }; } } }).prepareAndResume();
+  const f = fixture(); t.after(f.close); assert.throws(() => f.module.nativePrivateCalendarPairing('private-owner'), /アカウント/u); assert.equal(f.opens.length, 0);
+  f.auth('private-owner'); const pairing = f.module.nativePrivateCalendarPairing('private-owner'); assert.equal(f.calls.length, 0); assert.equal(f.opens.length, 0);
+  assert.equal(await pairing.read(), null); const identity = await f.module.nativePrivateCalendarSecrets.identity('private-owner');
+  const reference = privateCalendarPairingReference(authority); const prepared = await pairing.prepare(reference, identity); assert.equal(prepared.status, 'prepared');
+  assert.equal((await f.module.nativePrivateCalendarSecrets.authority('private-owner')), null); assert.equal(f.opens.length, 1);
+  assert.deepEqual(await pairing.read(), prepared); assert.ok(f.calls.every(call => call.options.keychainService === 'jp.jphacks.tkb2633.private-calendar'));
+  const count = f.calls.length; f.auth('another-owner'); await assert.rejects(() => pairing.read(), /アカウント/u); assert.equal(f.calls.length, count);
+  assert.equal(f.values.get('jp.jphacks.tkb2633.sharing:original'), 'preserved');
 });

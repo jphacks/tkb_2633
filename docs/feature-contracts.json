@@ -3080,5 +3080,70 @@
       { "file": "tests/appliance-care-client.test.mjs", "name": "stored analysis compatibility never weakens the review and source requirements for newly received API results" },
       { "file": "tests/appliance-care-client.test.mjs", "name": "valid verified analysis still reaches the screen" }
     ]
+  },
+  {
+    "feature": "v2-reviewed-appliances-create-only-selected-disabled-chores",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 a member explicitly shares reviewed appliance content and only new disabled chores without claiming administrator cadence" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared appliance analysis waits for an explicit review and selected new tasks stay disabled with separate shared cadence" }
+    ]
+  },
+  {
+    "feature": "v2-appliance-reanalysis-preserves-user-chores-cadence-and-history",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 appliance reanalysis preserves user edited chores their common cadence completion and tombstones" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared appliance details distinguish current AI instructions from an already edited chore and retain guarded product links" },
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 repairing a malformed analysis at a later time retains the custom appliance name and original registration instant" }
+    ]
+  },
+  {
+    "feature": "v2-shared-appliances-use-whole-reviewed-conflict-bundles",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 concurrent appliance reviews expose complete original bundles and an explicit current resolution converges out of order" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "reanalysis keeps its originally displayed basis when another member changes the same appliance during review" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared appliance conflicts expose a whole candidate before an explicit choice and never mix two analyses" }
+    ]
+  },
+  {
+    "feature": "v2-appliance-identities-and-retries-do-not-duplicate-shared-work",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 appliance retries serialize to one identity including supported Japanese manufacturer aliases and never duplicate chores" },
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 concurrent registration on separate devices shares stable appliance and chore identities without duplicate schedules" },
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 identical appliance content at different operation times does not manufacture an analysis conflict" }
+    ]
+  },
+  {
+    "feature": "v2-appliance-review-validates-identity-sources-and-atomic-size-limits",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 new appliance review rejects malformed metadata mismatched identities sources and unreviewed results atomically" },
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 an oversized reviewed appliance rolls back its analysis and new chores together rather than leaving partial outbox entries" },
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 legacy partial appliance edits use their causal source and malformed stored analysis stays visible for explicit repair" }
+    ]
+  },
+  {
+    "feature": "v2-appliance-deletion-and-reviewed-restore-never-cascade-to-chores",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance.test.mjs", "name": "v2 appliance deletion preserves linked chores and restoration requires a current reviewed bundle without resurrecting deleted chores" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared appliance deletion is confirmed separately and keeps linked chores while an explicit reviewed restore remains available" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "deleted shared appliances remain reachable behind a collapsed section without restoring anything on open" }
+    ]
+  },
+  {
+    "feature": "v2-appliance-drafts-cancel-and-retry-without-unreviewed-writes",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "a durable shared appliance review retries only its read after a failed refresh and preserves the saved identity" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "a reviewed shared appliance saves the latest input and cancels without sharing partial or late analysis" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared appliance review clearing an input invalidates an already enabled save handler before the next paint" }
+    ]
+  },
+  {
+    "feature": "v2-appliance-screens-retain-workspace-guards-and-maker-conditions",
+    "tests": [
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared appliance review leaves its final confirmation above the device bottom inset" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "appliance input for a different route never binds another previously loaded appliance" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "shared and personal appliance task cards reuse source guarded instructions while a shared cadence slot still shows condition-only guidance" },
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "unselected or mismatched v2 workspace routes never load shared controllers or expose edit controls" },
+      { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "v2 every isolated preview route denies release execution before opening the fixture" }
+    ]
   }
 ]

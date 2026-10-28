@@ -32,11 +32,12 @@ import { V2DateRightsEditor } from './date-rights-editor';
 import type { V2MutationOutcome } from './mutation-outcome';
 import { V2WasteScreen } from './waste-screen';
 import { V2WasteOccurrence } from './waste-occurrence';
+import { V2ApplianceScreen } from './appliance-screen';
 
 export interface V2GroupScreenProps {
   purpose: 'development' | 'workspace'; workspaceName?: string; workspaceError?: string; onManage?: () => void;
   subscribe?: (changed: () => void) => () => void;
-  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy' | 'dateRights' | 'waste'; choreId?: string;
+  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy' | 'dateRights' | 'waste' | 'appliances' | 'appliance' | 'applianceReview'; choreId?: string; applianceId?: string;
   occurrenceId?: string; subjectId?: string; anchorDate?: string; onRound?: (occurrenceId: string, subjectId: string, anchorDate?: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void; onRequests?: () => void;
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
@@ -45,9 +46,11 @@ export interface V2GroupScreenProps {
   onGroupPolicy?: () => void;
   onDateRights?: (choreId: string) => void;
   onWaste?: () => void;
+  onAppliances?: () => void; onAppliance?: (id: string) => void; onApplianceReview?: (id?: string) => void;
 }
 
-function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: string, choreId?: string): Parameters<V2GroupUiSession['readModel']>[0] {
+function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: string, choreId?: string, applianceId?: string): Parameters<V2GroupUiSession['readModel']>[0] {
+  if (view === 'appliances' || view === 'appliance' || view === 'applianceReview') return { management: true, appliances: true, applianceId };
   if (view === 'waste') return { management: true, waste: true };
   if (view === 'groupPolicy') return { management: true, groupPolicy: true };
   if (view === 'dateRights') return { management: true, permissionsChoreId: choreId };
@@ -57,15 +60,15 @@ function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: strin
   return view === 'calendar' ? { calendarMonth: 'current', waste: true } : view === 'home' ? { waste: true } : undefined;
 }
 
-export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onDateRights, onWaste }: V2GroupScreenProps) {
+export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, applianceId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onDateRights, onWaste, onAppliances, onAppliance, onApplianceReview }: V2GroupScreenProps) {
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
   const notificationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mutationRead = useRef(false); const refreshQueued = useRef(false);
-  const readOptions = useRef(readOptionsForView(view, anchorDate, choreId));
-  const readBinding = useRef({ anchorDate, view, choreId });
+  const readOptions = useRef(readOptionsForView(view, anchorDate, choreId, applianceId));
+  const readBinding = useRef({ anchorDate, view, choreId, applianceId });
   const [calendarMonth, setCalendarMonth] = useState<LocalDate | null>(null); const [calendarDay, setCalendarDay] = useState<LocalDate | null>(null);
   const refresh = useCallback(async () => {
     clearTimeout(notificationTimer.current); notificationTimer.current = undefined;
@@ -77,9 +80,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   }, [loadSession]);
   useFocusEffect(useCallback(() => {
     alive.current = true;
-    if (readBinding.current.anchorDate !== anchorDate || readBinding.current.view !== view || readBinding.current.choreId !== choreId) {
-      readOptions.current = readOptionsForView(view, anchorDate, choreId);
-      readBinding.current = { anchorDate, view, choreId };
+    if (readBinding.current.anchorDate !== anchorDate || readBinding.current.view !== view || readBinding.current.choreId !== choreId || readBinding.current.applianceId !== applianceId) {
+      readOptions.current = readOptionsForView(view, anchorDate, choreId, applianceId);
+      readBinding.current = { anchorDate, view, choreId, applianceId };
     }
     const unsubscribe = subscribe?.(() => {
       clearTimeout(notificationTimer.current);
@@ -88,7 +91,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       notificationTimer.current = setTimeout(() => { notificationTimer.current = undefined; if (alive.current) void refresh(); }, 80);
     });
     void refresh(); return () => { alive.current = false; generation.current++; clearTimeout(notificationTimer.current); refreshQueued.current = false; unsubscribe?.(); };
-  }, [refresh, anchorDate, subscribe, view, choreId]));
+  }, [refresh, anchorDate, subscribe, view, choreId, applianceId]));
   useEffect(() => {
     if (!screenModel) return;
     const zones = [screenModel.plan.timeZone, ...(screenModel.privateOverlay?.status === 'ready' ? [screenModel.privateOverlay.timeZone] : [])];
@@ -117,7 +120,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const run = async (work: () => Promise<unknown>) => { await perform(work); };
   const notice = <View style={styles.notice}>
     {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{workspaceName ?? '共有グループ'}</Text> : null}
-    <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、クラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
+    <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、共有操作をクラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
     {purpose === 'workspace' && onManage ? <AppButton title="グループの管理・切り替え" variant="quiet" compact onPress={onManage} /> : null}
     {view === 'home' && onGroupPolicy ? <AppButton title="グループのルール" variant="quiet" compact onPress={onGroupPolicy} /> : null}
     {workspaceError ? <Text accessibilityRole="alert" style={styles.error}>{workspaceError}</Text> : null}
@@ -129,6 +132,14 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const { personal, privateOverlay: privateValue, ...model } = screenModel;
   const privateOverlay = privateOverlayForViewer(privateValue, model.viewerUserId);
   const controller = session.controller;
+  if (applianceId && (view === 'appliance' || view === 'applianceReview') && model.appliances?.detail?.row.id !== applianceId) return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    {notice}<BackButton onPress={onBack} /><Text style={styles.error}>対象の共有家電を表示できません。一覧から開き直してください。</Text>
+    <AppButton title="家電を再読込" disabled={busy} onPress={() => void refresh()} />
+  </V2ScreenFrame>;
+  if (view === 'appliances' || view === 'appliance' || view === 'applianceReview') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    <V2ApplianceScreen key={`${view}:${applianceId ?? 'new'}`} model={model} mode={view} applianceId={applianceId} actions={controller.actions} busy={busy} perform={perform}
+      header={notice} onBack={onBack} onOpen={onAppliance} onReview={onApplianceReview} onConfiguration={onConfiguration} onDetails={onDetails} />
+  </V2ScreenFrame>;
   if (view === 'waste') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <V2WasteScreen model={model} actions={controller.actions} busy={busy} perform={perform} header={notice} onBack={onBack} />
   </V2ScreenFrame>;
@@ -246,6 +257,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         {onAssignmentRequests ? <AppButton title="担当の変更申請" variant="secondary" disabled={busy} onPress={onAssignmentRequests} /> : null}
         {onManageChores ? <AppButton title="共有家事の一覧・編集" variant="secondary" disabled={busy} onPress={onManageChores} /> : null}
         {onWaste ? <AppButton title="共有のゴミ収集日" variant="secondary" disabled={busy} onPress={onWaste} /> : null}
+        {onAppliances ? <AppButton title="共有の家電" variant="secondary" disabled={busy} onPress={onAppliances} /> : null}
         {purpose === 'development' ? <Card><SectionHeading title="設定を検査" />{model.configurations.map((entry) =>
           <AppButton key={entry.choreId} title={`「${model.plan.chores.find((chore) => chore.id === entry.choreId)?.name ?? '家事'}」の設定`} variant="quiet" disabled={busy} onPress={() => onConfiguration(entry.choreId)} />)}</Card> : null}
       </View>} />

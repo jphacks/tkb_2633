@@ -13,6 +13,7 @@ import type { V2ChoreDetailField, V2EditableField } from './field-edit';
 import { readV2DateRights } from './date-rights-edit.ts';
 import { v2MembershipStart } from './membership-period.ts';
 import { buildV2WastePlan } from './waste-state.ts';
+import { buildV2ApplianceModel } from './appliance-state.ts';
 type V2ModelRange = { from: LocalDate; through: LocalDate; asOfDate: LocalDate };
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
@@ -22,7 +23,7 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
   const actions = createV2PlannerActions(repository, options);
   return {
     actions, sync: options.sync,
-    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange), readOptions: { detailChoreId?: string; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean } = {}) {
+    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange), readOptions: { detailChoreId?: string; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean; appliances?: boolean; applianceId?: string } = {}) {
       const state = await repository.readState();
       const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
       let range: V2ModelRange;
@@ -54,7 +55,8 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
         membershipStarts: Object.fromEntries(permissionMembers.map(member => [member.userId, member.start])),
         fields: Object.fromEntries(permissionMembers.map(member => [member.userId, readV2DateRights(state.assessment.view, at, permissionChore.id, member.userId, member.start)])) } : undefined;
       const waste = readOptions.waste ? buildV2WastePlan(state.assessment.view, at, range) : undefined;
-      return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(dateRights ? { dateRights } : {}), ...(waste ? { waste } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
+      const appliances = readOptions.appliances ? buildV2ApplianceModel(state.assessment.view, at, readOptions.applianceId) : undefined;
+      return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(dateRights ? { dateRights } : {}), ...(waste ? { waste } : {}), ...(appliances ? { appliances } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
         requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
         dateRuleSources: observedDateRules(state.assessment.view, at, state.assessment.approvedRules, true),

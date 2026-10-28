@@ -29,6 +29,7 @@ import { editableDateRightsFromOperations, prepareV2DateRightsEdit } from './dat
 import type { V2DateRightsEdit } from './date-rights-edit';
 import { v2MembershipStart } from './membership-period.ts';
 import { createV2WasteActions } from './waste-actions.ts';
+import { createV2ApplianceActions } from './appliance-actions.ts';
 import { expandedCommonWindow } from './window-extension.ts';
 import { v2DateDecisionReview, v2AssignmentDecisionReview } from './decision-review.ts';
 import type { V2DateDecisionEdit, V2DecisionEdit } from './decision-review.ts';
@@ -135,6 +136,7 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
   }
   return {
     ...createV2WasteActions(repository, options.makeId),
+    ...createV2ApplianceActions(repository, options),
     readPlan: async (range: Parameters<typeof buildV2CommonPlan>[1]) => buildV2CommonPlan(await repository.readState(), range),
     addChore: (name: string, instructions: string[] = []) => {
       const id = options.makeId(); return repository.commit([draft('chore', id, { name: name.trim(), instructions, enabled: false })]);

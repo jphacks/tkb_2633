@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import type { ReactNode } from 'react';
 import { FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -62,11 +63,13 @@ export function ApplianceDetailContent({ context, returnTo, error }: {
   );
 }
 
-function MaintenanceTaskCard({ task, chore, manufacturer, index }: {
+export function MaintenanceTaskCard({ task, chore, manufacturer, index, schedule }: {
   task: ApplianceCareReviewContext['appliance']['analysis']['tasks'][number];
   chore?: ChoreDefinition;
   manufacturer: string;
   index: number;
+  /** Shared workspaces supply their own cadence status; a maker interval is not a shared schedule. */
+  schedule?: ReactNode;
 }) {
   const manufacturerDays = task.recommendedIntervalDays;
   const userDays = chore?.userIntervalDays ?? chore?.recommendedCycleDays;
@@ -75,7 +78,7 @@ function MaintenanceTaskCard({ task, chore, manufacturer, index }: {
     <Card>
       <Text style={styles.taskIndex}>お手入れ {String(index + 1).padStart(2, '0')}</Text>
       <Text style={styles.taskTitle}>{task.name}</Text>
-      {noSchedule ? (
+      {schedule !== undefined ? schedule : noSchedule ? (
         <View style={styles.noSchedule}>
           <Text style={styles.noScheduleTitle}>定期予定なし</Text>
           {task.recommendedConditions?.map((condition) => <Text key={condition} style={styles.body}>メーカー指定：「{condition}」</Text>)}
@@ -89,7 +92,7 @@ function MaintenanceTaskCard({ task, chore, manufacturer, index }: {
           {chore ? <Text style={styles.note}>{chore.enabled ? '家事一覧・カレンダーに登録済み' : '予定はオフです。家事一覧から変更できます。'}</Text> : <Text style={styles.note}>解析項目は保存済みですが、家事予定には登録していません。</Text>}
         </View>
       )}
-      {task.recommendedConditions?.length && !noSchedule ? task.recommendedConditions.map((condition) => <Text key={condition} style={styles.body}>メーカー指定条件：{condition}</Text>) : null}
+      {task.recommendedConditions?.length && (schedule !== undefined || !noSchedule) ? task.recommendedConditions.map((condition) => <Text key={condition} style={styles.body}>メーカー指定条件：{condition}</Text>) : null}
       <SectionHeading title="手順" level="subsection" />
       {task.steps.map((step, stepIndex) => <Text key={`${stepIndex}-${step}`} style={styles.body}>{stepIndex + 1}. {step}</Text>)}
       <Text style={styles.body}>必要な道具：{task.tools.length ? task.tools.join('、') : '記載なし'}</Text>
@@ -107,7 +110,7 @@ function MaintenanceTaskCard({ task, chore, manufacturer, index }: {
   );
 }
 
-function OfficialLink({ manufacturer, title, url }: { manufacturer: string; title: string; url: string }) {
+export function OfficialLink({ manufacturer, title, url }: { manufacturer: string; title: string; url: string }) {
   const valid = isOfficialApplianceUrl(url, manufacturer);
   if (!valid) return <Text style={styles.invalidLink}>公式URLを検証できないため開けません</Text>;
   return <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(url).catch(() => undefined)}><Text style={styles.link}>{title}</Text></Pressable>;

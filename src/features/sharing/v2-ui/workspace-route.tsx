@@ -16,7 +16,7 @@ import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coor
 /** Only an explicitly selected, authenticated v2 workspace reaches these controls. */
 export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] }) {
   const context = useWorkspace(); const { database: personalDatabase, snapshot: personalSnapshot, refresh: refreshPersonal } = usePlannerData(); const router = useRouter();
-  const params = useLocalSearchParams<{ choreId?: string; occurrenceId?: string; subjectId?: string; anchorDate?: string }>();
+  const params = useLocalSearchParams<{ choreId?: string; occurrenceId?: string; subjectId?: string; anchorDate?: string; applianceId?: string }>();
   const active = context.active?.protocol === 2 ? context.active : null;
   const current = useRef<{ active: typeof active; userId: string | null; database: typeof personalDatabase } | null>({ active, userId: context.userId, database: personalDatabase });
   useLayoutEffect(() => {
@@ -62,7 +62,7 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
   const record = context.groups.find((record) => record.groupId === active.groupId);
   return <V2GroupScreen key={`${active.userId}:${active.groupId}:${active.identity.deviceId}`} purpose="workspace" view={view} loadSession={loadSession} subscribe={subscribe}
     workspaceName={record?.displayName} workspaceError={record?.lastErrorCode ? sharingFailureMessage({ code: record.lastErrorCode }) : undefined}
-    anchorDate={focus} choreId={text(params.choreId)} occurrenceId={text(params.occurrenceId)} subjectId={text(params.subjectId)}
+    anchorDate={focus} choreId={text(params.choreId)} occurrenceId={text(params.occurrenceId)} subjectId={text(params.subjectId)} applianceId={text(params.applianceId)}
     onManage={() => router.push({ pathname: '/sharing', params: { groupId: active.groupId } })}
     onBack={() => view !== 'home' && router.canGoBack() ? router.back() : router.replace('/sharing')}
     onRound={(occurrenceId, subjectId, anchorDate) => router.push({ pathname: '/group-v2/round', params: { occurrenceId, subjectId, ...(anchorDate ? { anchorDate } : anchorContext) } })}
@@ -74,6 +74,9 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
     onManageChores={() => router.push('/group-v2/chores')} onAddChore={() => router.push('/group-v2/add-chore')}
     onGroupPolicy={() => router.push('/group-v2/group-rules')}
     onWaste={() => router.push('/group-v2/waste')}
+    onAppliances={() => router.push('/group-v2/appliances')}
+    onAppliance={(applianceId) => router.push({ pathname: '/group-v2/appliance', params: { applianceId } })}
+    onApplianceReview={(applianceId) => router.push({ pathname: '/group-v2/appliance-review', params: applianceId ? { applianceId } : {} })}
     onDateRights={(choreId) => router.push({ pathname: '/group-v2/date-rights', params: { choreId } })}
     onCalendar={() => router.push('/group-v2/calendar')} onHistory={() => router.push('/group-v2/history')}
     onRequests={() => router.push('/group-v2/requests')} onAssignmentRequests={() => router.push('/group-v2/assignment-requests')} />;

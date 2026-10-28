@@ -11,7 +11,7 @@ import type { V2PrivateOverlayState, V2PrivateTaskSource } from './private-overl
 export interface V2GroupUiSession {
   controller: V2GroupController; groupId: string; userId: string;
   privateTasks?: V2PrivateTaskSource;
-  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
+  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean; appliances?: boolean; applianceId?: string }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
 }
 
 /** The UI computes its range and personal suggestions from one authenticated group clock. */
@@ -31,7 +31,7 @@ export function createV2ScreenSession(input: { controller: V2GroupController; gr
         if (focus) parseLocalDate(focus);
         const calendar = options?.calendarMonth ? v2CalendarMonth(options.calendarMonth === 'current' ? date : options.calendarMonth as LocalDate) : null;
         return { from: addDays(calendar?.from ?? focus ?? date, -14), through: addDays(calendar?.through ?? focus ?? date, 14), asOfDate: date };
-      }, { detailChoreId: options?.detailChoreId, groupPolicy: options?.groupPolicy, permissionsChoreId: options?.permissionsChoreId, waste: options?.waste });
+      }, { detailChoreId: options?.detailChoreId, groupPolicy: options?.groupPolicy, permissionsChoreId: options?.permissionsChoreId, waste: options?.waste, appliances: options?.appliances, applianceId: options?.applianceId });
       if (model.viewerUserId !== input.userId || model.plan.groupId !== input.groupId) throw new Error('表示する共有アカウント・グループが変わりました。');
       if (!preferences) return model;
       let privateOverlay: V2PrivateOverlayState | undefined;

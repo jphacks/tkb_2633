@@ -26,6 +26,7 @@ import { createSharedGroupManager } from '../src/features/sharing/group-manager.
 import { createV2WorkspaceSession } from '../src/features/sharing/v2/workspace-session.ts';
 import { readCloudWorkspaceArchive } from '../src/features/sharing/workspace-protocol.ts';
 import { workspaceHarness } from './helpers/sharing-workspaces-harness.mjs';
+import { applianceResult } from './helpers/sharing-v2-appliance.mjs';
 import { v2ReadPoint } from '../src/features/sharing/v2/view-point.ts';
 import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts';
 
@@ -160,6 +161,26 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     const expectedWaste = await wasteRead(owner); assert.equal(expectedWaste.occurrences[0].hidden, false); assert.deepEqual(expectedWaste, await wasteRead(restart));
     const encryptedWaste = (await getDocFromServer(doc(f.root, 'events', wasteCreated[0].operationId))).data();
     assert.equal(JSON.stringify(encryptedWaste).includes('秘密の共有収集日'), false); assert.equal(JSON.stringify(encryptedWaste).includes('秘密の資源ごみ'), false);
+    const reviewedAppliance = applianceResult(); reviewedAppliance.product.productName = '秘密の共有家電';
+    const applianceSaved = await restart.controller.actions.reviewAppliance({ reviewed: true, result: reviewedAppliance, addTaskNames: ['フィルター清掃'] });
+    assert.equal(applianceSaved.createdChoreIds.length, 1);
+    const applianceRead = async session => (await session.controller.readModel(range, { appliances: true, applianceId: applianceSaved.applianceId })).appliances;
+    await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+    assert.deepEqual(await applianceRead(owner), await applianceRead(restart));
+    const oldAppliance = (await applianceRead(owner)).detail;
+    reviewedAppliance.analysis.tasks[0].steps = ['再解析した秘密の手順'];
+    await owner.controller.actions.reviewAppliance({ reviewed: true, result: reviewedAppliance, selection: oldAppliance.row.selection, addTaskNames: [] });
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    const applianceUpdated = (await applianceRead(restart)).detail;
+    assert.deepEqual(applianceUpdated.appliance.analysis.tasks[0].steps, ['再解析した秘密の手順']);
+    const linked = (await restart.controller.readModel(range)).plan.chores.find(item => item.id === applianceSaved.createdChoreIds[0]);
+    assert.deepEqual(linked.instructions, ['電源を切る', '公式の手順で手入れする']); assert.equal(linked.enabled, false);
+    const encryptedAppliance = (await getDocFromServer(doc(f.root, 'events', applianceSaved.operations.find(op => op.entityType === 'appliance').operationId))).data();
+    for (const secret of ['秘密の共有家電', 'フィルター清掃', 'dyson.co.jp', applianceSaved.applianceId]) assert.equal(JSON.stringify(encryptedAppliance).includes(secret), false);
+    await restart.controller.actions.deleteAppliance(applianceUpdated.row.selection);
+    await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+    const expectedAppliances = await applianceRead(owner); assert.equal(expectedAppliances.detail.row.deleted, true);
+    assert.equal((await owner.controller.readModel(range)).plan.chores.some(item => item.id === linked.id), true);
     await owner.manager.removeMembers(['member']); await assertFails(memberCloud.readGroup(groupId));
     const rejoinInvite = await owner.manager.createInvitation(); const rejoinRequest = createSharedJoinRequest(rejoinInvite, 'member', memberIdentity, Date.now());
     await memberCloud.submitJoinRequest(rejoinInvite.invitation, rejoinRequest); await owner.manager.approve(rejoinInvite.invitation, rejoinRequest);
@@ -170,6 +191,7 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
       async () => ({ ...rejoinRecord, rosterArchive: rejoinArchive }), async value => { rejoinArchive = value; }, () => rejoinArchive));
     await rejoined.synchronizer.sync({ force: true });
     assert.deepEqual(await wasteRead(rejoined), expectedWaste);
+    assert.deepEqual(await applianceRead(rejoined), expectedAppliances);
     const fresh = await rightsSource(rejoined); assert.equal(fresh.dateRights.membershipStarts.member, 4); assert.equal(fresh.dateRights.fields.member.kind, 'missing');
     assert.ok((await rejoined.repository.readState()).assessment.view.ofType('datePermission').length > 0, 'historical grants stay in the authenticated snapshot');
     const ownerFresh = await rightsSource(owner);

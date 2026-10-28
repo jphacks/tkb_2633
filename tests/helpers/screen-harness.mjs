@@ -66,6 +66,8 @@ export function screenHarness(filename, options = {}) {
     '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
     '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },
     '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: () => {} },
+    // The real API client imports Native Platform. Screen tests inject responses explicitly; never start a paid API job implicitly.
+    '../../appliance-care/api-client': { analyzeApplianceCareRequest: async () => { throw new Error('Appliance API transport was not injected by this screen test'); } },
     '@/platform/sharing/workspaces': { hasOtherGoogleWorkspaceConnections: async () => false },
     ...options.mocks,
   };

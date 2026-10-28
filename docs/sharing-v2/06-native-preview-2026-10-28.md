@@ -212,3 +212,26 @@ iPhone 12 / iOS 26.7.2では`phase4aa-iphone-waste-input.xcresult`と`.log`のXC
 | iPhone `v2-waste-native-reopened` | `7b4e83ffd95f9405169f52ba809e7401d1ab10fa961b9d396138b1b15e56ace7` |
 
 両OS条件の実TSX・SQLite検査は各1480件、Firestore Emulatorは27件で成功した。これはv2実アカウント間同期、Google連携、バックグラウンド実行、全新画面の成功を表すものではない。Androidは検査後に再び全給電がfalseとなり、後の画像では残量6%だった。充電状態を推測せず、次の継続した実機操作の前に再確認する。
+## Phase 4ac：共有家電の入力と実APIを使った端末内保存
+
+2026-10-28、既存の開発ビルド・端末データを保持したまま実施。AndroidはSony I4293 / Android 10、iPhoneはiPhone 12 / iOS 26.7.2。共有クラウドへの書込・実グループの移行は実施していない。
+
+Androidの`phase4ac-android-native-form-final.log`は11.566秒、code 0。メーカー・製品名・型番の3欄へNative Accessibilityから入力し、BackButtonで一覧へ戻った。この段階ではAPIと保存を実行していない。iPhoneの`phase4ac-iphone-appliance-form-final.xcresult`はXCTest 1件、24.060秒で成功し、実際のソフトウェアキーボードで3欄へ入力して一覧へ戻った。先行する起動待機の失敗、検査スクリプトの戻るラベル指定間違い、端末が他画面になっていた間の失敗は、これらの成功と分ける。iPhoneはユーザーの再開確認後に成功した。失敗ログは残し、この実行で作った不要な失敗時録画・診断のexportは削除した。
+
+実APIの`phase4ac-real-api-check.log`では、既存のlocalhostサーバーへのDyson SV20のリクエストが62.149秒でverifiedの10項目を返した。`forceReanalysis`を指定しておらず、新しい推論を強制した検査ではない。その実応答のSHA-256は`1326efc043be1a05380b544db90f50402d9e9c7577b0f1fd51a520501ef18ee2`。独立したSQLiteへの検査で、未確認の拒否、10件の無効追加、同一内容の再試行0操作を確認し、実グループ書込0・共有クラウド送信0を記録した。検査用のレビュー印を人間の本番同意として扱わない。
+
+Android実機では、127.0.0.1:8787へのADB転送を一時的に設定し、実APIの応答を画面で取得した。選んだ1項目を無効の家事として保存し、開き直して手順・公式リンクを表示した。最初のAccessibility操作は下端の確認ボタンで止まった。QA画面、確認済みの状態、新しいボタン座標を検査し直してADBの実タップで保存し、`phase4ac-android-real-api-native-reopen.log`の7.462秒、code 0で復帰を確認した。
+
+下部safe areaを反映した後の`phase4ac-android-real-api-native-final.log`は58.355秒、code 0。実APIからの取得・項目選択・レビュー・保存・開き直しを実行し、既にある同じ内容の再保存で新規家事0件を検査した。Accessibilityの更新直後は画像が前フレームのことがあるため、その場の画像名だけでは成功としない。最後に戻った画面を再取得し、実描画と要素情報の両方で0件を確認した。API URLのCLI上書きを外してMetroを通常設定へ戻し、一時転送8787は残していない。8101の開発用接続は保持した。Androidは残量6%時点で消灯し、最後の短い照合では充電中・7%だった。
+
+このAndroid検査は「実API + 端末内v2プレビュー」であり、異種OS間の実サービス同期E2Eではない。iPhoneのフォーム入力成功も、iPhoneからの実API通信の成功とはしない。公開Rules、実グループ移行、本人Calendar・v2 Tasks・通知／Widgetを含むE2Eは引き続き未完了。
+
+ローカル証跡は`/tmp/liflow-v2-20261027/`。一覧は`phase4ac-native-android-evidence.json`、`phase4ac-native-ios-evidence.json`、`phase4ac-native-android-real-api-evidence.json`、`phase4ac-real-api-local-review-evidence.json`。主要画像を目視確認した。
+
+| 実画像 | SHA-256 |
+| --- | --- |
+| Android・3欄入力 | `5f04b12b41008ffdcb3924815eaec5318dbf76e63267c8957a6fefb345513480` |
+| iPhone・ソフトウェアキーボードでの入力後 | `c3e221b2154cf6e17bc2af917c24aa2917e69560043112767a1b7d23b99bfa02` |
+| iPhone・一覧へ戻った状態 | `146b06fde6ac7b3b9975692de6a0822f4d330cff0a8c6d5f8ee6789a0645658c` |
+| Android・実APIで保存した家電の開き直し | `a5dc0131321aba0e38d58e786170631d75a6ae5b44ee0c96d552d1102e27add4` |
+| Android・再保存で新規0件の実描画 | `533e435f6fcd3dee2dffaa732dd82b92b228c3f42a5671929325bcd5c58bfed7` |

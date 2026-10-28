@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-30",
+  "version": "liflow-shared-2-draft-31",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -60,7 +60,14 @@
     "src/features/sharing/v2/waste-state.ts",
     "src/features/sharing/v2/waste-actions.ts",
     "src/features/waste/schedule-policy.ts",
-    "src/features/waste/weekly-scheduler.ts"
+    "src/features/waste/weekly-scheduler.ts",
+    "src/features/sharing/v2/appliance-state.ts",
+    "src/features/sharing/v2/appliance-actions.ts",
+    "src/features/appliance-care/analysis-validation.ts",
+    "src/features/appliance-care/official-url.ts",
+    "src/features/appliance-care/display-name.ts",
+    "src/features/appliance-care/to-chore-definition.ts",
+    "src/features/appliance-care/categories.ts"
   ],
-  "sourceSha256": "bb0dd869081d32e076ac17dca63845047f8e460a1a389e17ad74f25c025ac90a"
+  "sourceSha256": "751824357bbfe4ae33a5d793e8d9c03b512a78bb8b3be94f29a9fcd067f3c420"
 }

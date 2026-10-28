@@ -119,7 +119,8 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   };
   const run = async (work: () => Promise<unknown>) => { await perform(work); };
   const notice = <View style={styles.notice}>
-    {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{workspaceName ?? '共有グループ'}</Text> : null}
+    {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{typeof screenModel?.plan.commonSettings.name === 'string'
+      ? screenModel.plan.commonSettings.name : workspaceName ?? '共有グループ'}</Text> : null}
     <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、共有操作をクラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
     {purpose === 'workspace' && onManage ? <AppButton title="グループの管理・切り替え" variant="quiet" compact onPress={onManage} /> : null}
     {view === 'home' && onGroupPolicy ? <AppButton title="グループのルール" variant="quiet" compact onPress={onGroupPolicy} /> : null}

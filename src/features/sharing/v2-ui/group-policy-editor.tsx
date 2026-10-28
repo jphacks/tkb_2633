@@ -11,6 +11,7 @@ import { V2Choices, V2Flag, V2FormScrollView, v2FormStyles as styles } from './f
 import { V2AutosaveFeedback } from './autosave-feedback';
 import { v2MemberLabels } from './member-labels';
 import type { V2FieldCodec } from './field-editor-state';
+import { V2GroupSettingsFields, groupNameCodec, groupRegionCodec } from './group-settings-fields';
 
 const policyCodec: V2FieldCodec = { format: value => value ?? null, parse: raw => raw };
 const sections = [
@@ -33,8 +34,9 @@ export function V2GroupPolicyEditor(props: { model: V2GroupScreenModel; controll
 function Editor({ model, source, controller, onSaved, onBack, header }: Parameters<typeof V2GroupPolicyEditor>[0] & { source: NonNullable<V2GroupScreenModel['groupPolicy']> }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const admin = model.viewerUserId === model.adminUserId; const nameOf = v2MemberLabels(model.plan.members);
-  const autosave = useV2FieldAutosave({ fields: { configuration: source }, codecs: { configuration: policyCodec },
-    save: edits => controller.actions.editGroupPolicy(edits[0]), onSaved });
+  const autosave = useV2FieldAutosave({ fields: { ...model.groupSettings, configuration: source },
+    codecs: { name: groupNameCodec, timeZone: groupRegionCodec, configuration: policyCodec },
+    save: edits => controller.actions.editGroupOptions(edits), onSaved });
   const policy = autosave.fields.configuration.kind === 'conflict' ? null : autosave.raw.configuration as unknown as GroupPolicy;
   const patch = (value: Partial<GroupPolicy>) => autosave.changeWith('configuration', raw => ({ ...raw as object, ...value }) as JsonValue);
   const details = (value: GroupPolicy, editable: boolean) => <View style={styles.group}>
@@ -51,6 +53,9 @@ function Editor({ model, source, controller, onSaved, onBack, header }: Paramete
   return <V2FormScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>{header}
     <BackButton disabled={autosave.leaving} onPress={() => void autosave.navigateAfterSave(onBack)} /><ScreenHeading title="グループのルール" />
     <Text style={styles.caption}>{admin ? '変更は全メンバーに適用されます。種類を変えても現在の個別設定は保持します。' : 'ルールは管理者が変更します。'}</Text>
+    {model.groupSettings ? <AccordionSection title="グループ名と地域" expanded={expanded.identity === true} onToggle={() => setExpanded(current => ({ ...current, identity: !current.identity }))}>
+      <V2GroupSettingsFields autosave={autosave} model={model} admin={admin} />
+    </AccordionSection> : null}
     {policy ? details(policy, admin) : <Card><Text style={styles.error}>ルールが競合しています。候補を開いて内容を確認してください。</Text>
       {autosave.fields.configuration.candidates.map((candidate, index) => <AccordionSection key={candidate.operationId} title={`ルール候補${index + 1} · ${nameOf(candidate.authorUserId)}`}
         expanded={expanded[candidate.operationId] === true} onToggle={() => setExpanded(current => ({ ...current, [candidate.operationId]: !current[candidate.operationId] }))}>

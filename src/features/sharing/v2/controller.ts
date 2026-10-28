@@ -28,8 +28,15 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
       const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
       let range: V2ModelRange;
       if (typeof inputRange === 'function') {
-        const zone = state.assessment.view.field('settings', 'settings', 'timeZone', at)?.value;
-        if (typeof zone !== 'string') throw new Error('グループの地域を確認してください。');
+        let zone;
+        try { zone = state.assessment.view.field('settings', 'settings', 'timeZone', at)?.value; }
+        catch (error) { if (!readOptions.groupPolicy) throw error; }
+        // A repair-only settings read must not depend on the very timezone conflict it lets the administrator resolve.
+        // The resulting common plan remains uninitialized and date actions stay disabled.
+        if (typeof zone !== 'string') {
+          if (!readOptions.groupPolicy) throw new Error('グループの地域を確認してください。');
+          zone = 'UTC';
+        }
         range = inputRange({ timeZone: zone });
       } else range = inputRange;
       const plan = buildV2CommonPlan(state, range);
@@ -45,6 +52,8 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
       const choreDetails = plan.chores.filter((chore) => chore.id === readOptions.detailChoreId).map((chore) => ({ choreId: chore.id, alive: readV2EditableField(state.assessment.view, at, 'chore', chore.id, '$alive'),
         fields: Object.fromEntries(V2_CHORE_DETAIL_FIELDS.map((field) => [field, readV2EditableField(state.assessment.view, at, 'chore', chore.id, field)])) as Record<V2ChoreDetailField, V2EditableField> }));
       const groupPolicy = readOptions.groupPolicy || readOptions.permissionsChoreId ? readV2EditableField(state.assessment.view, at, 'groupPolicy', 'policy', 'configuration') : undefined;
+      const groupSettings = readOptions.groupPolicy ? Object.fromEntries(['name', 'timeZone'].map(field =>
+        [field, readV2EditableField(state.assessment.view, at, 'settings', 'settings', field)])) : undefined;
       const permissionChore = readOptions.permissionsChoreId ? plan.chores.find(chore => chore.id === readOptions.permissionsChoreId) : undefined;
       const permissionMembers = permissionChore ? plan.members.filter(member => member.active && member.userId !== state.archive.at(-1)!.body.ownerUserId)
         .map(member => {
@@ -56,7 +65,7 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
         fields: Object.fromEntries(permissionMembers.map(member => [member.userId, readV2DateRights(state.assessment.view, at, permissionChore.id, member.userId, member.start)])) } : undefined;
       const waste = readOptions.waste ? buildV2WastePlan(state.assessment.view, at, range) : undefined;
       const appliances = readOptions.appliances ? buildV2ApplianceModel(state.assessment.view, at, readOptions.applianceId) : undefined;
-      return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(dateRights ? { dateRights } : {}), ...(waste ? { waste } : {}), ...(appliances ? { appliances } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
+      return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(groupSettings ? { groupSettings } : {}), ...(dateRights ? { dateRights } : {}), ...(waste ? { waste } : {}), ...(appliances ? { appliances } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
         requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
         dateRuleSources: observedDateRules(state.assessment.view, at, state.assessment.approvedRules, true),

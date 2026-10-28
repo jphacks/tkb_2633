@@ -241,3 +241,19 @@ Android実機では、127.0.0.1:8787へのADB転送を一時的に設定し、�
 `phase4ad-iphone-appliance-form.xcresult`のXCTest 1件は31.399秒で成功。iPhone 12 / iOS 26.7.2で、共有家電の入力欄を実際のソフトウェアキーボードで編集し、Nativeの戻る操作で一覧へ復帰した。共通のblur/unmount listenerが接続された画面の入力・遷移の確認であり、通信途中のblurを実APIで実施した検査ではない。その競合は`phase4ad-blur-before.log`、`phase4ad-delayed-before.log`、`phase4ad-save-lock-before.log`の反例と、`phase4ad-save-lock-after.log`の40件で確認する。
 
 画像一覧は`phase4ad-native-ios-evidence.json`。入力後の実画像SHA-256は`f8df6dbb3371609c719b1217cbb9114e84b2f31fc02c18f5d703789598cb1caa`、一覧へ戻った実画像は`9c33c036694ced123d5a5d51c18414443263a57b241fb9846d99f681b31f89dd`。入力後を目視確認した。Androidの新しいNative検査は追加しておらず、低残量の端末は消灯したまま充電する。
+
+## Phase 4af：名前・地域の自動保存と元地域の指定
+
+`liflow-shared-2-draft-33`の独立した端末内データを使用した。LiFlowの再インストールやデータ初期化はしない。Androidはユーザーによる再接続後、Android 10・残量61%・AC給電を確認し、8101の開発サーバー転送を戻した。更新したAPKは検査補助アプリだけである。
+
+iPhoneでは実キーボードで翌日の19:00〜19:30を東京の指定として保存し、グループ名を`LiFlow Region QA`、地域をニューヨークへ変更して、戻る操作の自動保存を行った。保存後に「今日」の家事を探す検査は、翌日に移したため停止した。同じSQLiteを消さず、カレンダーから翌日を開くXCTestへ続け、**19.735秒・成功1件**で元の19:00・Asia/Tokyoと、新規入力欄の06:00・America/New_York、保存済み設定の再表示を確認した。起動先のAccessibility未準備や開発サーバー選択の失敗は成功に含めない。
+
+AndroidのADB・実アクセシビリティ操作では、同じ日時指定から名前・地域の自動保存、カレンダーからの開き直し、元指定の保持、新規入力の06:00、設定の再表示まで**42.793秒・code 0**。検査の起動先はmanifestのinstrumentation定義を使い、補助アプリの誤った起動指定は成功へ数えない。最初の画像には遷移中の旧画面や開発用のFirebase接続警告が重なったため、要素情報の成功と実描画の確認を分ける。警告自体を製品コードで非表示にはしない。
+
+| iPhoneの実画像 | SHA-256 |
+| --- | --- |
+| 保存済みの名前・America/New_York | `b27b7418a16048ff83078e20bd719a72f635855a355aa917bc3fd552df38b962` |
+| 元の19:00・Asia/Tokyo | `0ccd9f1c18e64246b18ccb74bbd9f05b797a07d29b5042ffa60546822d770603` |
+| 新規入力欄の06:00・America/New_York | `7cdba7bf78ae1335c8d936e371a3eaa01db367f0d69d4cc798966259ec566f64` |
+
+一覧は`phase4af-native-ios-evidence.json`と`phase4af-native-android-evidence.json`。両端末のローカル操作の確認であり、異種OS間のv2実サービス同期やバックグラウンド実行の保証とは扱わない。共有検査用のOutboxは未送信で保持し、サーバー受付を捏造しない。

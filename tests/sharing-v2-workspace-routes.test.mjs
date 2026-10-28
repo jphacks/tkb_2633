@@ -12,6 +12,8 @@ async function fixture() {
   const h = createDatabase(); let id = 0; let syncs = 0;
   const preview = await createV2DevelopmentPreview({ development: true, crypto, makeId: () => `workspace-screen-${++id}`, now: () => new Date(),
     openDatabase: async () => ({ database: h.database, close: async () => h.connection.close() }) });
+  const name = (await preview.readModel({ management: true, groupPolicy: true })).groupSettings.name;
+  await preview.controller.actions.editGroupOptions([{ field: 'name', value: '選択した家族', basisOperationIds: name.candidates.map(candidate => candidate.operationId) }]);
   const active = { protocol: 2, groupId: preview.groupId, userId: preview.userId, identity: { deviceId: 'native-device' }, record: async () => ({ status: 'active' }),
     session: { controller: preview.controller }, sync: async () => { syncs++; } };
   const context = { ready: true, active, userId: preview.userId, groups: [{ groupId: preview.groupId, displayName: '選択した家族' }] };

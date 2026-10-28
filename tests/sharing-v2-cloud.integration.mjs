@@ -22,6 +22,7 @@ import { addDays as addLocalDays } from '../src/domain/scheduling/local-date.ts'
 import { selectManualRule } from '../src/features/sharing/v2/period-rules.ts';
 import { buildV2CommonPlan } from '../src/features/sharing/v2/common-plan.ts';
 import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
+import { createV2GroupController } from '../src/features/sharing/v2/controller.ts';
 import { createSharedGroupManager } from '../src/features/sharing/group-manager.ts';
 import { createV2WorkspaceSession } from '../src/features/sharing/v2/workspace-session.ts';
 import { readCloudWorkspaceArchive } from '../src/features/sharing/workspace-protocol.ts';
@@ -510,11 +511,15 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     const [regionRule] = await ownerActions.changeDate(regionRef, { mode: 'fixed', target: regionTarget, selector: { scope: 'ongoing', from: anchorDate } });
     await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); await restored.sync.sync({ force: true });
     const originalRegionFact = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === regionRule.operationId);
-    await owner.repository.commit([change('changed-group-region', 'settings', 'settings', { timeZone: 'America/New_York' })]);
+    const management = await createV2GroupController(owner.repository, { ...actionOptions, sync: owner.sync.sync }).readModel(planRange, { groupPolicy: true });
+    await ownerActions.editGroupOptions([
+      { field: 'timeZone', value: 'America/New_York', basisOperationIds: management.groupSettings.timeZone.candidates.map(source => source.operationId) },
+      { field: 'name', value: '地域変更後の共有名', basisOperationIds: management.groupSettings.name.candidates.map(source => source.operationId) },
+    ]);
     await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); await restored.sync.sync({ force: true });
     const regionPlan = await ownerActions.readPlan(planRange);
     for (const d of [owner, member, restored]) {
-      const plan = buildV2CommonPlan(await d.repository.readState(), planRange); assert.deepEqual(plan, regionPlan);
+      const plan = buildV2CommonPlan(await d.repository.readState(), planRange); assert.deepEqual(plan, regionPlan); assert.equal(plan.commonSettings.name, '地域変更後の共有名');
       const old = plan.occurrences.find((entry) => entry.choreId === 'region-clock' && entry.anchorDate === anchorDate).subjects[0];
       assert.equal(old.formalDate.kind, 'manual'); assert.equal(old.formalDate.timeZone, 'Asia/Tokyo'); assert.deepEqual(old.formalDate.target, regionTarget);
       assert.deepEqual((await loadSharedFacts(d.database, groupId)).find((fact) => fact.operation.operationId === regionRule.operationId), originalRegionFact);

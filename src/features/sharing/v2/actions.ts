@@ -24,7 +24,7 @@ import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
 import { prepareV2FieldEdits, editableFieldFromOperations, readV2EditableField, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
-import type { V2FieldEdit, V2FieldSaveResult } from './field-edit';
+import type { V2EditableField, V2FieldEdit, V2FieldSaveResult } from './field-edit';
 import { editableDateRightsFromOperations, prepareV2DateRightsEdit } from './date-rights-edit.ts';
 import type { V2DateRightsEdit } from './date-rights-edit';
 import { v2MembershipStart } from './membership-period.ts';
@@ -56,6 +56,23 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
   const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>;
   const draft = (entityType: SharedOperation['entityType'], entityId: string | null, payload: unknown, operationType: SharedOperation['operationType'] = 'patch'): SharedOperationDraft => {
     const operationId = options.makeId(); return { operationId, entityType, entityId: entityId ?? operationId, payload: json(payload), operationType };
+  };
+  const editGroupOptions = async (edits: readonly V2FieldEdit[]): Promise<V2FieldSaveResult> => {
+    if (edits.some(edit => !['name', 'timeZone', 'configuration'].includes(edit.field))) throw new Error('変更するグループ設定を確認してください。');
+    let fields: Record<string, V2EditableField> | undefined;
+    const operations = await repository.commitCurrent(async state => {
+      const view = state.assessment.view; const at = point(state);
+      const settings = prepareV2FieldEdits({ view, at, type: 'settings', entityId: 'settings', allowed: ['name', 'timeZone'], edits: edits.filter(edit => edit.field !== 'configuration') });
+      const policy = prepareV2FieldEdits({ view, at, type: 'groupPolicy', entityId: 'policy', allowed: ['configuration'], edits: edits.filter(edit => edit.field === 'configuration') });
+      fields = { ...settings.fields, ...policy.fields };
+      return [...(Object.keys(settings.patch).length ? [draft('settings', 'settings', settings.patch)] : []),
+        ...(Object.keys(policy.patch).length ? [draft('groupPolicy', 'policy', policy.patch)] : [])];
+    });
+    if (!fields) throw new V2StaleSettingsError();
+    return { operations, fields: Object.fromEntries(Object.entries(fields).map(([field, current]) => {
+      const changed = operations.filter(operation => Object.hasOwn(operation.payload, field));
+      return [field, changed.length ? editableFieldFromOperations(changed, field) : current];
+    })) };
   };
   type State = Awaited<ReturnType<typeof repository.readState>>;
   function point(state: State): SharedOperation {
@@ -199,16 +216,8 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       if (!current) throw new Error('グループ設定を同期してください。');
       return [draft('groupPolicy', 'policy', { configuration: { ...current.value as object, ...patch } })];
     }),
-    editGroupPolicy: async (edit: Omit<V2FieldEdit, 'field'>): Promise<V2FieldSaveResult> => {
-      let prepared: ReturnType<typeof prepareV2FieldEdits> | undefined;
-      const operations = await repository.commitCurrent(async (state) => {
-        prepared = prepareV2FieldEdits({ view: state.assessment.view, at: point(state), type: 'groupPolicy', entityId: 'policy',
-          allowed: ['configuration'], edits: [{ ...edit, field: 'configuration' }] });
-        return Object.keys(prepared.patch).length ? [draft('groupPolicy', 'policy', prepared.patch)] : [];
-      });
-      if (!prepared) throw new V2StaleSettingsError();
-      return { operations, fields: { configuration: operations.length ? editableFieldFromOperations(operations, 'configuration') : prepared.fields.configuration } };
-    },
+    editGroupPolicy: (edit: Omit<V2FieldEdit, 'field'>) => editGroupOptions([{ ...edit, field: 'configuration' }]),
+    editGroupOptions,
     complete: (ref: V2RoundReference, input: { performedAt?: string; performerUserId?: string; additionalWork?: boolean; expectedAssigneeIds?: readonly string[] } = {}) => {
       const performedAt = input.performedAt ?? options.now().toISOString();
       return repository.commitCurrent(async (state) => {

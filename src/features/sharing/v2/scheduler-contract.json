@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-32",
+  "version": "liflow-shared-2-draft-33",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -70,5 +70,5 @@
     "src/features/appliance-care/categories.ts",
     "src/domain/scheduling/local-date.ts"
   ],
-  "sourceSha256": "c09e8167f0096c7a0151fab830538ff30c81099090de65704371a6677542a025"
+  "sourceSha256": "dbae111e6c7eda53e051721734bade78899a8387775dec50f6e52242665e31bc"
 }

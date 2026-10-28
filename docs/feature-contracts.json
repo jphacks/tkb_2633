@@ -3184,5 +3184,26 @@
         "file": "tests/sharing-v2-timezone-history.test.mjs"
       }
     ]
+  },
+  {
+    "feature": "shared-v2-group-identity-settings-preserve-causal-edits",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-group-policy-ui.test.mjs",
+        "name": "group name and region share one autosave queue and timezone search alone never changes shared settings"
+      },
+      {
+        "file": "tests/sharing-v2-group-policy-ui.test.mjs",
+        "name": "group timezone conflicts remain repairable through the real management read and require every current signed candidate"
+      },
+      {
+        "file": "tests/sharing-v2-group-policy-ui.test.mjs",
+        "name": "group options save policy and identity changes in the same SQLite transaction and exact no-op retries enqueue no extra operation"
+      },
+      {
+        "file": "tests/sharing-v2-group-policy-ui.test.mjs",
+        "name": "group name and region settings remain administrator-only and a caller cannot smuggle non-settings fields into the editor command"
+      }
+    ]
   }
 ]

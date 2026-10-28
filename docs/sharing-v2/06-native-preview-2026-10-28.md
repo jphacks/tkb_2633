@@ -333,3 +333,10 @@ iPhoneの初回2回はXCTestがUI自動化の準備で停止した。ユーザ�
 | Android | `1f0e9f94ba7d51f439b0ccf8c272b1bfcfb1d0c8b0772a078159ef4a7337225a` |
 
 範囲・失敗・照合結果は`phase4ak-native-and-code-evidence.json`へ記録した。
+
+
+### 本人Calendar初回設定：実受付後の中断、復旧、確定後cold起動
+
+専用demo projectのFirestore Emulatorと合成UIDを使用し、iPhoneとAndroid 10から実SDKで通信した。準備4項目、プロセス終了後の復旧6項目、確定後のプロセス再起動と復元6項目が両端末で成功。端末ID・root、確定後の鍵の公開照合値を各段階の要素情報から照合し、6枚の画像も確認した。別UID拒否も実Rulesで確認する。iPhoneは7.113／8.920／8.038秒、Androidは4.824／11.925／8.091秒。異なるstageなので性能比較はしない。
+
+初回のcold起動は開発clientの接続画面へ戻って検査前提で止まった。既存Metroへの接続後に同じ保存先で継続した。失敗は`phase4am-*-root-resume*`、成功は`phase4am-*-root-restored*`と`phase4am-*-root-ready-cold*`、合成公開照合値と画像hashは`/tmp/liflow-v2-20261027/phase4am-native-and-code-evidence.json`へ保存した。実アカウント・個人DB・旧QAを保持する。端末間同期・実Google・OS再起動・背景実行の成功とは扱わない。

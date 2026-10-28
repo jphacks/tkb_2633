@@ -3679,5 +3679,26 @@
         "name": "private Calendar a losing first-device setup keeps its local candidate without pinning or generating a key for the winning account root"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-native-bootstrap-isolated-interruption-audit",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-root-audit.test.mjs",
+        "name": "private Calendar root audit preserves its prepared root across reconstruction and retains one key through repeated resume"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-audit.test.mjs",
+        "name": "private Calendar root audit denies release and non-QA owners before any storage access"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-audit.test.mjs",
+        "name": "private Calendar root QA network provider is lazy and restricted to a separate demo project and private numeric endpoints"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-audit.test.mjs",
+        "name": "private Calendar initial-setup QA has explicit separate stages and no release side effects"
+      }
+    ]
   }
 ]

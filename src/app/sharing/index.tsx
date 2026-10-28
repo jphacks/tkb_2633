@@ -57,6 +57,7 @@ export default function SharingScreen() {
       <AppButton title="Googleで続ける" disabled={busy} onPress={() => void run(async () => { await signInSharingWithGoogle(); })} />
       {appleAvailable ? <AppButton title="Appleで続ける" variant="secondary" disabled={busy} onPress={() => void run(async () => { await signInSharingWithApple(); })} /> : null}
     </Card> : <>
+      <AppButton title="本人用カレンダーの端末を管理" variant="secondary" disabled={busy} onPress={() => router.push('/sharing/private-calendar')} />
       <SectionHeading title="参加しているグループ" />
       {context.groups.filter((group) => !['left', 'removed'].includes(group.status)).map((group) => <Card key={group.groupId}>
         <Text style={styles.label}>{group.displayName}</Text>

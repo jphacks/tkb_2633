@@ -3902,5 +3902,92 @@
         "name": "private Calendar a revoked device can rejoin only through a fresh confirmed reference and new approval while retaining its original identity and old keys"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-device-settings-public-state-explicit-actions-and-owner-boundary",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar settings reads and unconfigured sync do not generate any identity pin key or cloud request"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar settings require a fresh displayed authority for main changes and explicit revocation before renewed pairing"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar settings retain prepared approval after a lost reply and distinguish delivery pending from sent"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar settings coalesce concurrent manual sync and reject another mutation until the current action ends"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar settings retain a losing device change for explicit review and never dismiss it using a stale observed authority"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar public settings reject corrupt protected state without replacing identity or retained keys"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar normal device settings facade recovers actual server receipts and enforces reviewed main changes and revocation"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-device-settings-reviewed-native-controls-and-private-service-composition",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-device-screen.test.mjs",
+        "name": "${platform} private device settings require explicit confirmation for first setup and keep pairing preview read only"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-screen.test.mjs",
+        "name": "${platform} private device settings use the actual signed pairing handlers and show pending delivery without claiming it was sent"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-screen.test.mjs",
+        "name": "${platform} closing private device settings before session initialization prevents late protected reads and queued actions"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-screen.test.mjs",
+        "name": "private device route requires authenticated ownership before opening any Native service and links back to sharing login"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-native.test.mjs",
+        "name": "private device Native session composition is lazy UID scoped coalesced and never selects a QA Firebase app or group store"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-native.test.mjs",
+        "name": "private device settings physical preview rejects release and foreign UID contexts before composing a session"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-competing-approved-key-senders-settle-availability-without-ciphertext-replacement",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar three approved device sessions settle an existing recipient key from another sender without endless retries"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar observed key availability rejects tampering wrong candidates and same-sender forks while retaining the original ciphertext"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar observed recipient delivery cannot acknowledge after an authority or account change"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar actual three-device key delivery settles another approved sender without overwriting accepted ciphertext or retrying forever"
+      }
+    ]
   }
 ]

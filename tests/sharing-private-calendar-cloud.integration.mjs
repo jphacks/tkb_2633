@@ -19,6 +19,7 @@ import { createPrivateCalendarAuthoritySync } from '../src/features/sharing/priv
 import { createPrivateCalendarKeyDelivery } from '../src/features/sharing/private-calendar/key-delivery.ts';
 import { createPrivateCalendarPairingController } from '../src/features/sharing/private-calendar/pairing-controller.ts';
 import { privateCalendarPairingReference } from '../src/features/sharing/private-calendar/pairing.ts';
+import { createPrivateCalendarDeviceSession } from '../src/features/sharing/private-calendar/device-session.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Use the local Firestore emulator only.');
 let env;
@@ -428,4 +429,48 @@ test('private Calendar a tampered actual approval archive cannot establish a new
   });
   await assert.rejects(() => services(recipient).join()); assert.equal((await recipient.readProtected()).authority, null); assert.equal((await recipient.readProtected()).hasStoredKeys, false);
   assert.equal((await recipient.pairing.read()).status, 'prepared');
+});
+
+test('private Calendar normal device settings facade recovers actual server receipts and enforces reviewed main changes and revocation', async t => {
+  const owner = privateCalendarSetupFixture(t, { userId }); const recipient = privateCalendarSetupFixture(t, { userId }); const left = client(userId); const right = client(userId);
+  let loseReply = true;
+  const cloud = { ...left.cloud, async commitAuthority(...args) {
+    const result = await left.cloud.commitAuthority(...args); if (loseReply) { loseReply = false; throw new Error('actual acceptance reply lost'); } return result;
+  } };
+  const session = (f, transport) => createPrivateCalendarDeviceSession({ userId, secrets: f.secrets, roots: f.roots, intents: f.changes,
+    candidates: f.pairing, outbox: f.keyOutbox, cache: f.cache, cloud: transport, assertOwner: () => assert.equal(f.state.currentUser, userId) });
+  const a = session(owner, cloud); const b = session(recipient, right.cloud);
+  assert.equal((await a.read()).phase, 'unconfigured'); assert.equal((await left.cloud.readHead()), null); assert.equal(owner.state.generations, 0);
+  const first = await a.initializeFirstDevice(); const request = await b.prepareConfirmedReference(first.reference);
+  await assert.rejects(() => a.approveConfirmedRequest(request.request), /actual acceptance/u); assert.ok((await a.read()).pendingChange);
+  const resumed = await a.synchronizeDevices(); assert.equal(resumed.pendingChange, null); assert.equal(resumed.pendingKeys, 0);
+  const joined = await b.acceptApproval(); assert.equal(joined.keyReady, true); assert.equal(joined.revision, 2);
+  const main = await a.changeMain(joined.deviceId, resumed.authorityDigest); assert.equal(main.mainDeviceId, joined.deviceId);
+  await assert.rejects(() => a.changeMain(resumed.deviceId, resumed.authorityDigest), /表示後/u);
+  const removed = await a.revokeDevice(joined.deviceId, main.authorityDigest); assert.equal(removed.keyVersion, 2); assert.equal(removed.mainDeviceId, resumed.deviceId);
+  assert.equal((await b.synchronizeDevices()).phase, 'revoked'); assert.equal((await recipient.readProtected()).hasStoredKeys, true);
+  assert.equal((await left.cloud.authorityPage(0)).authorities.length, 4);
+});
+
+test('private Calendar actual three-device key delivery settles another approved sender without overwriting accepted ciphertext or retrying forever', async t => {
+  const devices = Array.from({ length: 3 }, () => privateCalendarSetupFixture(t, { userId })); const clients = devices.map(() => client(userId));
+  const sessions = devices.map((f, index) => createPrivateCalendarDeviceSession({ userId, secrets: f.secrets, roots: f.roots, intents: f.changes,
+    candidates: f.pairing, outbox: f.keyOutbox, cache: f.cache, cloud: clients[index].cloud, assertOwner: () => assert.equal(f.state.currentUser, userId) }));
+  const [a,b,c] = sessions; const first = await a.initializeFirstDevice();
+  const joinB = await b.prepareConfirmedReference(first.reference); await a.approveConfirmedRequest(joinB.request); await b.acceptApproval();
+  const joinC = await c.prepareConfirmedReference((await a.read()).reference); const approved = await a.approveConfirmedRequest(joinC.request); await c.acceptApproval();
+  const ref = doc(clients[0].firestore, 'privateCalendars', userId, 'keyEnvelopes', `${approved.authorityDigest}_${joinC.deviceId}`);
+  const saved = (await getDocFromServer(ref)).data().wrappedKeyJson;
+  assert.equal((await b.synchronizeDevices()).pendingKeys, 0); assert.equal((await c.synchronizeDevices()).pendingKeys, 0);
+  assert.equal((await getDocFromServer(ref)).data().wrappedKeyJson, saved);
+  const authority = await devices[0].secrets.authority(userId); const identity = await devices[0].secrets.identity(userId); const key = await devices[0].secrets.currentKey(userId, authority);
+  try {
+    const other = await devices[1].secrets.currentKey(userId, authority); const last = await devices[2].secrets.currentKey(userId, authority);
+    assert.deepEqual(key, other); assert.deepEqual(key, last); other.fill(0); last.fill(0);
+    const sameSenderFork = await wrapPrivateCalendarKey(crypto, key, authority, identity, joinC.deviceId);
+    await assert.rejects(() => clients[0].cloud.sendKey(authority, sameSenderFork), { code: 'private-calendar/conflict' });
+    const allocations = devices[1].state.generations; const before = devices[1].connection.prepare('SELECT envelope_json FROM private_calendar_key_outbox ORDER BY recipient_id').all();
+    await b.synchronizeDevices(); assert.equal(devices[1].state.generations, allocations);
+    assert.deepEqual(devices[1].connection.prepare('SELECT envelope_json FROM private_calendar_key_outbox ORDER BY recipient_id').all(), before);
+  } finally { key.fill(0); }
 });

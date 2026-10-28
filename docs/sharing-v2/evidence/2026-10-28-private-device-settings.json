@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-28",
+  "scope": "Normal private device-management controls, tested with the fixed synthetic two-device Native profile and independent local Rules; no real Calendar data transfer.",
+  "baseCommit": "efd9a25ca1d185dfe522ea58a6430cdf6cda69db",
+  "checks": {
+    "ios": 1728,
+    "android": 1728,
+    "cloud": 58,
+    "failure": 0,
+    "skip": 0,
+    "featureContracts": 255,
+    "mandatoryCloudTests": 31,
+    "expoDoctor": "20/20",
+    "npmAudit": {
+      "info": 0,
+      "low": 7,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 7
+    }
+  },
+  "native": {
+    "iphone": {
+      "seconds": 7.289,
+      "log": "/tmp/liflow-v2-20261027/phase4ar-final-iphone-device-screen.log",
+      "authorityRevision": 5,
+      "keyVersion": 2
+    },
+    "android": {
+      "seconds": 56.225,
+      "log": "/tmp/liflow-v2-20261027/phase4ar-final-android-device-screen-cold.log",
+      "deviceId": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+      "authorityRevision": 5,
+      "keyVersion": 2,
+      "finalScreenshotCollectionPending": true,
+      "reason": "USB disconnected after the user deferred further Android testing until charging; earlier successful UI image was inspected."
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ar-final-iphone-device-screen-attachments/648F9BF2-743F-43BB-BCEF-66E6FDE5CE10.png",
+      "sha256": "ad2167a92f2100a7cced1a0957db6e5caa5df82d2b22b682206a861cf82edb5f",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ar-android-device-screen-passed.png",
+      "sha256": "ac0090b5ef4e9d9ebd42d21e6e4160cfefe07770bc21adba3fff21fc69643742",
+      "visuallyInspected": true
+    }
+  ],
+  "confirmedRegression": {
+    "before": "Three approved devices left 2 key deliveries pending despite an accepted envelope from another approved sender.",
+    "redLog": "/tmp/liflow-v2-20261027/phase4ar-multiple-senders-red.log",
+    "after": "Validate current authority, recipient and signature of the actual server-read envelope, retain the original candidate, settle recipient availability. Same-sender forks and tampering remain rejected.",
+    "cloudTest": "private Calendar actual three-device key delivery settles another approved sender without overwriting accepted ciphertext or retrying forever"
+  },
+  "retainedFailures": [
+    "Initial new test syntax error before running cases",
+    "Initial set-state-in-effect lint failure, corrected without suppressing the rule",
+    "Android stale development route after code additions; reconnect/cold start before the successful scoped Native test"
+  ],
+  "limits": [
+    "Normal production Rules and schema are not deployed",
+    "Google raw FreeBusy acquisition and individual recommendations are not yet wired",
+    "No OS-scheduled background reliability claim",
+    "Android additional testing deferred by user until charging"
+  ],
+  "productionRulesDeployed": false,
+  "appDataReset": false,
+  "mainMerged": false,
+  "phase6Complete": false
+}

@@ -9,7 +9,7 @@ import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { createDeviceIdentity } from '../src/features/sharing/crypto.ts';
 import { advancePrivateCalendarAuthority } from '../src/features/sharing/private-calendar/authority.ts';
 import { privateCalendarCloudFields } from '../src/features/sharing/private-calendar/cloud-contract.ts';
-import { unwrapPrivateCalendarKey } from '../src/features/sharing/private-calendar/key-envelope.ts';
+import { unwrapPrivateCalendarKey, wrapPrivateCalendarKey } from '../src/features/sharing/private-calendar/key-envelope.ts';
 import { createPrivateCalendarKeyDelivery } from '../src/features/sharing/private-calendar/key-delivery.ts';
 import { privateCalendarDeliveryRetry } from '../src/features/sharing/private-calendar/delivery-retry.ts';
 
@@ -23,6 +23,34 @@ async function fixture(t, options = {}) {
   return { f, identity, other, authority };
 }
 const delivery = (f, cloud, options = {}) => createPrivateCalendarKeyDelivery({ userId: f.userId, secrets: f.secrets, outbox: f.keyOutbox, cloud, ...options });
+
+test('private Calendar observed key availability rejects tampering wrong candidates and same-sender forks while retaining the original ciphertext', async t => {
+  const { f, identity, other, authority: before } = await fixture(t); const third = await createDeviceIdentity(crypto);
+  const authority = advancePrivateCalendarAuthority(before, { devices: [identity, other, third], mainDeviceId: identity.deviceId, keyVersion: 1 }, identity);
+  await f.secrets.acceptAuthorityUpdate(f.userId, authority.signed); const key = await f.secrets.currentKey(f.userId, authority);
+  try {
+    const candidate = await f.keyOutbox.prepare(authority, other.deviceId, identity, key); const existing = await wrapPrivateCalendarKey(crypto, key, authority, third, other.deviceId);
+    const bad = structuredClone(existing); bad.signature = '00'.repeat(64);
+    await assert.rejects(() => f.keyOutbox.observeAvailable(authority, other.deviceId, candidate.envelopeDigest, bad));
+    assert.equal(await f.keyOutbox.observeAvailable(authority, other.deviceId, 'a'.repeat(64), existing), false);
+    const fork = await wrapPrivateCalendarKey(crypto, key, authority, identity, other.deviceId);
+    await assert.rejects(() => f.keyOutbox.observeAvailable(authority, other.deviceId, candidate.envelopeDigest, fork), /同じ送信端末/u);
+    assert.equal((await f.keyOutbox.status(authority)).pending, 1);
+    const accepted = f.keyOutbox.observeAvailable(authority, other.deviceId, candidate.envelopeDigest, existing); existing.body.nonce = '00'.repeat(12);
+    assert.equal(await accepted, true); const after = await f.keyOutbox.prepare(authority, other.deviceId, identity, key);
+    assert.equal(after.pending, false); assert.equal(after.envelopeDigest, candidate.envelopeDigest); assert.deepEqual(after.wrapped, candidate.wrapped);
+  } finally { key.fill(0); }
+});
+
+test('private Calendar observed recipient delivery cannot acknowledge after an authority or account change', async t => {
+  const { f, identity, other, authority } = await fixture(t); const key = await f.secrets.currentKey(f.userId, authority);
+  const candidate = await f.keyOutbox.prepare(authority, other.deviceId, identity, key); key.fill(0);
+  f.state.currentUser = 'foreign-owner'; await assert.rejects(() => f.keyOutbox.observeAvailable(authority, other.deviceId, candidate.envelopeDigest, candidate.wrapped), /account changed/u);
+  f.state.currentUser = f.userId; const changed = advancePrivateCalendarAuthority(authority, { devices: [identity, other], mainDeviceId: identity.deviceId, keyVersion: 2 }, identity);
+  await f.secrets.acceptAuthorityUpdate(f.userId, changed.signed);
+  await assert.rejects(() => f.keyOutbox.observeAvailable(authority, other.deviceId, candidate.envelopeDigest, candidate.wrapped), /変わりました/u);
+  assert.equal(f.connection.prepare('SELECT pending FROM private_calendar_key_outbox').get().pending, 1);
+});
 
 test('private Calendar key outbox persists the exact signed ciphertext across SQL reconstruction without rewrapping or exposing keys', async t => {
   const path = file(t); const { f, identity, other, authority } = await fixture(t, { path });

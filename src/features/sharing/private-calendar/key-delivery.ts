@@ -3,6 +3,7 @@ import type { createPrivateCalendarKeyOutbox } from '../../../platform/storage/p
 import type { createPrivateCalendarCloud } from '../../../platform/sharing/private-calendar-cloud.ts';
 import type { PrivateCalendarDeliveryFailure } from './delivery-retry.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
+import { PrivateCalendarCloudConflict } from './cloud-contract.ts';
 
 function failureCode(error: unknown): PrivateCalendarDeliveryFailure {
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
@@ -10,7 +11,7 @@ function failureCode(error: unknown): PrivateCalendarDeliveryFailure {
   return ['unavailable', 'aborted', 'deadline-exceeded', 'resource-exhausted'].includes(code) ? 'temporary' : 'unknown';
 }
 export function createPrivateCalendarKeyDelivery(port: { userId: string; secrets: ReturnType<typeof createPrivateCalendarSecretStore>;
-  outbox: ReturnType<typeof createPrivateCalendarKeyOutbox>; cloud: Pick<ReturnType<typeof createPrivateCalendarCloud>, 'sendKey'>;
+  outbox: ReturnType<typeof createPrivateCalendarKeyOutbox>; cloud: Pick<ReturnType<typeof createPrivateCalendarCloud>, 'sendKey'> & Partial<Pick<ReturnType<typeof createPrivateCalendarCloud>, 'readKey'>>;
   now?: () => number; randomFraction?: () => number }) {
   const { userId, secrets, outbox, cloud, now = Date.now, randomFraction = Math.random } = port; assertSharedIdentifier(userId);
   async function queueApprovedDevices() {
@@ -31,10 +32,16 @@ export function createPrivateCalendarKeyDelivery(port: { userId: string; secrets
   }
   async function sendDue(force: boolean) {
     const authority = await secrets.authority(userId); if (!authority) throw new Error('本人端末の信頼を先に確認してください。');
-    const entries = await outbox.pending(authority, now(), { force }); let sent = 0;
+    const entries = await outbox.pending(authority, now(), { force }); let sent = 0; let available = 0;
     for (const entry of entries) {
       try { await cloud.sendKey(authority, entry.wrapped); }
       catch (error) {
+        if (error instanceof PrivateCalendarCloudConflict && cloud.readKey) {
+          try {
+            const accepted = await cloud.readKey(authority, entry.recipientDeviceId);
+            if (accepted && await outbox.observeAvailable(authority, entry.recipientDeviceId, entry.envelopeDigest, accepted)) { available++; continue; }
+          } catch { /* Invalid signatures, changed owner/authority and same-sender forks never acknowledge a candidate. */ }
+        }
         const code = failureCode(error);
         await outbox.fail(authority, entry.recipientDeviceId, entry.envelopeDigest, now(), code, randomFraction());
         return { kind: 'deferred' as const, sent, code };
@@ -43,8 +50,8 @@ export function createPrivateCalendarKeyDelivery(port: { userId: string; secrets
       sent++;
     }
     const status = await outbox.status(authority);
-    return status.pending ? { kind: 'waiting' as const, sent, pending: status.pending, nextRetryAt: status.retryAt }
-      : { kind: 'sent' as const, sent, pending: 0 };
+    return status.pending ? { kind: 'waiting' as const, sent, pending: status.pending, nextRetryAt: status.retryAt, ...(available ? { available } : {}) }
+      : { kind: 'sent' as const, sent, pending: 0, ...(available ? { available } : {}) };
   }
   let flight: ReturnType<typeof sendDue> | null = null;
   const flush = (options: { force?: boolean } = {}): ReturnType<typeof sendDue> => {

@@ -4,7 +4,7 @@ import { sharedDocumentDigest, validateDeviceSecretIdentity } from '../../featur
 import type { VerifiedPrivateCalendarAuthority } from '../../features/sharing/private-calendar/authority.ts';
 import type { ProtectedPrivateCalendarDeviceState } from '../../features/sharing/private-calendar/secret-store.ts';
 import type { PrivateCalendarCryptoGateway } from '../../features/sharing/private-calendar/crypto-gateway.ts';
-import { verifyPrivateCalendarWrappedKey, wrapPrivateCalendarKey } from '../../features/sharing/private-calendar/key-envelope.ts';
+import { snapshotPrivateCalendarWrappedKey, verifyPrivateCalendarWrappedKey, wrapPrivateCalendarKey } from '../../features/sharing/private-calendar/key-envelope.ts';
 import type { WrappedPrivateCalendarKey } from '../../features/sharing/private-calendar/key-envelope.ts';
 import { canonicalJson } from '../../features/sharing/operations.ts';
 import { assertSharedIdentifier } from '../../features/sharing/identifier.ts';
@@ -94,6 +94,20 @@ export function createPrivateCalendarKeyOutbox(port: PrivateCalendarKeyOutboxPor
       return locked(digest, async (db, state) => {
         const row = await record(db, digest, recipient); if (!row || decode(row, state.authority!).envelopeDigest !== envelopeDigest) return false;
         await db.runAsync('UPDATE private_calendar_key_outbox SET pending = 0, attempts = 0, retry_at = NULL, failure_code = NULL WHERE authority_digest = ? AND recipient_id = ?', digest, recipient); return true;
+      });
+    },
+    /** A server-read envelope from another approved sender satisfies delivery, without claiming our candidate was uploaded.
+     * Retain the original candidate bytes so a later queue does not allocate another nonce or retry forever. */
+    observeAvailable(authority: VerifiedPrivateCalendarAuthority, recipient: string, candidateDigest: string, incoming: WrappedPrivateCalendarKey) {
+      const digest = authority.digest; assertSharedIdentifier(recipient); hexBytes(candidateDigest, 32);
+      const owned = snapshotPrivateCalendarWrappedKey(incoming);
+      return locked(digest, async (db, state) => {
+        const row = await record(db, digest, recipient); if (!row) return false; const saved = decode(row, state.authority!);
+        if (saved.envelopeDigest !== candidateDigest) return false;
+        const available = verifyPrivateCalendarWrappedKey(owned, state.authority!, recipient);
+        if (sharedDocumentDigest(available) !== saved.envelopeDigest && available.body.senderDeviceId === saved.wrapped.body.senderDeviceId) throw new Error('同じ送信端末の配布鍵が準備済みの内容と異なります。');
+        await db.runAsync('UPDATE private_calendar_key_outbox SET pending = 0, attempts = 0, retry_at = NULL, failure_code = NULL WHERE authority_digest = ? AND recipient_id = ?', digest, recipient);
+        return true;
       });
     },
     fail(authority: VerifiedPrivateCalendarAuthority, recipient: string, envelopeDigest: string, now: number, code: PrivateCalendarDeliveryFailure, randomFraction: number) {

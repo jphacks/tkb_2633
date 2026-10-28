@@ -101,6 +101,9 @@ export function createPrivateCalendarSecretStore(port: PrivateCalendarSecretPort
     } catch (error) { if (prepared instanceof Uint8Array) prepared.fill(0); throw error; }
   }
   return {
+    /** Read-only settings view. Opening a screen must not generate an identity, pin, or key. */
+    publicState(userId: string) { return transact(userId, async (state) => ({ value: state
+      ? readPrivateCalendarProtectedDeviceState(JSON.stringify(state), userId) : null })); },
     identity(userId: string) { return transact(userId, async (state) => {
       if (state) return { value: state.identity };
       const identity = await createDeviceIdentity(port.crypto);

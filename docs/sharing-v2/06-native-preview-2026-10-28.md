@@ -370,3 +370,12 @@ iPhoneの初回2回はXCTestがUI自動化の準備で停止した。ユーザ�
 両cold復元ではプロセスIDの変更と、ネットワーク取得前のローカル完全cacheを確認する。端末解除後の古い依頼は拒否され、新しい確認・nonce・明示承認で同じ端末IDへ新しい鍵を渡す。公開cacheの連番は1→2→3。Nodeから専用Emulatorへ読取だけを行い、5版の署名履歴・配布鍵署名・最新22片を独立検証した。端末の秘密鍵・平文DEK・復号本文はNodeへ渡さない。
 
 旧QAの保護保存もiPhone7.929秒・Android5.043秒で4項目ずつ成功し、既存照合値は一致する。最初のiPhone接続待ち、Node検査の初期失敗も保持する。Androidには通常ネットワークの未接続とFirestore transport警告が残り、このEmulator経由の成功を実サービス成功としない。OS再起動・長時間background・実アカウントCalendar・通常v2画面は未検査。18段階と旧保存2枚の画像hash、公開確認情報、独立した読取検証は`evidence/2026-10-28-private-calendar-native.json`へ記録した。
+
+
+## 17. 通常の本人端末設定の読込と手動同期
+
+`PrivateCalendarDeviceScreen`を認証した通常routeと、固定合成UIDだけの検査routeで共用する。検査routeはリリース／別UIDを拒否し、実アカウントのログインや個人DBを使わない。通常画面の初回設定・承認・解除は各確認ボタンで実行され、読込だけでは鍵を生成しない。これらの操作とSQL・署名は実TSXのhandler検査でも確認する。
+
+物理iPhoneは7.289秒、Android 10はcold起動後56.225秒で、同じ保護端末ID・設定5・鍵2・cacheを表示し、手動同期の受付を確認した。別経路・時刻なので性能比較はしない。最終iPhoneと先のAndroid成功画像を目視済み。Androidの最後の画像取得はUSB切断で未完了、ユーザーは追加検査を充電後と指定した。Androidへの追加操作は停止する。Native結果と範囲は`evidence/2026-10-28-private-device-settings.json`。
+
+Androidの未認識routeは開発clientの新しいbundleへの再接続で切り分けた。通常Google転送・OS任せの背景実行・Phase 6完了の証拠とは扱わない。3送信元の不変な配布競合は実RulesとSQLで別検査し、改ざん拒否を維持する。

@@ -27,7 +27,8 @@ export function privateCalendarMemoryCloud() {
     async sendKey(authority, wrapped) {
       assertPrivateCalendarCloudAuthority(privateCalendarCloudFields(current), authority); verifyPrivateCalendarWrappedKey(wrapped, authority, wrapped.body.recipientDeviceId);
       const id = authority.digest + wrapped.body.recipientDeviceId; const json = JSON.stringify(wrapped); const previous = packets.get(id);
-      if (previous) assert.equal(previous, json); else packets.set(id, json);
+      if (previous && previous !== json) throw new PrivateCalendarCloudConflict();
+      if (!previous) packets.set(id, json);
       if (flags.keyReplyLost) { flags.keyReplyLost = false; throw Object.assign(new Error('lost key reply'), { code: 'unavailable' }); }
     },
     async readKey(authority, deviceId) { assertPrivateCalendarCloudAuthority(privateCalendarCloudFields(current), authority); const json = packets.get(authority.digest + deviceId); return json ? JSON.parse(json) : null; },

@@ -4498,5 +4498,124 @@
         "name": "private saved bands keep unknown Calendar and ambiguous DST time boundaries out of automatic proposals"
       }
     ]
+  },
+  {
+    "feature": "private-planner-signed-owner-only-encrypted-sync",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference wire rejects tampering substitution unknown metadata and signed but unauthentic ciphertext"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference synchronization transfers both ways using separate protected stores and no group or Calendar payload"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference synchronization rejects a foreign bound store before rendering values resolving conflicts or encrypting them"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-planner-cloud.integration.mjs",
+        "name": "private planner Rules enforce the private boundary and reject deletion secret fields forged metadata oversized bodies and skipped revisions"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-offline-edit-review-without-silent-winners",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference simultaneous offline edits remain as two protected candidates until explicit resolution and then converge"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync-ui.test.mjs",
+        "name": "${platform} private preference synchronization UI keeps both conflict candidates and applies only the explicitly chosen remote configuration"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-planner-cloud.integration.mjs",
+        "name": "private planner Cloud compare and set permits one initial author and keeps the other independently edited value for explicit review"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-durable-envelope-retry-and-protected-baseline",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference lost upload reply survives service reconstruction without resealing or increasing the accepted revision"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference rejected uploads retain exact ciphertext and durable backoff across recreation and retry after the boundary"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference a newer local edit during an in-flight upload is retained and subsequently sent as a child"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-planner-cloud.integration.mjs",
+        "name": "private planner actual SDK offline edits keep protected local values and retry independently before an explicit conflict review"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-rotation-and-unapproved-device-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference authority rotation republishes only a protected baseline and never permits the removed device to publish"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync.test.mjs",
+        "name": "private preference unapproved local settings never create identity keys approval Google consent or Cloud requests"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync-ui.test.mjs",
+        "name": "${platform} private planner cross-device QA route is unavailable in release before any synthetic or real service opens"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-planner-cloud.integration.mjs",
+        "name": "private planner Cloud rotation rejects old authority and removed authors while the receiver detects an owner-uploaded forged signature"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-normal-runtime-and-ui-failure-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-runtime.test.mjs",
+        "name": "private planner synchronization failure cannot block a valid Calendar refresh or change its scope"
+      },
+      {
+        "file": "tests/sharing-private-planner-runtime.test.mjs",
+        "name": "private planner manual synchronization uses the approved device check and never retrieves Google Calendar or Tasks"
+      },
+      {
+        "file": "tests/sharing-private-planner-sync-ui.test.mjs",
+        "name": "${platform} private preference synchronization UI never starts a network action or discards incomplete new input"
+      },
+      {
+        "file": "tests/sharing-private-planner-preview-lifecycle.test.mjs",
+        "name": "private planner preview lifecycle never reuses a terminated SDK session after effect cleanup and restart"
+      },
+      {
+        "file": "tests/sharing-private-planner-preview-lifecycle.test.mjs",
+        "name": "private planner preview lifecycle fences an old pending context when a new mount has already prepared another SDK session"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-planner-cloud.integration.mjs",
+        "name": "private planner Cloud watch observes confirmed snapshots without repeating equal heads and detaches on cleanup"
+      }
+    ]
   }
 ]

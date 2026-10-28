@@ -25,7 +25,7 @@ async function open(t, platform, options = {}) {
 for (const platform of ['ios', 'android']) {
   test(`${platform} private preference UI autosaves explicit bands and reloads protected values without a save button`, async t => {
     const ui = await open(t, platform); assert.equal(ui.saves(), 0); assert.equal(await ui.actual.read(), null);
-    assert.match(ui.screen.text(), /この端末の本人向け推奨/u); assert.equal(ui.screen.nodes().some(n => n.props.accessibilityLabel === '保存'), false);
+    assert.match(ui.screen.text(), /本人向けの推奨/u); assert.match(ui.screen.text(), /他のメンバーには公開されません/u); assert.equal(ui.screen.nodes().some(n => n.props.accessibilityLabel === '保存'), false);
     await ui.screen.press('月曜日の時間帯を追加'); await ui.fill('月曜日1の開始', '19:13'); await ui.blur('月曜日1の開始');
     assert.equal(ui.saves(), 0); assert.match(ui.screen.text(), /HH:mm/u);
     await ui.fill('月曜日1の終了', '20:07'); await ui.blur('月曜日1の終了');
@@ -52,6 +52,7 @@ for (const platform of ['ios', 'android']) {
       '../../hooks/use-workspace': { useWorkspace: () => ({ ready: true, userId: null }) },
       '../../hooks/use-planner-data': { usePlannerData: () => ({ snapshot: null }) },
       '../../platform/sharing/private-calendar-secrets': { nativePrivatePlannerPreferences: () => { opened++; throw new Error('must not open'); } },
+      '../../platform/sharing/private-calendar-runtime': { openPrivateCalendarRuntime: () => { opened++; throw new Error('must not open runtime'); } },
     }, navigate: (...args) => moves.push(args) });
     assert.equal(opened, 0); await screen.press('共有用アカウントへ'); assert.deepEqual(moves.at(-1), ['replace', '/sharing']);
   });

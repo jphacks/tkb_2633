@@ -20,3 +20,31 @@ test('private planner normal runtime rejects a foreign profile and account chang
   f.port.plannerPreferences = { read: async () => { f.f.state.currentUser = 'foreign'; return null; } };
   await assert.rejects(() => f.open().readPlannerPreferences(), /owner changed/u); assert.equal(f.state.googleReads, 0); assert.equal(f.transport.history.length, 0);
 });
+test('private planner automatic synchronization runs independently when Calendar acquisition fails and never requests another permission', async t => {
+  const h = privateCalendarRuntimeFixture(t); const runtime = h.open(); await h.devices.initializeFirstDevice(); await h.connect(runtime);
+  let synced = 0; h.port.plannerSync = { synchronize: async (_force, assertBudget) => { assertBudget(); synced++; return { kind: 'sent' }; } };
+  h.port.queryGoogle = async () => { throw new Error('controlled Calendar failure'); };
+  await assert.rejects(() => runtime.refreshData(), /controlled Calendar failure/u); assert.equal(synced, 1); assert.equal(h.state.consents.length, 1);
+});
+test('private planner synchronization failure cannot block a valid Calendar refresh or change its scope', async t => {
+  const h = privateCalendarRuntimeFixture(t); const runtime = h.open(); await h.devices.initializeFirstDevice(); await h.connect(runtime);
+  let calls = 0; h.port.plannerSync = { synchronize: async () => { calls++; throw new Error('controlled preference failure'); } };
+  assert.equal((await runtime.refreshData()).kind, 'published'); assert.equal(calls, 1); assert.equal(h.state.googleReads, 1);
+  assert.equal((await runtime.readForPlan()).ownerUserId, h.userId);
+});
+test('private planner manual synchronization uses the approved device check and never retrieves Google Calendar or Tasks', async t => {
+  const h = privateCalendarRuntimeFixture(t); let calls = 0; h.port.plannerSync = { synchronize: async (force, ensure) => { assert.equal(force, true); ensure(); calls++; return { kind: 'sent' }; } };
+  const runtime = h.open(); assert.equal((await runtime.syncPlannerPreferences()).kind, 'unavailable'); assert.equal(calls, 0);
+  await h.devices.initializeFirstDevice(); assert.equal((await runtime.syncPlannerPreferences()).kind, 'sent'); assert.equal(calls, 1);
+  assert.equal(h.state.googleReads, 0); assert.equal(h.state.restores, 0); assert.deepEqual(h.state.consents, []);
+});
+test('private planner foreground listener failures cannot detach the healthy Calendar listener and both subscriptions close cleanly', async t => {
+  const h = privateCalendarRuntimeFixture(t); await h.devices.initializeFirstDevice(); let calendarStopped = 0; let plannerStopped = 0; let plannerFailed;
+  h.port.cloud.watch = () => () => calendarStopped++;
+  h.port.plannerSync = { synchronize: async () => ({ kind: 'unchanged' }), store: { subscribe: () => () => {} },
+    cloud: { watch: (_changed, failed) => { plannerFailed = failed; return () => plannerStopped++; } } };
+  const runtime = h.open(); const stop = runtime.observeRemote();
+  const end = Date.now() + 5000; while (!plannerFailed && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(plannerFailed);
+  plannerFailed(); for (let i = 0; i < 3; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(plannerStopped, 1); assert.equal(calendarStopped, 0); stop(); assert.equal(calendarStopped, 1); assert.equal(plannerStopped, 1);
+});

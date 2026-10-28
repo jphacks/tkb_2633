@@ -14,6 +14,7 @@ import { assertPrivateCalendarDeadline, privateCalendarDeadline, privateCalendar
   PRIVATE_CALENDAR_AUTOMATIC_BUDGET_MS, PRIVATE_CALENDAR_MANUAL_BUDGET_MS } from './sync-deadline.ts';
 import { observePrivateCalendarForeground } from './foreground-observer.ts';
 import type { PrivatePlannerPreferenceStore } from '../private-planner/preference-store.ts';
+import type { PrivatePreferenceSync } from '../private-planner/preference-sync.ts';
 
 export interface PrivateCalendarRuntimePort extends PrivateCalendarCapturePort {
   devices: PrivateCalendarDeviceSession; sourceController: ReturnType<typeof createPrivateCalendarSourceController>;
@@ -24,6 +25,7 @@ export interface PrivateCalendarRuntimePort extends PrivateCalendarCapturePort {
   restoreGoogleAccount?: () => Promise<{ subject: string; label: string }>;
   authorizeGoogleSource(expectedSubject: string): Promise<void>;
   plannerPreferences?: Pick<PrivatePlannerPreferenceStore, 'read'>;
+  plannerSync?: PrivatePreferenceSync;
 }
 export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
   const { userId, devices, secrets, source, cache, cloud, sourceController, now = Date.now } = port;
@@ -110,6 +112,11 @@ export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
     ensure();
     const device = await devices.synchronizeDevices({ force }); ensure();
     if (device.phase !== 'approved') return { kind: 'unavailable' as const };
+    const planner = port.plannerSync?.synchronize(force, ensure).catch(() => undefined);
+    try { return await updateCalendar(force, deadline, ensure, signal); }
+    finally { await planner; }
+  }
+  async function updateCalendar(force: boolean, deadline: number, ensure: () => void, signal: AbortSignal) {
     if ((await source.read())?.pending) {
       const resumed = await sourceController.resume(); if (resumed.kind === 'review') return resumed;
       ensure();
@@ -141,16 +148,33 @@ export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
     } finally { key?.fill(0); }
   }
   return { readSettings, readForPlan, refreshData, synchronizeAutomatically,
+    plannerSync: port.plannerSync,
+    syncPlannerPreferences() {
+      const deadline = privateCalendarDeadline(now(), PRIVATE_CALENDAR_MANUAL_BUDGET_MS);
+      let expired = false; const ensure = () => { if (expired) throw privateCalendarDeadlineError(); assertPrivateCalendarDeadline(deadline, now()); };
+      const work = configure(async () => {
+        ensure(); const device = await devices.synchronizeDevices({ force: true }); ensure();
+        return device.phase === 'approved' && port.plannerSync ? port.plannerSync.synchronize(true, ensure) : { kind: 'unavailable' as const };
+      });
+      return withinPrivateCalendarDeadline(work, PRIVATE_CALENDAR_MANUAL_BUDGET_MS, () => { expired = true; });
+    },
     async readPlannerPreferences() {
       await port.assertOwner(); const value = await port.plannerPreferences?.read() ?? null; await port.assertOwner();
       if (value && value.ownerUserId !== userId) throw new Error('本人の予定設定を確認してください。'); return value;
     },
     invalidatePlaintext() { refresh?.cancel(); invalidate(); }, subscribe,
     observeRemote(onReady?: () => void | Promise<void>) {
-      return observePrivateCalendarForeground({ assertOwner: port.assertOwner, subscribeLocal: subscribe, subscribeConfiguration: devices.subscribe, now,
+      const common = { assertOwner: port.assertOwner, subscribeLocal: subscribe, now,
         configured: async () => { const view = await devices.read(); return view.phase === 'approved' || view.phase === 'firstPending'; },
-        watchRemote: (changed, failed) => { if (!cloud.watch) throw new Error('本人用Calendarの変更監視を確認してください。'); return cloud.watch(changed, failed); },
-        synchronize: synchronizeAutomatically, onReady });
+        synchronize: synchronizeAutomatically };
+      const calendar = observePrivateCalendarForeground({ ...common, subscribeConfiguration: devices.subscribe,
+        watchRemote: (changed, failed) => { if (!cloud.watch) throw new Error('本人用Calendarの変更監視を確認してください。'); return cloud.watch(changed, failed); }, onReady });
+      const plannerSync = port.plannerSync;
+      // A failed preference listener has its own recovery state and cannot detach the healthy Calendar listener.
+      const planner = plannerSync ? observePrivateCalendarForeground({ ...common,
+        subscribeConfiguration: listener => { const device = devices.subscribe(listener); const prefs = plannerSync.store.subscribe(listener); return () => { device(); prefs(); }; },
+        watchRemote: plannerSync.cloud.watch }) : null;
+      return () => { calendar(); planner?.(); };
     },
     async checkGoogleAccount() { await assertMain(); const account = await port.currentGoogleAccount(); await port.assertOwner(); return account; },
     async restoreCurrentGoogleAccount() {

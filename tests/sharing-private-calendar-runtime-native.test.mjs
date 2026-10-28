@@ -25,6 +25,8 @@ function fixture() {
     './firebase-services': { getSharingServices: () => { state.authReads++; return services; } },
     './private-calendar-devices': { openPrivateCalendarDevices: owner => ({ owner }) },
     './private-calendar-cloud': { createPrivateCalendarCloud: (db, owner, current) => { assert.equal(db, firestore); assert.equal(current(), owner); state.cloud.push(owner); return { owner }; } },
+    './private-planner-cloud': { createPrivatePlannerCloud: (db, owner, current) => { assert.equal(db, firestore); assert.equal(current(), owner); return { owner, kind: 'PrivatePlannerCloud' }; } },
+    '../../features/sharing/private-planner/preference-sync': { createPrivatePreferenceSync: port => { assert.equal(port.ownerUserId, state.uid); return { port, kind: 'PrivatePreferenceSync' }; } },
     './native-private-calendar-crypto': { nativePrivateCalendarCrypto: {} }, './private-calendar-secrets': native,
     '../../features/sharing/private-calendar/authority-sync': { createPrivateCalendarAuthoritySync: port => port },
     '../../features/sharing/private-calendar/source-controller': { createPrivateCalendarSourceController: port => port },

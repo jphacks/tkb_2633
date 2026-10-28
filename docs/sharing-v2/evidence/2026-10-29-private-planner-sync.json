@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "6ec2609",
+  "scope": "Owner-only encrypted planner preferences. Existing approved synthetic iPhone/Android pair and demo Firestore; production Rules not deployed.",
+  "checks": {
+    "ios": 1915,
+    "android": 1915,
+    "cloud": 70,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 281,
+    "mandatoryCloudTests": 40,
+    "lint": "PASS no warnings",
+    "typecheck": "PASS",
+    "doctor": "20/20",
+    "scheduler": "v1 unchanged; v2 draft-34 unchanged",
+    "audit": {
+      "critical": 0,
+      "high": 0,
+      "moderate": 0,
+      "low": 7
+    }
+  },
+  "protocol": {
+    "suite": "liflow-private-planner-aes256gcm-hkdfsha256-ed25519-v1",
+    "ownerAndApprovedDeviceOnly": true,
+    "sharingGroupPayloadsUnchanged": true,
+    "maxEnvelopeCharacters": 24000,
+    "boundedSnapshot": "one document with parent CAS and monotonic revision",
+    "atomicProtectedState": "local values, baseline, review candidate, exact pending cipher and persisted retry",
+    "legacyLocalSchema": "Read schema1 without a migration write; wrap on next actual write",
+    "conflict": "Whole preferences kept as explicit local/remote candidates; no arrival-time winner"
+  },
+  "native": {
+    "profileScope": "development-calendar-native-pairing-e2e-v1 / demo-liflow-private-native",
+    "authorityRevision": 5,
+    "keyVersion": 2,
+    "finalPreferenceRevision": 4,
+    "sequence": [
+      "Android sends1",
+      "iPhone receives1",
+      "iPhone sends2",
+      "Android receives2",
+      "Android locally saves3; iPhone locally saves4",
+      "Android sends3",
+      "iPhone shows conflict and explicitly selects4",
+      "Firestore paused; values/queued choice retained",
+      "Same iPhone context retries4 after service resumed",
+      "Android receives4; all protected values plus baseline match",
+      "Both process restarts preserve full4"
+    ],
+    "androidCold": {
+      "beforePid": "8832",
+      "afterPid": "9444",
+      "observedRestoredWorkspaceReadySeconds": 1.843,
+      "platform": "android",
+      "profile": 4,
+      "fullProtectedValuesAndAcceptedBaseline": true,
+      "preferenceDownloadDuringVerify": false,
+      "routeDelivery": "Second warm QA URL after new process workspace restored; not cold deep-link PASS"
+    },
+    "iphoneCold": {
+      "log": "phase4ay-ios-cold-four.log",
+      "xctestSeconds": 16.012,
+      "fullProtectedValuesAndAcceptedBaseline": true
+    },
+    "fault": {
+      "fault": "local-Firestore-process-suspension",
+      "emulatorResumed": true,
+      "durationSeconds": 37.244,
+      "watchdogSeconds": 60,
+      "appDataReset": false,
+      "returnCodes": {
+        "android": 0,
+        "ios": 0
+      }
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ay-android-confirmed-four.png",
+      "sha256": "db09a9f8ebf2342fa3fb463222a84c4e874a302840032f9682b0d50fc165ad10",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ay-android-confirmed-cold-four.png",
+      "sha256": "e240dc899a00639f832e2f682e3df34726ef9fc0b34d258bf1950f59c8e6cb0e",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ay-ios-cold-four-attachments/1AD0766C-B67B-463E-921E-FD89E55A56F8.png",
+      "sha256": "9019391b978d3362ecc44a5a0da29d19bad5150e4bab981247c323ae3999fc4e",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ay-android-verified-stall.png",
+      "sha256": "04f37d55efe444f573d4d3ee2a1d69b2aad4b2500db922e7842f0ab331992cf9",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ay-ios-verified-stall-attachments/1509DDB1-90D5-40D5-B193-3F3C64B184B7.png",
+      "sha256": "72c1c84989c65ad69e76d583399c206c6de2e1d72fbee84af9e2c1813939b09c",
+      "visuallyInspected": true
+    }
+  ],
+  "codeSha256": {
+    "src/features/sharing/private-planner/preference-crypto.ts": "177bb577b4f2ef0285e629265b9c03ddd893c6883ffa4b152435572db62d5407",
+    "src/features/sharing/private-planner/preference-sync-state.ts": "78eadeb96fec4adfe29fb13c5c08b3e7e9cadd4f256c47c3ad874f6767866ae8",
+    "src/features/sharing/private-planner/preference-sync.ts": "235ab51c6bb697ed8cd6b868dd321c1b90f44a4cd5fda541974528d26d52998e",
+    "src/features/sharing/private-planner/preference-store.ts": "2cd5ac037e41a992b0ddc7e7b9bc16b99b0f03c85b643a5d2719319d7bb659d6",
+    "src/features/sharing/private-planner/preference-screen.tsx": "f8d1b414cfc6c94cdbcd37756d2cd3096476434e27f4d066bc7ab6c00c8d0ec7",
+    "src/platform/sharing/private-planner-cloud.ts": "ff5934e65462aef726f5746e7d58056222e7d5580430ff5214a3684ae0a51b6c",
+    "src/platform/sharing/private-calendar-runtime.ts": "925b2bed220722f00191005e3fa8f5db366a5b0ea5288ece7f8876aefa087489",
+    "src/features/sharing/private-calendar/runtime.ts": "7c79e60a7374ec01115f107779a079ff960684548d3f2e94ca9578b551e89157",
+    "src/app/development/private-planner-sync-preview.tsx": "c30484d126b997da96eb6a4bb14b46149c6c9ea85104fbfec505a93d81da0d69",
+    "firestore.rules": "77780bd82db400cf7f906ef429c58afa29d68c1f6c0f22339b74e674ef241580"
+  },
+  "logs": {
+    "phase4ay-confirmed-ios.log": "812a166d64f13456e381479a7fdedf8e314ae6c4c6da5c7da59d131daa2c45cb",
+    "phase4ay-confirmed-android.log": "564553794fe04d39c57b34b9b491458c94e1a6cd7ecadbf0460dc92aaf9acd41",
+    "phase4ay-verified-cloud.log": "7114bd05eedcead9e77da8b531a247f07014db61747493775744ff8e56c0e451",
+    "phase4ay-verified-lint-clean.log": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f",
+    "phase4ay-verified-types.log": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598",
+    "phase4ay-cloud-tcp-offline.log": "8e276e787e681ad4b89e67b792460f16349728971502c7fec2ee97b78122c9b9",
+    "phase4ay-foreign-store-red.log": "d8b0e54ee21685cea0b7c71164e0de3f45ae4b6cd4b9760cde6e4139fabb92ac",
+    "phase4ay-preview-lifecycle-red-clean.log": "f4defd7966b20a0030eb2c999003b7f6b813c9694cee9d515a554b0217af77ac"
+  },
+  "retainedFailures": [
+    "Foreign-owner injected store exposed status before owner validation; RED test then guard passes.",
+    "DEV Fast Refresh reused terminated SDK session; two RED lifecycle tests then cleanup/factory retry fixes.",
+    "SDK disableNetwork alone did not cut transaction RPC in Node; replaced assumed-outage test with actual TCP proxy cut.",
+    "Initial Native service-stall attribution invalid due to stale session and ineffective accessibility action; excluded. Later verified stall uses fixed session/actual touch.",
+    "Android helper reported click success for partially visible control without JS action; direct touch on observed bounds confirmed.",
+    "Initial and later Android cold QA routes returned home; second warm URL in same fresh process restores QA. Production cold deep-link path remains a separate open regression.",
+    "One full run raced the newly added foreign-store RED test; superseded by full confirmed 1915 PASS on each OS."
+  ],
+  "limits": [
+    "Synthetic same-owner pair, not production-group v2 E2E.",
+    "Service stall and TCP cut are not physical radio offline or naturally scheduled OS background runs.",
+    "Cold verification does not fetch planner preferences, but QA startup verifies current authority through the network.",
+    "No actual personal-task relocation/history connected. v2 Tasks, notifications, Widget and explicit migration remain unfinished.",
+    "No app reset/uninstall, production Rules deploy, real-group migration, main merge or publication.",
+    "README only updates earlier agent-added progress/test/audit text; main user content retained.",
+    "Phase 6 remains incomplete."
+  ]
+}

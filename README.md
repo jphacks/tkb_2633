@@ -22,11 +22,11 @@ Android 10実機とiPhone 12で、別々の実Googleアカウント・本番Fire
 
 Androidでは、バックグラウンドで待機処理が止まるSDKの互換問題を修正し、強制起動したworkerによる受信と終了を実機で確認しました。iPhoneでも開発用強制起動APIからworkerの完了を確認しています。
 
-追加の[信頼性監査](docs/workspace-reliability-audit-2026-10-27.md)では、画面離脱後の古い処理、グループ間の失敗連鎖、保存中の権限変化を修正し、変更のない共有予定の再計算を抑えました。 [依存関係対策](docs/dependency-security-2026-10-27.md)ではZod・node-forgeを公式修正版へ更新し、npm auditの既知警告を0件にしています。
+追加の[信頼性監査](docs/workspace-reliability-audit-2026-10-27.md)では、画面離脱後の古い処理、グループ間の失敗連鎖、保存中の権限変化を修正し、変更のない共有予定の再計算を抑えました。[依存関係対策](docs/dependency-security-2026-10-27.md)ではZod・node-forgeを公式修正版へ更新しました。2026-10-29の再検査ではnpm auditのhigh・critical・moderateは0件、lowは7件です。
 
 [共有編集の追加監査](docs/shared-group-editing-audit-2026-10-27.md)では、古い編集画面からの上書き、収集ルールの同時変更、競合解決中の権限変化を修正しました。AndroidとiPhoneの実機でオフライン編集・再起動・再送・競合解決を行い、両端末の状態一致を確認しています。競合など確認が必要な項目は通常の画面にも案内を表示します。
 
-[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotを自動検査しています。独立した検査データを使うv2画面はiPhone・Android 10の実機でも操作確認しました。通常の作業領域・本人専用Calendar同期にはまだ接続しておらず、既存グループはv1のままです。[進捗と未接続部分](docs/sharing-v2/05-progress.md)を参照してください。
+[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotと通常画面を接続しました。本人専用Calendarと休日・実施可能時間帯には、グループとは別の暗号化・承認端末・同期経路を設けています。独立した合成データで、iPhone・Android 10間の転送、競合確認、通信障害後の再送を検査しました。個人家事の実際の移動、v2 Tasks・通知・Widget、移行と総合E2Eは未完了で、既存グループはv1のままです。[進捗と未接続部分](docs/sharing-v2/05-progress.md)を参照してください。
 
 OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
@@ -598,18 +598,19 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **1314 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む）** |
+| 自動テスト | **1915 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む。2026-10-29）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **176機能（従来175を保持、元の44を含む）** |
+| 保護対象feature contract | **281機能（従来276を保持、元の44を含む）／必須Cloud回帰40件** |
+| Firestore Emulator | **70 tests PASS（本番へのv2 Rules配備とは別）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |
 | Sony I4293 / Android 10 + Release版（初期設定・保存・完了/取消・ゴミ・Calendar取得） | **PASS（2026-10-26）** |
-| 未公開v2の開発画面・独立した検査DB（iPhone / Android 10） | **引き受け・完了/取消・自動保存・過去の実施入力と履歴を確認。最新の日時・担当フォームと共有カレンダーからの過去実施記録はAndroidのアクセシビリティ操作で確認、iPhoneの入力再検査は継続中（2026-10-28）。v2実サービス同期は未検査** |
+| 未公開v2の開発画面・独立した検査DB（iPhone / Android 10） | **引き受け・完了/取消・日時/担当・自動保存・過去の実施入力と履歴、本人Calendar・設定の暗号化端末間同期を検査。通常グループとの総合実サービスE2Eは未完了** |
 
 さらに天気・Calendarについては、**128種類の予報・busyパターン**を使い、
 

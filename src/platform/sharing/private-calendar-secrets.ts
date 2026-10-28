@@ -22,6 +22,7 @@ function nativeStore(development: boolean) {
   const vault = createSecureVault({ get: (key) => SecureStore.getItemAsync(key, options), set: (key, value) => SecureStore.setItemAsync(key, value, options),
     remove: (key) => SecureStore.deleteItemAsync(key, options) }, nativePrivateCalendarCrypto.randomBytes);
   const stores = new Map<string, Promise<ReturnType<typeof createPrivateCalendarExclusiveStorage>>>();
+  const preferencesByOwner = new Map<string, ReturnType<typeof createPrivatePlannerPreferenceStore>>();
   const assertOwner = (userId: string) => {
     if (development ? !__DEV__ || !userId.startsWith('development-calendar-') : getSharingServices().auth.currentUser?.uid !== userId) throw new Error('本人用Calendarのアカウントが変わりました。');
   };
@@ -65,8 +66,13 @@ function nativeStore(development: boolean) {
   function source(userId: string) { return createPrivateCalendarSourceStorage({ ...protectedPort(userId), vault }); }
   function preferences(userId: string) {
     assertOwner(userId);
-    return createPrivatePlannerPreferenceStore({ ownerUserId: userId, vault, assertOwner,
+    const existing = preferencesByOwner.get(userId); if (existing) return existing;
+    const listeners = new Set<() => void>();
+    const store = createPrivatePlannerPreferenceStore({ ownerUserId: userId, vault, assertOwner,
+      afterSave: () => { for (const listener of listeners) try { listener(); } catch { /* Published private data remains valid. */ } },
+      subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
       exclusive: (owner, work) => exclusive(owner, () => work()) });
+    preferencesByOwner.set(userId, store); return store;
   }
   return { secrets, cache, rootSetup, authorityIntents, keyOutbox, pairing, source, preferences };
 }

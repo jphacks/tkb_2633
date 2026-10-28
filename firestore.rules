@@ -318,6 +318,26 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if privateCalendarOwner(userId) && resource.data.authorityDigest != privateCalendarAfter(userId).authorityDigest;
       }
+      match /plannerPreferences/{documentId} {
+        function validPreferences(p) {
+          let a = privateCalendarAfter(userId);
+          return documentId == 'current' && p.keys().hasOnly(['schemaVersion', 'ownerUserId', 'accountGeneration', 'rootDigest',
+            'authorityDigest', 'keyVersion', 'authorDeviceId', 'revision', 'parentDigest', 'digest', 'encryptedJson', 'createdAt', 'updatedAt'])
+            && p.schemaVersion == 1 && p.ownerUserId == userId && p.accountGeneration == a.accountGeneration && p.rootDigest == a.rootDigest
+            && p.authorityDigest == a.authorityDigest && p.keyVersion == a.keyVersion && p.authorDeviceId in a.deviceIds
+            && p.revision is int && p.revision > 0 && p.revision <= 9007199254740991 && validProofDigest(p.digest)
+            && p.encryptedJson is string && p.encryptedJson.size() > 0 && p.encryptedJson.size() <= 24000
+            && p.createdAt is timestamp && p.updatedAt == request.time;
+        }
+        allow get: if privateCalendarOwner(userId) && documentId == 'current';
+        allow list, delete: if false;
+        allow create: if privateCalendarOwner(userId) && validPreferences(request.resource.data)
+          && request.resource.data.revision == 1 && request.resource.data.parentDigest == null && request.resource.data.createdAt == request.time;
+        allow update: if privateCalendarOwner(userId) && validPreferences(request.resource.data)
+          && request.resource.data.accountGeneration == resource.data.accountGeneration && request.resource.data.rootDigest == resource.data.rootDigest
+          && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.revision == resource.data.revision + 1
+          && request.resource.data.parentDigest == resource.data.digest && request.resource.data.digest != resource.data.digest;
+      }
       match /caches/{cacheId} {
         allow read: if privateCalendarOwner(userId);
         allow create: if privateCalendarOwner(userId)

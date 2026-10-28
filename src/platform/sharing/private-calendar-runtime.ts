@@ -16,6 +16,8 @@ import { authorizePrivateGoogleCalendarSource, getCurrentGoogleCalendarAccount, 
 import { GoogleAccountMismatchError } from '../../features/google-sync/account-binding';
 import { assertSharedIdentifier } from '../../features/sharing/identifier';
 import { privateCalendarDeadlineError } from '../../features/sharing/private-calendar/sync-deadline';
+import { createPrivatePreferenceSync } from '../../features/sharing/private-planner/preference-sync';
+import { createPrivatePlannerCloud } from './private-planner-cloud';
 
 const runtimes = new Map<string, PrivateCalendarRuntime>(); let observedAuth: Auth | null = null; let stopObserving: (() => void) | undefined;
 /** Importing this module does not initialize Firebase, Google, a DB, or any periodic worker. */
@@ -31,8 +33,11 @@ export function openPrivateCalendarRuntime(userId: string): PrivateCalendarRunti
   const cloud = createPrivateCalendarCloud(firestore, userId, () => auth.currentUser?.uid ?? null, nativePrivateCalendarCrypto);
   const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets, intents, cloud });
   const client = createCalendarFreeBusyClient();
+  const plannerPreferences = nativePrivatePlannerPreferences(userId);
+  const plannerSync = createPrivatePreferenceSync({ ownerUserId: userId, assertOwner, store: plannerPreferences, secrets, crypto: nativePrivateCalendarCrypto,
+    cloud: createPrivatePlannerCloud(firestore, userId, () => auth.currentUser?.uid ?? null) });
   const runtime = createPrivateCalendarRuntime({ userId, assertOwner, secrets, source, cloud, devices: openPrivateCalendarDevices(userId),
-    plannerPreferences: nativePrivatePlannerPreferences(userId),
+    plannerPreferences, plannerSync,
     cache: nativePrivateCalendarCache(userId), crypto: nativePrivateCalendarCrypto, sourceController: createPrivateCalendarSourceController({ userId, secrets, source, intents, authoritySync }),
     timeZone: getDeviceTimeZone,
     currentGoogleAccount: () => withGoogleSyncOperation(async () => { assertOwner(); const account = await getCurrentGoogleCalendarAccount(); assertOwner(); return account; }),

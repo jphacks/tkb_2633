@@ -444,3 +444,17 @@ Androidの未認識routeは開発clientの新しいbundleへの再接続で切�
 Android補助ツールのaccessibilityスクロール・値設定では実画面／保存結果を確認できなかった。実入力へ切り替え、さらに補助ツールが複数命令をshellとして扱った誤りを修正した。失敗は保存不具合の証拠へ置き換えず、成功した実入力・保護読取・cold復元を区別して残す。cold QAリンクの到達性と製品の全deep link／Widget導線は、後続の総合検査へ残す。
 
 画像・source hash・検査範囲は`evidence/2026-10-29-private-planner-preferences.json`。両端末は独立して同じ合成値を入力したもので、本人設定の端末間同期を証明しない。実際の個人家事の移動・履歴、v2全体のE2EとOS任せの背景実行も未完である。
+
+## Phase 4ay：本人設定の異種OS間転送・競合・障害後の再送
+
+2026-10-29、基点`6ec2609`。既存pairing QAの合成UIDと承認済みの2端末・鍵2を再利用し、通常と同じ設定画面・Native暗号・保護SQL・実SDK／ローカルRulesを通した。Googleや個人家事は変更せず、本人設定の平文をEmulatorへ渡さない。
+
+Android設定1の送信（38.958秒）、iPhone受信、iPhone設定2の送信、Android受信（26.869秒）を確認。双方がSDK通信を止めて異なる設定3/4を保護保存した時点ではサーバーrevisionは2だった。ただしSDKのdisableNetworkだけでは全RPCの切断を証明できないため、これをradio offlineの証拠とせず、別途TCP切断のCloud検査を通した。
+
+Androidの3を送信するとrevision3へ進み、iPhoneは自身の4を保持した競合画面を表示した。iPhoneで4を明示選択後、ローカルFirestoreを37.244秒停止し、両端末の失敗表示と値の保持、iPhoneの送信待ち・再送案内を確認。独立watchdogとfinallyで同じEmulatorを復帰させ、停止後の消去や再起動は行わない。iPhoneの再送後、サーバーrevision4となり、Androidの実タップで4を受信し、全設定と受付基準が一致した。
+
+iPhoneの実プロセス終了後の全値照合は16.012秒のXCTestで成功。Androidも実force-stopとPID変更（8832→9444）の後、全値・保護保存・受付基準を照合した。照合操作は本人設定のdownloadを行わないが、QA初期化には端末承認の通信がある。アプリ全体が無通信だったとは記載しない。
+
+Androidは最初のcold QA URLでホームへ戻り、同じ新プロセスでURLを再び開く必要があった。cold deep linkの成功とは扱わない。また部分表示ボタンのaccessibility操作は成功を返しても送信しない場合があり、実画面の完全なboundsを観測してADB tapした。開発用QAの終了済み接続再利用は別の2件の反例テストで修正した。これらの失敗ログも保持する。
+
+最終AndroidとiPhoneの照合画像を実際に確認した。画像hash・コードhash・各ログ・先行失敗・限界は`evidence/2026-10-29-private-planner-sync.json`。サービス停止試験はOSの自然なbackground実行や実Googleアカウントの転送を証明せず、Phase 6全体も未完である。

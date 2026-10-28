@@ -7,6 +7,7 @@ import type { ChoreDefinition } from '@/domain/chores/types';
 import { applianceCategoryLabel } from '@/features/appliance-care/categories';
 import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
 import type { ApplianceCareReviewContext } from '@/platform/storage/repository';
+import { isRenderableApplianceAnalysis } from './analysis-validation';
 
 export function ApplianceDetailContent({ context, returnTo, error }: {
   context: ApplianceCareReviewContext;
@@ -14,6 +15,15 @@ export function ApplianceDetailContent({ context, returnTo, error }: {
   error?: string;
 }) {
   const { appliance, chores } = context;
+  const goBack = () => returnTo ? router.dismissTo(returnTo) : router.back();
+  const reanalyze = () => router.push({ pathname: '/manual/appliance-care', params: { applianceId: appliance.id, returnTo: returnTo ?? '/manual' } });
+  if (!isRenderableApplianceAnalysis(appliance.analysis)) return <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <View style={styles.listContent}><BackButton accessibilityLabel="一覧へ戻る" onPress={goBack} /><ScreenHeading title="お手入れ方法" />
+      {error ? <Text style={styles.invalidLink}>{error}</Text> : null}
+      <Card><Text accessibilityRole="alert" style={styles.body}>解析結果に確認が必要な項目があります。保存された内容は保持しています。再解析して内容を確認してください。</Text>
+        <AppButton title="この家電を再解析" variant="secondary" onPress={reanalyze} /></Card>
+    </View>
+  </SafeAreaView>;
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <FlatList
@@ -27,7 +37,7 @@ export function ApplianceDetailContent({ context, returnTo, error }: {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={<View style={styles.listHeader}>
         <View style={styles.detailHeader}>
-          <BackButton accessibilityLabel="一覧へ戻る" onPress={() => returnTo ? router.dismissTo(returnTo) : router.back()} />
+          <BackButton accessibilityLabel="一覧へ戻る" onPress={goBack} />
           <Text style={styles.modelTitle}>{appliance.modelNumber}</Text>
         </View>
         {error ? <Text style={styles.invalidLink}>{error}</Text> : null}
@@ -38,7 +48,7 @@ export function ApplianceDetailContent({ context, returnTo, error }: {
           {appliance.officialProductUrl ? <OfficialLink manufacturer={appliance.manufacturer} title="公式製品情報を見る ↗" url={appliance.officialProductUrl} /> : null}
           <OfficialLink manufacturer={appliance.manufacturer} title="公式取扱説明書を見る ↗" url={appliance.officialManualUrl} />
           <Text style={styles.note}>最終解析：{appliance.analysis.analyzedAt}</Text>
-          <AppButton title="この家電を再解析" onPress={() => router.push({ pathname: '/manual/appliance-care', params: { applianceId: appliance.id, returnTo: returnTo ?? '/manual' } })} variant="secondary" />
+          <AppButton title="この家電を再解析" onPress={reanalyze} variant="secondary" />
         </Card>
 
         <SectionHeading title="お手入れ項目" trailing={<Text style={styles.note}>{appliance.analysis.tasks.length}件</Text>} />

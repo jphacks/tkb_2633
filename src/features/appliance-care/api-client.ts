@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { isOfficialApplianceUrl } from '@/features/appliance-care/official-url';
 import { applianceCarePollDelay, waitForAppliancePoll } from './polling';
+import { isAnalysisRecord as isRecord, nonemptyAnalysisString as nonemptyString, isVerifiedApplianceAnalysis } from './analysis-validation';
 
 import type {
   ApplianceCareAnalysisStage,
@@ -124,33 +125,7 @@ function isApiResponse(value: unknown): value is ApplianceCareApiResponse {
     || !nonemptyString(officialSources.manualUrl) || !isOfficialApplianceUrl(officialSources.manualUrl, product.manufacturer)
     || (officialSources.productUrl !== undefined && (typeof officialSources.productUrl !== 'string'
       || !isOfficialApplianceUrl(officialSources.productUrl, product.manufacturer)))) return false;
-  const manufacturer = product.manufacturer;
-  return nonemptyString(analysis.manufacturer) && nonemptyString(analysis.model)
-    && nonemptyString(analysis.analyzedAt) && Number.isFinite(new Date(analysis.analyzedAt).getTime())
-    && analysis.requiresUserReview === true && Array.isArray(analysis.tasks)
-    && analysis.tasks.length > 0 && analysis.tasks.length <= 40
-    && analysis.tasks.every((task) => isRecord(task) && nonemptyString(task.name)
-      && stringArray(task.steps) && task.steps.length > 0 && stringArray(task.tools) && stringArray(task.safetyCautions)
-      && (task.recommendedIntervalDays === undefined || (typeof task.recommendedIntervalDays === 'number'
-        && Number.isInteger(task.recommendedIntervalDays) && task.recommendedIntervalDays > 0 && task.recommendedIntervalDays <= 3650))
-      && (task.recommendedConditions === undefined || stringArray(task.recommendedConditions))
-      && (task.estimatedMinutes === undefined || (typeof task.estimatedMinutes === 'number' && Number.isFinite(task.estimatedMinutes) && task.estimatedMinutes >= 0))
-      && Array.isArray(task.evidence) && task.evidence.length > 0
-      && task.evidence.every((source) => isRecord(source) && nonemptyString(source.url)
-        && isOfficialApplianceUrl(source.url, manufacturer)
-        && (source.pageOrSection === undefined || typeof source.pageOrSection === 'string')));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function nonemptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-function stringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(nonemptyString);
+  return isVerifiedApplianceAnalysis(analysis, product.manufacturer);
 }
 
 function isJobAccepted(value: unknown): value is { jobId: string } {

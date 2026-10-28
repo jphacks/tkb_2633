@@ -3065,5 +3065,20 @@
       { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "unselected or mismatched v2 workspace routes never load shared controllers or expose edit controls" },
       { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "v2 every isolated preview route denies release execution before opening the fixture" }
     ]
+  },
+  {
+    "feature": "restored-appliance-analysis-has-a-nondestructive-render-boundary",
+    "tests": [
+      { "file": "tests/appliance-restored-analysis-ui.test.mjs", "name": "restored appliance details retain unsafe nested analysis values for repair instead of crashing" },
+      { "file": "tests/appliance-restored-analysis-ui.test.mjs", "name": "a signed legacy appliance shape that passed its original wire validator can be read safely without rewriting that history" }
+    ]
+  },
+  {
+    "feature": "stored-appliance-compatibility-does-not-weaken-new-api-review",
+    "tests": [
+      { "file": "tests/appliance-restored-analysis-ui.test.mjs", "name": "existing readable appliance analyses keep condition-only tasks empty histories and untrusted-link warnings available" },
+      { "file": "tests/appliance-care-client.test.mjs", "name": "stored analysis compatibility never weakens the review and source requirements for newly received API results" },
+      { "file": "tests/appliance-care-client.test.mjs", "name": "valid verified analysis still reaches the screen" }
+    ]
   }
 ]

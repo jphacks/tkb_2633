@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { loadNativeModule as load } from './helpers/native-module.mjs';
+import * as applianceAnalysisValidation from '../src/features/appliance-care/analysis-validation.ts';
 
 for (const platform of ['ios', 'android']) {
   test(`${platform} notification gateway coalesces permission requests and creates Android channels before asking`, async () => {
@@ -52,6 +53,7 @@ for (const platform of ['ios', 'android']) {
       const { applianceCareApiBaseUrl } = load('src/features/appliance-care/api-client.ts', {
         'react-native': { Platform: { OS: platform } },
         '@/features/appliance-care/official-url': {}, './polling': {},
+        './analysis-validation': applianceAnalysisValidation,
       });
       assert.equal(applianceCareApiBaseUrl(), platform === 'android' ? 'http://10.0.2.2:8787' : 'http://localhost:8787');
       process.env.EXPO_PUBLIC_APPLIANCE_CARE_API_URL = ' https://api.example.test/// ';

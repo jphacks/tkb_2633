@@ -51,6 +51,27 @@ test('valid verified analysis still reaches the screen', async () => {
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test('stored analysis compatibility never weakens the review and source requirements for newly received API results', async () => {
+  const originalFetch = globalThis.fetch;
+  const source = 'https://www.dyson.co.jp/support/SV20';
+  const task = { name: 'フィルター清掃', steps: ['冷水で洗う'], tools: [], safetyCautions: [], evidence: [{ url: source }], estimatedMinutes: 0 };
+  const analysis = { manufacturer: 'Dyson', model: 'SV20', analyzedAt: '2026-10-28T00:00:00Z', requiresUserReview: true, tasks: [task] };
+  const response = value => ({ status: 'verified', product: request, officialSources: { manualUrl: source }, analysis: value });
+  try {
+    for (const value of [
+      { analyzedAt: analysis.analyzedAt, tasks: [] }, { ...analysis, tasks: [] }, { ...analysis, requiresUserReview: false },
+      { ...analysis, analyzedAt: 'invalid' },
+      ...[{ steps: [] }, { evidence: [] }, { evidence: [{ url: 'https://example.test/manual' }] }, { recommendedConditions: [''] },
+        { recommendedConditions: '乾燥後' }, { recommendedIntervalDays: 0 }, { estimatedMinutes: -1 }].map(patch => ({ ...analysis, tasks: [{ ...task, ...patch }] })),
+    ]) {
+      globalThis.fetch = async () => Response.json(response(value));
+      assert.equal((await analyzeApplianceCareRequest(request, 'https://api.example.test')).status, 'error');
+    }
+    globalThis.fetch = async () => Response.json(response(analysis));
+    assert.deepEqual(await analyzeApplianceCareRequest(request, 'https://api.example.test'), response(analysis));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('cancelled appliance requests make no network call and abort an in-flight request', async () => {
   const originalFetch = globalThis.fetch;
   try {

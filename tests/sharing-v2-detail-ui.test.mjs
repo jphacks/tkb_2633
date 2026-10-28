@@ -169,6 +169,8 @@ test('v2 management reads do not depend on personal preferences, private chores 
     const model = await session.readModel({ management: true, detailChoreId: 'floor' });
     assert.equal(model.choreDetails.length, 1); assert.equal(model.personal, undefined); assert.equal(model.privateOverlay, undefined);
     assert.equal(preferences, 0); assert.equal(privateReads, 0); assert.equal(model.plan.range.from, model.plan.range.through);
+    const rights = await session.readModel({ management: true, permissionsChoreId: 'floor' });
+    assert.equal(rights.dateRights.choreId, 'floor'); assert.ok(rights.groupPolicy); assert.equal(preferences, 0); assert.equal(privateReads, 0);
     await assert.rejects(session.readModel({ management: true, calendarMonth: 'current' }), /同時/u);
   } finally { f.close(); }
 });

@@ -28,27 +28,30 @@ import { V2AddChore } from './add-chore';
 import { V2ChoreProcedures } from './chore-procedures';
 import { V2GroupPolicyEditor } from './group-policy-editor';
 import { v2CanShowCompletion } from './round-visibility';
+import { V2DateRightsEditor } from './date-rights-editor';
 
 export interface V2GroupScreenProps {
   purpose: 'development' | 'workspace'; workspaceName?: string; workspaceError?: string; onManage?: () => void;
   subscribe?: (changed: () => void) => () => void;
-  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy'; choreId?: string;
+  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy' | 'dateRights'; choreId?: string;
   occurrenceId?: string; subjectId?: string; anchorDate?: string; onRound?: (occurrenceId: string, subjectId: string, anchorDate?: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void; onRequests?: () => void;
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
   onCalendar?: () => void;
   onManageChores?: () => void; onDetails?: (choreId: string) => void; onAddChore?: () => void; onChoreCreated?: (choreId: string) => void;
   onGroupPolicy?: () => void;
+  onDateRights?: (choreId: string) => void;
 }
 
 function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: string, choreId?: string): Parameters<V2GroupUiSession['readModel']>[0] {
   if (view === 'groupPolicy') return { management: true, groupPolicy: true };
+  if (view === 'dateRights') return { management: true, permissionsChoreId: choreId };
   if (view === 'details') return { management: true, detailChoreId: choreId };
   if (view === 'chores' || view === 'addChore') return { management: true };
   return anchorDate ? { focusDate: anchorDate } : view === 'calendar' ? { calendarMonth: 'current' } : undefined;
 }
 
-export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy }: V2GroupScreenProps) {
+export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onDateRights }: V2GroupScreenProps) {
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
@@ -104,6 +107,10 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const { personal, privateOverlay: privateValue, ...model } = screenModel;
   const privateOverlay = privateOverlayForViewer(privateValue, model.viewerUserId);
   const controller = session.controller;
+  if (view === 'dateRights') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    <V2DateRightsEditor model={model} choreId={choreId ?? ''} controller={controller} onBack={onBack} onGroupPolicy={onGroupPolicy} header={notice}
+      onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} />
+  </V2ScreenFrame>;
   if (view === 'groupPolicy') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <V2GroupPolicyEditor model={model} controller={controller} onBack={onBack} header={notice}
       onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} />
@@ -118,6 +125,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   if (view === 'details') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <V2ChoreDetailsEditor model={model} choreId={choreId ?? ''} controller={controller} header={notice} onBack={onBack}
       onConfiguration={choreId ? () => onConfiguration(choreId) : undefined}
+      onDateRights={choreId && onDateRights ? () => onDateRights(choreId) : undefined}
       onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} />
   </V2ScreenFrame>;
   if (!personal) return <V2ScreenFrame purpose={purpose} style={styles.safe}>{notice}<Text style={styles.body}>本人の推奨日を読み込めませんでした。</Text>

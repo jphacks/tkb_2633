@@ -23,8 +23,10 @@ import { targetCivilDate, validateDesignationTarget } from './date-target.ts';
 import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
-import { prepareV2FieldEdits, editableFieldFromOperations, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
+import { prepareV2FieldEdits, editableFieldFromOperations, readV2EditableField, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
 import type { V2FieldEdit, V2FieldSaveResult } from './field-edit';
+import { editableDateRightsFromOperations, prepareV2DateRightsEdit } from './date-rights-edit.ts';
+import type { V2DateRightsEdit } from './date-rights-edit';
 import { expandedCommonWindow } from './window-extension.ts';
 import { v2DateDecisionReview, v2AssignmentDecisionReview } from './decision-review.ts';
 import type { V2DateDecisionEdit, V2DecisionEdit } from './decision-review.ts';
@@ -305,6 +307,25 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     }),
     grantDateRights: (choreId: string, userId: string, enabled: boolean, rights: { changeDate: boolean; changeOthers: boolean; changeBeforeWindow: boolean }) =>
       repository.commit([draft('datePermission', v2DatePermissionId(scope.groupId, choreId, userId), { choreId, userId, enabled, rights })]),
+    editDateRights: async (choreId: string, edits: readonly V2DateRightsEdit[], expectedPolicyIds: readonly string[]): Promise<V2FieldSaveResult> => {
+      let prepared: ReturnType<typeof prepareV2DateRightsEdit>[] | undefined;
+      const operations = await repository.commitCurrent(async (state) => {
+        const at = point(state); const alive = readV2EditableField(state.assessment.view, at, 'chore', choreId, '$alive');
+        const policy = readV2EditableField(state.assessment.view, at, 'groupPolicy', 'policy', 'configuration');
+        if (alive.kind !== 'value' || alive.value !== true || policy.kind !== 'value'
+          || !sameIds(expectedPolicyIds, policy.candidates.map(candidate => candidate.operationId))) throw new V2StaleSettingsError();
+        if (edits.length > 16 || new Set(edits.map(edit => edit.userId)).size !== edits.length) throw new Error('変更するメンバーを確認してください。');
+        if (edits.some(edit => !state.archive.at(-1)!.body.members.some(member => member.userId === edit.userId))) throw new V2StaleSettingsError();
+        prepared = edits.map(edit => prepareV2DateRightsEdit({ view: state.assessment.view, at, choreId, edit }));
+        if ((policy.value as unknown as GroupPolicy).delegationEnabled !== true && prepared.some(entry => entry.payload.enabled !== false)) {
+          throw new Error('委譲機能を有効にしてから権限を付与してください。');
+        }
+        return prepared.filter(entry => entry.changed).map(entry => draft('datePermission', entry.entityId, entry.payload));
+      });
+      if (!prepared) throw new V2StaleSettingsError();
+      return { operations, fields: Object.fromEntries(prepared.map(entry => [entry.payload.userId, entry.changed
+        ? editableDateRightsFromOperations(operations.filter(operation => operation.entityId === entry.entityId)) : entry.current])) };
+    },
     changeDate: (ref: V2RoundReference, input: { mode: DesignationMode; target: DateTarget; selector?: RuleSelector; options?: Partial<DesignationOptions>;
       extensionScope?: 'once' | 'future'; reviewedRequestIds?: string[]; expectedRuleIds?: string[]; confirmDateConflict?: boolean;
       expectedAssigneeIds?: readonly string[]; expectedAssignmentIds?: readonly string[]; expectedConflictIds?: readonly string[]; expectedRequestReviewIds?: readonly string[];

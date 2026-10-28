@@ -150,3 +150,20 @@ test('v2 field autosave keeps invalid input out of SQLite and prevents leaving u
     assert.equal(await store.navigateAfterSave(() => { left++; }), false); assert.equal(left, 1);
   } finally { d.connection.close(); }
 });
+
+test('v2 a newly available editor field can save without losing another draft and a retired field keeps its discard codec', async () => {
+  const d = await setup();
+  try {
+    const initial = await d.fields(); const options = { fields: { name: initial.name }, codecs: { name: codecs.name }, delayMs: 60000,
+      save: edits => d.c.actions.patchChoreDetails('floor', edits), onSaved: async () => {} };
+    const store = createV2FieldEditorState(options); store.change('name', '入力中の名前');
+    store.updateInput({ ...options, fields: initial, codecs });
+    store.change('instructions', '新しく表示された手順'); assert.equal(store.isDirty('name'), true); assert.equal(store.isDirty('instructions'), true);
+    assert.equal(await store.flush(), true); const saved = await d.fields();
+    assert.equal(saved.name.value, '入力中の名前'); assert.deepEqual(saved.instructions.value, ['新しく表示された手順']);
+    store.change('instructions', 'まだ保存していない入力'); store.updateInput({ ...options, fields: { name: saved.name } });
+    assert.equal(store.isDirty('instructions'), true); store.discard('instructions');
+    assert.equal(store.getSnapshot().raw.instructions, '新しく表示された手順'); assert.equal(store.isDirty('instructions'), false);
+    assert.equal(await store.flush(), true); assert.deepEqual((await d.fields()).instructions.value, ['新しく表示された手順']);
+  } finally { d.connection.close(); }
+});

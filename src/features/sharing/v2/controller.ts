@@ -10,6 +10,7 @@ import { v2DecisionReviews } from './decision-review.ts';
 import type { SharedChoreConfiguration } from './model.ts';
 import { readV2EditableField, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
 import type { V2ChoreDetailField, V2EditableField } from './field-edit';
+import { readV2DateRights } from './date-rights-edit.ts';
 type V2ModelRange = { from: LocalDate; through: LocalDate; asOfDate: LocalDate };
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
@@ -19,7 +20,7 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
   const actions = createV2PlannerActions(repository, options);
   return {
     actions, sync: options.sync,
-    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange), readOptions: { detailChoreId?: string; groupPolicy?: boolean } = {}) {
+    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange), readOptions: { detailChoreId?: string; groupPolicy?: boolean; permissionsChoreId?: string } = {}) {
       const state = await repository.readState();
       const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
       let range: V2ModelRange;
@@ -40,8 +41,12 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
       const reviews = v2DecisionReviews(state, repository.scope.userId);
       const choreDetails = plan.chores.filter((chore) => chore.id === readOptions.detailChoreId).map((chore) => ({ choreId: chore.id, alive: readV2EditableField(state.assessment.view, at, 'chore', chore.id, '$alive'),
         fields: Object.fromEntries(V2_CHORE_DETAIL_FIELDS.map((field) => [field, readV2EditableField(state.assessment.view, at, 'chore', chore.id, field)])) as Record<V2ChoreDetailField, V2EditableField> }));
-      const groupPolicy = readOptions.groupPolicy ? readV2EditableField(state.assessment.view, at, 'groupPolicy', 'policy', 'configuration') : undefined;
-      return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
+      const groupPolicy = readOptions.groupPolicy || readOptions.permissionsChoreId ? readV2EditableField(state.assessment.view, at, 'groupPolicy', 'policy', 'configuration') : undefined;
+      const permissionChore = readOptions.permissionsChoreId ? plan.chores.find(chore => chore.id === readOptions.permissionsChoreId) : undefined;
+      const dateRights = permissionChore ? { choreId: permissionChore.id, alive: readV2EditableField(state.assessment.view, at, 'chore', permissionChore.id, '$alive'),
+        fields: Object.fromEntries(plan.members.filter(member => member.active && member.userId !== state.archive.at(-1)!.body.ownerUserId)
+          .map(member => [member.userId, readV2DateRights(state.assessment.view, at, permissionChore.id, member.userId)])) } : undefined;
+      return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(dateRights ? { dateRights } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
         requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
         dateRuleSources: observedDateRules(state.assessment.view, at, state.assessment.approvedRules, true),

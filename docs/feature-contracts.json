@@ -2952,5 +2952,33 @@
     "tests": [
       { "file": "tests/sharing-v2-completion-visibility-ui.test.mjs", "name": "disabling completion status also hides unrelated history while preserving the administrator and original records" }
     ]
+  },
+  {
+    "feature": "v2-per-chore-permission-bundles-have-atomic-causal-edits",
+    "tests": [
+      { "file": "tests/sharing-v2-date-rights-edit.test.mjs", "name": "v2 per-chore rights keep their original signed bundle and acknowledge only explicitly saved members" },
+      { "file": "tests/sharing-v2-date-rights-edit.test.mjs", "name": "v2 per-chore rights reject changed group rules foreign bases and invalid batches without partial outbox writes" },
+      { "file": "tests/sharing-v2-date-rights-edit.test.mjs", "name": "v2 disabled delegation blocks new grants while allowing explicit revocation without silently restoring it later" },
+      { "file": "tests/sharing-v2-date-rights-edit.test.mjs", "name": "v2 concurrent permission and revocation bundles cannot be combined and require an explicit current resolution" },
+      { "file": "tests/sharing-v2-date-rights-edit.test.mjs", "name": "v2 ordinary members cannot use the checked permission editor to grant themselves rights" }
+    ]
+  },
+  {
+    "feature": "v2-mobile-per-chore-rights-bind-displayed-rules-and-membership",
+    "tests": [
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "per-chore rights are collapsed and explicitly autosave only that member and chore" },
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "disabled group delegation blocks new grants but still permits a member's explicit revocation" },
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "a permission event from before repaint keeps its displayed group-rule basis instead of using an unseen update" },
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "a removed member's in-flight permission draft remains inspectable and discardable without granting rights" },
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "a newly approved member can be edited while another member saves without replacing the first draft" },
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "conflicting grants and revocations require opening and explicitly selecting an authenticated rights bundle" },
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "a non-administrator permission route exposes a return action and no editing controls" }
+    ]
+  },
+  {
+    "feature": "v2-dynamic-editor-fields-keep-drafts-and-retired-codecs",
+    "tests": [
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 a newly available editor field can save without losing another draft and a retired field keeps its discard codec" }
+    ]
   }
 ]

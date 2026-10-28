@@ -19,7 +19,7 @@ async function openRoute(preview, platform, file, params, navigation, readyText)
 
 test('v2 every isolated preview route denies release execution before opening the fixture', () => {
   let opened = 0; let focused = 0;
-  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests', 'assignment', 'assignment-requests', 'calendar', 'chores', 'details', 'add-chore', 'group-rules']) {
+  for (const platform of ['ios', 'android']) for (const file of ['index', 'round', 'date', 'configuration', 'history', 'requests', 'assignment', 'assignment-requests', 'calendar', 'chores', 'details', 'add-chore', 'group-rules', 'date-rights']) {
     const screen = screenHarness(`src/app/development/sharing-v2-preview/${file}.tsx`, { platform, params: {},
       focusEffect: () => focused++, transformSource: (path, source) => path.endsWith('/v2-preview-route.tsx') ? source.replaceAll('__DEV__', 'false') : source,
       mocks: { '@/platform/sharing/development-v2-preview': { developmentV2Preview: () => { opened++; throw new Error('Release must not open synthetic storage'); } } } });

@@ -27,6 +27,7 @@ export function V2PreviewRoute({ view }: { view: V2PreviewView }) {
     onManageChores={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/chores', params: privateContext } : '/development/sharing-v2-preview/chores')}
     onAddChore={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/add-chore', params: privateContext } : '/development/sharing-v2-preview/add-chore')}
     onGroupPolicy={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/group-rules', params: privateContext } : '/development/sharing-v2-preview/group-rules')}
+    onDateRights={(choreId) => router.push({ pathname: '/development/sharing-v2-preview/date-rights', params: { choreId, ...privateContext } })}
     onHistory={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/history', params: privateContext } : '/development/sharing-v2-preview/history')}
     onCalendar={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/calendar', params: privateContext } : '/development/sharing-v2-preview/calendar')}
     onAssignmentRequests={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/assignment-requests', params: privateContext } : '/development/sharing-v2-preview/assignment-requests')}

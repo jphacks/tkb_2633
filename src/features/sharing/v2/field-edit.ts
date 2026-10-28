@@ -20,10 +20,16 @@ const sameIds = (a: readonly string[], b: readonly string[]) => canonicalJson([.
 const sameValue = (a: JsonValue | undefined, b: JsonValue | undefined) => canonicalJson(a === undefined ? [false] : [true, a]) === canonicalJson(b === undefined ? [false] : [true, b]);
 
 export function editableFieldFromOperations(operations: readonly SharedOperation[], field: string): V2EditableField {
-  const latest = maximalCausalFacts(operations.filter((operation) => field === '$alive' || Object.hasOwn(operation.payload, field)));
+  return editableValueFromOperations(operations.filter((operation) => field === '$alive' || Object.hasOwn(operation.payload, field)),
+    operation => field === '$alive' ? operation.operationType !== 'delete' : operation.payload[field]);
+}
+
+/** A compound editor value is derived from original signed fields; it is never a replacement operation or author proof. */
+export function editableValueFromOperations(operations: readonly SharedOperation[], readValue: (operation: SharedOperation) => JsonValue): V2EditableField {
+  const latest = maximalCausalFacts(operations);
   if (!latest.length) return { kind: 'missing', candidates: [] };
   const candidates = latest.map((operation) => ({ operationId: operation.operationId, authorUserId: operation.authorUserId,
-    recordedAt: operation.recordedAt ?? null, value: clone(field === '$alive' ? operation.operationType !== 'delete' : operation.payload[field]),
+    recordedAt: operation.recordedAt ?? null, value: clone(readValue(operation)),
     authorDeviceId: operation.authorDeviceId, deviceSequence: operation.deviceSequence, context: { ...operation.context } }));
   return new Set(candidates.map((candidate) => canonicalJson(candidate.value))).size === 1
     ? { kind: 'value', value: clone(candidates[0].value), candidates } : { kind: 'conflict', candidates };

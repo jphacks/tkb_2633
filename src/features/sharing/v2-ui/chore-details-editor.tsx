@@ -14,14 +14,14 @@ import { v2MemberLabels } from './member-labels';
 import { V2AutosaveFeedback } from './autosave-feedback';
 
 export function V2ChoreDetailsEditor(props: { model: V2GroupScreenModel; choreId: string; controller: V2GroupController;
-  onSaved: () => Promise<void>; onBack: () => void; onConfiguration?: () => void; header?: ReactNode }) {
+  onSaved: () => Promise<void>; onBack: () => void; onConfiguration?: () => void; onDateRights?: () => void; header?: ReactNode }) {
   const source = props.model.choreDetails.find((row) => row.choreId === props.choreId);
   if (!source) return <V2FormScrollView><View style={{ padding: 16, gap: 14 }}>{props.header}<BackButton onPress={props.onBack} />
     <Text style={styles.body}>この家事の編集情報を取得できませんでした。</Text><AppButton title="編集情報を再読込" variant="secondary" onPress={() => void props.onSaved().catch(() => undefined)} /></View></V2FormScrollView>;
   return <Details key={`${props.model.viewerUserId}:${props.model.plan.groupId}:${props.choreId}`} {...props} source={source} />;
 }
 
-function Details({ model, choreId, controller, source, onSaved, onBack, onConfiguration, header }: Parameters<typeof V2ChoreDetailsEditor>[0] & {
+function Details({ model, choreId, controller, source, onSaved, onBack, onConfiguration, onDateRights, header }: Parameters<typeof V2ChoreDetailsEditor>[0] & {
   source: V2GroupScreenModel['choreDetails'][number];
 }) {
   const autosave = useV2FieldAutosave({ fields: source.fields, codecs: v2ChoreDetailCodecs,
@@ -80,5 +80,7 @@ function Details({ model, choreId, controller, source, onSaved, onBack, onConfig
       discard={autosave.discard} discardTitle="入力を最新の内容に戻す" disabled={autosave.leaving} />
     {onConfiguration && model.viewerUserId === model.adminUserId ? <AppButton title="周期・担当の設定へ" variant="secondary" disabled={disabled}
       onPress={() => void autosave.navigateAfterSave(onConfiguration)} /> : null}
+    {onDateRights && model.viewerUserId === model.adminUserId ? <AppButton title="日時変更の権限へ" variant="secondary" disabled={disabled}
+      onPress={() => void autosave.navigateAfterSave(onDateRights)} /> : null}
   </V2FormScrollView>;
 }

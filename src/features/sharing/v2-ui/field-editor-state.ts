@@ -18,7 +18,7 @@ function covers(next: V2EditableField, previous: V2EditableField) {
 
 /** Text/choice drafts share the existing one-writer queue and keep each field's displayed causal base. */
 export function createV2FieldEditorState(initial: V2FieldEditorInput) {
-  let input = initial; let known = { ...initial.fields }; let token = 0; let refreshError: string | null = null;
+  let input = initial; let codecs = { ...initial.codecs }; let known = { ...initial.fields }; let token = 0; let refreshError: string | null = null;
   let raw = Object.fromEntries(Object.entries(known).map(([field, current]) => [field, initial.codecs[field].format(value(current))]));
   const bases = new Map(Object.entries(known).map(([field, current]) => [field, ids(current)])); const dirty = new Map<string, number>();
   const ownAcknowledgements = new Map<string, V2EditableField>();
@@ -37,7 +37,7 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
       if (dirty.get(field) === change.token) {
         dirty.delete(field);
         // Keep the user's raw newline/spacing after their own save; show a genuinely newer remote value instead.
-        if (!same(value(known[field]), acknowledged.value)) raw = { ...raw, [field]: input.codecs[field].format(value(known[field])) };
+        if (!same(value(known[field]), acknowledged.value)) raw = { ...raw, [field]: codecs[field].format(value(known[field])) };
       }
     }
     refreshError = null;
@@ -54,7 +54,7 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
   }
   queue.subscribe(publish);
   function change(field: string, nextRaw: JsonValue, resolveOperationIds?: readonly string[], displayed?: V2EditableField, exact?: { value: JsonValue }) {
-    if (!Object.hasOwn(known, field) || !Object.hasOwn(input.codecs, field)) throw new Error('変更する項目を確認してください。');
+    if (!Object.hasOwn(known, field) || !Object.hasOwn(codecs, field)) throw new Error('変更する項目を確認してください。');
     if (!dirty.has(field) && displayed) {
       const own = ownAcknowledgements.get(field);
       bases.set(field, ids(own && same(value(own), value(known[field])) && covers(own, displayed) ? own : displayed));
@@ -62,7 +62,7 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
     raw = { ...raw, [field]: nextRaw }; dirty.set(field, ++token);
     const nextErrors = { ...errors }; delete nextErrors[field];
     try {
-      const parsed = exact ? exact.value : input.codecs[field].parse(nextRaw); const currentToken = token;
+      const parsed = exact ? exact.value : codecs[field].parse(nextRaw); const currentToken = token;
       if (known[field].kind === 'conflict' && resolveOperationIds === undefined) throw new Error('競合している候補を確認して解決してください。');
       queue.enqueue({ [field]: { value: parsed, token: currentToken, ...(resolveOperationIds ? { resolveOperationIds: [...resolveOperationIds] } : {}) } }, resolveOperationIds !== undefined);
     } catch (cause) { queue.remove(field); nextErrors[field] = cause instanceof Error ? cause.message : '入力内容を確認してください。'; }
@@ -72,15 +72,19 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
   return {
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, getSnapshot: () => snapshot,
     updateInput(next: V2FieldEditorInput) {
-      input = next; let changed = false;
+      input = next; codecs = { ...codecs, ...next.codecs }; let changed = false;
       for (const [field, current] of Object.entries(next.fields)) {
+        if (!known[field]) {
+          known = { ...known, [field]: current }; raw = { ...raw, [field]: codecs[field].format(value(current)) };
+          bases.set(field, ids(current)); changed = true; continue;
+        }
         // Authenticated operation IDs bind immutable values; avoid copying long procedures on every render.
         if (known[field]?.kind === current.kind && same(ids(known[field]), ids(current))) continue;
-        if (!known[field] || !covers(current, known[field])) continue;
+        if (!covers(current, known[field])) continue;
         const previous = known[field]; known = { ...known, [field]: current }; changed = true;
         if (!dirty.has(field)) {
           bases.set(field, ids(current));
-          if (!same(value(previous), value(current)) || previous.kind !== current.kind) raw = { ...raw, [field]: next.codecs[field].format(value(current)) };
+          if (!same(value(previous), value(current)) || previous.kind !== current.kind) raw = { ...raw, [field]: codecs[field].format(value(current)) };
         }
       }
       if (changed) publish();
@@ -96,12 +100,12 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
     },
     // Display formatting is lossy (null/empty sections and newlines inside a step); resolve the chosen signed value exactly.
     resolve: (field: string, candidateValue: JsonValue, observedOperationIds: readonly string[]) => change(field,
-      input.codecs[field].format(candidateValue), observedOperationIds, undefined, { value: candidateValue }),
-    flush, hasDraft: () => dirty.size > 0,
+      codecs[field].format(candidateValue), observedOperationIds, undefined, { value: candidateValue }),
+    flush, hasDraft: () => dirty.size > 0, isDirty: (field: string) => dirty.has(field),
     discard(field?: string) {
       for (const key of field ? [field] : Object.keys(known)) {
         if (!known[key]) continue; dirty.delete(key); bases.set(key, ids(known[key])); queue.remove(key);
-        raw = { ...raw, [key]: input.codecs[key].format(value(known[key])) }; const next = { ...errors }; delete next[key]; errors = next;
+        raw = { ...raw, [key]: codecs[key].format(value(known[key])) }; const next = { ...errors }; delete next[key]; errors = next;
       }
       publish();
     },

@@ -119,6 +119,22 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
       assert.deepEqual(model.groupPolicy.value, updatedPolicy); assert.deepEqual(model.plan.policy, updatedPolicy);
       assert.equal((await session.repository.readState()).assessment.view.ofType('datePermission').length, 0);
     }
+    const rightsSource = async session => session.controller.readModel(range, { permissionsChoreId: chore.id });
+    const beforeGrant = await rightsSource(owner); const policyIds = beforeGrant.groupPolicy.candidates.map(source => source.operationId);
+    const grantedRights = { enabled: true, rights: { changeDate: true, changeOthers: false, changeBeforeWindow: true } };
+    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: grantedRights, basisOperationIds: [] }], policyIds);
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    const delivered = await rightsSource(restart); assert.deepEqual(delivered.dateRights.fields.member.value, grantedRights);
+    const grantIds = delivered.dateRights.fields.member.candidates.map(source => source.operationId);
+    await assert.rejects(restart.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], policyIds), { code: 'sharing/v2-authority-denied' });
+    assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 0);
+    const groupBefore = (await owner.controller.readModel(range, { groupPolicy: true })).groupPolicy;
+    await owner.controller.actions.editGroupPolicy({ value: { ...updatedPolicy, delegationEnabled: false }, basisOperationIds: groupBefore.candidates.map(source => source.operationId) });
+    await assert.rejects(owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], policyIds), { code: 'sharing/v2-stale-settings' });
+    const disabled = await rightsSource(owner);
+    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], disabled.groupPolicy.candidates.map(source => source.operationId));
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    for (const session of [owner, restart]) assert.equal((await rightsSource(session)).dateRights.fields.member.value.enabled, false);
     ownerActive = false; await assert.rejects(owner.synchronizer.sync({ force: true }), /account changed/u);
     assert.equal(ownerDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.equal(memberDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');

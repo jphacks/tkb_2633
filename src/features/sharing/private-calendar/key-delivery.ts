@@ -1,15 +1,10 @@
 import type { createPrivateCalendarSecretStore } from './secret-store.ts';
 import type { createPrivateCalendarKeyOutbox } from '../../../platform/storage/private-calendar-key-outbox.ts';
 import type { createPrivateCalendarCloud } from '../../../platform/sharing/private-calendar-cloud.ts';
-import type { PrivateCalendarDeliveryFailure } from './delivery-retry.ts';
+import { privateCalendarDeliveryFailureCode } from './delivery-retry.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
 import { PrivateCalendarCloudConflict } from './cloud-contract.ts';
 
-function failureCode(error: unknown): PrivateCalendarDeliveryFailure {
-  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code === 'permission-denied') return 'permission'; if (code === 'unauthenticated') return 'auth';
-  return ['unavailable', 'aborted', 'deadline-exceeded', 'resource-exhausted'].includes(code) ? 'temporary' : 'unknown';
-}
 export function createPrivateCalendarKeyDelivery(port: { userId: string; secrets: ReturnType<typeof createPrivateCalendarSecretStore>;
   outbox: ReturnType<typeof createPrivateCalendarKeyOutbox>; cloud: Pick<ReturnType<typeof createPrivateCalendarCloud>, 'sendKey'> & Partial<Pick<ReturnType<typeof createPrivateCalendarCloud>, 'readKey'>>;
   now?: () => number; randomFraction?: () => number }) {
@@ -42,7 +37,7 @@ export function createPrivateCalendarKeyDelivery(port: { userId: string; secrets
             if (accepted && await outbox.observeAvailable(authority, entry.recipientDeviceId, entry.envelopeDigest, accepted)) { available++; continue; }
           } catch { /* Invalid signatures, changed owner/authority and same-sender forks never acknowledge a candidate. */ }
         }
-        const code = failureCode(error);
+        const code = privateCalendarDeliveryFailureCode(error);
         await outbox.fail(authority, entry.recipientDeviceId, entry.envelopeDigest, now(), code, randomFraction());
         return { kind: 'deferred' as const, sent, code };
       }

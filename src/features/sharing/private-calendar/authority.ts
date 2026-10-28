@@ -3,6 +3,7 @@ import { sharedDocumentDigest, signSharedDocument, validateDevicePublicIdentity,
 import { assertSharedIdentifier } from '../identifier.ts';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { exactRecord, hexBytes, positiveInteger } from './validation.ts';
+import { MAX_PRIVATE_CALENDAR_AUTHORITIES } from './authority-history-limits.ts';
 
 export const PRIVATE_CALENDAR_AUTHORITY_SUITE = 'liflow-private-calendar-authority-v1';
 export const MAX_PRIVATE_CALENDAR_DEVICES = 16;
@@ -18,6 +19,10 @@ export interface PrivateCalendarAuthorityBody {
   mainDeviceId: string; devices: DevicePublicIdentity[]; previousDigest: string | null; signerDeviceId: string;
 }
 export interface SignedPrivateCalendarAuthority { body: PrivateCalendarAuthorityBody; signature: string }
+export function samePrivateCalendarAuthorityConfiguration(before: Pick<PrivateCalendarAuthorityBody, 'mainDeviceId' | 'keyVersion' | 'devices'>,
+  after: Pick<PrivateCalendarAuthorityBody, 'mainDeviceId' | 'keyVersion' | 'devices'>) {
+  return before.mainDeviceId === after.mainDeviceId && before.keyVersion === after.keyVersion && sharedDocumentDigest(before.devices) === sharedDocumentDigest(after.devices);
+}
 /** Obtained locally at creation or through explicit pairing, never inferred from a cloud document. */
 export interface PrivateCalendarTrustAnchor { ownerUserId: string; accountGeneration: string; rootDigest: string }
 export interface PrivateCalendarKeyIssuer { deviceId: string; revision: number }
@@ -82,6 +87,7 @@ export function verifyPrivateCalendarAuthorityUpdate(previous: VerifiedPrivateCa
     || body.revision !== before.revision + 1 || body.previousDigest !== previous.digest) throw new Error('本人端末の設定が更新されています。再読込して確認してください。');
   const signer = before.devices.find((device) => device.deviceId === body.signerDeviceId);
   if (!signer) throw new Error('未承認・解除済みの本人端末からの変更です。');
+  if (samePrivateCalendarAuthorityConfiguration(before, body) && body.signerDeviceId !== before.mainDeviceId) throw new Error('取得元の更新は現在のメイン端末からだけ受け付けます。');
   const removed = before.devices.some((device) => !body.devices.some((next) => next.deviceId === device.deviceId));
   if (body.keyVersion !== before.keyVersion && body.keyVersion !== before.keyVersion + 1
     || (removed && body.keyVersion !== before.keyVersion + 1)) throw new Error('端末解除には本人用の新しい鍵が必要です。');
@@ -117,14 +123,25 @@ export function privateCalendarAuthorityFromProtectedCheckpoint(checkpoint: Prot
   verifySharedDocument(signed.body, signed.signature, signer);
   return verified(signed, anchor, signer, keyIssuer);
 }
-/** The caller must obtain explicit pairing/main-device/revocation confirmation before signing. */
+/** The caller must obtain explicit device-management or Calendar-source confirmation before signing. */
 export function advancePrivateCalendarAuthority(previous: VerifiedPrivateCalendarAuthority, change: {
   mainDeviceId: string; devices: readonly DevicePublicIdentity[]; keyVersion: number;
-}, signer: DeviceSecretIdentity): VerifiedPrivateCalendarAuthority {
+}, signer: DeviceSecretIdentity, options?: { purpose: 'calendarSourceChange' }): VerifiedPrivateCalendarAuthority {
+  if (options && (Object.keys(options).join(',') !== 'purpose' || options.purpose !== 'calendarSourceChange')) throw new Error('本人端末の変更目的が無効です。');
+  const selected = snapshotPrivateCalendarAuthorityChange({ ...change, devices: [...change.devices] });
   const body: PrivateCalendarAuthorityBody = { ...previous.signed.body, ...change,
-    devices: change.devices.map((device) => validateDevicePublicIdentity(device)).sort((a, b) => a.deviceId < b.deviceId ? -1 : a.deviceId > b.deviceId ? 1 : 0),
+    devices: selected.devices.sort((a, b) => a.deviceId < b.deviceId ? -1 : a.deviceId > b.deviceId ? 1 : 0),
     revision: previous.signed.body.revision + 1, previousDigest: previous.digest, signerDeviceId: signer.deviceId };
-  const next = verifyPrivateCalendarAuthorityUpdate(previous, { body, signature: signSharedDocument(body, signer) });
-  const configuration = (value: PrivateCalendarAuthorityBody) => sharedDocumentDigest({ mainDeviceId: value.mainDeviceId, devices: value.devices, keyVersion: value.keyVersion });
-  return configuration(body) === configuration(previous.signed.body) ? previous : next;
+  const unchanged = samePrivateCalendarAuthorityConfiguration(body, previous.signed.body);
+  if (unchanged && !options) {
+    const registered = previous.signed.body.devices.find(device => device.deviceId === signer.deviceId);
+    if (!registered) throw new Error('未承認・解除済みの本人端末からの変更です。');
+    verifySharedDocument(body, signSharedDocument(body, signer), registered); return previous;
+  }
+  if ((options || !unchanged) && body.revision > MAX_PRIVATE_CALENDAR_AUTHORITIES) throw new Error('本人端末の署名履歴が上限に達しています。既存の設定は保持しています。');
+  if (options) {
+    // Source changes advance only the cache epoch, without relabelling a key generation or changing devices.
+    if (!unchanged || signer.deviceId !== previous.signed.body.mainDeviceId) throw new Error('取得元の更新はメイン端末で行い、端末や鍵の変更と分けてください。');
+  }
+  return verifyPrivateCalendarAuthorityUpdate(previous, { body, signature: signSharedDocument(body, signer) });
 }

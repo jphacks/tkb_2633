@@ -187,6 +187,21 @@ export async function getCurrentGoogleSubject(): Promise<string | null> {
   return (await getCurrentGoogleUser(await loadGoogleSignIn()))?.user.id ?? null;
 }
 
+/** Public account label for an explicit connection review. No token or interactive fallback leaves this boundary. */
+export async function getCurrentGoogleCalendarAccount(): Promise<{ subject: string; label: string } | null> {
+  const current = await getCurrentGoogleUser(await loadGoogleSignIn()); if (!current?.user.id) return null;
+  const label = current.user.email?.trim() || current.user.name?.trim() || `Googleアカウント（${current.user.id.slice(-6)}）`;
+  return { subject: current.user.id, label: label.slice(0, 320) };
+}
+
+/** Explicitly restore a missing Native session. Never replace an existing session or sign in to Firebase. */
+export async function restorePrivateGoogleCalendarAccount(): Promise<{ subject: string; label: string }> {
+  if (AppState.currentState !== 'active') throw new GoogleSignInRequiredError();
+  const current = await getCurrentGoogleCalendarAccount(); if (current) return current;
+  await signInForUserAction(); const restored = await getCurrentGoogleCalendarAccount();
+  if (!restored) throw new GoogleSignInRequiredError(); return restored;
+}
+
 export async function hasGoogleTasksSession(): Promise<boolean> {
   try {
     const module = await loadGoogleSignIn();
@@ -199,14 +214,28 @@ export async function hasGoogleTasksSession(): Promise<boolean> {
 
 /** Incremental consent is only invoked by the settings ON/retry button. */
 export async function authorizeGoogleCalendarAvailability(): Promise<void> {
+  await authorizeSelectedCalendarAccount(true);
+}
+
+/** Explicit private-source consent can follow identity-only sharing login; it never adds Tasks scope. */
+export async function authorizePrivateGoogleCalendarSource(expectedSubject: string): Promise<void> {
+  if (typeof expectedSubject !== 'string' || !expectedSubject) throw new GoogleAccountMismatchError();
+  await authorizeSelectedCalendarAccount(false, expectedSubject);
+}
+async function authorizeSelectedCalendarAccount(requireTasks: boolean, expectedSubject?: string): Promise<void> {
   if (AppState.currentState !== 'active') throw new CalendarPermissionRequiredError();
   const module = await loadGoogleSignIn();
   const current = await getCurrentGoogleUser(module);
-  if (!current?.scopes.includes(GOOGLE_TASKS_SCOPE)) throw new CalendarPermissionRequiredError();
+  if (!current || requireTasks && !current.scopes.includes(GOOGLE_TASKS_SCOPE)) throw new CalendarPermissionRequiredError();
+  if (expectedSubject && current.user.id !== expectedSubject) throw new GoogleAccountMismatchError();
   await authorizeCalendarAvailability({
-    grantedScopes: async () => (await getCurrentGoogleUser(module))?.scopes ?? [],
+    grantedScopes: async () => {
+      const selected = await getCurrentGoogleUser(module);
+      if (selected?.user.id !== current.user.id) throw new GoogleAccountMismatchError(); return selected.scopes;
+    },
     requestScopes: (scopes) => authStep('request-calendar-scope', () => module.GoogleOneTapSignIn.requestScopes(scopes)),
   });
+  if ((await getCurrentGoogleUser(module))?.user.id !== current.user.id) throw new GoogleAccountMismatchError();
 }
 
 /** Non-interactive: no requestScopes/createAccount/presentExplicitSignIn fallback. */

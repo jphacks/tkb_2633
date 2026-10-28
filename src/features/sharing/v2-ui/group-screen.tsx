@@ -189,7 +189,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="担当の変更申請" /></View>} />
   </V2ScreenFrame>;
   if (view === 'requests') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
-    <V2DateRequests model={model} actions={controller.actions} busy={busy} run={run}
+    <V2DateRequests model={model} actions={controller.actions} busy={busy} run={run} readOwnCalendar={session.readOwnCalendar}
       header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="日時の変更申請" /></View>} />
   </V2ScreenFrame>;
   if (view === 'configuration') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
@@ -206,7 +206,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       {notice}<BackButton onPress={onBack} disabled={busy} />
       {round && subject ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === round.choreId)?.name ?? '共有家事'} />
         {view === 'assignment' ? <V2AssignmentForm model={model} round={round} actions={controller.actions} busy={busy} run={run} />
-          : view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
+          : view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} readOwnCalendar={session.readOwnCalendar} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
           onDate={onDate ? () => onDate(round.id, subject.id) : undefined}
           onAssignment={onAssignment ? () => onAssignment(round.id, subject.id) : undefined}
           onAssignmentRequest={onAssignment ? () => onAssignment(round.id, subject.id) : undefined}

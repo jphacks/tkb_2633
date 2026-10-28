@@ -1,5 +1,6 @@
 import { sharedDocumentDigest } from '../crypto.ts';
 import { canonicalJson } from '../operations.ts';
+import { MAX_PRIVATE_CALENDAR_AUTHORITY_DOCUMENT_BYTES } from './authority-history-limits.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
 import type { SignedPrivateCalendarAuthority, VerifiedPrivateCalendarAuthority } from './authority.ts';
 import { snapshotPrivateCalendarAuthority } from './authority.ts';
@@ -30,7 +31,7 @@ export function snapshotPrivateCalendarCloudCacheHead(value: PrivateCalendarClou
   if (value.chunkCount > 32) throw new Error('本人用Calendarの分割数を確認できません。'); return { ...value };
 }
 export function parsePrivateCalendarCloudAuthority(json: string): SignedPrivateCalendarAuthority {
-  if (typeof json !== 'string' || json.length > 16_000) throw new Error('本人用Calendarの認証情報が大きすぎます。');
+  if (typeof json !== 'string' || json.length > MAX_PRIVATE_CALENDAR_AUTHORITY_DOCUMENT_BYTES) throw new Error('本人用Calendarの認証情報が大きすぎます。');
   return snapshotPrivateCalendarAuthority(JSON.parse(json));
 }
 /** Public metadata bounds only. The caller must verify the returned signed chain against its own protected anchor. */

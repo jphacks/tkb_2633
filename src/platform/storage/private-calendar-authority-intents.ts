@@ -46,12 +46,13 @@ export function createPrivateCalendarAuthorityIntentStorage(port: PrivateCalenda
   const pending = (db: SQLiteDatabase) => db.getFirstAsync<Row>("SELECT * FROM private_calendar_authority_intents WHERE status = 'pending'");
   return {
     readPending() { return locked(async (db, state) => { const row = await pending(db); return row ? decode(row, state) : null; }); },
-    async prepare(change: PrivateCalendarAuthorityChange, identity: DeviceSecretIdentity) {
+    async prepare(change: PrivateCalendarAuthorityChange, identity: DeviceSecretIdentity, options?: { purpose: 'calendarSourceChange' }) {
+      if (options) options = { ...options };
       identity = validateDeviceSecretIdentity(identity); const owned = snapshotPrivateCalendarAuthorityChange(change);
       return locked(async (db, state) => {
         const current = state.authority;
         if (!current || canonicalJson(validateDevicePublicIdentity(identity)) !== canonicalJson(state.identity)) throw new Error('承認済みの本人端末が必要です。');
-        const next = advancePrivateCalendarAuthority(current, owned, identity); const row = await pending(db);
+        const next = advancePrivateCalendarAuthority(current, owned, identity, options); const row = await pending(db);
         if (row) {
           const saved = decode(row, state);
           if (saved.digest !== next.digest) throw new Error('未送信の本人端末の変更があります。元の変更を確認してください。');

@@ -17,13 +17,18 @@ async function fixture() {
   const active = { protocol: 2, groupId: preview.groupId, userId: preview.userId, identity: { deviceId: 'native-device' }, record: async () => ({ status: 'active' }),
     session: { controller: preview.controller }, sync: async () => { syncs++; } };
   const context = { ready: true, active, userId: preview.userId, groups: [{ groupId: preview.groupId, displayName: '選択した家族' }] };
-  return { ...h, preview, context, callbacks: new Set(), synced: () => syncs };
+  return { ...h, preview, context, callbacks: new Set(), calendarCallbacks: new Set(), calendarReads: 0, calendarChecks: [], synced: () => syncs };
 }
 async function route(f, platform, file, params = {}, readyText = '送信待ち') {
   let focus; const navigation = [];
   const screen = screenHarness(`src/app/group-v2/${file}.tsx`, { platform, params, focusEffect: (callback) => { focus = callback; }, navigate: (...args) => navigation.push(args),
     mocks: { '../../../hooks/use-workspace': { useWorkspace: () => f.context },
       '@/platform/sharing/workspaces': { sharingFailureMessage: () => '同期を確認してください。', subscribeSharingChanges: (callback) => { f.callbacks?.add(callback); return () => f.callbacks?.delete(callback); } },
+      '../../../platform/sharing/private-calendar-runtime': { openPrivateCalendarRuntime: userId => { assert.equal(userId, f.context.userId); return {
+        subscribe: callback => { f.calendarCallbacks.add(callback); return () => f.calendarCallbacks.delete(callback); },
+        readForPlan: async () => { f.calendarReads++; return f.calendar ?? null; },
+        readOwnCalendar: async target => { f.calendarChecks.push(structuredClone(target)); return { kind: 'conflict' }; },
+      }; } },
       '../../../hooks/use-planner-data': { usePlannerData: () => ({ snapshot: { settings: { frequencyMode: 'balanced', restDays: [], heavyDailyLimit: 2, normalDailyLimit: 3 } } }) } } });
   const leave = focus?.(); for (let n = 0; n < 30 && !screen.text().includes(readyText); n++) await screen.flush();
   assert.ok(screen.text().includes(readyText), screen.text()); return { screen, leave, navigation };
@@ -114,13 +119,29 @@ for (const platform of ['ios', 'android']) {
     try {
       const r = await route(f, platform, 'index'); const model = await f.preview.readModel();
       const chore = model.plan.chores.find((item) => item.name === 'フローリングを掃除する');
-      assert.equal(f.callbacks.size, 1);
+      assert.equal(f.callbacks.size, 1); assert.equal(f.calendarCallbacks.size, 1);
       await f.preview.controller.actions.patchChore(chore.id, { name: '別端末から届いた床掃除' });
       for (const callback of f.callbacks) callback({ userId: 'another-user', groupId: f.preview.groupId });
       await new Promise((resolve) => setTimeout(resolve, 120)); await r.screen.flush(); assert.equal(r.screen.text().includes('別端末から届いた床掃除'), false);
       for (const callback of f.callbacks) callback({ userId: f.preview.userId, groupId: f.preview.groupId });
       await new Promise((resolve) => setTimeout(resolve, 120)); await r.screen.flush(); assert.ok(r.screen.text().includes('別端末から届いた床掃除'));
-      r.leave?.(); assert.equal(f.callbacks.size, 0);
+      const before = f.calendarReads; for (const callback of f.calendarCallbacks) callback();
+      await new Promise(resolve => setTimeout(resolve, 120)); await r.screen.flush(); assert.ok(f.calendarReads > before);
+      r.leave?.(); assert.equal(f.callbacks.size, 0); assert.equal(f.calendarCallbacks.size, 0);
+    } finally { f.connection.close(); }
+  });
+  test(`${platform} normal workspace date forms invoke the own local Calendar reader and keep private conflicts outside shared writes`, async () => {
+    const f = await fixture();
+    try {
+      const model = await f.preview.readModel(); const round = model.plan.occurrences.find(row => row.activeInPeriod && row.assigneeIds.includes(f.preview.userId)); assert.ok(round);
+      const params = { occurrenceId: round.id, subjectId: round.subjects[0].id, anchorDate: round.anchorDate };
+      const r = await route(f, platform, 'date', params, '日時の指定');
+      const fixed = r.screen.nodes().find(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === '固定日時に実施');
+      assert.ok(fixed); fixed.props.onPress(); await r.screen.flush();
+      await r.screen.change('開始時刻', '19:00'); await r.screen.change('終了時刻', '19:30');
+      const before = await listSharingOutbox(f.database, f.preview.groupId); await r.screen.press('日時を指定・申請する');
+      assert.equal(f.calendarChecks.length, 1); assert.match(r.screen.text(), /カレンダーに予定が入っています/u);
+      assert.deepEqual(await listSharingOutbox(f.database, f.preview.groupId), before); r.leave?.();
     } finally { f.connection.close(); }
   });
 }

@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { privateCalendarSetupFixture } from './helpers/private-calendar-setup.mjs';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
-import { createDeviceIdentity, sharedDocumentDigest } from '../src/features/sharing/crypto.ts';
-import { advancePrivateCalendarAuthority, verifyPrivateCalendarAuthorityUpdate } from '../src/features/sharing/private-calendar/authority.ts';
+import { createDeviceIdentity, sharedDocumentDigest, signSharedDocument } from '../src/features/sharing/crypto.ts';
+import { advancePrivateCalendarAuthority, verifyPrivateCalendarAuthorityUpdate, privateCalendarAuthorityFromProtectedCheckpoint, createPrivateCalendarRoot } from '../src/features/sharing/private-calendar/authority.ts';
+import { canonicalJson } from '../src/features/sharing/operations.ts';
 import { privateCalendarCloudFields, PrivateCalendarCloudConflict } from '../src/features/sharing/private-calendar/cloud-contract.ts';
 import { collectPrivateCalendarAuthorityHistory, createPrivateCalendarAuthoritySync } from '../src/features/sharing/private-calendar/authority-sync.ts';
 
@@ -134,4 +135,31 @@ test('private Calendar authority intents fail closed on corrupted SQL, owner swi
   await assert.rejects(() => f.changes.readPending(), /account changed/u); f.state.currentUser = f.userId;
   assert.equal((await f.changes.readPending()).digest, saved.digest); assert.equal((await f.secrets.identity(f.userId)).deviceId, identity.deviceId);
   const blank = privateCalendarSetupFixture(t); await assert.rejects(() => control(blank, cloud).change(add), /信頼/u); assert.equal(blank.values.size, 0);
+});
+
+test('private Calendar authority production refuses a new revision past the readable history limit while preserving an identical no-op', async () => {
+  const identity = await createDeviceIdentity(crypto); const root = await createPrivateCalendarRoot(crypto, 'bounded-history-owner', identity);
+  const body = { ...root.signed.body, revision: 4096, previousDigest: 'a'.repeat(64) };
+  const checkpoint = privateCalendarAuthorityFromProtectedCheckpoint({ signed: { body, signature: signSharedDocument(body, identity) }, signer: root.signer, keyIssuer: root.keyIssuer }, root.anchor);
+  assert.equal(advancePrivateCalendarAuthority(checkpoint, configuration(checkpoint), identity), checkpoint);
+  assert.throws(() => advancePrivateCalendarAuthority(checkpoint, { ...configuration(checkpoint), keyVersion: 2 }, identity), /履歴.*上限/u);
+  assert.throws(() => advancePrivateCalendarAuthority(checkpoint, configuration(checkpoint), identity, { purpose: 'calendarSourceChange' }), /履歴.*上限/u);
+});
+
+test('private Calendar authority delivery refuses a signed append that would make the complete verified history unreadable', { timeout: 30000 }, async () => {
+  const identity = await createDeviceIdentity(crypto); let current = await createPrivateCalendarRoot(crypto, 'bounded-byte-owner', identity);
+  const devices = [identity]; for (let i = 1; i < 16; i++) devices.push(await createDeviceIdentity(crypto));
+  const history = [current.signed]; let bytes = canonicalJson(current.signed).length; let next;
+  for (let i = 0; i < 4096; i++) {
+    next = advancePrivateCalendarAuthority(current, { mainDeviceId: devices[(i + 1) % devices.length].deviceId, devices, keyVersion: 1 }, identity);
+    const size = canonicalJson(next.signed).length; if (bytes + size > 4 * 1024 * 1024) break;
+    current = next; history.push(next.signed); bytes += size;
+  }
+  assert.ok(bytes < 4 * 1024 * 1024 && bytes + canonicalJson(next.signed).length > 4 * 1024 * 1024);
+  let commits = 0; let acknowledged = false;
+  const cloud = { authorityPage: async after => ({ head: privateCalendarCloudFields(current), authorities: history.slice(after, after + 100) }),
+    commitAuthority: async () => { commits++; current = next; history.push(next.signed); } };
+  const intents = { readPending: async () => ({ current, digest: next.digest, signed: next.signed }), markAccepted: async () => { acknowledged = true; return true; } };
+  const control = createPrivateCalendarAuthoritySync({ userId: current.anchor.ownerUserId, cloud, intents, secrets: { authority: async () => current } });
+  await assert.rejects(() => control.resume(), /履歴.*上限/u); assert.equal(commits, 0, 'must refuse before publishing an unreadable history'); assert.equal(acknowledged, false);
 });

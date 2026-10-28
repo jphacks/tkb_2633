@@ -43,6 +43,31 @@ function harness(platform, { scopes = [tasksScope, calendarScope], cold = false,
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} private Calendar consent after identity-only login adds only freebusy for the explicitly selected account`, async () => {
+    const h = harness(platform, { scopes: [] }); const account = await h.gateway.getCurrentGoogleCalendarAccount();
+    assert.equal(account.subject, 'fixture-user'); assert.deepEqual(Object.keys(account).sort(), ['label','subject']);
+    await h.gateway.authorizePrivateGoogleCalendarSource(account.subject);
+    assert.equal(h.events.filter(event => event === 'consent').length, 1); assert.equal(await h.gateway.hasGoogleTasksSession(), false);
+    assert.equal(await h.gateway.getGoogleCalendarAccessToken(account.subject), 'fixture-access-token');
+  });
+  test(`${platform} private Calendar consent rejects a substituted account or an account change during the permission response`, async () => {
+    const h = harness(platform, { scopes: [] }); await assert.rejects(() => h.gateway.authorizePrivateGoogleCalendarSource('foreign-subject'), accountBinding.GoogleAccountMismatchError);
+    assert.equal(h.events.includes('consent'), false);
+    h.sdk.requestScopes = async () => { h.changeAccount('substituted-during-consent'); h.setScopes([calendarScope]); return { accessToken: 'fixture-access-token' }; };
+    await assert.rejects(() => h.gateway.authorizePrivateGoogleCalendarSource('fixture-user'), accountBinding.GoogleAccountMismatchError);
+  });
+  test(`${platform} private Calendar permissions never open in background or replace a missing Google session`, async () => {
+    const h = harness(platform, { scopes: [], state: 'background' });
+    await assert.rejects(() => h.gateway.authorizePrivateGoogleCalendarSource('fixture-user'), availability.CalendarPermissionRequiredError); assert.deepEqual(h.events, []);
+    if (platform === 'android') { const cold = harness(platform, { cold: true }); assert.equal(await cold.gateway.getCurrentGoogleCalendarAccount(), null); assert.equal(cold.events.includes('restore'), false); }
+  });
+  test(`${platform} explicit private Google restore preserves an existing Native account and never requests Tasks or Calendar scopes`, async () => {
+    const h = harness(platform, { scopes: [] }); assert.equal((await h.gateway.restorePrivateGoogleCalendarAccount()).subject, 'fixture-user');
+    assert.equal(h.events.includes('restore'), false); assert.equal(h.events.includes('consent'), false);
+    const cold = harness(platform, { cold: true, scopes: [] }); assert.equal((await cold.gateway.restorePrivateGoogleCalendarAccount()).subject, 'fixture-user');
+    assert.equal(cold.events.filter(event => event === 'restore').length, 1); assert.equal(cold.events.includes('consent'), false);
+    const background = harness(platform, { cold: true, state: 'background' }); await assert.rejects(() => background.gateway.restorePrivateGoogleCalendarAccount(), background.gateway.GoogleSignInRequiredError); assert.deepEqual(background.events, []);
+  });
   test(`${platform} sharing identity never implicitly requests Tasks or Calendar permissions`, async () => {
     const h = harness(platform, { scopes: [] });
     h.sdk.getTokens = async () => { h.events.push('identity-token'); return { idToken: 'fixture-id-token' }; };

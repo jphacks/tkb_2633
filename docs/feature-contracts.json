@@ -3989,5 +3989,212 @@
         "name": "private Calendar actual three-device key delivery settles another approved sender without overwriting accepted ciphertext or retrying forever"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-explicit-protected-google-source-epochs-and-accepted-recovery",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-source.test.mjs",
+        "name": "private Calendar source selection is explicit and protected while switching or disabling invalidates the old opaque binding without changing keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source.test.mjs",
+        "name": "private Calendar pending source survives real SQL reconstruction and a lost server reply without rebinding to Firebase UID or advancing another revision"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source.test.mjs",
+        "name": "private Calendar conflicting source proposals remain blocked until review and preserve the previously accepted source and all device keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source.test.mjs",
+        "name": "private Calendar corrupt source profiles fail closed and cannot replace the retained subject identity or keys"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar an explicit protected source switch recovers its actual receipt and invalidates the prior server cache without publishing the Google subject"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-google-capture-bounds-account-checks-and-fixed-envelope-retries",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-capture.test.mjs",
+        "name": "private Calendar capture starts no login identity key query or publication when the explicit source is unconfigured or disabled"
+      },
+      {
+        "file": "tests/sharing-private-calendar-capture.test.mjs",
+        "name": "private Calendar capture coalesces one hundred matching operations and refuses a different range during acquisition"
+      },
+      {
+        "file": "tests/sharing-private-calendar-capture.test.mjs",
+        "name": "private Calendar capture retries the same encrypted envelope after reply loss without querying Google or allocating a new nonce"
+      },
+      {
+        "file": "tests/sharing-private-calendar-capture.test.mjs",
+        "name": "private Calendar capture rejects malformed excessive and out-of-policy data without replacing the previous complete cache"
+      },
+      {
+        "file": "tests/sharing-private-calendar-capture.test.mjs",
+        "name": "private Calendar source changes during the Native encryption await cannot save or publish a stale acquisition and the temporary key is cleared"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar actual Rules capture publishes bounded FreeBusy ciphertext and resumes a lost receipt without reacquiring Google data"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-runtime-local-only-readers-freshness-and-paired-follower-receipt",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar runtime passive settings and recommendations never create identity query Google or request consent"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar runtime coalesces manual capture and decrypts one immutable local snapshot for one hundred recommendation readers"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar runtime evaluates freshness at each check and restores ciphertext after a process restart without querying Google"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar paired follower receives the current main ciphertext without a local Google account or source association"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar invalidation while decrypting cannot return an old account snapshot and clears only its own memo"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-source-reviewed-foreground-native-controls",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-source-ui.test.mjs",
+        "name": "${platform} private Calendar source screen previews the Google identity before explicit consent and confirms stopping without revoking Tasks"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source-ui.test.mjs",
+        "name": "${platform} private Calendar source screen restores a missing Native Google session only after a separate explicit action"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source-ui.test.mjs",
+        "name": "${platform} private Calendar source screen retains an unacknowledged source switch and resumes it without repeated consent or a new revision"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source-ui.test.mjs",
+        "name": "${platform} closing private Calendar source before initialization prevents late reads and queued user actions"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source-ui.test.mjs",
+        "name": "private Calendar source route requires an authenticated UID before composing Native Google or protected services"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-native-runtime-auth-boundaries-and-existing-google-mutex",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-runtime-native.test.mjs",
+        "name": "private Calendar Native runtime is lazy one per authenticated UID and invalidates plaintext on logout without deleting retained keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime-native.test.mjs",
+        "name": "private Calendar Native acquisition serializes with the existing Google worker and rechecks Google and Firebase identities after transport"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime-native.test.mjs",
+        "name": "private Calendar Native identity checks and explicit source consent never request Tasks permission or change the Firebase session"
+      }
+    ]
+  },
+  {
+    "feature": "v2-workspace-uses-own-local-calendar-for-recommendations-and-fixed-date-review",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-private-calendar-session.test.mjs",
+        "name": "v2 screen session reads the own local Calendar once and changes only private recommendations without exporting intervals or binding"
+      },
+      {
+        "file": "tests/sharing-v2-private-calendar-session.test.mjs",
+        "name": "v2 screen session skips private Calendar entirely during management and treats private read failures as unconfirmed"
+      },
+      {
+        "file": "tests/sharing-v2-private-calendar-session.test.mjs",
+        "name": "v2 screen session rejects a different owner in any private Calendar binding before building a personal recommendation"
+      },
+      {
+        "file": "tests/sharing-v2-workspace-routes.test.mjs",
+        "name": "${platform} normal workspace date forms invoke the own local Calendar reader and keep private conflicts outside shared writes"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-authority-history-remains-readable-before-new-publication",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority production refuses a new revision past the readable history limit while preserving an identical no-op"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority delivery refuses a signed append that would make the complete verified history unreadable"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-source-physical-preview-preserves-production-and-prior-native-profiles",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-source-preview.test.mjs",
+        "name": "${platform} private source physical QA uses a separate protected profile and real runtime without Google login personal data or existing pairing changes"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source-preview.test.mjs",
+        "name": "private source preview route is absent in release and an abandoned load cannot initialize an audit profile"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-main-handover-preserves-latest-source-stop-and-receiver-authority",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar returning to a former main cannot silently restore its old source after another main changed or disabled acquisition"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime.test.mjs",
+        "name": "private Calendar adding an approved device preserves the current main source and does not manufacture an unnecessary source epoch"
+      },
+      {
+        "file": "tests/sharing-private-calendar-source.test.mjs",
+        "name": "private Calendar source epochs reject a non-main signed no-op on receipt while preserving ordinary follower no-ops"
+      },
+      {
+        "file": "tests/google-calendar-native-auth.test.mjs",
+        "name": "${platform} private Calendar consent after identity-only login adds only freebusy for the explicitly selected account"
+      },
+      {
+        "file": "tests/google-calendar-native-auth.test.mjs",
+        "name": "${platform} private Calendar consent rejects a substituted account or an account change during the permission response"
+      },
+      {
+        "file": "tests/google-calendar-native-auth.test.mjs",
+        "name": "${platform} explicit private Google restore preserves an existing Native account and never requests Tasks or Calendar scopes"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar actual Rules preserve a remote stop when a former main returns until it explicitly confirms the source again"
+      }
+    ]
   }
 ]

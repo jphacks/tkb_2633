@@ -379,3 +379,12 @@ iPhoneの初回2回はXCTestがUI自動化の準備で停止した。ユーザ�
 物理iPhoneは7.289秒、Android 10はcold起動後56.225秒で、同じ保護端末ID・設定5・鍵2・cacheを表示し、手動同期の受付を確認した。別経路・時刻なので性能比較はしない。最終iPhoneと先のAndroid成功画像を目視済み。Androidの最後の画像取得はUSB切断で未完了、ユーザーは追加検査を充電後と指定した。Androidへの追加操作は停止する。Native結果と範囲は`evidence/2026-10-28-private-device-settings.json`。
 
 Androidの未認識routeは開発clientの新しいbundleへの再接続で切り分けた。通常Google転送・OS任せの背景実行・Phase 6完了の証拠とは扱わない。3送信元の不変な配布競合は実RulesとSQLで別検査し、改ざん拒否を維持する。
+
+
+### Phase 4as：通常と同じ取得元画面・本人判定とcold復元
+
+別の固定合成UID `development-calendar-native-source-ios-v1`／`development-calendar-native-source-android-v1` を使用し、旧pairing／root／store QAを保持した。Google APIへは接続せず、合成providerを通常のruntimeへ注入する。通常と同じ画面で初回設定、Googleアカウントの確認、明示接続、実Native暗号・保護保存・実Rules送信、保存データの重複あり／なしの両判定を確認した。最終取得はiPhone34.337秒・Android91.843秒で、スクロールとローカルEmulator通信を含み性能比較ではない。
+
+実際のLiFlowプロセスを終了し、再接続した開発bundleから保存済みの合成データを読み、取得0回で重複判定を確認した。iPhone7.750秒・Android30.517秒。成功画像は4枚を目視した。初期の識別子・無効状態の先行tap・古いbundle／開発client起動の失敗ログも保持する。API成功やOS任せの長時間backgroundの成功へ拡大しない。
+
+充電後のAndroidから、4arで未回収だった最終画像も回収し、設定5・鍵2・同じ端末ID・手動同期完了を目視できた。今回の合成取得元検査と履歴・既存データの境界は `evidence/2026-10-28-private-calendar-source.json` に保存した。

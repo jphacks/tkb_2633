@@ -23,18 +23,30 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
     current.current = { active, userId: context.userId, database: personalDatabase };
     return () => { current.current = null; };
   }, [active, context.userId, personalDatabase]);
-  const subscribe = useCallback((changed: () => void) => subscribeSharingChanges((scope) => {
-    if (active && scope?.userId === active.userId && scope.groupId === active.groupId) changed();
-  }), [active]);
+  const assertWorkspaceAccess = useCallback(async () => {
+    const matches = () => active && current.current?.active === active && current.current.userId === active.userId && current.current.database === personalDatabase;
+    if (!matches()) throw new Error('個人家事を操作するアカウント・グループが変わりました。');
+    await active!.record();
+    if (!matches()) throw new Error('個人家事を操作するアカウント・グループが変わりました。');
+  }, [active, personalDatabase]);
+  const openCalendar = useCallback(async () => {
+    await assertWorkspaceAccess();
+    const { openPrivateCalendarRuntime } = await import('../../../platform/sharing/private-calendar-runtime');
+    await assertWorkspaceAccess(); const calendar = openPrivateCalendarRuntime(active!.userId); await assertWorkspaceAccess(); return calendar;
+  }, [active, assertWorkspaceAccess]);
+  const subscribe = useCallback((changed: () => void) => {
+    let stopped = false; let stopCalendar: (() => void) | undefined;
+    const matches = () => !stopped && active && current.current?.active === active && current.current.userId === active.userId;
+    const stopSharing = subscribeSharingChanges((scope) => {
+      if (matches() && scope?.userId === active!.userId && scope.groupId === active!.groupId) changed();
+    });
+    void openCalendar().then(calendar => { if (matches()) stopCalendar = calendar.subscribe(() => { if (matches()) changed(); }); }).catch(() => {});
+    return () => { stopped = true; stopSharing(); stopCalendar?.(); };
+  }, [active, openCalendar]);
   const loadSession = useCallback(async () => {
     if (!active || context.userId !== active.userId) throw new Error('共有グループを選択してください。');
     await active.record();
-    const assertPersonalAccess = async () => {
-      const matches = () => current.current?.active === active && current.current.userId === active.userId && current.current.database === personalDatabase;
-      if (!matches()) throw new Error('個人家事を操作するアカウント・グループが変わりました。');
-      await active.record();
-      if (!matches()) throw new Error('個人家事を操作するアカウント・グループが変わりました。');
-    };
+    const assertPersonalAccess = assertWorkspaceAccess;
     const privateTasks = createV2PrivateTaskSource({ ownerUserId: active.userId, assertAccess: assertPersonalAccess,
       readSnapshot: async (instant) => ({ ...await readPersonalPlannerOverlaySnapshot(personalDatabase, instant), ownerUserId: active.userId }),
       save: (command, guard) => setPersonalDateTaskCompleted(personalDatabase, command, guard),
@@ -45,6 +57,10 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
       } });
     return createV2ScreenSession({ groupId: active.groupId, userId: active.userId, now: () => new Date(),
       privateTasks,
+      calendar: {
+        readForPlan: async () => { const calendar = await openCalendar(); const value = await calendar.readForPlan(); await assertWorkspaceAccess(); return value; },
+        readOwnCalendar: async target => { const calendar = await openCalendar(); const value = await calendar.readOwnCalendar(target); await assertWorkspaceAccess(); return value; },
+      },
       controller: { ...active.session.controller, sync: () => active.sync({ force: true }) },
       readPreferences: async () => {
         await active.record(); const settings = personalSnapshot?.settings;
@@ -54,7 +70,7 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
         return { ownerUserId: active.userId, settings: { frequencyMode: settings.frequencyMode, restDays,
           loadLimits: { heavyDailyLimit: settings.heavyDailyLimit, normalDailyLimit: settings.normalDailyLimit } } };
       } });
-  }, [active, context.userId, personalDatabase, refreshPersonal, personalSnapshot]);
+  }, [active, context.userId, personalDatabase, refreshPersonal, personalSnapshot, assertWorkspaceAccess, openCalendar]);
   if (!context.ready || !active || active.userId !== context.userId) return <Page><Card><Text style={typography.body}>共有グループを選択してください。</Text>
     <AppButton title="共有グループへ" onPress={() => router.replace('/sharing')} /></Card></Page>;
   const text = (value: unknown) => typeof value === 'string' ? value : undefined;

@@ -13,9 +13,10 @@ function parsePublicText(text: string): unknown {
 }
 
 /** Shared by the authenticated route and isolated physical QA. Opening this screen only reads local public state. */
-export function PrivateCalendarDeviceScreen({ loadSession, onBack, onShare }: {
+export function PrivateCalendarDeviceScreen({ loadSession, onBack, onShare, onCalendar }: {
   loadSession: () => Promise<PrivateCalendarDeviceSession>; onBack(): void;
   onShare(value: PrivateCalendarPairingReference | PrivateCalendarPairingRequest): Promise<void>;
+  onCalendar?: () => void;
 }) {
   const [view, setView] = useState<PrivateCalendarDeviceView | null>(null); const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState<string | null>(null); const [text, setText] = useState(''); const [review, setReview] = useState<Review | null>(null);
@@ -74,6 +75,7 @@ export function PrivateCalendarDeviceScreen({ loadSession, onBack, onShare }: {
       {view.keyVersion ? <Text style={styles.caption} testID="private-device-revision">設定 {view.revision} · 鍵 {view.keyVersion}</Text> : null}
       {view.pendingKeys > 0 ? <Text style={styles.notice}>端末に保存済み · 他の端末への鍵の配布 {view.pendingKeys}件が送信待ちです。</Text> : null}
       {view.cache ? <Text style={styles.caption}>{view.cache.authorityCurrent ? '現在の端末設定に対応する時間帯を保存済み' : '端末設定が変わったため、時間帯の更新が必要です。'}{view.cache.pending ? ' · 送信待ち' : ''}</Text> : null}
+      {approved && onCalendar ? <AppButton title="Google Calendarの取得元・時間帯の同期" variant="secondary" disabled={busy} onPress={onCalendar} /> : null}
       <AppButton title="端末設定を同期" variant="secondary" disabled={busy} onPress={() => run(active => active.synchronizeDevices(), true)} />
       {syncFeedback ? <Text testID="private-device-sync-complete" accessibilityLiveRegion="polite" style={styles.caption}>{syncFeedback}</Text> : null}
     </Card> : null}

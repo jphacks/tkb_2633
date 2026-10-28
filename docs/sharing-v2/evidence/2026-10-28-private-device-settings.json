@@ -33,8 +33,9 @@
       "deviceId": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
       "authorityRevision": 5,
       "keyVersion": 2,
-      "finalScreenshotCollectionPending": true,
-      "reason": "USB disconnected after the user deferred further Android testing until charging; earlier successful UI image was inspected."
+      "finalScreenshotCollectionPending": false,
+      "reason": "USB disconnected after the user deferred further Android testing until charging; earlier successful UI image was inspected.",
+      "collectionResolution": "After charging and reconnection on 2026-10-28, recovered the original final screenshot and visually verified revision 5 / key 2. The historical disconnect remains recorded."
     }
   },
   "images": [
@@ -46,6 +47,11 @@
     {
       "path": "/tmp/liflow-v2-20261027/phase4ar-android-device-screen-passed.png",
       "sha256": "ac0090b5ef4e9d9ebd42d21e6e4160cfefe07770bc21adba3fff21fc69643742",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ar-android-final-recovered-after-charge.png",
+      "sha256": "620fe32c1471a5013f25e088390e8b7c8d62fe08f0c867930eafd549d1d55e86",
       "visuallyInspected": true
     }
   ],

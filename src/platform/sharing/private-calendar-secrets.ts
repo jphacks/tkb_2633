@@ -7,6 +7,7 @@ import { createPrivateCalendarRootSetupStorage } from '../storage/private-calend
 import { createPrivateCalendarAuthorityIntentStorage } from '../storage/private-calendar-authority-intents.ts';
 import { createPrivateCalendarKeyOutbox } from '../storage/private-calendar-key-outbox.ts';
 import { createPrivateCalendarPairingStorage } from '../storage/private-calendar-pairing.ts';
+import { createPrivateCalendarSourceStorage } from '../storage/private-calendar-source.ts';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getSharingServices } from './firebase-services.ts';
 import { openPrivateCalendarDatabase } from './database-location';
@@ -60,7 +61,8 @@ function nativeStore(development: boolean) {
   function pairing(userId: string) {
     return createPrivateCalendarPairingStorage({ ...protectedPort(userId), crypto: nativePrivateCalendarCrypto, vault });
   }
-  return { secrets, cache, rootSetup, authorityIntents, keyOutbox, pairing };
+  function source(userId: string) { return createPrivateCalendarSourceStorage({ ...protectedPort(userId), vault }); }
+  return { secrets, cache, rootSetup, authorityIntents, keyOutbox, pairing, source };
 }
 
 /** Importing this module does not initialize Firebase or open any user's database. */
@@ -71,6 +73,7 @@ export const nativePrivateCalendarRootSetup = native.rootSetup;
 export const nativePrivateCalendarAuthorityIntents = native.authorityIntents;
 export const nativePrivateCalendarKeyOutbox = native.keyOutbox;
 export const nativePrivateCalendarPairing = native.pairing;
+export const nativePrivateCalendarSource = native.source;
 let qaStore: ReturnType<typeof nativeStore> | undefined;
 export function developmentPrivateCalendarSecrets() {
   if (!__DEV__) throw new Error('検査用の鍵保存は開発ビルドだけで使用できます。');
@@ -95,4 +98,8 @@ export function developmentPrivateCalendarKeyOutbox(userId: string) {
 export function developmentPrivateCalendarPairing(userId: string) {
   if (!__DEV__) throw new Error('検査用の本人端末の承認は開発ビルドだけで使用できます。');
   return (qaStore ??= nativeStore(true)).pairing(userId);
+}
+export function developmentPrivateCalendarSource(userId: string) {
+  if (!__DEV__) throw new Error('検査用のCalendar取得元は開発ビルドだけで使用できます。');
+  return (qaStore ??= nativeStore(true)).source(userId);
 }

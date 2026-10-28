@@ -20,6 +20,11 @@ import { createPrivateCalendarKeyDelivery } from '../src/features/sharing/privat
 import { createPrivateCalendarPairingController } from '../src/features/sharing/private-calendar/pairing-controller.ts';
 import { privateCalendarPairingReference } from '../src/features/sharing/private-calendar/pairing.ts';
 import { createPrivateCalendarDeviceSession } from '../src/features/sharing/private-calendar/device-session.ts';
+import { createPrivateCalendarSourceController, privateCalendarSourceBinding } from '../src/features/sharing/private-calendar/source-controller.ts';
+import { createPrivateCalendarSourceStorage } from '../src/platform/storage/private-calendar-source.ts';
+import { privateCalendarRuntimeFixture } from './helpers/private-calendar-runtime.mjs';
+const { createPrivateCalendarCapture } = await import('../src/features/sharing/private-calendar/calendar-capture.ts');
+const { createCalendarQueryRange } = await import('../src/features/google-sync/calendar-availability.ts');
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Use the local Firestore emulator only.');
 let env;
@@ -473,4 +478,61 @@ test('private Calendar actual three-device key delivery settles another approved
     await b.synchronizeDevices(); assert.equal(devices[1].state.generations, allocations);
     assert.deepEqual(devices[1].connection.prepare('SELECT envelope_json FROM private_calendar_key_outbox ORDER BY recipient_id').all(), before);
   } finally { key.fill(0); }
+});
+
+test('private Calendar an explicit protected source switch recovers its actual receipt and invalidates the prior server cache without publishing the Google subject', async t => {
+  const f = privateCalendarSetupFixture(t, { userId }); const left = client(userId); await f.controller(left.cloud).prepareAndResume();
+  const root = await f.secrets.authority(userId); const identity = await f.secrets.identity(userId); const key = await f.secrets.currentKey(userId, root);
+  try {
+    const binding = privateCalendarSourceBinding(root); const cache = { ownerUserId: userId, accountGeneration: root.anchor.accountGeneration, mainDeviceId: identity.deviceId, mainRevision: 1,
+      calendarBinding: binding, timeZone: 'Asia/Tokyo', fetchedAt: '2026-10-28T00:00:00.000Z', coverage: { start: '2026-10-28T00:00:00.000Z', end: '2026-10-29T00:00:00.000Z' }, intervals: [] };
+    const encrypted = await sealPrivateCalendarCache(crypto, { authority: root, accountKey: key, mainDevice: identity, calendarBinding: binding, cache, sequence: 1 }); await left.cloud.uploadCache(root, encrypted);
+    let lost = true; const cloud = { ...left.cloud, async commitAuthority(...args) { const accepted = await left.cloud.commitAuthority(...args); if (lost) { lost = false; throw new Error('source acceptance reply interrupted'); } return accepted; } };
+    const source = createPrivateCalendarSourceStorage({ ownerUserId: userId, assertOwner: uid => assert.equal(f.state.currentUser,uid), readProtected: f.readProtected, exclusive: f.exclusive, vault: f.vault });
+    const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud });
+    const controller = createPrivateCalendarSourceController({ userId, secrets: f.secrets, intents: f.changes, source, authoritySync });
+    const subject = 'google-subject-is-not-a-firebase-uid'; await assert.rejects(() => controller.change({ googleSubject: subject }, root.digest), /interrupted/u);
+    assert.equal((await source.read()).active, null); assert.ok((await source.read()).pending); assert.equal((await controller.resume()).kind,'ready');
+    const selected = await f.secrets.authority(userId); assert.equal(selected.signed.body.revision,2); assert.equal(selected.signed.body.keyVersion,1);
+    assert.equal(await left.cloud.readCache(selected),null); assert.equal((await source.read()).active.googleSubject,subject);
+    assert.equal(JSON.stringify(await left.cloud.readHead()).includes(subject),false); assert.equal(JSON.stringify((await left.cloud.authorityPage(0)).authorities).includes(subject),false);
+    await controller.change({ googleSubject:null },selected.digest); const disabled = await f.secrets.authority(userId); assert.equal(disabled.signed.body.revision,3); assert.equal((await source.read()).active.googleSubject,null);
+    const retained = await f.secrets.currentKey(userId,disabled); assert.deepEqual(retained,key); retained.fill(0);
+  } finally { key.fill(0); }
+});
+
+test('private Calendar actual Rules capture publishes bounded FreeBusy ciphertext and resumes a lost receipt without reacquiring Google data', async t => {
+  const f = privateCalendarSetupFixture(t, { userId }); const left = client(userId); const outsider = client('other-calendar-user'); await f.controller(left.cloud).prepareAndResume();
+  const source = createPrivateCalendarSourceStorage({ ownerUserId: userId, assertOwner: uid => assert.equal(f.state.currentUser, uid), readProtected: f.readProtected, exclusive: f.exclusive, vault: f.vault });
+  const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud: left.cloud });
+  const sourceController = createPrivateCalendarSourceController({ userId, secrets: f.secrets, source, intents: f.changes, authoritySync }); const subject = 'explicit-private-google-subject';
+  await sourceController.change({ googleSubject: subject }, (await f.secrets.authority(userId)).digest);
+  let queries = 0; let lost = true; const packets = [];
+  const cloud = { ...left.cloud, async uploadCache(...args) { packets.push(JSON.stringify(args[1])); const result = await left.cloud.uploadCache(...args);
+    if (lost) { lost = false; throw Object.assign(new Error('accepted snapshot reply lost'), { code: 'unavailable' }); } return result; } };
+  const range = createCalendarQueryRange('2026-10-28', '2027-04-26', 'Asia/Tokyo'); const raw = [{ start: '2026-10-28T00:00:00.000Z', end: '2026-10-28T01:00:00.000Z' }];
+  const port = { userId, secrets: f.secrets, source, cache: f.cache, cloud, crypto, assertOwner: () => assert.equal(f.state.currentUser, userId), now: () => Date.parse('2026-10-28T00:00:00.000Z'),
+    queryGoogle: async (expected, query) => { assert.equal(expected, subject); assert.deepEqual(query, range); queries++; return raw; } };
+  await assert.rejects(() => createPrivateCalendarCapture(port).capture({ range }), /snapshot reply lost/u); const generations = f.state.generations;
+  const authority = await f.secrets.authority(userId); assert.equal((await f.cache.status(authority)).pending, true);
+  assert.deepEqual(await createPrivateCalendarCapture(port).capture({ range, force: true }), { kind: 'published', sequence: 1 });
+  assert.equal(queries, 1); assert.equal(f.state.generations, generations); assert.equal(packets[0], packets[1]);
+  const fetched = await left.cloud.readCache(authority); const key = await f.secrets.currentKey(userId, authority);
+  try { const body = await openPrivateCalendarCache(crypto, fetched, { authority, accountKey: key, calendarBinding: privateCalendarSourceBinding(authority) }); assert.deepEqual(body.intervals, raw); }
+  finally { key.fill(0); }
+  assert.equal(JSON.stringify(await left.cloud.readHead()).includes(subject), false); assert.equal(packets[0].includes(raw[0].start), false);
+  await assert.rejects(getDocFromServer(doc(outsider.firestore, 'privateCalendars', userId)), { code: 'permission-denied' });
+});
+
+test('private Calendar actual Rules preserve a remote stop when a former main returns until it explicitly confirms the source again', async t => {
+  const owner = 'private-runtime-owner'; const a = privateCalendarRuntimeFixture(t, { cloud: client(owner).cloud }); const b = privateCalendarRuntimeFixture(t, { cloud: client(owner).cloud });
+  const initial = await a.devices.initializeFirstDevice(); const request = await b.devices.prepareConfirmedReference(initial.reference);
+  await a.devices.approveConfirmedRequest(request.request); await b.devices.acceptApproval(); const left = a.open(); const right = b.open();
+  await a.connect(left); await left.refreshData(); await a.devices.changeMain(request.deviceId, (await a.devices.read()).authorityDigest);
+  await b.devices.synchronizeDevices(); await b.connect(right); await right.disableSource((await right.readSettings()).device.authorityDigest);
+  await b.devices.changeMain(initial.deviceId, (await b.devices.read()).authorityDigest); const count = a.state.googleReads;
+  assert.deepEqual(await left.refreshData(), { kind: 'sourceReview' }); assert.equal(a.state.googleReads, count); assert.equal(await left.readForPlan(), null);
+  const expected = (await left.readSettings()).device.authorityDigest; await left.connectCurrentSource(a.googleSubject, expected);
+  assert.notEqual((await left.readSettings()).device.authorityDigest, expected); assert.equal((await left.refreshData()).kind, 'published');
+  assert.equal(a.state.googleReads, count + 1); assert.equal(JSON.stringify(await a.cloud.readHead()).includes(a.googleSubject), false);
 });

@@ -58,6 +58,7 @@ export default function SharingScreen() {
       {appleAvailable ? <AppButton title="Appleで続ける" variant="secondary" disabled={busy} onPress={() => void run(async () => { await signInSharingWithApple(); })} /> : null}
     </Card> : <>
       <AppButton title="本人用カレンダーの端末を管理" variant="secondary" disabled={busy} onPress={() => router.push('/sharing/private-calendar')} />
+      <AppButton title="本人の休日・実施可能時間帯" variant="secondary" disabled={busy} onPress={() => router.push('/sharing/personal-preferences')} />
       <SectionHeading title="参加しているグループ" />
       {context.groups.filter((group) => !['left', 'removed'].includes(group.status)).map((group) => <Card key={group.groupId}>
         <Text style={styles.label}>{group.displayName}</Text>

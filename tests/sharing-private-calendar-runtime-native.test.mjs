@@ -12,6 +12,7 @@ function fixture() {
   const auth = { get currentUser() { return state.uid ? { uid: state.uid } : null; } }; const firestore = { name: 'named-authenticated-Firestore' };
   const services = { auth, firestore }; const native = { nativePrivateCalendarSecrets: { name: 'protected-secrets' } };
   for (const name of ['Source', 'AuthorityIntents', 'Cache']) native['nativePrivateCalendar' + name] = owner => ({ owner, kind: name });
+  native.nativePrivatePlannerPreferences = owner => ({ owner, kind: 'PlannerPreferences', read: async () => null });
   const gateway = {
     getCurrentGoogleCalendarAccount: async () => ({ subject: state.subject, label: 'Synthetic label' }),
     restorePrivateGoogleCalendarAccount: async () => { state.restores++; return { subject: state.subject, label: 'Synthetic label' }; },

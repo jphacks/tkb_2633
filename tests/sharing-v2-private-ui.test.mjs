@@ -82,6 +82,9 @@ for (const platform of ['ios', 'android']) {
           refresh: async () => { privateData.snapshot = (await repository.readPersonalPlannerOverlaySnapshot(f.personal.database)).snapshot; } };
         const screen = screenHarness('src/app/group-v2/index.tsx', { platform, focusEffect: (fn) => { focus = fn; }, layoutEffect: (commit) => { commit(); }, mocks: {
           '../../../hooks/use-workspace': { useWorkspace: () => context }, '../../../hooks/use-planner-data': { usePlannerData: () => privateData },
+          '../../../platform/sharing/private-calendar-runtime': { openPrivateCalendarRuntime: () => ({
+            readPlannerPreferences: async () => null, readForPlan: async () => null, subscribe: () => () => {},
+          }) },
           '@/platform/sharing/workspaces': { subscribeSharingChanges: () => () => {}, sharingFailureMessage: () => '同期を確認してください。' },
           '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: (database) => googleDatabases.push(database) } } });
         const leave = focus(); await ready(screen, f.personal.chore.name); const old = checkbox(screen, f.personal.chore.name);

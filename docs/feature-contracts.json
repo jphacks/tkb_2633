@@ -4425,5 +4425,78 @@
         "name": "private Calendar Native acquisition refuses an already cancelled operation before retrieving any Google token"
       }
     ]
+  },
+  {
+    "feature": "private-planner-explicit-hours-and-exact-timezone-boundaries",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-preferences.test.mjs",
+        "name": "private planner empty allowed times never imply all-day or guessed evening permission"
+      },
+      {
+        "file": "tests/sharing-private-planner-preferences.test.mjs",
+        "name": "private planner DST gap and fold boundaries require review instead of expanding or choosing a repeated time"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-protected-profile-cas-and-restart",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-preferences.test.mjs",
+        "name": "private planner 100 duplicate saves share one protected revision and notification without changing Calendar keys"
+      },
+      {
+        "file": "tests/sharing-private-planner-preferences.test.mjs",
+        "name": "private planner settings survive actual SQLite reconstruction and protected-vault reconstruction without being written as plaintext SQL"
+      },
+      {
+        "file": "tests/sharing-private-planner-preferences.test.mjs",
+        "name": "private planner conflicting edits from separate stores preserve the accepted settings and require explicit reread"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-autosave-does-not-lose-incomplete-input",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-editor.test.mjs",
+        "name": "private preference editor retains incomplete latest input when an earlier valid save completes"
+      },
+      {
+        "file": "tests/sharing-private-planner-ui.test.mjs",
+        "name": "${platform} private preference UI blocks hardware and visible back for incomplete input until explicit discard"
+      }
+    ]
+  },
+  {
+    "feature": "private-relocation-rejects-invalid-ranges-and-authority-flags",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-relocation-validation.test.mjs",
+        "name": "private relocation rejects reversed zero-length nonfinite and out-of-range original intervals rather than returning an invalid move"
+      },
+      {
+        "file": "tests/sharing-v2-personal-relocation-validation.test.mjs",
+        "name": "private relocation rejects unknown group kinds and string-valued authority flags before automatic movement"
+      }
+    ]
+  },
+  {
+    "feature": "private-planner-owner-bands-preserve-original-chore-region",
+    "tests": [
+      {
+        "file": "tests/sharing-private-planner-relocation.test.mjs",
+        "name": "private saved time bands authorize only their own owner and preserve fixed completed and unconfigured chores"
+      },
+      {
+        "file": "tests/sharing-private-planner-relocation.test.mjs",
+        "name": "private saved bands use their own region without moving the original chore window to that region"
+      },
+      {
+        "file": "tests/sharing-private-planner-relocation.test.mjs",
+        "name": "private saved bands keep unknown Calendar and ambiguous DST time boundaries out of automatic proposals"
+      }
+    ]
   }
 ]

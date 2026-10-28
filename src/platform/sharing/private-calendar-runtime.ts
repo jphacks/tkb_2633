@@ -4,7 +4,7 @@ import { getSharingServices } from './firebase-services';
 import { openPrivateCalendarDevices } from './private-calendar-devices';
 import { createPrivateCalendarCloud } from './private-calendar-cloud';
 import { nativePrivateCalendarCrypto } from './native-private-calendar-crypto';
-import { nativePrivateCalendarSecrets, nativePrivateCalendarSource, nativePrivateCalendarAuthorityIntents, nativePrivateCalendarCache } from './private-calendar-secrets';
+import { nativePrivateCalendarSecrets, nativePrivateCalendarSource, nativePrivateCalendarAuthorityIntents, nativePrivateCalendarCache, nativePrivatePlannerPreferences } from './private-calendar-secrets';
 import { createPrivateCalendarAuthoritySync } from '../../features/sharing/private-calendar/authority-sync';
 import { createPrivateCalendarSourceController } from '../../features/sharing/private-calendar/source-controller';
 import { createPrivateCalendarRuntime } from '../../features/sharing/private-calendar/runtime';
@@ -32,6 +32,7 @@ export function openPrivateCalendarRuntime(userId: string): PrivateCalendarRunti
   const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets, intents, cloud });
   const client = createCalendarFreeBusyClient();
   const runtime = createPrivateCalendarRuntime({ userId, assertOwner, secrets, source, cloud, devices: openPrivateCalendarDevices(userId),
+    plannerPreferences: nativePrivatePlannerPreferences(userId),
     cache: nativePrivateCalendarCache(userId), crypto: nativePrivateCalendarCrypto, sourceController: createPrivateCalendarSourceController({ userId, secrets, source, intents, authoritySync }),
     timeZone: getDeviceTimeZone,
     currentGoogleAccount: () => withGoogleSyncOperation(async () => { assertOwner(); const account = await getCurrentGoogleCalendarAccount(); assertOwner(); return account; }),

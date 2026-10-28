@@ -7,6 +7,7 @@ import { screenHarness } from './helpers/screen-harness.mjs';
 import { createV2DevelopmentPreview } from '../src/features/sharing/development/v2-preview-session.ts';
 import { listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
 import { addDays } from '../src/domain/scheduling/local-date.ts';
+import { createV2ScreenSession } from '../src/features/sharing/v2-ui/screen-session.ts';
 
 async function fixture() {
   const h = createDatabase(); let id = 0; let syncs = 0;
@@ -17,16 +18,18 @@ async function fixture() {
   const active = { protocol: 2, groupId: preview.groupId, userId: preview.userId, identity: { deviceId: 'native-device' }, record: async () => ({ status: 'active' }),
     session: { controller: preview.controller }, sync: async () => { syncs++; } };
   const context = { ready: true, active, userId: preview.userId, groups: [{ groupId: preview.groupId, displayName: '選択した家族' }] };
-  return { ...h, preview, context, callbacks: new Set(), calendarCallbacks: new Set(), calendarReads: 0, calendarChecks: [], synced: () => syncs };
+  return { ...h, preview, context, callbacks: new Set(), calendarCallbacks: new Set(), calendarReads: 0, calendarChecks: [], sessionInputs: [], synced: () => syncs };
 }
 async function route(f, platform, file, params = {}, readyText = '送信待ち') {
   let focus; const navigation = [];
   const screen = screenHarness(`src/app/group-v2/${file}.tsx`, { platform, params, focusEffect: (callback) => { focus = callback; }, navigate: (...args) => navigation.push(args),
     mocks: { '../../../hooks/use-workspace': { useWorkspace: () => f.context },
+      './screen-session': { createV2ScreenSession: input => { f.sessionInputs.push(input); return createV2ScreenSession(input); } },
       '@/platform/sharing/workspaces': { sharingFailureMessage: () => '同期を確認してください。', subscribeSharingChanges: (callback) => { f.callbacks?.add(callback); return () => f.callbacks?.delete(callback); } },
       '../../../platform/sharing/private-calendar-runtime': { openPrivateCalendarRuntime: userId => { assert.equal(userId, f.context.userId); return {
         subscribe: callback => { f.calendarCallbacks.add(callback); return () => f.calendarCallbacks.delete(callback); },
         readForPlan: async () => { f.calendarReads++; return f.calendar ?? null; },
+        readPlannerPreferences: async () => f.preferences ?? null,
         readOwnCalendar: async target => { f.calendarChecks.push(structuredClone(target)); return { kind: 'conflict' }; },
       }; } },
       '../../../hooks/use-planner-data': { usePlannerData: () => ({ snapshot: { settings: { frequencyMode: 'balanced', restDays: [], heavyDailyLimit: 2, normalDailyLimit: 3 } } }) } } });
@@ -34,6 +37,19 @@ async function route(f, platform, file, params = {}, readyText = '送信待ち')
   assert.ok(screen.text().includes(readyText), screen.text()); return { screen, leave, navigation };
 }
 for (const platform of ['ios', 'android']) {
+  test(`${platform} normal v2 routes use only the authenticated private preference limits and preserve shared outbox and plan`, async () => {
+    const f = await fixture();
+    try {
+      const before = await f.preview.readModel(); const outbox = await listSharingOutbox(f.database, f.context.active.groupId);
+      f.preferences = { ownerUserId: f.context.userId, restDays: [1], loadLimits: { heavyDailyLimit: 1, normalDailyLimit: 7 } };
+      const ui = await route(f, platform, 'index', {}, '送信待ち');
+      const own = await f.sessionInputs.at(-1).readPreferences(); assert.deepEqual(own.settings.restDays, [1]); assert.deepEqual(own.settings.loadLimits, f.preferences.loadLimits);
+      assert.equal((await f.preview.readModel()).plan.planHash, before.plan.planHash); assert.deepEqual(await listSharingOutbox(f.database, f.context.active.groupId), outbox); ui.leave?.();
+      f.preferences = { ...f.preferences, ownerUserId: 'foreign-owner' };
+      const denied = await route(f, platform, 'index', {}, '本人の予定設定を確認してください。');
+      assert.equal(denied.screen.text().includes('フローリングを掃除する'), false); assert.deepEqual(await listSharingOutbox(f.database, f.context.active.groupId), outbox); denied.leave?.();
+    } finally { f.connection.close(); }
+  });
   test(`${platform} selected v2 workspace routes reuse authenticated forms and preserve historical round parameters`, async () => {
     const f = await fixture();
     try {

@@ -12,6 +12,7 @@ import * as authorityIntentStorage from '../src/platform/storage/private-calenda
 import * as keyOutboxStorage from '../src/platform/storage/private-calendar-key-outbox.ts';
 import * as pairingStorage from '../src/platform/storage/private-calendar-pairing.ts';
 import * as sourceStorage from '../src/platform/storage/private-calendar-source.ts';
+import * as preferenceStorage from '../src/features/sharing/private-planner/preference-store.ts';
 import { privateCalendarDatabaseFilename } from '../src/features/sharing/private-calendar/database-name.ts';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { createHash } from 'node:crypto';
@@ -44,6 +45,7 @@ function fixture(values = new Map([['jp.jphacks.tkb2633.sharing:original', 'pres
     '../storage/private-calendar-key-outbox.ts': keyOutboxStorage,
     '../storage/private-calendar-pairing.ts': pairingStorage,
     '../storage/private-calendar-source.ts': sourceStorage,
+    '../../features/sharing/private-planner/preference-store.ts': preferenceStorage,
     './firebase-services.ts': { getSharingServices: () => { authReads++; return { auth: { currentUser } }; } },
     './native-private-calendar-crypto': { nativePrivateCalendarCrypto: crypto },
     './database-location': { openPrivateCalendarDatabase: async (ownerUserId, development) => {
@@ -53,6 +55,20 @@ function fixture(values = new Map([['jp.jphacks.tkb2633.sharing:original', 'pres
   });
   return { module, values, calls, opens, authReads: () => authReads, auth: uid => { currentUser = uid ? { uid } : null; }, close: () => databases.forEach(h => h.connection.close()) };
 }
+
+test('private planner Native preferences reuse protected owner storage without creating Calendar keys or writing group data', async t => {
+  const f = fixture(); t.after(f.close); assert.equal(f.authReads(), 0); assert.equal(f.opens.length, 0);
+  assert.throws(() => f.module.nativePrivatePlannerPreferences('private-owner'), /アカウント/u);
+  f.auth('private-owner'); const own = f.module.nativePrivatePlannerPreferences('private-owner'); assert.equal(await own.read(), null);
+  assert.equal(await f.module.nativePrivateCalendarSecrets.publicState('private-owner'), null);
+  const saved = await own.save(0, { timeZone: 'Asia/Tokyo', restDays: [2], loadLimits: { heavyDailyLimit: 1, normalDailyLimit: 2 }, allowedBands: [] });
+  assert.deepEqual(await own.read(), saved); assert.equal(f.opens.length, 1);
+  assert.ok(f.calls.every(call => call.options.keychainService === 'jp.jphacks.tkb2633.private-calendar'));
+  assert.equal(f.values.get('jp.jphacks.tkb2633.sharing:original'), 'preserved');
+  f.auth('another'); await assert.rejects(() => own.read(), /アカウント/u);
+  await assert.rejects(() => own.save(1, { timeZone: 'UTC', restDays: [], loadLimits: { heavyDailyLimit: 1, normalDailyLimit: 2 }, allowedBands: [] }), /アカウント/u);
+  assert.equal(f.opens.length, 1);
+});
 
 test('private Calendar Native secret adapter stays lazy, uses its own Keychain service and only opens the authenticated owner database', async t => {
   const f = fixture(); t.after(f.close); assert.equal(f.authReads(), 0); assert.equal(f.calls.length, 0); assert.equal(f.opens.length, 0);

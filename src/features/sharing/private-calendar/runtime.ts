@@ -13,6 +13,7 @@ import { assertPrivateCalendarCloudAuthority } from './cloud-contract.ts';
 import { assertPrivateCalendarDeadline, privateCalendarDeadline, privateCalendarDeadlineError, withinPrivateCalendarDeadline,
   PRIVATE_CALENDAR_AUTOMATIC_BUDGET_MS, PRIVATE_CALENDAR_MANUAL_BUDGET_MS } from './sync-deadline.ts';
 import { observePrivateCalendarForeground } from './foreground-observer.ts';
+import type { PrivatePlannerPreferenceStore } from '../private-planner/preference-store.ts';
 
 export interface PrivateCalendarRuntimePort extends PrivateCalendarCapturePort {
   devices: PrivateCalendarDeviceSession; sourceController: ReturnType<typeof createPrivateCalendarSourceController>;
@@ -22,6 +23,7 @@ export interface PrivateCalendarRuntimePort extends PrivateCalendarCapturePort {
   currentGoogleAccount(): Promise<{ subject: string; label: string } | null>;
   restoreGoogleAccount?: () => Promise<{ subject: string; label: string }>;
   authorizeGoogleSource(expectedSubject: string): Promise<void>;
+  plannerPreferences?: Pick<PrivatePlannerPreferenceStore, 'read'>;
 }
 export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
   const { userId, devices, secrets, source, cache, cloud, sourceController, now = Date.now } = port;
@@ -139,6 +141,10 @@ export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
     } finally { key?.fill(0); }
   }
   return { readSettings, readForPlan, refreshData, synchronizeAutomatically,
+    async readPlannerPreferences() {
+      await port.assertOwner(); const value = await port.plannerPreferences?.read() ?? null; await port.assertOwner();
+      if (value && value.ownerUserId !== userId) throw new Error('本人の予定設定を確認してください。'); return value;
+    },
     invalidatePlaintext() { refresh?.cancel(); invalidate(); }, subscribe,
     observeRemote(onReady?: () => void | Promise<void>) {
       return observePrivateCalendarForeground({ assertOwner: port.assertOwner, subscribeLocal: subscribe, subscribeConfiguration: devices.subscribe, now,

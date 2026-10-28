@@ -8,6 +8,7 @@ import { createPrivateCalendarAuthorityIntentStorage } from '../storage/private-
 import { createPrivateCalendarKeyOutbox } from '../storage/private-calendar-key-outbox.ts';
 import { createPrivateCalendarPairingStorage } from '../storage/private-calendar-pairing.ts';
 import { createPrivateCalendarSourceStorage } from '../storage/private-calendar-source.ts';
+import { createPrivatePlannerPreferenceStore } from '../../features/sharing/private-planner/preference-store.ts';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getSharingServices } from './firebase-services.ts';
 import { openPrivateCalendarDatabase } from './database-location';
@@ -62,7 +63,12 @@ function nativeStore(development: boolean) {
     return createPrivateCalendarPairingStorage({ ...protectedPort(userId), crypto: nativePrivateCalendarCrypto, vault });
   }
   function source(userId: string) { return createPrivateCalendarSourceStorage({ ...protectedPort(userId), vault }); }
-  return { secrets, cache, rootSetup, authorityIntents, keyOutbox, pairing, source };
+  function preferences(userId: string) {
+    assertOwner(userId);
+    return createPrivatePlannerPreferenceStore({ ownerUserId: userId, vault, assertOwner,
+      exclusive: (owner, work) => exclusive(owner, () => work()) });
+  }
+  return { secrets, cache, rootSetup, authorityIntents, keyOutbox, pairing, source, preferences };
 }
 
 /** Importing this module does not initialize Firebase or open any user's database. */
@@ -74,6 +80,7 @@ export const nativePrivateCalendarAuthorityIntents = native.authorityIntents;
 export const nativePrivateCalendarKeyOutbox = native.keyOutbox;
 export const nativePrivateCalendarPairing = native.pairing;
 export const nativePrivateCalendarSource = native.source;
+export const nativePrivatePlannerPreferences = native.preferences;
 let qaStore: ReturnType<typeof nativeStore> | undefined;
 export function developmentPrivateCalendarSecrets() {
   if (!__DEV__) throw new Error('検査用の鍵保存は開発ビルドだけで使用できます。');
@@ -102,4 +109,8 @@ export function developmentPrivateCalendarPairing(userId: string) {
 export function developmentPrivateCalendarSource(userId: string) {
   if (!__DEV__) throw new Error('検査用のCalendar取得元は開発ビルドだけで使用できます。');
   return (qaStore ??= nativeStore(true)).source(userId);
+}
+export function developmentPrivatePlannerPreferences(userId: string) {
+  if (!__DEV__) throw new Error('検査用の本人設定は開発ビルドだけで使用できます。');
+  return (qaStore ??= nativeStore(true)).preferences(userId);
 }

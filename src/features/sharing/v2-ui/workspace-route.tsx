@@ -67,6 +67,9 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
         if (!settings) throw new Error('本人の予定設定を読み込んでいます。しばらくしてから再試行してください。');
         const restDays = settings.restDays.filter((day): day is Weekday => Number.isInteger(day) && day >= 1 && day <= 7);
         if (restDays.length !== settings.restDays.length) throw new Error('本人の休日設定を確認してください。');
+        const calendar = await openCalendar(); const own = await calendar.readPlannerPreferences?.(); await assertWorkspaceAccess();
+        if (own && own.ownerUserId !== active.userId) throw new Error('本人の予定設定を確認してください。');
+        if (own) return { ownerUserId: active.userId, settings: { frequencyMode: settings.frequencyMode, restDays: own.restDays, loadLimits: own.loadLimits } };
         return { ownerUserId: active.userId, settings: { frequencyMode: settings.frequencyMode, restDays,
           loadLimits: { heavyDailyLimit: settings.heavyDailyLimit, normalDailyLimit: settings.normalDailyLimit } } };
       } });

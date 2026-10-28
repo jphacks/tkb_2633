@@ -15,11 +15,19 @@ export interface PersonalRelocationInput {
   calendarConfirmed: boolean; now: number;
 }
 export type PersonalRelocation = { kind: 'unchanged' | 'protected' | 'requiresConsent' }
-  | { kind: 'needsReview'; reason: 'missingAllowedTimes' | 'unconfirmedCalendar' | 'noSlot' }
+  | { kind: 'needsReview'; reason: 'missingAllowedTimes' | 'ambiguousAllowedTimes' | 'unconfirmedCalendar' | 'noSlot' }
   | { kind: 'moved'; original: InstantRange; proposed: InstantRange; reason: 'sharedFixedConflict' };
 
 /** Consumes only this person's private inputs; callers persist the reason only in their private DB. */
 export function proposePersonalRelocation(input: PersonalRelocationInput): PersonalRelocation {
+  const range = (value: InstantRange): InstantRange => {
+    if (!value || typeof value !== 'object' || Object.keys(value).sort().join(',') !== 'end,start'
+      || ![value.start, value.end].every(at => Number.isFinite(at) && Number.isFinite(new Date(at).getTime())) || value.start >= value.end) throw new Error('個人家事の開始・終了時刻を確認してください。');
+    return { start: value.start, end: value.end };
+  };
+  if (!['family', 'roommates'].includes(input.groupKind) || ![input.fromGroupAdmin, input.personConsented, input.automatic,
+    input.manuallyFixed, input.completed, input.calendarConfirmed].every(value => typeof value === 'boolean')) throw new Error('個人家事を移動する権限・状態を確認してください。');
+  input = { ...input, original: range(input.original), sharedFixed: range(input.sharedFixed) };
   if (!intervalsOverlap(input.original, input.sharedFixed)) return { kind: 'unchanged' };
   if (!input.automatic || input.manuallyFixed || input.completed) return { kind: 'protected' };
   if (input.groupKind === 'roommates' && !input.personConsented || input.groupKind === 'family' && !input.fromGroupAdmin) return { kind: 'requiresConsent' };
@@ -32,10 +40,10 @@ export function proposePersonalRelocation(input: PersonalRelocationInput): Perso
   const sameDay = sharedLocalDate(new Date(input.original.start), input.timeZone);
   const dayStart = sharedDateAtTime(sameDay, 0, 0, input.timeZone).getTime();
   const dayEnd = sharedDateAtTime(addDays(sameDay, 1), 0, 0, input.timeZone).getTime();
-  const windows = mergeInstantRanges(input.allowedWindows).map((range) => ({ start: Math.max(range.start, allowedStart, input.now), end: Math.min(range.end, allowedEnd) }))
+  const windows = mergeInstantRanges(input.allowedWindows.map(range)).map((range) => ({ start: Math.max(range.start, allowedStart, input.now), end: Math.min(range.end, allowedEnd) }))
     .filter((range) => range.start < range.end);
   const sameDayWindows = windows.map((range) => ({ start: Math.max(range.start, dayStart), end: Math.min(range.end, dayEnd) })).filter((range) => range.start < range.end);
-  const blocked = mergeInstantRanges([...input.fixedAndBusyIntervals, input.sharedFixed]);
+  const blocked = mergeInstantRanges([...input.fixedAndBusyIntervals.map(range), input.sharedFixed]);
   const duration = input.original.end - input.original.start;
   for (const window of [...sameDayWindows, ...windows]) {
     let cursor = window.start;

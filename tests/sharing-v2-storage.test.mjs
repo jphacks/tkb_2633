@@ -14,6 +14,7 @@ import { createSharedRoster, upgradeSharedRoster, approveSharedDevice, transferS
 import { parseSharedCloudEvent, parseSharedCloudGroup, rosterCloudFields } from '../src/features/sharing/cloud-contract.ts';
 import { verifyCloudMembership } from '../src/features/sharing/synchronizer.ts';
 import { v2OccurrenceId, v2SubjectOccurrenceId } from '../src/features/sharing/v2/occurrence-id.ts';
+import { V2_SCHEDULER_VERSION } from '../src/features/sharing/v2/payload-schema.ts';
 
 const groupId = 'group-v2-test'; const recordedAt = '2026-10-27T10:00:00Z';
 const scope = { groupId, userId: 'owner', deviceId: 'device-a', keyVersion: 1, schemaVersion: 2, recordedAt };
@@ -88,7 +89,7 @@ test('v2 signed roster upgrades preserve every approved device, rotate epochs an
   const old = approveSharedDevice(createSharedRoster(groupId, 'owner', owner), owner, 'member', member);
   const next = upgradeSharedRoster(old, owner);
   assert.equal(old.body.schemaVersion, 1); assert.equal(next.body.schemaVersion, 2);
-  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, 'liflow-shared-2-draft-33');
+  assert.equal(next.body.keyVersion, old.body.keyVersion + 1); assert.equal(next.body.schedulerVersion, V2_SCHEDULER_VERSION);
   assert.deepEqual(next.body.members, old.body.members);
   const fields = { ...rosterCloudFields(next), headSequence: 0, lastOperationId: null, snapshotId: null, snapshotThroughSequence: 0 };
   assert.equal(parseSharedCloudGroup(fields, groupId).group.schemaVersion, 2);

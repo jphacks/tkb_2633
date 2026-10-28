@@ -122,12 +122,13 @@ export function createPrivateCalendarCacheStorage(port: PrivateCalendarCacheStor
         return cache;
       } finally { input.accountKey.fill(0); }
     },
-    async pending(authority: VerifiedPrivateCalendarAuthority, now: number) {
+    async pending(authority: VerifiedPrivateCalendarAuthority, now: number, options: { force?: boolean } = {}) {
+      const force = options.force === true;
       timestamp(now);
       const row = await locked(authority, true, record); if (!row) return null;
       const cursor = savedCursor(row);
       // Old encrypted snapshots remain recoverable, but an old main/authority may not publish them.
-      if (cursor.authorityDigest !== authority.digest || !row.pending || row.retry_at !== null && row.retry_at > now) return null;
+      if (cursor.authorityDigest !== authority.digest || !row.pending || !force && row.retry_at !== null && row.retry_at > now) return null;
       const owned = await verifyPrivateCalendarCacheCiphertext(port.crypto, envelope(row, authority), authority);
       await locked(authority, true, async (db) => {
         const current = await metadata(db);

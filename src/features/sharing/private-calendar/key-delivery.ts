@@ -31,7 +31,7 @@ export function createPrivateCalendarKeyDelivery(port: { userId: string; secrets
   }
   async function sendDue(force: boolean) {
     const authority = await secrets.authority(userId); if (!authority) throw new Error('本人端末の信頼を先に確認してください。');
-    const entries = await outbox.pending(authority, force ? Number.MAX_SAFE_INTEGER : now()); let sent = 0;
+    const entries = await outbox.pending(authority, now(), { force }); let sent = 0;
     for (const entry of entries) {
       try { await cloud.sendKey(authority, entry.wrapped); }
       catch (error) {

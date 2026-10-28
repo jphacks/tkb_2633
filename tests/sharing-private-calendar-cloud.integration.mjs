@@ -405,6 +405,11 @@ test('private Calendar actual pairing and main switch transfer one key and encry
     cache: { ...cache, mainDeviceId: originalIdentity.deviceId, mainRevision: final.signed.body.revision }, mainDevice: originalIdentity, sequence: 2 });
   await left.cloud.uploadCache(final, next);
   await assert.rejects(() => openPrivateCalendarCache(crypto, next, { authority: final, accountKey: key, calendarBinding }));
+  const renewed = await joining.pair.prepareConfirmedReference(privateCalendarPairingReference(final));
+  assert.equal(renewed.request.body.device.deviceId, secondIdentity.deviceId); assert.notEqual(renewed.request.body.requestNonce, request.request.body.requestNonce);
+  await original.pair.approve(renewed.request); assert.equal((await joining.pair.join()).kind, 'ready');
+  const restoredAuthority = await recipient.secrets.authority(userId); const restoredKey = await recipient.secrets.currentKey(userId, restoredAuthority);
+  assert.deepEqual(restoredKey, nextKey); assert.equal(JSON.parse(await recipient.vault.getItem(`private-calendar-state:${userId}`)).keys.length, 2); restoredKey.fill(0);
   assert.equal(JSON.parse(await owner.vault.getItem(`private-calendar-state:${userId}`)).keys.length, 2); key.fill(0); firstKey.fill(0); nextKey.fill(0);
 });
 

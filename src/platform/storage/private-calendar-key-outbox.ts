@@ -80,12 +80,13 @@ export function createPrivateCalendarKeyOutbox(port: PrivateCalendarKeyOutboxPor
         });
       } finally { ownedKey.fill(0); }
     },
-    pending(authority: VerifiedPrivateCalendarAuthority, now: number) {
+    pending(authority: VerifiedPrivateCalendarAuthority, now: number, options: { force?: boolean } = {}) {
+      const force = options.force === true;
       if (!Number.isSafeInteger(now) || now < 0) throw new Error('配布鍵の再送時刻を確認してください。');
       return locked(authority.digest, async (db, state) => {
         const rows = await db.getAllAsync<Row>('SELECT * FROM private_calendar_key_outbox WHERE authority_digest = ? ORDER BY recipient_id LIMIT 17', state.authority!.digest);
         if (rows.length > 16) throw new Error('配布する本人端末の件数が多すぎます。');
-        return rows.map(row => decode(row, state.authority!)).filter(entry => entry.pending && (entry.retryAt === null || entry.retryAt <= now));
+        return rows.map(row => decode(row, state.authority!)).filter(entry => entry.pending && (force || entry.retryAt === null || entry.retryAt <= now));
       });
     },
     acknowledge(authority: VerifiedPrivateCalendarAuthority, recipient: string, envelopeDigest: string) {

@@ -340,3 +340,33 @@ iPhoneの初回2回はXCTestがUI自動化の準備で停止した。ユーザ�
 専用demo projectのFirestore Emulatorと合成UIDを使用し、iPhoneとAndroid 10から実SDKで通信した。準備4項目、プロセス終了後の復旧6項目、確定後のプロセス再起動と復元6項目が両端末で成功。端末ID・root、確定後の鍵の公開照合値を各段階の要素情報から照合し、6枚の画像も確認した。別UID拒否も実Rulesで確認する。iPhoneは7.113／8.920／8.038秒、Androidは4.824／11.925／8.091秒。異なるstageなので性能比較はしない。
 
 初回のcold起動は開発clientの接続画面へ戻って検査前提で止まった。既存Metroへの接続後に同じ保存先で継続した。失敗は`phase4am-*-root-resume*`、成功は`phase4am-*-root-restored*`と`phase4am-*-root-ready-cold*`、合成公開照合値と画像hashは`/tmp/liflow-v2-20261027/phase4am-native-and-code-evidence.json`へ保存した。実アカウント・個人DB・旧QAを保持する。端末間同期・実Google・OS再起動・背景実行の成功とは扱わない。
+
+
+## 16. 本人Calendarの異種OS間暗号化転送
+
+合成UID `development-calendar-native-pairing-e2e-v1`、独立したdemo projectのEmulator、既存の両物理端末を使用。個人データや旧QAを初期化・再インストールしない。新端末は確認済みpinで依頼を作り、元端末で明示承認してから鍵を受信する。データは合成2万区間・22片。全画像を目視し、全区間の時刻と順序を検査関数で照合した。
+
+| 段階 | 端末 | 秒 | 確認 |
+| --- | --- | --- | --- |
+| 1 | iPhone | 7.853 | 初回の確認情報 |
+| 2 | Android 10 | 4.066 | 依頼作成 |
+| 3 | iPhone | 9.869 | 明示承認と配布 |
+| 4 | Android 10 | 15.074 | 同一鍵の受信 |
+| 5 | iPhone | 11.875 | 初回cache公開 |
+| 6 | iPhone | 9.790 | メインをAndroidへ |
+| 7 | Android 10 | 27.191 | 新メインから公開 |
+| 8 | iPhone | 12.774 | Android cacheを復号 |
+| 9 | iPhone | 12.948 | cold起動後の復元 |
+| 10 | Android 10 | 27.922 | cold起動後の復元 |
+| 11 | iPhone | 9.882 | Android解除と鍵更新 |
+| 12 | Android 10 | 9.043 | 解除後の拒否 |
+| 13 | iPhone | 9.859 | 新しい確認情報 |
+| 14 | Android 10 | 7.582 | 同じ端末の新nonce依頼 |
+| 15 | iPhone | 14.837 | 再承認と新鍵配布 |
+| 16 | Android 10 | 18.939 | 第2世代の鍵受信 |
+| 17 | iPhone | 20.886 | 更新後のcache公開 |
+| 18 | Android 10 | 21.153 | 第2世代で全区間復号 |
+
+両cold復元ではプロセスIDの変更と、ネットワーク取得前のローカル完全cacheを確認する。端末解除後の古い依頼は拒否され、新しい確認・nonce・明示承認で同じ端末IDへ新しい鍵を渡す。公開cacheの連番は1→2→3。Nodeから専用Emulatorへ読取だけを行い、5版の署名履歴・配布鍵署名・最新22片を独立検証した。端末の秘密鍵・平文DEK・復号本文はNodeへ渡さない。
+
+旧QAの保護保存もiPhone7.929秒・Android5.043秒で4項目ずつ成功し、既存照合値は一致する。最初のiPhone接続待ち、Node検査の初期失敗も保持する。Androidには通常ネットワークの未接続とFirestore transport警告が残り、このEmulator経由の成功を実サービス成功としない。OS再起動・長時間background・実アカウントCalendar・通常v2画面は未検査。18段階と旧保存2枚の画像hash、公開確認情報、独立した読取検証は`evidence/2026-10-28-private-calendar-native.json`へ記録した。

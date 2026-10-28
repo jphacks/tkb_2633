@@ -42,7 +42,9 @@ export function createPrivateCalendarPairingStorage(port: PrivateCalendarPairing
       const owned = snapshotPrivateCalendarPairingReference(reference); identity = validateDeviceSecretIdentity(identity);
       return locked(async (raw, existingState) => {
         const state = existingState ?? await readProtected(); await assertOwner(ownerUserId);
-        if (owned.anchor.ownerUserId !== ownerUserId || identity.deviceId !== state.identity.deviceId || state.authority) throw new Error('未承認の本人端末と確認した接続先が必要です。');
+        if (owned.anchor.ownerUserId !== ownerUserId || identity.deviceId !== state.identity.deviceId
+          || state.authority && (state.authority.anchor.rootDigest !== owned.anchor.rootDigest || state.authority.anchor.accountGeneration !== owned.anchor.accountGeneration
+            || state.authority.signed.body.devices.some(device => device.deviceId === state.identity.deviceId))) throw new Error('未承認の本人端末と確認した接続先が必要です。');
         if (raw) {
           const saved = decode(raw, state);
           if (saved.request.body.rootDigest !== owned.anchor.rootDigest || saved.request.body.accountGeneration !== owned.anchor.accountGeneration) throw new Error('確認済みの信頼pinを自動で置き換えません。復旧を確認してください。');

@@ -3877,5 +3877,30 @@
         "name": "private Calendar a tampered actual approval archive cannot establish a new device pin even for the same authenticated UID"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-cross-platform-qa-scope-cache-sequence-and-fresh-reapproval",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-pair-audit.test.mjs",
+        "name": "private Calendar two-device QA drives actual SQLite and crypto through pairing, new-main publication without a local cursor, revocation and renewed approval"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pair-audit.test.mjs",
+        "name": "private Calendar two-device audit refuses release and non-QA accounts before any protected or network access"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pair-audit.test.mjs",
+        "name": "two-device QA route starts only one explicit action, preserves its public result and blocks release initialization"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-audit.test.mjs",
+        "name": "private Calendar pairing QA uses one fixed synthetic UID across both OS and never reuses the original bootstrap scenario"
+      },
+      {
+        "file": "tests/sharing-private-calendar-pairing.test.mjs",
+        "name": "private Calendar a revoked device can rejoin only through a fresh confirmed reference and new approval while retaining its original identity and old keys"
+      }
+    ]
   }
 ]

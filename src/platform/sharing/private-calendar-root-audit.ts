@@ -14,11 +14,12 @@ export function privateCalendarAuditEndpoint(host: unknown, port: unknown) {
 }
 
 /** No Firebase Auth, production app, user account or normal SQLite is accessed. */
-export async function createPrivateCalendarRootAuditContext(platform: string, host: unknown, port: unknown): Promise<PrivateCalendarRootAuditPort & { close(): Promise<void> }> {
+export async function createPrivateCalendarRootAuditContext(platform: string, host: unknown, port: unknown, scenario: 'bootstrap' | 'pairing' = 'bootstrap'): Promise<PrivateCalendarRootAuditPort & { cloud: ReturnType<typeof createPrivateCalendarCloud>; close(): Promise<void> }> {
   if (!__DEV__) throw new Error('検査用の初回設定は開発ビルドだけで使用できます。');
   if (platform !== 'ios' && platform !== 'android') throw new Error('実機の検査用設定が必要です。');
+  if (!['bootstrap', 'pairing'].includes(scenario)) throw new Error('検査専用の保存先が必要です。');
   const endpoint = privateCalendarAuditEndpoint(host, port);
-  const userId = `development-calendar-native-root-${platform}-interruption-v1`;
+  const userId = scenario === 'pairing' ? 'development-calendar-native-pairing-e2e-v1' : `development-calendar-native-root-${platform}-interruption-v1`;
   const tag = bytesToHex(await nativePrivateCalendarCrypto.randomBytes(12));
   const apps: ReturnType<typeof initializeApp>[] = []; const databases: ReturnType<typeof initializeFirestore>[] = [];
   const close = async () => {

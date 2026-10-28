@@ -9,34 +9,15 @@ import { createPrivateCalendarAuthoritySync } from '../src/features/sharing/priv
 import { createPrivateCalendarKeyDelivery } from '../src/features/sharing/private-calendar/key-delivery.ts';
 import { createPrivateCalendarPairingController } from '../src/features/sharing/private-calendar/pairing-controller.ts';
 import { privateCalendarPairingReference, verifyPrivateCalendarPairingRequest } from '../src/features/sharing/private-calendar/pairing.ts';
-import { verifyPrivateCalendarAuthorityUpdate } from '../src/features/sharing/private-calendar/authority.ts';
-import { verifyPrivateCalendarWrappedKey } from '../src/features/sharing/private-calendar/key-envelope.ts';
-import { assertPrivateCalendarCloudAuthority, privateCalendarCloudFields, PrivateCalendarCloudConflict } from '../src/features/sharing/private-calendar/cloud-contract.ts';
+import { privateCalendarCloudFields } from '../src/features/sharing/private-calendar/cloud-contract.ts';
+import { privateCalendarMemoryCloud } from './helpers/private-calendar-cloud.mjs';
 import { sharedDocumentDigest, signSharedDocument } from '../src/features/sharing/crypto.ts';
 
 const userId = 'same-person-pairing-owner';
 function paths(t) { const dir = mkdtempSync(join(tmpdir(), 'liflow-pairing-')); t.after(() => rmSync(dir, { force: true, recursive: true })); return { owner: join(dir, 'owner.db'), recipient: join(dir, 'recipient.db') }; }
 async function fixture(t) {
   const path = paths(t); const owner = privateCalendarSetupFixture(t, { userId, path: path.owner }); const recipient = privateCalendarSetupFixture(t, { userId, path: path.recipient });
-  const history = []; const packets = new Map(); const flags = { controlReplyLost: false, keyReplyLost: false }; let current; const pages = [];
-  const cloud = {
-    async createRoot(root) { current = root; history.push(root.signed); return { head: privateCalendarCloudFields(root) }; },
-    async authorityPage(after) { pages.push(after); return { head: privateCalendarCloudFields(current), authorities: history.slice(after, after + 100) }; },
-    async commitAuthority(before, next) {
-      const accepted = history[next.signed.body.revision - 1];
-      if (accepted) { if (sharedDocumentDigest(accepted) !== next.digest) throw new PrivateCalendarCloudConflict(); }
-      else { assertPrivateCalendarCloudAuthority(privateCalendarCloudFields(current), before); current = verifyPrivateCalendarAuthorityUpdate(before, next.signed); history.push(current.signed); }
-      if (flags.controlReplyLost) { flags.controlReplyLost = false; throw Object.assign(new Error('lost approval reply'), { code: 'unavailable' }); }
-      return { accepted: true, head: privateCalendarCloudFields(current) };
-    },
-    async sendKey(authority, wrapped) {
-      assertPrivateCalendarCloudAuthority(privateCalendarCloudFields(current), authority); verifyPrivateCalendarWrappedKey(wrapped, authority, wrapped.body.recipientDeviceId);
-      const id = authority.digest + wrapped.body.recipientDeviceId; const json = JSON.stringify(wrapped); const previous = packets.get(id);
-      if (previous) assert.equal(previous, json); else packets.set(id, json);
-      if (flags.keyReplyLost) { flags.keyReplyLost = false; throw Object.assign(new Error('lost key reply'), { code: 'unavailable' }); }
-    },
-    async readKey(authority, deviceId) { assertPrivateCalendarCloudAuthority(privateCalendarCloudFields(current), authority); const json = packets.get(authority.digest + deviceId); return json ? JSON.parse(json) : null; },
-  };
+  const { cloud, history, packets, flags, pages } = privateCalendarMemoryCloud();
   await owner.controller(cloud).prepareAndResume(); const root = await owner.secrets.authority(userId);
   function services(h, transport = cloud) {
     const authoritySync = createPrivateCalendarAuthoritySync({ userId, secrets: h.secrets, intents: h.changes, cloud: transport });
@@ -149,4 +130,18 @@ test('private Calendar a protected candidate committed just before an owner swit
   const saved = await h.recipient.pairing.read(); assert.equal(saved.status, 'prepared'); const generations = h.recipient.state.generations;
   assert.deepEqual(await h.services(h.recipient).pair.prepareConfirmedReference(h.reference), saved); assert.equal(h.recipient.state.generations, generations);
   assert.equal((await h.recipient.readProtected()).authority, null);
+});
+
+test('private Calendar a revoked device can rejoin only through a fresh confirmed reference and new approval while retaining its original identity and old keys', async t => {
+  const h = await fixture(t); const original = await h.services(h.recipient).pair.prepareConfirmedReference(h.reference);
+  await h.services(h.owner).pair.approve(original.request); await h.services(h.recipient).pair.join();
+  const oldIdentity = await h.recipient.secrets.identity(userId); const owner = await h.owner.secrets.identity(userId);
+  const removed = await h.services(h.owner).authoritySync.change({ devices: [owner], mainDeviceId: owner.deviceId, keyVersion: 2 });
+  await assert.rejects(() => h.services(h.owner).pair.approve(original.request), /更新/u);
+  // prepare refreshes the old local checkpoint before considering an explicitly confirmed renewal.
+  const renewed = await h.services(h.recipient).pair.prepareConfirmedReference(privateCalendarPairingReference(removed.authority));
+  assert.equal(renewed.request.body.device.deviceId, oldIdentity.deviceId); assert.notEqual(renewed.request.body.requestNonce, original.request.body.requestNonce);
+  await h.services(h.owner).pair.approve(renewed.request); assert.equal((await h.services(h.recipient).pair.join()).kind, 'ready');
+  assert.deepEqual(await h.recipient.secrets.identity(userId), oldIdentity);
+  assert.equal(JSON.parse(await h.recipient.vault.getItem(`private-calendar-state:${userId}`)).keys.length, 2);
 });

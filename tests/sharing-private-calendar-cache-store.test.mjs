@@ -110,6 +110,8 @@ test('private Calendar retry retains exact ciphertext and applies exponential ba
   assert.equal(await f.ledger.fail(f.authority, digest, 1000, 'offline', 0), true); assert.equal(f.row().retry_at, 25_000);
   await f.ledger.save(clone(encrypted), f.input({ origin: 'local' })); assert.equal(f.row().attempts, 1); assert.equal(f.row().retry_at, 25_000);
   assert.equal(await f.ledger.pending(f.authority, 24_999), null);
+  assert.deepEqual((await f.ledger.pending(f.authority, 1000, { force: true })).encrypted, encrypted);
+  assert.equal(f.row().retry_at, 25_000); assert.equal(f.row().attempts, 1);
   assert.deepEqual((await f.ledger.pending(f.authority, 25_000)).encrypted, encrypted);
   await f.ledger.fail(f.authority, digest, 25_000, 'temporary', 1); assert.equal(f.row().retry_at, 97_000);
   for (let i = 0; i < 20; i++) await f.ledger.fail(f.authority, digest, 100_000, 'temporary', 1);

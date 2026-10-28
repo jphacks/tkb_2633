@@ -27,7 +27,10 @@ export function createPrivateCalendarPairingController(port: { userId: string; s
     /** The caller must show and explicitly confirm the source device's pin/reference before this action. */
     async prepareConfirmedReference(reference: PrivateCalendarPairingReference) {
       const owned = snapshotPrivateCalendarPairingReference(reference);
-      const checked = await readPinnedHistory(owned);
+      if (owned.anchor.ownerUserId !== userId) throw new Error('確認した本人用アカウントが異なります。');
+      const known = await secrets.authority(userId);
+      if (known && (known.anchor.rootDigest !== owned.anchor.rootDigest || known.anchor.accountGeneration !== owned.anchor.accountGeneration)) throw new Error('確認済みの信頼pinを自動で置き換えません。復旧を確認してください。');
+      const checked = known ? await authoritySync.refresh() : await readPinnedHistory(owned);
       if (checked.authority.digest !== owned.authorityDigest || checked.authority.signed.body.revision !== owned.authorityRevision) throw new Error('確認元の端末設定が古くなっています。新しい確認情報を交換してください。');
       return candidates.prepare(owned, await secrets.identity(userId));
     },

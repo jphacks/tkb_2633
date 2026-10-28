@@ -70,6 +70,17 @@ test('private Calendar root QA network provider is lazy and restricted to a sepa
   } finally { globalThis.__DEV__ = before; }
 });
 
+test('private Calendar pairing QA uses one fixed synthetic UID across both OS and never reuses the original bootstrap scenario', async () => {
+  const before = globalThis.__DEV__; globalThis.__DEV__ = true;
+  try {
+    for (const os of ['ios', 'android']) {
+      const f = nativeFixture(); const shared = await f.module.createPrivateCalendarRootAuditContext(os, '127.0.0.1', 8185, 'pairing');
+      assert.equal(shared.userId, 'development-calendar-native-pairing-e2e-v1'); await shared.close();
+      await assert.rejects(() => f.module.createPrivateCalendarRootAuditContext(os, '127.0.0.1', 8185, 'unknown'), /保存先/u);
+    }
+  } finally { globalThis.__DEV__ = before; }
+});
+
 for (const platform of ['ios', 'android']) {
   test(`${platform} private Calendar initial-setup QA has explicit separate stages and no release side effects`, async () => {
     const before = globalThis.__DEV__; const cleanups = []; let opened = 0; let closed = 0; let release; const actions = [];

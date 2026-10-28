@@ -87,6 +87,7 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
     onManageChores={() => router.push('/group-v2/chores')} onAddChore={() => router.push('/group-v2/add-chore')}
     onGroupPolicy={() => router.push('/group-v2/group-rules')}
     onNotifications={() => router.push('/group-v2/notifications')}
+    onGoogleTasks={() => router.push('/group-v2/google-tasks')}
     onWaste={() => router.push('/group-v2/waste')}
     onAppliances={() => router.push('/group-v2/appliances')}
     onAppliance={(applianceId) => router.push({ pathname: '/group-v2/appliance', params: { applianceId } })}

@@ -1,14 +1,10 @@
-import { openDatabaseAsync } from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { readPersonalPlannerOverlaySnapshot } from '../storage/repository';
 import { createV2ReminderStore } from '../storage/sharing-v2-reminders';
 import { expoLocalNotificationGateway } from '../notifications/expo-local-notification-gateway';
 import { createV2ReminderRuntime } from '../../features/sharing/v2/reminder-runtime';
 import type { V2GroupController } from '../../features/sharing/v2/controller';
 import { createV2ScreenSession } from '../../features/sharing/v2-ui/screen-session';
-import { createV2PrivateTaskSource } from '../../features/sharing/v2-ui/private-overlay';
-import { v2OwnerScheduleSettings } from '../../features/sharing/v2-ui/owner-preferences';
-import { openPrivateCalendarRuntime } from './private-calendar-runtime';
+import { readV2LocalPlanning } from './v2-local-planning';
 import { reconcileLocalNotifications } from '../../features/notifications/reconcile-local-notifications';
 import { v2NotificationPrefix } from '../../features/sharing/v2/native-identity';
 
@@ -18,17 +14,10 @@ export function createNativeV2Reminders(input: { database: SQLiteDatabase; userI
   const store = createV2ReminderStore(input.database, input);
   return createV2ReminderRuntime({ ...input, store, gateway: expoLocalNotificationGateway,
     readModel: async now => {
-      await input.assertAccess(); const personal = await openDatabaseAsync('housework.db', { useNewConnection: true });
-      try {
-        await input.assertAccess(); const snapshot = await readPersonalPlannerOverlaySnapshot(personal, now); await input.assertAccess();
-        const calendar = openPrivateCalendarRuntime(input.userId);
+        const local = await readV2LocalPlanning(input, now);
         const session = createV2ScreenSession({ controller: input.controller, userId: input.userId, groupId: input.groupId, now: () => now,
-          readPreferences: async () => { const own = await calendar.readPlannerPreferences?.(); await input.assertAccess(); return v2OwnerScheduleSettings(input.userId, snapshot.snapshot.settings, own); },
-          privateTasks: createV2PrivateTaskSource({ ownerUserId: input.userId, assertAccess: input.assertAccess,
-            readSnapshot: async () => ({ ...snapshot, ownerUserId: input.userId }), save: async () => { throw new Error('通知から個人家事は変更できません。'); } }),
-          calendar });
+          readPreferences: () => local.preferences, privateTasks: local.privateTasks, calendar: local.calendar });
         const model = await session.readModel({ reminders: true }); await input.assertAccess(); return model;
-      } finally { await personal.closeAsync(); }
     } });
 }
 

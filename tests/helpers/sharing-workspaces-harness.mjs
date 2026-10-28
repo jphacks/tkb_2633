@@ -23,7 +23,7 @@ import { addDays } from '../../src/domain/scheduling/local-date.ts';
 
 /** Real signatures, event repository and SQLite; only native handles/account storage/cloud I/O are injected. */
 export async function workspaceHarness({ pending = false, version = 2, cloud: overrides = {}, deferWorkspaceTimers = false, privateCalendarNeeded = false } = {}) {
-  const handles = []; const calls = []; const reminderCalls = []; let ordinal = 0;
+  const handles = []; const calls = []; const reminderCalls = []; const taskCalls = []; const taskControl = { revision: 0, label: null, state: null }; let ordinal = 0;
   const create = () => { const h = createDatabase(); let closed = false;
     h.database.closeAsync = async () => { if (!closed) { closed = true; h.connection.close(); } }; handles.push(h); return h; };
   const index = create(); await registry.initializeSharingRegistry(index.database);
@@ -80,7 +80,12 @@ export async function workspaceHarness({ pending = false, version = 2, cloud: ov
       async clearInactiveV2Reminders(_allowed, guard = () => {}) { await guard(); reminderCalls.push('clear-inactive'); },
       async clearV2RemindersForScope() { reminderCalls.push('clear-scope'); },
     },
+    './v2-google-tasks': { createNativeV2GoogleTasks(input) {
+      taskCalls.push('factory');
+      return { async readControl() { await input.assertAccess(); return structuredClone(taskControl); },
+        async synchronize(options) { await input.assertAccess(); taskCalls.push(['sync', options]); return { kind: 'success', skipped: true }; } };
+    } },
   }, deferWorkspaceTimers ? { setTimeout: () => 1, clearTimeout: () => {} } : {});
-  return { api, handles, index, calls, reminderCalls, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
+  return { api, handles, index, calls, reminderCalls, taskCalls, taskControl, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
     close: async () => { for (const h of handles) await h.database.closeAsync(); } };
 }

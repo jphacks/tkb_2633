@@ -11,6 +11,8 @@ import * as overlayModule from '../src/features/sharing/v2-ui/private-overlay.ts
 import * as ownerModule from '../src/features/sharing/v2-ui/owner-preferences.ts';
 import * as reconciliation from '../src/features/notifications/reconcile-local-notifications.ts';
 import * as identity from '../src/features/sharing/v2/native-identity.ts';
+import * as personalPlan from '../src/features/sharing/v2/personal-plan.ts';
+import * as cryptoModule from '../src/features/sharing/crypto.ts';
 import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
 
 async function setup() {
@@ -21,7 +23,7 @@ async function setup() {
     async getScheduledRequests() { return [...scheduled.values()]; }, async schedule(request) { scheduled.set(request.key, request); return request.key; }, async cancel(key) { scheduled.delete(key); } };
   const personal = { async closeAsync() { calls.push('personal-close'); } };
   const controller = createV2GroupController(d.repository, { now: () => new Date(), makeId: () => 'unused-id', sync: async () => {} });
-  const module = loadNativeModule('src/platform/sharing/v2-reminders.ts', {
+  const nativeMocks = {
     'expo-sqlite': { async openDatabaseAsync(name, options) { assert.equal(name, 'housework.db'); assert.equal(options.useNewConnection, true); calls.push('personal-open'); return personal; } },
     '../storage/repository': { async readPersonalPlannerOverlaySnapshot(db, now) { assert.equal(db, personal); calls.push('personal-read'); if (failPersonal) { active = false; }
       return { today: sharedLocalDate(now, 'Asia/Tokyo'), timeZone: 'Asia/Tokyo', snapshot: { household: { id: 'local-household' },
@@ -29,10 +31,13 @@ async function setup() {
     '../storage/sharing-v2-reminders': storeModule, '../notifications/expo-local-notification-gateway': { expoLocalNotificationGateway: gateway },
     '../../features/sharing/v2/reminder-runtime': runtimeModule, '../../features/sharing/v2-ui/screen-session': screenModule,
     '../../features/sharing/v2-ui/private-overlay': overlayModule, '../../features/sharing/v2-ui/owner-preferences': ownerModule,
+    '../../features/sharing/v2/personal-plan': personalPlan, '../../features/sharing/crypto': cryptoModule,
     '../../features/notifications/reconcile-local-notifications': reconciliation, '../../features/sharing/v2/native-identity': identity,
     './private-calendar-runtime': { openPrivateCalendarRuntime(uid) { assert.equal(uid, scope.userId); guard(); calls.push('local-calendar');
       return { async readPlannerPreferences() { guard(); return null; }, async readForPlan() { guard(); return null; }, async readOwnCalendar() { throw new Error('notification rendering must not acquire Google'); } }; } },
-  });
+  };
+  nativeMocks['./v2-local-planning'] = loadNativeModule('src/platform/sharing/v2-local-planning.ts', nativeMocks);
+  const module = loadNativeModule('src/platform/sharing/v2-reminders.ts', nativeMocks);
   const runtime = module.createNativeV2Reminders({ ...scope, database: d.database, controller, assertAccess: guard });
   return { f, d, module, runtime, calls, scheduled, stopDuringPersonalRead() { failPersonal = true; }, close() { d.connection.close(); } };
 }

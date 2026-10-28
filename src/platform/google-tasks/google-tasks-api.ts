@@ -119,6 +119,7 @@ export function createGoogleTasksApi(
   return {
     async listTaskLists(accessToken) {
       const items: GoogleTaskList[] = [];
+      const visitedTokens = new Set<string>();
       let pageToken: string | undefined;
       do {
         const params = new URLSearchParams({ maxResults: '100' });
@@ -128,6 +129,8 @@ export function createGoogleTasksApi(
         );
         items.push(...(page.items ?? []));
         pageToken = page.nextPageToken;
+        if (pageToken && visitedTokens.has(pageToken)) throw new Error('Google Tasks returned a repeated page token');
+        if (pageToken) visitedTokens.add(pageToken);
       } while (pageToken);
       return items;
     },

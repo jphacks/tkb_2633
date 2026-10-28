@@ -70,7 +70,7 @@ export async function reconcileGoogleTasks(options: {
     tasksByOccurrence.set(key, [...(tasksByOccurrence.get(key) ?? []), task]);
   }
   for (const item of beforeEntries.values()) {
-    if (!isInSyncWindow(item) || linkedScheduleEntryIds.has(item.entry.id)) continue;
+    if (item.synchronizationBlocked || !isInSyncWindow(item) || linkedScheduleEntryIds.has(item.entry.id)) continue;
     const candidates = tasksByOccurrence.get(namespace ? sharedGoogleOccurrenceNote(namespace, item.entry.id) : occurrenceKey(item.choreName, item.entry.suggestedDate)) ?? [];
     const existingTask = candidates.find((task) => !usedTaskIds.has(task.id));
     if (!existingTask) continue;
@@ -84,6 +84,7 @@ export async function reconcileGoogleTasks(options: {
       lastSyncedDueDate: item.entry.suggestedDate,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
+      ...(item.localRevision ? { observedLocalRevision: item.localRevision } : {}),
     };
     await repository.upsertGoogleTaskLink(adoptedLink);
     links = [...links, adoptedLink];
@@ -98,6 +99,7 @@ export async function reconcileGoogleTasks(options: {
     const task = tasksById.get(link.googleTaskId);
     if (!task || task.deleted || (task.status !== 'completed' && task.status !== 'needsAction')) continue;
     const local = beforeEntries.get(link.scheduleEntryId);
+    if (local?.synchronizationBlocked) continue;
     const localStatus = local?.completedAt ? 'completed' : 'needsAction';
     const locallyChanged = link.pendingStatus
       || (local && link.lastSyncedStatus && localStatus !== link.lastSyncedStatus)
@@ -136,7 +138,7 @@ export async function reconcileGoogleTasks(options: {
   type PendingPatch = { item: GoogleSyncEntry; task: GoogleTask; link: GoogleTaskLink; patch: GoogleTaskPatch };
   const pendingPatches: PendingPatch[] = [];
   const persistSyncedEntry = async (item: GoogleSyncEntry, originalLink: GoogleTaskLink, status: GoogleTaskStatus) => {
-    let link = originalLink;
+    let link = { ...originalLink, ...(item.localRevision ? { observedLocalRevision: item.localRevision } : {}) };
     if (link.lastSyncedTitle !== item.choreName || link.lastSyncedDueDate !== item.entry.suggestedDate) {
       link = { ...link, lastSyncedTitle: item.choreName, lastSyncedDueDate: item.entry.suggestedDate, updatedAt: now.toISOString() };
       await repository.upsertGoogleTaskLink(link);
@@ -173,6 +175,7 @@ export async function reconcileGoogleTasks(options: {
   };
 
   for (const item of entries) {
+    if (item.synchronizationBlocked) continue;
     const entry = item.entry;
     const inSyncWindow = isInSyncWindow(item);
     let link = linksById.get(entry.id);
@@ -260,6 +263,7 @@ export async function reconcileGoogleTasks(options: {
         lastSyncedDueDate: item.entry.suggestedDate,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
+        ...(item.localRevision ? { observedLocalRevision: item.localRevision } : {}),
       };
       // Persist each successful response immediately so a later failed chunk resumes safely.
       await repository.upsertGoogleTaskLink(link);

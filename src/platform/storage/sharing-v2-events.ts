@@ -139,7 +139,7 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     options.assertWritable(); if (sharedRosterDigest(archive().at(-1)!) !== expected) throw new SharingAccessError('読み込み中に共有権限が変わりました。');
     return { assessment, replica: source, archive: history, receipts };
   }
-  type CurrentBuilder = (state: Awaited<ReturnType<typeof readStateInside>>) => Promise<readonly SharedOperationDraft[]>;
+  type CurrentBuilder = (state: Awaited<ReturnType<typeof readStateInside>>, transaction: SQLiteDatabase) => Promise<readonly SharedOperationDraft[]>;
   async function commit(input: readonly SharedOperationDraft[] | ((replica: SharedReplica) => Promise<readonly SharedOperationDraft[]>) | { build: CurrentBuilder }): Promise<SharedOperation[]> {
     options.assertWritable(); const latest = archive().at(-1)!; const localIds = new Set<string>();
     if (latest.body.schemaVersion !== 2 || latest.body.schedulerVersion !== V2_SCHEDULER_VERSION) throw new SharingSchedulerVersionError();
@@ -152,7 +152,7 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
       const current = await readStateInside(transaction, replica);
       author.receiptContext = v2ConfirmedReceiptContext(current.assessment.view.ready, current.receipts);
       const drafts = typeof input === 'function' ? await input(replica)
-        : 'build' in input ? await input.build(current) : input;
+        : 'build' in input ? await input.build(current, transaction) : input;
       options.assertWritable();
       for (const draft of drafts) localIds.add(draft.operationId); return drafts;
     }, async (transaction, replica) => { options.assertWritable(); await project(transaction, replica, localIds); }, (op) => signSharedOperation(op, options.identity).authorSignature);
@@ -168,6 +168,13 @@ export function createV2EventRepository(database: SQLiteDatabase, options: V2Sto
     async readState() {
       options.assertWritable();
       return withSharingLedgerTransaction(database, readStateInside);
+    },
+    /** Local adapters may read their private bindings against the same authenticated state and transaction. */
+    readCurrent<T>(read: (state: Awaited<ReturnType<typeof readStateInside>>, transaction: SQLiteDatabase) => Promise<T>): Promise<T> {
+      return withSharingLedgerTransaction(database, async transaction => {
+        const state = await readStateInside(transaction); const value = await read(state, transaction);
+        options.assertWritable(); await assertV2Binding(transaction, options); return value;
+      });
     },
     project: async (transaction: SQLiteDatabase, replica: SharedReplica) => { await project(transaction, replica); },
     evidenceForServerReceipts(receipts: readonly V2ServerReceipt[]): SharedLedgerEvidence {

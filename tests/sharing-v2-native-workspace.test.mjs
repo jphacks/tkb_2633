@@ -132,9 +132,36 @@ test('a bounded v2 worker does not launch an independent notification pass after
     for (let i = 0; i < 12; i++) await new Promise(setImmediate);
     assert.equal(h.reminderCalls.includes('factory'), false, 'the coordinator owns the remaining worker budget');
     assert.equal(h.reminderCalls.includes('sync'), false);
+    assert.equal(h.taskCalls.length, 0);
     t.mock.timers.tick(1_000); for (let i = 0; i < 12; i++) await new Promise(setImmediate);
     assert.equal(reads, 1, 'coalesced worker requests retain their original deadline after the first pass');
   } finally { Date.now = previousNow; await h.close(); }
+});
+
+test('disconnecting a legacy Google workspace preserves a paused v2 connection on the same Native account', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] }); const h = await workspaceHarness();
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record);
+    await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, value => ({ ...value, status: 'active' })); await workspace.record();
+    h.vault.set('sharing-enabled', 'true'); h.taskControl.state = { enabled: false, disconnected: false, accountSubject: 'synthetic-google' };
+    assert.equal(await h.api.hasOtherGoogleWorkspaceConnections({}), true);
+    h.taskControl.state.disconnected = true; assert.equal(await h.api.hasOtherGoogleWorkspaceConnections({}), false);
+    assert.equal(h.calls.includes('legacy-open'), false);
+  } finally { await h.close(); }
+});
+
+test('loading the v2 Tasks runtime consumes the original worker budget before any Google synchronization starts', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] }); const previous = Date.now; let now = previous(); Date.now = () => now;
+  const h = await workspaceHarness();
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record);
+    await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, value => ({ ...value, status: 'active' })); await workspace.record();
+    h.vault.set('sharing-enabled', 'true'); let syncs = 0;
+    workspace.sync = async () => ({}); workspace.maintainHistory = async () => {};
+    workspace.reminders = async () => ({ synchronize: async () => {} });
+    workspace.googleTasks = async () => { now += 30_000; return { synchronize: async () => { syncs++; } }; };
+    await h.api.syncKnownSharingWorkspaces(20_000); assert.equal(syncs, 0);
+  } finally { Date.now = previous; await h.close(); }
 });
 
 test('a local commit during a bounded v2 sync cannot escape the worker through its debounce callback', async (t) => {

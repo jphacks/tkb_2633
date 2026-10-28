@@ -1,0 +1,34 @@
+import { openDatabaseAsync } from 'expo-sqlite';
+import { readPersonalPlannerOverlaySnapshot } from '../storage/repository';
+import { openPrivateCalendarRuntime } from './private-calendar-runtime';
+import { v2OwnerScheduleSettings } from '../../features/sharing/v2-ui/owner-preferences';
+import { createV2PrivateTaskSource, projectV2PrivateTasks } from '../../features/sharing/v2-ui/private-overlay';
+import { buildV2PersonalPlan } from '../../features/sharing/v2/personal-plan';
+import type { V2CommonPlan } from '../../features/sharing/v2/common-plan';
+import { sharedDocumentDigest } from '../../features/sharing/crypto';
+
+/** Both native integrations use the same owner-only inputs. Rendering/planning never fetches Google or requests a grant. */
+export async function readV2LocalPlanning(input: { userId: string; assertAccess(): void | Promise<void> }, now: Date) {
+  await input.assertAccess(); const personal = await openDatabaseAsync('housework.db', { useNewConnection: true });
+  try {
+    await input.assertAccess(); const snapshot = await readPersonalPlannerOverlaySnapshot(personal, now); await input.assertAccess();
+    const calendar = openPrivateCalendarRuntime(input.userId); const own = await calendar.readPlannerPreferences(); await input.assertAccess();
+    const preferences = v2OwnerScheduleSettings(input.userId, snapshot.snapshot.settings, own);
+    // An unavailable cache remains unknown; the personal planner applies its normal freshness and coverage rules.
+    const busy = await calendar.readForPlan().catch(() => null); await input.assertAccess();
+    if (busy && (busy.ownerUserId !== input.userId || busy.cache.ownerUserId !== input.userId || busy.binding.ownerUserId !== input.userId)) throw new Error('本人のCalendar情報を確認してください。');
+    const source = { ...snapshot, ownerUserId: input.userId };
+    const privateTasks = createV2PrivateTaskSource({ ownerUserId: input.userId, assertAccess: input.assertAccess,
+      readSnapshot: async () => source, save: async () => { throw new Error('連携の予定計算から個人家事は変更できません。'); } });
+    const revision = sharedDocumentDigest(JSON.stringify([preferences, snapshot.timeZone, snapshot.snapshot.scheduleEntries, snapshot.snapshot.completions,
+      snapshot.snapshot.chores.map(chore => [chore.id, chore.enabled, Boolean(chore.archived), chore.load]), busy]));
+    return { revision, preferences, privateTasks, calendar: { readForPlan: async () => busy, readOwnCalendar: calendar.readOwnCalendar },
+      personalize(plan: V2CommonPlan) {
+        const overlay = projectV2PrivateTasks(source, input.userId, plan.range);
+        return buildV2PersonalPlan(plan, { viewerUserId: input.userId, now: now.getTime(), settings: preferences.settings,
+          ...(overlay.timeZone === plan.timeZone ? { privateLoad: { ownerUserId: input.userId, days: overlay.dailyLoad } } : {}),
+          ...(busy ? { calendar: { cache: busy.cache, binding: busy.binding } } : {}) });
+      },
+    };
+  } finally { await personal.closeAsync(); }
+}

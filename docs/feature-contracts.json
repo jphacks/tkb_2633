@@ -4743,5 +4743,141 @@
         "name": "v2 reminder QA service rejects release calls before Native device identity or database access"
       }
     ]
+  },
+  {
+    "feature": "v2-tasks-private-owner-binding-and-credential-field-rejection",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 Google bindings default unconfigured, use separate private tables, and reject a different owner or workspace"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 private Google state rejects credential fields instead of accepting unknown persisted properties"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 Tasks never persists unknown link fields or exposes poisoned private records"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-bidirectional-completion-targeted-undo-and-personal-recommendations",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 Tasks imports a Google completion as the authenticated owner and targeted undo without leaking mappings"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 Tasks keeps completed personal recommendations synchronizable in both directions"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 Google undo targets only this owner’s acknowledged completions and cannot erase another member’s work"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-durable-local-revision-and-atomic-google-import",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 local completion during Google read cannot be silently undone by the older remote status"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 acknowledgement of an old PATCH preserves a new local undo revision until that undo reaches Google"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 private Google binding and signed completion roll back together if a private metadata write fails"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-stable-occurrence-date-changes-and-uncertainty",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 formal date changes keep the original common occurrence and Google ID while updating only its due date"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 remote task deletion never becomes an undo and preserves completed shared history"
+      },
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 unresolved task rows freeze Google reads and writes while independent rows continue syncing"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-rolling-window-bounded-batches-and-pagination-loop-guard",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-tasks.test.mjs",
+        "name": "v2 hundreds of daily Tasks are restricted to the rolling window and every native batch stays at most100"
+      },
+      {
+        "file": "tests/google-tasks-api.test.mjs",
+        "name": "tasklists.list rejects repeated page tokens before a third HTTP request"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-account-review-budget-coalescing-and-stop",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-runtime.test.mjs",
+        "name": "v2 Tasks runtime stays offline and never restores OAuth or reads private planner input when unconfigured"
+      },
+      {
+        "file": "tests/sharing-v2-google-runtime.test.mjs",
+        "name": "v2 Tasks connection requires explicit account review and grants only the reviewed account without auto-sync"
+      },
+      {
+        "file": "tests/sharing-v2-google-runtime.test.mjs",
+        "name": "v2 Tasks coalesces100 simultaneous syncs, recovers a fresh interrupted marker and keeps the same remote IDs"
+      },
+      {
+        "file": "tests/sharing-v2-google-runtime.test.mjs",
+        "name": "v2 Tasks timeout bounds its caller while a late HTTP result remains fenced and coalesced until it settles"
+      },
+      {
+        "file": "tests/sharing-v2-google-runtime.test.mjs",
+        "name": "v2 Tasks pause stops an in-flight budget, keeps mappings, and never signs out another Google workspace"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-native-and-normal-ui-workspace-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-native.test.mjs",
+        "name": "Native v2 Tasks remains unconfigured without OAuth, then uses the same owner-only input and existing Google gateway"
+      },
+      {
+        "file": "tests/sharing-v2-google-native.test.mjs",
+        "name": "Native v2 Tasks QA service rejects release calls before identity, database or Google initialization"
+      },
+      {
+        "file": "tests/sharing-v2-google-ui.test.mjs",
+        "name": "${platform} v2 Tasks old route cannot request a Google grant after workspace selection changes"
+      },
+      {
+        "file": "tests/sharing-v2-google-ui.test.mjs",
+        "name": "${platform} v2 Tasks pause remains usable during a slow sync and late results cannot replace pause feedback"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-shared-timezone-horizon",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-google-runtime.test.mjs",
+        "name": "v2 Tasks uses the shared region day for its fourteen-day window when the device day differs"
+      }
+    ]
   }
 ]

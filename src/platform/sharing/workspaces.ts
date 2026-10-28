@@ -340,7 +340,7 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
   const access = workspaceRegistryAccess(context); access.assertWritable();
   const database = await openSharingV2Database(userId, groupId, context.record.localGeneration);
   let debounce: ReturnType<typeof setTimeout> | undefined;
-  let refreshReminders: (() => void) | undefined;
+  let refreshIntegrations: ((localChange?: boolean) => void) | undefined;
   let syncDeadline: number | null = null;
   try {
     access.assertWritable();
@@ -352,7 +352,7 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
       assertWritable: access.assertWritable, makeId: randomUUID, creationKind: context.record.creation?.kind,
       markLeft: async () => { await access.update((prior) => ({ ...prior, status: 'left', lastErrorCode: null })); },
       afterCommit: () => {
-        changed(selection); if (syncDeadline === null) refreshReminders?.();
+        changed(selection); if (syncDeadline === null) refreshIntegrations?.(true);
         const deadline = syncDeadline; clearTimeout(debounce);
         debounce = setTimeout(() => {
           if (!sync) return;
@@ -368,16 +368,29 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
       if (['sharing/access-denied', 'permission-denied'].includes(current.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
     }) };
     let reminderPromise: Promise<import('../../features/sharing/v2/reminder-runtime').V2ReminderRuntime> | undefined;
+    let taskPromise: Promise<import('../../features/sharing/v2/google-tasks-runtime').V2GoogleTaskRuntime> | undefined;
+    const assertNativeAccess = async () => {
+      const record = await access.readRecord(); access.assertWritable();
+      if (record.status !== 'active') throw new SharingAccessError('共有連携の参加状態を確認してください。');
+    };
     const reminders = () => {
       if (!reminderPromise) {
-        const pending = import('./v2-reminders').then(module => module.createNativeV2Reminders({ database, ...selection, controller: session.controller,
-          assertAccess: async () => { const record = await access.readRecord(); access.assertWritable();
-            if (record.status !== 'active') throw new SharingAccessError('共有通知の参加状態を確認してください。'); } }));
+        const pending = import('./v2-reminders').then(module => module.createNativeV2Reminders({ database, ...selection, controller: session.controller, assertAccess: assertNativeAccess }));
         reminderPromise = pending; void pending.catch(() => { if (reminderPromise === pending) reminderPromise = undefined; });
       }
       return reminderPromise;
     };
-    refreshReminders = () => { void reminders().then(runtime => runtime.synchronize()).catch(() => undefined); };
+    const googleTasks = () => {
+      if (!taskPromise) {
+        const pending = import('./v2-google-tasks').then(module => module.createNativeV2GoogleTasks({ repository: session.repository, ...selection, assertAccess: assertNativeAccess }));
+        taskPromise = pending; void pending.catch(() => { if (taskPromise === pending) taskPromise = undefined; });
+      }
+      return taskPromise;
+    };
+    refreshIntegrations = localChange => {
+      void reminders().then(runtime => runtime.synchronize()).catch(() => undefined);
+      void googleTasks().then(runtime => runtime.synchronize({ localChange })).catch(() => undefined);
+    };
     let running: Promise<SharingSyncResult> | null = null; let requested = false; let forceRequested = false;
     let unboundedRequested = false; let requestedDeadline: number | undefined;
     sync = (options = {}) => {
@@ -431,7 +444,7 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
       })(); running = task;
       void task.finally(() => { if (running === task) { running = null; syncDeadline = null; } changed(selection);
         // The bounded coordinator refreshes reminders once with its actual remaining time.
-        if (options.budgetMs === undefined) refreshReminders?.();
+        if (options.budgetMs === undefined) refreshIntegrations?.();
         if (requested) {
           const force = forceRequested; const unbounded = unboundedRequested; const deadline = requestedDeadline;
           requested = false; forceRequested = false; unboundedRequested = false; requestedDeadline = undefined;
@@ -443,7 +456,7 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
         }
       }).catch(() => undefined); return task;
     };
-    return { ...selection, protocol: 2, database, session, identity, cloud, manager: session.manager, sync, reminders, record: access.readRecord,
+    return { ...selection, protocol: 2, database, session, identity, cloud, manager: session.manager, sync, reminders, googleTasks, record: access.readRecord,
       roster: () => access.archive()?.at(-1), checkpoint: () => readSharingCheckpoint(database, groupId),
       drain: async () => { await drainPlannerDatabaseOperations(database); await drainSharingLedger(database); }, cancelJoinRequest: access.cancelJoinRequest,
       watch: (callback, failed) => cloud.watch(groupId, callback, failed),
@@ -539,8 +552,13 @@ export async function syncKnownSharingWorkspaces(budgetMs = 20_000): Promise<voi
       if (Date.now() - start < budgetMs - 5000) await workspace.maintainHistory().catch(() => undefined);
       if (budgetMs - (Date.now() - start) < 1000) continue;
       if (workspace.protocol === 2) {
-        const remaining = budgetMs - (Date.now() - start);
-        if (remaining >= 1000) await workspace.reminders().then(runtime => runtime.synchronize(Math.min(15_000, remaining))).catch(() => undefined);
+        if (budgetMs - (Date.now() - start) >= 1000) await workspace.reminders().then(runtime => {
+          const remaining = budgetMs - (Date.now() - start); if (remaining >= 1000) return runtime.synchronize(Math.min(15_000, remaining));
+        }).catch(() => undefined);
+        const taskBudget = budgetMs - (Date.now() - start);
+        if (taskBudget >= 1000) await workspace.googleTasks().then(runtime => {
+          const remaining = budgetMs - (Date.now() - start); if (remaining >= 1000) return runtime.synchronize({ budgetMs: Math.min(15_000, remaining) });
+        }).catch(() => undefined);
         continue;
       }
       if (workspace.protocol !== 1) continue;
@@ -579,7 +597,12 @@ export async function hasOtherGoogleWorkspaceConnections(except: SQLiteDatabase)
   }
   if (!await hasSharingSessionEnabled()) return false;
   for (const record of (await knownSharingWorkspaces()).filter((record) => !['left', 'removed'].includes(record.status))) {
-    const workspace = await openSharedWorkspace(record); if (workspace.protocol !== 1 || workspace.database === except) continue;
+    const workspace = await openSharedWorkspace(record); if (workspace.protocol === 2) {
+      const control = await workspace.googleTasks().then(runtime => runtime.readControl());
+      if (control.state && !control.state.disconnected && (control.state.accountSubject || control.state.taskListId || control.state.enabled)) return true;
+      continue;
+    }
+    if (workspace.protocol !== 1 || workspace.database === except) continue;
     const state = await loadGoogleSyncState(workspace.database);
     if (state && !state.disconnected && (state.accountSubject || state.taskListId || state.enabled)) return true;
   }

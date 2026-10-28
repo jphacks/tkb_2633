@@ -65,6 +65,10 @@ function checkHeader(manifest: PrivateCalendarCacheManifest, authority: Verified
   verifySharedDocument(manifest.body, manifest.signature, main);
   return header;
 }
+export function snapshotPrivateCalendarCacheManifest(manifest: PrivateCalendarCacheManifest, authority: VerifiedPrivateCalendarAuthority): PrivateCalendarCacheManifest {
+  const header = checkHeader(manifest, authority);
+  return { body: { ...header, chunkDigests: [...manifest.body.chunkDigests] }, signature: manifest.signature };
+}
 /** Raw intervals and the Google binding stay inside ciphertext. Never pass a group key here. */
 export async function sealPrivateCalendarCache(crypto: PrivateCalendarCryptoGateway, input: {
   cache: PrivateBusyCache; authority: VerifiedPrivateCalendarAuthority; calendarBinding: string;

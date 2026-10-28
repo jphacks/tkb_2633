@@ -26,6 +26,19 @@ export function snapshotPrivateCalendarWrappedKey(wrapped: WrappedPrivateCalenda
   return { body: { ...wrapped.body }, signature: wrapped.signature };
 }
 
+/** Public authentication precedes storage or transport; only the recipient can perform the later decryption. */
+export function verifyPrivateCalendarWrappedKey(wrapped: WrappedPrivateCalendarKey, authority: VerifiedPrivateCalendarAuthority,
+  recipientDeviceId: string): WrappedPrivateCalendarKey {
+  wrapped = snapshotPrivateCalendarWrappedKey(wrapped);
+  const header = wrapped.body; const state = authority.signed.body;
+  const sender = state.devices.find((device) => device.deviceId === header.senderDeviceId);
+  if (header.schemaVersion !== 1 || header.suite !== SUITE || header.ownerUserId !== state.ownerUserId || header.accountGeneration !== state.accountGeneration
+    || header.authorityDigest !== authority.digest || header.revision !== state.revision || header.keyVersion !== state.keyVersion || !sender
+    || header.recipientDeviceId !== recipientDeviceId || !state.devices.some((device) => device.deviceId === recipientDeviceId)) throw new Error('本人用の鍵の宛先・承認世代が異なります。');
+  hexBytes(header.encryptedKey, 48); hexBytes(header.salt, 32); hexBytes(header.nonce, 12); hexBytes(header.ephemeralPublicKey, 32);
+  verifySharedDocument(wrapped.body, wrapped.signature, sender); return wrapped;
+}
+
 export async function createPrivateCalendarAccountKey(crypto: SharingCryptoGateway): Promise<Uint8Array> {
   const key = await crypto.randomBytes(32); if (key.length !== 32) throw new Error('安全な本人用の鍵を生成できません。'); return key;
 }
@@ -54,14 +67,9 @@ export async function wrapPrivateCalendarKey(crypto: SharingCryptoGateway, accou
 }
 export async function unwrapPrivateCalendarKey(crypto: SharingCryptoGateway, wrapped: WrappedPrivateCalendarKey,
   authority: VerifiedPrivateCalendarAuthority, recipient: DeviceSecretIdentity): Promise<Uint8Array> {
-  validateDeviceSecretIdentity(recipient); wrapped = snapshotPrivateCalendarWrappedKey(wrapped);
-  const { encryptedKey, ...header } = wrapped.body; const state = authority.signed.body;
-  const sender = state.devices.find((device) => device.deviceId === header.senderDeviceId);
-  if (header.schemaVersion !== 1 || header.suite !== SUITE || header.ownerUserId !== state.ownerUserId || header.accountGeneration !== state.accountGeneration
-    || header.authorityDigest !== authority.digest || header.revision !== state.revision || header.keyVersion !== state.keyVersion || !sender
-    || header.recipientDeviceId !== recipient.deviceId || !state.devices.some((device) => device.deviceId === recipient.deviceId)) throw new Error('本人用の鍵の宛先・承認世代が異なります。');
+  validateDeviceSecretIdentity(recipient); wrapped = verifyPrivateCalendarWrappedKey(wrapped, authority, recipient.deviceId);
+  const { encryptedKey, ...header } = wrapped.body;
   const ciphertext = hexBytes(encryptedKey, 48); const salt = hexBytes(header.salt, 32); const nonce = hexBytes(header.nonce, 12); hexBytes(wrapped.signature, 64);
-  verifySharedDocument(wrapped.body, wrapped.signature, sender);
   const aad = utf8(header); const shared = x25519.getSharedSecret(hexBytes(recipient.agreementSecretKey, 32), hexBytes(header.ephemeralPublicKey, 32));
   const derived = hkdf(sha256, shared, salt, aad, 32);
   try {

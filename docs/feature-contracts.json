@@ -3443,5 +3443,145 @@
         "name": "private ciphertext cache audit starts once from its explicit button and exposes only synthetic public proof"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-cloud-public-contract-never-establishes-trust",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar Cloud metadata is a bounded owned public copy and cannot substitute for protected verified authority"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar Cloud metadata rejects foreign owners, unknown fields, oversized JSON and signed-header mismatches"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar Cloud cache metadata bounds all pieces and sequences and never accepts Google bindings in its public shape"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar wrapped-key transport authenticates its public envelope without accessing a recipient secret and owns that checked copy"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar cache manifest transport binds its signature to the current authority and owns the complete digest list"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-uid-only-cloud-authority-and-immutable-delivery",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar Cloud metadata rejects foreign owners, unknown fields, oversized JSON and signed-header mismatches"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud root creation is fixed and idempotent while other users cannot read any private path or enumerate owners"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar simultaneous first-device proposals retain exactly one server root and never replace a losing local proposal"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar authority CAS preserves the signed chain and concurrent main changes remain conflicts rather than last-writer updates"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar concurrent retries of one signed authority update recover the exact archive without advancing another revision"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud maximum device membership rotates without exceeding Rules access limits and removes every old transport key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar approved same-UID devices receive the same private key through immutable authenticated envelopes"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar authority changes retire obsolete wrapped transport copies and revoked devices cannot publish against the old head"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud rechecks the account after a committed create and an exact retry recovers the existing root"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud rejects malformed public metadata and a substituted signed root never passes the original local trust pin"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar concurrent retries of the same prepared first-device root both recover one immutable acceptance"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar concurrent retries of the exact prepared key envelope recover its original bytes without replacement"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud authority history pages at one hundred revisions and never treats server rollback as an empty successful update"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-atomic-cloud-cache-and-bounded-retention",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud-contract.test.mjs",
+        "name": "private Calendar cache manifest transport binds its signature to the current authority and owns the complete digest list"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud transfers twenty thousand encrypted intervals to the same approved UID with bounded parts and no public busy content"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud publishes and retires derived snapshots atomically and rejects delayed or forked sequences"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud concurrent uploads converge on the highest sequence and same-sequence forks never silently overwrite"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud one denied part aborts the entire publication and the previous complete cache remains readable"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud switches main authority before accepting its new cache and rejects every old-main upload"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud account change during Native ciphertext verification prevents every publication write"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud uncertain cache delivery recovers the exact saved envelope after an account change without publishing a second cache"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar Cloud missing or altered server parts are unconfirmed and are never returned as an authenticated cache"
+      }
+    ]
+  },
+  {
+    "feature": "required-cloud-feature-contracts-remain-in-ci",
+    "tests": [
+      {
+        "file": "tests/feature-contract-validation.test.mjs",
+        "name": "feature contract validation retains strict existing unit references and cannot replace unit checks with Cloud-only coverage"
+      },
+      {
+        "file": "tests/feature-contract-validation.test.mjs",
+        "name": "feature contract validation rejects removal of a required Cloud test, command registration or CI emulator execution"
+      }
+    ]
   }
 ]

@@ -241,6 +241,108 @@ service cloud.firestore {
         allow delete: if signedIn() && (request.auth.uid == userId || ownerOf(group(invitation().groupId)));
       }
     }
+    // Private Calendar is UID-scoped. Group ownership or membership never grants access here.
+    function privateCalendarPath(userId) { return /databases/$(database)/documents/privateCalendars/$(userId); }
+    function privateCalendarOwner(userId) { return signedIn() && request.auth.uid == userId; }
+    function privateCalendar(userId) { return get(privateCalendarPath(userId)).data; }
+    function privateCalendarAfter(userId) { return getAfter(privateCalendarPath(userId)).data; }
+    function validPrivateCalendarCacheHead(c) {
+      return c == null || c is map && c.keys().hasOnly(['cacheId', 'manifestDigest', 'authorityDigest', 'sequence', 'chunkCount'])
+        && validProofDigest(c.cacheId) && validProofDigest(c.manifestDigest) && validProofDigest(c.authorityDigest)
+        && c.sequence is int && c.sequence > 0 && c.sequence <= 9007199254740991 && c.chunkCount is int && c.chunkCount > 0 && c.chunkCount <= 32;
+    }
+    function validPrivateCalendarHead(g, userId) {
+      return g.keys().hasOnly(['schemaVersion', 'ownerUserId', 'accountGeneration', 'rootDigest', 'authorityRevision', 'authorityDigest',
+        'authorityJson', 'keyVersion', 'mainDeviceId', 'deviceIds', 'cacheHead', 'createdAt', 'updatedAt'])
+        && g.schemaVersion == 1 && g.ownerUserId == userId && safeId(userId) && validProofDigest(g.accountGeneration)
+        && validProofDigest(g.rootDigest) && validProofDigest(g.authorityDigest) && g.authorityRevision is int && g.authorityRevision > 0 && g.authorityRevision <= 9007199254740991
+        && g.keyVersion is int && g.keyVersion > 0 && g.keyVersion <= g.authorityRevision && safeId(g.mainDeviceId)
+        && g.deviceIds is list && g.deviceIds.size() > 0 && g.deviceIds.size() <= 16 && g.deviceIds.toSet().size() == g.deviceIds.size()
+        && g.mainDeviceId in g.deviceIds && g.authorityJson is string && g.authorityJson.size() <= 16000
+        && validPrivateCalendarCacheHead(g.cacheHead) && g.createdAt is timestamp && g.updatedAt == request.time;
+    }
+    function privateCalendarAuthorityWritten(userId, g) {
+      let authority = getAfter(/databases/$(database)/documents/privateCalendars/$(userId)/authorities/$(string(g.authorityRevision))).data;
+      return authority.authorityDigest == g.authorityDigest && authority.authorityJson == g.authorityJson;
+    }
+    function privateCalendarCacheWritten(userId, c) {
+      let manifest = getAfter(/databases/$(database)/documents/privateCalendars/$(userId)/caches/$(c.cacheId)).data;
+      return manifest.manifestDigest == c.manifestDigest && manifest.authorityDigest == c.authorityDigest
+        && manifest.sequence == c.sequence && manifest.chunkCount == c.chunkCount;
+    }
+    function privateCalendarCacheReplaced(userId, cacheId) {
+      return privateCalendar(userId).cacheHead != null && privateCalendar(userId).cacheHead.cacheId == cacheId
+        && privateCalendarAfter(userId).cacheHead != null && privateCalendarAfter(userId).cacheHead.cacheId != cacheId;
+    }
+    match /privateCalendars/{userId} {
+      allow get: if privateCalendarOwner(userId);
+      allow list, delete: if false;
+      allow create: if privateCalendarOwner(userId) && validPrivateCalendarHead(request.resource.data, userId)
+        && request.resource.data.authorityRevision == 1 && request.resource.data.keyVersion == 1
+        && request.resource.data.rootDigest == request.resource.data.authorityDigest
+        && request.resource.data.deviceIds.size() == 1 && request.resource.data.cacheHead == null
+        && request.resource.data.createdAt == request.time && privateCalendarAuthorityWritten(userId, request.resource.data);
+      allow update: if privateCalendarOwner(userId) && validPrivateCalendarHead(request.resource.data, userId)
+        && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.accountGeneration == resource.data.accountGeneration && request.resource.data.rootDigest == resource.data.rootDigest
+        && ((request.resource.data.authorityRevision == resource.data.authorityRevision + 1
+        && request.resource.data.keyVersion in [resource.data.keyVersion, resource.data.keyVersion + 1]
+        && (request.resource.data.deviceIds.toSet().hasAll(resource.data.deviceIds) || request.resource.data.keyVersion == resource.data.keyVersion + 1)
+        && request.resource.data.cacheHead == resource.data.cacheHead && privateCalendarAuthorityWritten(userId, request.resource.data))
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cacheHead', 'updatedAt'])
+          && request.resource.data.cacheHead != null && request.resource.data.cacheHead.authorityDigest == resource.data.authorityDigest
+          && (resource.data.cacheHead == null || request.resource.data.cacheHead.cacheId != resource.data.cacheHead.cacheId)
+          && (resource.data.cacheHead == null || resource.data.cacheHead.authorityDigest != resource.data.authorityDigest
+            || request.resource.data.cacheHead.sequence > resource.data.cacheHead.sequence)
+          && privateCalendarCacheWritten(userId, request.resource.data.cacheHead)));
+      match /authorities/{revision} {
+        allow read: if privateCalendarOwner(userId);
+        allow create: if privateCalendarOwner(userId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'revision', 'authorityDigest', 'authorityJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.revision is int && revision == string(request.resource.data.revision)
+          && request.resource.data.revision == privateCalendarAfter(userId).authorityRevision
+          && request.resource.data.authorityDigest == privateCalendarAfter(userId).authorityDigest
+          && request.resource.data.authorityJson == privateCalendarAfter(userId).authorityJson && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+      match /keyEnvelopes/{keyId} {
+        allow get: if privateCalendarOwner(userId) && (resource == null || resource.data.authorityDigest == privateCalendar(userId).authorityDigest);
+        allow list: if false;
+        allow create: if privateCalendarOwner(userId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorityDigest', 'recipientDeviceId', 'wrappedKeyJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.authorityDigest == privateCalendarAfter(userId).authorityDigest
+          && request.resource.data.recipientDeviceId in privateCalendarAfter(userId).deviceIds
+          && keyId == request.resource.data.authorityDigest + '_' + request.resource.data.recipientDeviceId
+          && request.resource.data.wrappedKeyJson is string && request.resource.data.wrappedKeyJson.size() <= 8000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if privateCalendarOwner(userId) && resource.data.authorityDigest != privateCalendarAfter(userId).authorityDigest;
+      }
+      match /caches/{cacheId} {
+        allow read: if privateCalendarOwner(userId);
+        allow create: if privateCalendarOwner(userId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorityDigest', 'sequence', 'chunkCount', 'manifestDigest', 'manifestJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && cacheId == privateCalendarAfter(userId).cacheHead.cacheId
+          && request.resource.data.authorityDigest == privateCalendarAfter(userId).authorityDigest
+          && request.resource.data.manifestDigest == privateCalendarAfter(userId).cacheHead.manifestDigest
+          && request.resource.data.sequence == privateCalendarAfter(userId).cacheHead.sequence
+          && request.resource.data.chunkCount == privateCalendarAfter(userId).cacheHead.chunkCount
+          && request.resource.data.manifestJson is string && request.resource.data.manifestJson.size() <= 16000 && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if privateCalendarOwner(userId) && privateCalendarCacheReplaced(userId, cacheId);
+        match /parts/{index} {
+          allow read: if privateCalendarOwner(userId);
+          allow create: if privateCalendarOwner(userId)
+            && request.resource.data.keys().hasOnly(['schemaVersion', 'index', 'partJson', 'createdAt'])
+            && request.resource.data.schemaVersion == 1 && request.resource.data.index is int && index == string(request.resource.data.index)
+            && request.resource.data.index >= 0 && request.resource.data.index < privateCalendarAfter(userId).cacheHead.chunkCount
+            && cacheId == privateCalendarAfter(userId).cacheHead.cacheId
+            && request.resource.data.partJson is string && request.resource.data.partJson.size() <= 140000 && request.resource.data.createdAt == request.time;
+          allow update: if false;
+          allow delete: if privateCalendarOwner(userId) && privateCalendarCacheReplaced(userId, cacheId);
+        }
+      }
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

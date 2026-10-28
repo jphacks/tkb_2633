@@ -14,12 +14,12 @@ const { createCalendarQueryRange } = await import('../src/features/google-sync/c
 const userId = 'capture-firebase-owner'; const subject = 'explicit-different-google-subject'; const now = Date.parse('2026-10-28T00:00:00.000Z');
 const range = createCalendarQueryRange('2026-10-28','2026-11-27','Asia/Tokyo');
 async function fixture(t, configured = true) {
-  const f = privateCalendarSetupFixture(t,{userId}); const h = privateCalendarMemoryCloud(); const state = { calls: 0, uploads: [], busy: [{start:'2026-10-28T00:00:00.000Z',end:'2026-10-28T01:00:00.000Z'}] };
+  const f = privateCalendarSetupFixture(t,{userId}); const h = privateCalendarMemoryCloud(); const state = { now, calls: 0, uploads: [], busy: [{start:'2026-10-28T00:00:00.000Z',end:'2026-10-28T01:00:00.000Z'}] };
   const source = createPrivateCalendarSourceStorage({ownerUserId:userId,readProtected:f.readProtected,exclusive:f.exclusive,vault:f.vault,assertOwner:uid=>assert.equal(f.state.currentUser,uid,'owner changed')});
   const authoritySync = createPrivateCalendarAuthoritySync({userId,secrets:f.secrets,intents:f.changes,cloud:h.cloud});
   const controller = createPrivateCalendarSourceController({userId,secrets:f.secrets,intents:f.changes,source,authoritySync});
   if(configured){await f.controller(h.cloud).prepareAndResume();await controller.change({googleSubject:subject},(await f.secrets.authority(userId)).digest);}
-  const port={userId,secrets:f.secrets,source,cache:f.cache,crypto:f.gateway,assertOwner:()=>assert.equal(f.state.currentUser,userId,'owner changed'),now:()=>now,randomFraction:()=>0.5,
+  const port={userId,secrets:f.secrets,source,cache:f.cache,crypto:f.gateway,assertOwner:()=>assert.equal(f.state.currentUser,userId,'owner changed'),now:()=>state.now,randomFraction:()=>0.5,
     cloud:{...h.cloud,async uploadCache(authority,encrypted){state.uploads.push(JSON.stringify(encrypted));return h.cloud.uploadCache(authority,encrypted);}},
     async queryGoogle(expected,query){assert.equal(expected,subject);assert.deepEqual(query,range);state.calls++;return state.busy;}};
   const open=()=>createPrivateCalendarCapture(port);return{f,h,source,controller,state,port,open,capture:open()};
@@ -60,7 +60,7 @@ test('private Calendar capture rejects malformed excessive and out-of-policy dat
   const long=createCalendarQueryRange('2026-10-28','2027-12-31','Asia/Tokyo');assert.throws(()=>f.capture.capture({range:long}),/取得範囲/u);assert.equal(f.state.calls,1);
   const start=Date.parse(range.timeMin);const tooMany=Array.from({length:20001},(_,i)=>({start:new Date(start+i*120000).toISOString(),end:new Date(start+i*120000+60000).toISOString()}));
   for(const busy of [[{start:'2026-10-28',end:'2026-10-29'}],[{...f.state.busy[0],summary:'never-upload'}],Array(100001).fill(f.state.busy[0]),tooMany]){
-    f.state.busy=busy;await assert.rejects(()=>f.capture.capture({range}));assert.equal((await f.f.cache.status(authority)).cursor.manifestDigest,original);assert.equal(f.state.uploads.length,1);
+    f.state.busy=busy;await assert.rejects(()=>f.capture.capture({range,force:true}));assert.equal((await f.f.cache.status(authority)).cursor.manifestDigest,original);assert.equal(f.state.uploads.length,1);
   }
 });
 
@@ -77,6 +77,7 @@ test('private Calendar capture owner changes and account-binding errors cannot s
   const f=await fixture(t);f.port.queryGoogle=async expected=>{assert.equal(expected,subject);f.f.state.currentUser='foreign-owner';return f.state.busy;};
   await assert.rejects(()=>f.open().capture({range}),/owner changed/u);assert.equal(f.state.uploads.length,0);f.f.state.currentUser=userId;
   f.port.queryGoogle=async expected=>{assert.equal(expected,subject);throw Object.assign(new Error('different Google session'),{code:'google_account_mismatch'});};
+  assert.equal((await f.open().capture({range})).kind,'inProgress');f.state.now+=120000;
   await assert.rejects(()=>f.open().capture({range}),/different Google session/u);assert.equal(f.state.uploads.length,0);assert.equal(await f.f.cache.status(await f.f.secrets.authority(userId)),null);
 });
 

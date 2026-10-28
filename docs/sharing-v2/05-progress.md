@@ -795,3 +795,16 @@ Android 10の実Google取得は**7.142秒、181日・3通信・76区間**、iPho
 iOS条件**1,796/1,796**、Android条件**1,796/1,796**、Firestore Emulator **61/61**、失敗・スキップ0。**265機能契約／Cloud必須34件**で既存264契約を保持し、lint・型・計算版の照合が通過した。証拠は`evidence/2026-10-29-real-google-calendar-read.json`。実読取結果は端末メモリ内だけに保持し、端末のデータを初期化していない。実Googleの暗号化cache転送、通常の共有グループ全体、OS任せの背景実行の成功とは扱わない。
 
 Phase 6は未完。次は取得前の失敗backoff・前景／起動／単一worker、本人の休日・時間帯／移動、v2 Tasks／通知／Widget、明示コピーと非破壊移行、総合回帰を続ける。main・README・本番Rules・実グループ・製品UI調整は変更しない。
+
+
+### Phase 4au：取得前の失敗記録・別実行経路の排他・古い結果の拒否
+
+基点`c94f0d3`。新しい反例で、取得前に失敗した記録が再起動後に残らないこと、別runtimeが同時にGoogleを取得すること、遅れて返った旧queryが新しいcacheを上書きすることを再現した。再現ログ`phase4au-acquisition-red-actual.log`を残し、SQLの取得状態へ修正した。
+
+本人用DBの同じowner・authority検査とwriter transactionを使い、取得前に2分間のleaseと失敗時の指数backoffを保存する。手動再試行も実行中の別queryを奪わない。中断して返らない処理は期限後に再開でき、旧leaseの結果・失敗は新しい処理を変更できない。完全な暗号化cacheと取得成功を同一transactionで確定し、途中のSQL失敗では双方を戻す。取得済みcacheの10分間の再利用は同じ取得範囲・現行manifestの自動経路だけへ限定した。手動の明示更新と、送信待ちの同じ暗号文の再送は維持する。新しい表にはGoogle識別子・時間帯・providerの生messageを保存しない。
+
+実SQLiteの独立した2接続、40同時要求、queryの順序逆転、期限境界、再起動、SQL書込み後の失敗、破損した再試行状態を含む9ケースが成功した。従来の異常応答検査は明示したforceでbackoffを越えて応答自体を検査し、アカウント切替検査には期限前の再開拒否を追加した。既存契約の拒否・保持条件を弱めていない。
+
+iOS条件**1,805/1,805**、Android条件**1,805/1,805**、Firestore Emulator **61/61**、失敗・スキップ0。**266機能契約／Cloud必須34件**で既存265件を維持。lint・型・両Schedulerの版照合も成功した。物理iPhone **25.567秒**・Android 10 **92.265秒**で合成取得→Native暗号・保護SQL→ローカルRules→本人の競合／空き判定を確認し、設定版2を保持した。これらの時間はUI操作を含み、query性能の比較値ではない。実Google読取は直前のPhase 4atと区別する。
+
+証拠は`evidence/2026-10-29-private-calendar-acquisition.json`。自動取得の起動・前景・単一workerへの接続、全体の時間枠と通常UIへの失敗状態表示はまだ残る。次はこれらを既存の単一workerと前景契機へ接続する。Phase 6・本人の許可帯／移動・v2 Tasks／通知／Widget・非破壊移行・総合E2Eは継続中。本番Rules・実グループ・main・README・製品UI調整は変更していない。

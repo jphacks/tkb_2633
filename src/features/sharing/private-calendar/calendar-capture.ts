@@ -50,7 +50,7 @@ export function snapshotPrivateCalendarIntervals(raw: readonly { start: string; 
 /** One bounded acquisition/publication action. Scheduling, permissions and retry UI belong to its caller. */
 export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
   const { userId, secrets, source, cache, cloud, crypto, now = Date.now, randomFraction = Math.random } = port; assertSharedIdentifier(userId);
-  async function run(range: CalendarQueryRange, force: boolean) {
+  async function run(range: CalendarQueryRange, force: boolean, automatic: boolean) {
     await port.assertOwner(); const state = await secrets.publicState(userId); const authority = state?.authority;
     if (!authority) return { kind: 'unconfigured' as const };
     if (!authority.signed.body.devices.some(device => device.deviceId === state.identity.deviceId)) return { kind: 'revoked' as const };
@@ -90,30 +90,38 @@ export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
       finally { key?.fill(0); }
       return publish(pending.encrypted);
     }
-    await head();
-    const raw = await port.queryGoogle(subject, { ...range }); const intervals = snapshotPrivateCalendarIntervals(raw, range);
-    const acceptedHead = await head(); const local = await cache.status(authority);
-    const sequence = Math.max(local?.cursor.sequence ?? 0, acceptedHead.cacheHead?.sequence ?? 0) + 1;
-    let key = await secrets.currentKey(userId, authority);
+    const acquisition = await cache.beginAcquisition(authority, { rangeDigest: sharedDocumentDigest(range), now: start, force, automatic, randomFraction: randomFraction() });
+    if (acquisition.kind !== 'acquired') return acquisition;
     try {
-      if (!key) throw new Error('本人用Calendarの鍵の受信を確認してください。');
-      const body = { ownerUserId: userId, accountGeneration: authority.anchor.accountGeneration, mainDeviceId: state.identity.deviceId,
-        mainRevision: authority.signed.body.revision, calendarBinding: binding, timeZone: range.timeZone, fetchedAt: new Date(start).toISOString(),
-        coverage: { start: range.timeMin, end: range.timeMax }, intervals };
-      const encrypted = await sealPrivateCalendarCache(crypto, { authority, accountKey: key, calendarBinding: binding, cache: body, mainDevice: await secrets.identity(userId), sequence });
-      await assertContext(); await cache.save(encrypted, { authority, accountKey: key, calendarBinding: binding, origin: 'local' });
-      return await publish(encrypted);
-    } finally { key?.fill(0); key = null; }
+      await head();
+      const raw = await port.queryGoogle(subject, { ...range }); const intervals = snapshotPrivateCalendarIntervals(raw, range);
+      const acceptedHead = await head(); const local = await cache.status(authority);
+      const sequence = Math.max(local?.cursor.sequence ?? 0, acceptedHead.cacheHead?.sequence ?? 0) + 1;
+      let key = await secrets.currentKey(userId, authority);
+      try {
+        if (!key) throw new Error('本人用Calendarの鍵の受信を確認してください。');
+        const body = { ownerUserId: userId, accountGeneration: authority.anchor.accountGeneration, mainDeviceId: state.identity.deviceId,
+          mainRevision: authority.signed.body.revision, calendarBinding: binding, timeZone: range.timeZone, fetchedAt: new Date(start).toISOString(),
+          coverage: { start: range.timeMin, end: range.timeMax }, intervals };
+        const encrypted = await sealPrivateCalendarCache(crypto, { authority, accountKey: key, calendarBinding: binding, cache: body, mainDevice: await secrets.identity(userId), sequence });
+        await assertContext(); await cache.save(encrypted, { authority, accountKey: key, calendarBinding: binding, origin: 'local', acquisition: { lease: acquisition.lease, now } });
+        return await publish(encrypted);
+      } finally { key?.fill(0); key = null; }
+    } catch (error) {
+      // A changed owner/authority or a newer query must not be modified by the failed old attempt.
+      await cache.failAcquisition(authority, acquisition.lease, now(), privateCalendarDeliveryFailureCode(error), randomFraction()).catch(() => undefined);
+      throw error;
+    }
   }
   let flight: { scope: string; force: boolean; promise: ReturnType<typeof run> } | null = null;
-  function capture(options: { range: CalendarQueryRange; force?: boolean }): ReturnType<typeof run> {
+  function capture(options: { range: CalendarQueryRange; force?: boolean; automatic?: boolean }): ReturnType<typeof run> {
     const range = rangeSnapshot(options.range); const force = options.force === true; const scope = canonicalJson(range);
     if (flight) {
       const current = flight;
       if (current.scope !== scope) return Promise.reject(new Error('別の範囲のCalendarを更新中です。完了後に再試行してください。'));
-      return force && !current.force ? current.promise.then(result => result.kind === 'waiting' ? capture({ range, force }) : result) : current.promise;
+      return force && !current.force ? current.promise.then(result => result.kind === 'waiting' || result.kind === 'fresh' ? capture({ range, force }) : result) : current.promise;
     }
-    const pending = run(range, force); flight = { scope, force, promise: pending };
+    const pending = run(range, force, options.automatic === true); flight = { scope, force, promise: pending };
     void pending.finally(() => { if (flight?.promise === pending) flight = null; }).catch(() => {}); return pending;
   }
   return { capture };

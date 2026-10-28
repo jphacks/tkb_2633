@@ -9,9 +9,9 @@ import { createPrivateCalendarDeviceSession } from '../../src/features/sharing/p
 const { createPrivateCalendarRuntime } = await import('../../src/features/sharing/private-calendar/runtime.ts');
 
 /** Actual SQLite, protected vault, signed device controls and encryption; synthetic Google/transport only. */
-export function privateCalendarRuntimeFixture(t, transport = privateCalendarMemoryCloud()) {
+export function privateCalendarRuntimeFixture(t, transport = privateCalendarMemoryCloud(), storageOptions = {}) {
   const userId = 'private-runtime-owner'; const googleSubject = 'explicit-google-subject';
-  const f = privateCalendarSetupFixture(t, { userId });
+  const f = privateCalendarSetupFixture(t, { ...storageOptions, userId });
   const state = { now: Date.parse('2026-10-28T00:00:00.000Z'), googleReads: 0, checks: 0, consents: [], restores: 0, decrypts: 0, uploads: 0,
     account: { subject: googleSubject, label: 'Synthetic Google account' }, busy: [{ start: '2026-10-28T00:00:00.000Z', end: '2026-10-28T01:00:00.000Z' }] };
   const assertOwner = () => assert.equal(f.state.currentUser, userId, 'owner changed');

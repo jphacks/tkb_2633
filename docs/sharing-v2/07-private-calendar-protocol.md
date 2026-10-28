@@ -137,3 +137,10 @@ subject・取得停止・準備中の変更は本人UID専用の保護vaultへ�
 ## 実Googleの独立したNative読取（Phase 4at）
 
 既存のFreeBusy clientとNative Google認証を使い、物理iPhoneとAndroid 10で181日・3通信の読取を確認した。開発routeはGoogle識別子・トークン・区間を出力せず、件数だけを返す。Googleの予定・Tasksを書き換えず、SQLite・Firebaseに保存しない。iPhoneの追加権限とOAuthテスト利用者の設定も実際に切り分けた。これは実Googleの暗号化cache転送や通常グループとの総合E2Eを意味しない。自動取得・取得前の失敗backoff・単一workerは引き続き残作業である。
+
+
+## 取得の実行権と古い結果の拒否（Phase 4au）
+
+取得前の失敗を、本人用SQLの小さな取得記録へ残す。同じwriter transactionで2分の実行leaseを取得し、手動forceでも有効な別leaseを奪わない。期限切れ後の再開では新しいtokenを使い、遅れた旧queryのcache・失敗は採用しない。cache本体・cursor・送信待ちと取得成功は同じSQL transactionで確定する。送信待ちの固定envelopeがあれば、引き続きGoogleの再取得やnonceの再生成をせず再送する。
+
+自動経路の同一取得範囲は10分間再利用できるが、現行authority・実際に保存されているmanifestが一致する場合だけとする。取得範囲変更、期限切れ、取得中断、cache欠落を「最新で空き」とみなさない。Google subject・busy区間・生messageを取得記録へ保存しない。起動／前景／OS workerの自動契機はこの段階では未接続である。

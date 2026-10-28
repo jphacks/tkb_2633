@@ -4229,5 +4229,46 @@
         "name": "real Google Native read audit composes only the existing Google gateways and reports transport counts without Firebase or storage"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-acquisition-durable-backoff-cross-runtime-fencing-and-atomic-success",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar acquisition persists pre-query failure backoff across runtime restart without storing provider content"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar acquisition serializes separate runtime instances before Google and preserves the one winning snapshot"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar acquisition fences a late expired query so it cannot replace a newer successful snapshot"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar automatic acquisition skips a fresh identical horizon but an explicit manual refresh still obtains new data"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar acquisition is exclusive across independent SQLite connections and a manual force cannot steal live work"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar a crashed acquisition expires and a stale failure cannot delay the replacement lease"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar cache and acquisition success roll back together if SQL fails after the new ciphertext write"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar fresh acquisition metadata cannot cover a different horizon or survive a missing complete cache"
+      },
+      {
+        "file": "tests/sharing-private-calendar-acquisition.test.mjs",
+        "name": "private Calendar acquisition rejects corrupt retained retry metadata without erasing the current encrypted cache"
+      }
+    ]
   }
 ]

@@ -9,6 +9,8 @@ import { hexBytes } from '../../features/sharing/private-calendar/validation.ts'
 import { assertSharedIdentifier } from '../../features/sharing/identifier.ts';
 import type { PrivateCalendarDeliveryFailure } from '../../features/sharing/private-calendar/delivery-retry.ts';
 import { assertPrivateCalendarDeliveryFailure, privateCalendarDeliveryRetry } from '../../features/sharing/private-calendar/delivery-retry.ts';
+import { beginPrivateCalendarAcquisition, completePrivateCalendarAcquisition, failPrivateCalendarAcquisition, snapshotPrivateCalendarAcquisitionLease } from './private-calendar-acquisition.ts';
+import type { PrivateCalendarAcquisitionLease } from './private-calendar-acquisition.ts';
 
 export interface PrivateCalendarCacheStoragePort {
   readonly ownerUserId: string; readonly crypto: PrivateCalendarCryptoGateway;
@@ -74,17 +76,20 @@ export function createPrivateCalendarCacheStorage(port: PrivateCalendarCacheStor
           attempts: row.attempts, retryAt: row.retry_at, failureCode: row.failure_code as PrivateCalendarDeliveryFailure | null };
       });
     },
-    async save(encrypted: EncryptedPrivateCalendarCache, input: CacheInput & { origin: 'local' | 'remote' }) {
+    async save(encrypted: EncryptedPrivateCalendarCache, input: CacheInput & { origin: 'local' | 'remote'; acquisition?: { lease: PrivateCalendarAcquisitionLease; now(): number } }) {
       ownerAuthority(input.authority);
       if (!(input.accountKey instanceof Uint8Array) || input.accountKey.length !== 32) throw new Error('本人用Calendarの鍵が無効です。');
       assertSharedIdentifier(input.calendarBinding);
       if (!['local', 'remote'].includes(input.origin)) throw new Error('本人用Calendarの保存元を確認できません。');
+      const acquisition = input.acquisition ? { lease: snapshotPrivateCalendarAcquisitionLease(input.acquisition.lease), now: input.acquisition.now } : null;
+      if (acquisition && (input.origin !== 'local' || acquisition.lease.authorityDigest !== input.authority.digest)) throw new Error('Calendarの取得元が一致しません。');
       const owned = snapshotEncryptedPrivateCalendarCache(encrypted, input.authority);
       input = { ...input, accountKey: input.accountKey.slice() };
       try {
         await port.assertOwner(port.ownerUserId);
         await openPrivateCalendarCache(port.crypto, owned, input);
         return await locked(input.authority, input.origin === 'local', async (db) => {
+          if (acquisition) await completePrivateCalendarAcquisition(db, acquisition.lease, acquisition.now(), sharedDocumentDigest(owned.manifest));
           const before = await metadata(db); const changed = advancePrivateCalendarCacheCursor(before ? savedCursor(before) : null, owned.manifest, input.authority);
           if (changed.kind === 'duplicate') {
             // Never requeue an already acknowledged snapshot, reset backoff, or overwrite a newer pending state.
@@ -106,6 +111,20 @@ export function createPrivateCalendarCacheStorage(port: PrivateCalendarCacheStor
           return changed;
         });
       } finally { input.accountKey.fill(0); }
+    },
+    beginAcquisition(authority: VerifiedPrivateCalendarAuthority, options: { rangeDigest: string; now: number; force?: boolean; automatic?: boolean; randomFraction: number }) {
+      const owned = { ...options }; hexBytes(owned.rangeDigest, 32); timestamp(owned.now);
+      return locked(authority, true, async db => {
+        const current = await metadata(db); const cursor = current ? savedCursor(current) : null;
+        return beginPrivateCalendarAcquisition(db, port.crypto, { authorityDigest: authority.digest, rangeDigest: owned.rangeDigest,
+          now: owned.now, force: owned.force === true, automatic: owned.automatic === true, randomFraction: owned.randomFraction,
+          currentManifestDigest: cursor?.authorityDigest === authority.digest && !current!.pending ? cursor.manifestDigest : null });
+      });
+    },
+    failAcquisition(authority: VerifiedPrivateCalendarAuthority, lease: PrivateCalendarAcquisitionLease, now: number, code: PrivateCalendarDeliveryFailure, randomFraction: number) {
+      const owned = snapshotPrivateCalendarAcquisitionLease(lease); timestamp(now);
+      if (owned.authorityDigest !== authority.digest) throw new Error('Calendarの取得元が一致しません。');
+      return locked(authority, true, db => failPrivateCalendarAcquisition(db, owned, now, code, randomFraction));
     },
     async read(input: CacheInput) {
       ownerAuthority(input.authority);

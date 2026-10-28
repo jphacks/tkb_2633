@@ -29,11 +29,14 @@ import { V2ChoreProcedures } from './chore-procedures';
 import { V2GroupPolicyEditor } from './group-policy-editor';
 import { v2CanShowCompletion } from './round-visibility';
 import { V2DateRightsEditor } from './date-rights-editor';
+import type { V2MutationOutcome } from './mutation-outcome';
+import { V2WasteScreen } from './waste-screen';
+import { V2WasteOccurrence } from './waste-occurrence';
 
 export interface V2GroupScreenProps {
   purpose: 'development' | 'workspace'; workspaceName?: string; workspaceError?: string; onManage?: () => void;
   subscribe?: (changed: () => void) => () => void;
-  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy' | 'dateRights'; choreId?: string;
+  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy' | 'dateRights' | 'waste'; choreId?: string;
   occurrenceId?: string; subjectId?: string; anchorDate?: string; onRound?: (occurrenceId: string, subjectId: string, anchorDate?: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void; onRequests?: () => void;
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
@@ -41,25 +44,31 @@ export interface V2GroupScreenProps {
   onManageChores?: () => void; onDetails?: (choreId: string) => void; onAddChore?: () => void; onChoreCreated?: (choreId: string) => void;
   onGroupPolicy?: () => void;
   onDateRights?: (choreId: string) => void;
+  onWaste?: () => void;
 }
 
 function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: string, choreId?: string): Parameters<V2GroupUiSession['readModel']>[0] {
+  if (view === 'waste') return { management: true, waste: true };
   if (view === 'groupPolicy') return { management: true, groupPolicy: true };
   if (view === 'dateRights') return { management: true, permissionsChoreId: choreId };
   if (view === 'details') return { management: true, detailChoreId: choreId };
   if (view === 'chores' || view === 'addChore') return { management: true };
-  return anchorDate ? { focusDate: anchorDate } : view === 'calendar' ? { calendarMonth: 'current' } : undefined;
+  if (anchorDate) return { focusDate: anchorDate, ...(['calendar', 'home'].includes(view) ? { waste: true } : {}) };
+  return view === 'calendar' ? { calendarMonth: 'current', waste: true } : view === 'home' ? { waste: true } : undefined;
 }
 
-export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onDateRights }: V2GroupScreenProps) {
+export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onDateRights, onWaste }: V2GroupScreenProps) {
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
+  const notificationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const mutationRead = useRef(false); const refreshQueued = useRef(false);
   const readOptions = useRef(readOptionsForView(view, anchorDate, choreId));
   const readBinding = useRef({ anchorDate, view, choreId });
   const [calendarMonth, setCalendarMonth] = useState<LocalDate | null>(null); const [calendarDay, setCalendarDay] = useState<LocalDate | null>(null);
   const refresh = useCallback(async () => {
+    clearTimeout(notificationTimer.current); notificationTimer.current = undefined;
     const revision = ++generation.current;
     try {
       const preview = await loadSession(); const value = await preview.readModel(readOptions.current);
@@ -72,9 +81,13 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       readOptions.current = readOptionsForView(view, anchorDate, choreId);
       readBinding.current = { anchorDate, view, choreId };
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const unsubscribe = subscribe?.(() => { clearTimeout(timer); timer = setTimeout(() => { if (alive.current && !running.current) void refresh(); }, 80); });
-    void refresh(); return () => { alive.current = false; generation.current++; clearTimeout(timer); unsubscribe?.(); };
+    const unsubscribe = subscribe?.(() => {
+      clearTimeout(notificationTimer.current);
+      if (!alive.current) return;
+      if (running.current) { if (mutationRead.current) refreshQueued.current = true; return; }
+      notificationTimer.current = setTimeout(() => { notificationTimer.current = undefined; if (alive.current) void refresh(); }, 80);
+    });
+    void refresh(); return () => { alive.current = false; generation.current++; clearTimeout(notificationTimer.current); refreshQueued.current = false; unsubscribe?.(); };
   }, [refresh, anchorDate, subscribe, view, choreId]));
   useEffect(() => {
     if (!screenModel) return;
@@ -83,16 +96,25 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     const timer = setTimeout(() => { if (alive.current && !running.current) void refresh(); }, delay);
     return () => clearTimeout(timer);
   }, [screenModel, refresh]);
-  const run = async (work: () => Promise<unknown>) => {
-    if (running.current) return; running.current = true; generation.current++; setBusy(true); setError(null);
-    let failure: unknown;
-    try { await work(); } catch (cause) { failure = cause; }
+  const perform = async (work: () => Promise<unknown>): Promise<V2MutationOutcome> => {
+    if (running.current) return { committed: false, refreshed: false, error: new Error('保存中の操作が終わってから、もう一度お試しください。') };
+    running.current = true; generation.current++; clearTimeout(notificationTimer.current); setBusy(true); setError(null);
+    let failure: unknown; let failed = false;
+    try { await work(); } catch (cause) { failed = true; failure = cause; }
+    let loaded = false;
     try {
-      const loaded = await refresh(); if (!alive.current) return;
-      if (failure) setError(failure instanceof Error ? failure.message : '操作を完了できませんでした。');
-      else if (!loaded) setError('表示を更新できませんでした。画面を開き直して現在の状態を確認してください。');
-    } finally { running.current = false; if (alive.current) setBusy(false); }
+      mutationRead.current = true; loaded = await refresh();
+      if (alive.current) {
+        if (failed) setError(failure instanceof Error ? failure.message : '操作を完了できませんでした。');
+        else if (!loaded) setError('表示を更新できませんでした。画面を開き直して現在の状態を確認してください。');
+      }
+    } finally {
+      mutationRead.current = false; running.current = false; if (alive.current) setBusy(false);
+      if (refreshQueued.current && alive.current) { refreshQueued.current = false; void refresh(); }
+    }
+    return { committed: !failed, refreshed: loaded, ...(failed ? { error: failure } : {}) };
   };
+  const run = async (work: () => Promise<unknown>) => { await perform(work); };
   const notice = <View style={styles.notice}>
     {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{workspaceName ?? '共有グループ'}</Text> : null}
     <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、クラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
@@ -107,6 +129,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const { personal, privateOverlay: privateValue, ...model } = screenModel;
   const privateOverlay = privateOverlayForViewer(privateValue, model.viewerUserId);
   const controller = session.controller;
+  if (view === 'waste') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    <V2WasteScreen model={model} actions={controller.actions} busy={busy} perform={perform} header={notice} onBack={onBack} />
+  </V2ScreenFrame>;
   if (view === 'dateRights') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <V2DateRightsEditor model={model} choreId={choreId ?? ''} controller={controller} onBack={onBack} onGroupPolicy={onGroupPolicy} header={notice}
       onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} />
@@ -135,7 +160,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     const selectMonth = async (day: LocalDate, selectedDate?: LocalDate) => {
       if (!alive.current || running.current) return;
       try {
-        const next = v2CalendarMonth(day); readOptions.current = { calendarMonth: next.month }; setCalendarMonth(next.month);
+        const next = v2CalendarMonth(day); readOptions.current = { calendarMonth: next.month, waste: true }; setCalendarMonth(next.month);
         setCalendarDay(selectedDate ?? (model.plan.range.asOfDate.slice(0, 7) === next.month.slice(0, 7) ? model.plan.range.asOfDate : next.month));
         await run(async () => {});
       } catch (cause) { setError(cause instanceof Error ? cause.message : '表示する月を確認してください。'); }
@@ -195,7 +220,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   </V2ScreenFrame>;
   const entries = model.plan.occurrences.flatMap((round) => round.subjects.filter((subject) => subject.required && (subject.subjectUserId === null || subject.subjectUserId === model.viewerUserId)).map((subject) => ({ round, subject })));
   const today = entries.filter(({ round, subject }) => round.activeInPeriod && (recommendations.get(subject.id)?.date ?? subject.suggestedDate) === model.plan.range.asOfDate);
-  const homeRows = [...today.map((entry) => ({ source: 'shared' as const, key: `shared:${entry.subject.id}`, ...entry })),
+  const homeRows = [...(model.waste?.occurrences ?? []).filter(entry => entry.occurrence.date === model.plan.range.asOfDate && entry.hidden !== true)
+    .map(entry => ({ source: 'waste' as const, key: `waste:${entry.key}`, entry })),
+    ...today.map((entry) => ({ source: 'shared' as const, key: `shared:${entry.subject.id}`, ...entry })),
     ...(privateOverlay?.status === 'ready' ? privateOverlay.home : []).map((row) => ({ source: 'personal' as const, key: row.key, row }))];
   const expired = entries.filter(({ subject }) => subject.showExpiredOnHome);
   return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
@@ -204,9 +231,11 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         <V2PrivateTaskNotice overlay={privateOverlay} sharedTimeZone={model.plan.timeZone} />
         {privateOverlay?.status === 'ready' && privateOverlay.today !== model.plan.range.asOfDate ? <Text style={styles.caption}>個人の今日：{privateOverlay.today} · 共有の今日：{model.plan.range.asOfDate}</Text> : null}
         <Text style={styles.caption}>{purpose === 'development' ? '検査用の未送信操作' : '送信待ち'}：{model.pendingChanges}件</Text>
+        {model.waste?.rows.some(row => !row.deleted && row.needsReview) ? <Text style={styles.error}>確認が必要なゴミ収集日があります。共有のゴミ収集日で候補を確認してください。</Text> : null}
         {purpose === 'workspace' ? <AppButton title="今すぐ同期" variant="quiet" disabled={busy} onPress={() => void run(() => session.controller.sync())} /> : null}</>}
       ListEmptyComponent={<Card><Text style={styles.body}>{privateOverlay?.status === 'unavailable' ? '今日の共有家事はありません。個人家事は未取得です。' : '今日の家事はありません。'}</Text></Card>}
-      renderItem={({ item }) => item.source === 'personal' ? <V2PrivateTaskCard row={item.row} source={session.privateTasks} busy={busy} run={run} /> : card(item.round, item.subject)}
+      renderItem={({ item }) => item.source === 'waste' ? <V2WasteOccurrence entry={item.entry} actions={controller.actions} busy={busy} run={run} />
+        : item.source === 'personal' ? <V2PrivateTaskCard row={item.row} source={session.privateTasks} busy={busy} run={run} /> : card(item.round, item.subject)}
       ListFooterComponent={<View style={styles.footer}>
         {expired.length ? <AccordionSection title={`期限を過ぎた家事（${expired.length}件）`} expanded={expiredOpen} onToggle={() => setExpiredOpen((value) => !value)}>
           {expired.map(({ round, subject }) => <View key={subject.id}>{card(round, subject)}</View>)}
@@ -216,6 +245,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         {onRequests ? <AppButton title="日時の変更申請" variant="secondary" disabled={busy} onPress={onRequests} /> : null}
         {onAssignmentRequests ? <AppButton title="担当の変更申請" variant="secondary" disabled={busy} onPress={onAssignmentRequests} /> : null}
         {onManageChores ? <AppButton title="共有家事の一覧・編集" variant="secondary" disabled={busy} onPress={onManageChores} /> : null}
+        {onWaste ? <AppButton title="共有のゴミ収集日" variant="secondary" disabled={busy} onPress={onWaste} /> : null}
         {purpose === 'development' ? <Card><SectionHeading title="設定を検査" />{model.configurations.map((entry) =>
           <AppButton key={entry.choreId} title={`「${model.plan.chores.find((chore) => chore.id === entry.choreId)?.name ?? '家事'}」の設定`} variant="quiet" disabled={busy} onPress={() => onConfiguration(entry.choreId)} />)}</Card> : null}
       </View>} />

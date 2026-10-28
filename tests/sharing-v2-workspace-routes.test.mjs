@@ -34,7 +34,7 @@ for (const platform of ['ios', 'android']) {
       const params = { occurrenceId: round.id, subjectId: subject.id, anchorDate: round.anchorDate };
       for (const [file, ready] of [['calendar', '共有カレンダー'], ['history', '実施履歴'], ['requests', '日時の変更申請'], ['assignment-requests', '担当の変更申請'],
         ['round', '共通の設定を開く'], ['date', '日時の指定'], ['assignment', '担当変更の適用範囲'], ['chores', '共有家事の一覧'],
-        ['add-chore', 'この内容を共有家事に追加'], ['details', '家事名・手順の編集'], ['group-rules', 'グループの種類'], ['date-rights', '日時変更の権限']]) {
+        ['add-chore', 'この内容を共有家事に追加'], ['details', '家事名・手順の編集'], ['group-rules', 'グループの種類'], ['date-rights', '日時変更の権限'], ['waste', '登録した収集日']]) {
         const r = await route(f, platform, file, ['details', 'date-rights'].includes(file) ? { choreId: round.choreId } : params, ready); assert.ok(r.screen.text().includes('選択した家族'));
         assert.equal(r.screen.text().includes('クラウドへ送信しません'), false); r.leave?.();
       }
@@ -42,6 +42,7 @@ for (const platform of ['ios', 'android']) {
       await home.screen.press('共有カレンダー'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/calendar']);
       await home.screen.press('共有家事の一覧・編集'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/chores']);
       await home.screen.press('グループのルール'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/group-rules']);
+      await home.screen.press('共有のゴミ収集日'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/waste']);
       assert.equal(home.screen.text().includes('設定を検査'), false);
       await home.screen.press('グループの管理・切り替え'); assert.deepEqual(home.navigation.at(-1), ['push', { pathname: '/sharing', params: { groupId: f.preview.groupId } }]); home.leave?.();
       const detail = await route(f, platform, 'round', params, '共通の設定を開く'); await detail.screen.press('日時を変更');
@@ -54,7 +55,7 @@ for (const platform of ['ios', 'android']) {
     for (const active of [null, { protocol: 1 }, { protocol: 2, userId: 'another-account' }]) {
       let focused = 0;
       const context = { ready: true, active, userId: 'owner' };
-      for (const file of ['index', 'round', 'date', 'assignment', 'configuration', 'requests', 'assignment-requests', 'history', 'calendar', 'chores', 'details', 'add-chore', 'group-rules', 'date-rights']) {
+      for (const file of ['index', 'round', 'date', 'assignment', 'configuration', 'requests', 'assignment-requests', 'history', 'calendar', 'chores', 'details', 'add-chore', 'group-rules', 'date-rights', 'waste']) {
         const screen = screenHarness(`src/app/group-v2/${file}.tsx`, { platform, params: {}, focusEffect: () => { focused++; }, mocks: {
           '../../../hooks/use-workspace': { useWorkspace: () => context }, '../../../hooks/use-planner-data': { usePlannerData: () => ({}) } } });
         assert.match(screen.text(), /共有グループを選択/u); assert.equal(screen.nodes().some((node) => node.type === 'TextInput'), false);

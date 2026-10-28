@@ -141,6 +141,25 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: grantedRights,
       expectedMembershipStart: enabled.dateRights.membershipStarts.member, basisOperationIds: enabled.dateRights.fields.member.candidates.map(source => source.operationId) }], enabled.groupPolicy.candidates.map(source => source.operationId));
     await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    const wasteRead = async session => (await session.controller.readModel(range, { waste: true })).waste;
+    const wasteCreated = await restart.controller.actions.addWasteSchedule({ label: '秘密の共有収集日', recurrence: 'monthly', collectionWeekdays: [], monthlyDay: 28 });
+    await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+    assert.deepEqual(await wasteRead(owner), await wasteRead(restart));
+    const wasteBase = (await wasteRead(owner)).rows[0]; const wasteId = wasteBase.id;
+    await owner.controller.actions.editWasteSchedule(wasteId, [{ field: 'rule', value: { recurrence: 'monthly', collectionWeekdays: [], monthlyDay: 31, anchorDate: null }, basisOperationIds: wasteBase.fields.rule.candidates.map(source => source.operationId) }]);
+    await restart.controller.actions.editWasteSchedule(wasteId, [{ field: 'label', value: '秘密の資源ごみ', basisOperationIds: wasteBase.fields.label.candidates.map(source => source.operationId) }]);
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+    const mergedWaste = await wasteRead(owner); assert.deepEqual(mergedWaste, await wasteRead(restart));
+    assert.equal(mergedWaste.schedules[0].label, '秘密の資源ごみ'); assert.equal(mergedWaste.schedules[0].monthlyDay, 31);
+    const collection = mergedWaste.occurrences[0]; assert.ok(collection);
+    await owner.controller.actions.setWasteOccurrenceHidden(collection.selection, true);
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    const hiddenWaste = await wasteRead(restart); assert.equal(hiddenWaste.occurrences[0].hidden, true);
+    await restart.controller.actions.setWasteOccurrenceHidden(hiddenWaste.occurrences[0].selection, false);
+    await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+    const expectedWaste = await wasteRead(owner); assert.equal(expectedWaste.occurrences[0].hidden, false); assert.deepEqual(expectedWaste, await wasteRead(restart));
+    const encryptedWaste = (await getDocFromServer(doc(f.root, 'events', wasteCreated[0].operationId))).data();
+    assert.equal(JSON.stringify(encryptedWaste).includes('秘密の共有収集日'), false); assert.equal(JSON.stringify(encryptedWaste).includes('秘密の資源ごみ'), false);
     await owner.manager.removeMembers(['member']); await assertFails(memberCloud.readGroup(groupId));
     const rejoinInvite = await owner.manager.createInvitation(); const rejoinRequest = createSharedJoinRequest(rejoinInvite, 'member', memberIdentity, Date.now());
     await memberCloud.submitJoinRequest(rejoinInvite.invitation, rejoinRequest); await owner.manager.approve(rejoinInvite.invitation, rejoinRequest);
@@ -150,6 +169,7 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     const rejoined = await createV2WorkspaceSession(dependencies(rejoinedDb, 'member', memberIdentity, memberCloud, new Map(),
       async () => ({ ...rejoinRecord, rosterArchive: rejoinArchive }), async value => { rejoinArchive = value; }, () => rejoinArchive));
     await rejoined.synchronizer.sync({ force: true });
+    assert.deepEqual(await wasteRead(rejoined), expectedWaste);
     const fresh = await rightsSource(rejoined); assert.equal(fresh.dateRights.membershipStarts.member, 4); assert.equal(fresh.dateRights.fields.member.kind, 'missing');
     assert.ok((await rejoined.repository.readState()).assessment.view.ofType('datePermission').length > 0, 'historical grants stay in the authenticated snapshot');
     const ownerFresh = await rightsSource(owner);

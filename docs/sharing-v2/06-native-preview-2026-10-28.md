@@ -188,3 +188,27 @@ Sony I4293 / Android 10（API 29）、同じLiFlow development buildとMetroポ�
 | `phase4u-privateCalendarUndone.png` | `8b90d9f40aaec376b0b76475869448f5b2103b867c22c546b8ed7a6a48294df7` |
 
 棒モードでは合計2件と3件が同じ区分なので、上部マーカーの2枚は同一画像となる。個人件数の0／1はnative accessibility labelのassertionで検査しており、画像だけで差を判断したとは扱わない。初回・2回目の失敗ログも保持し、最終成功に含めない。本番v2共有、iOSの今回の画面、個人Calendarの同一人物端末同期、v2 Google Tasksや通知が実サービスで通ったという証跡ではない。
+
+## Phase 4aa：共有ゴミ収集日と実際の入力
+
+未公開v2 draft30の独立した合成検査領域を使用。検査での変更操作はこの領域に限定し、LiFlowの再インストール・初期化、個人DBや既存グループの手動変更は行っていない。Androidは別パッケージのUiAutomation helperだけ更新し、iPhoneは既存のXCTest補助アプリを更新した。ユーザーから、iPhoneで手動タップするとキーボードが出ることと、Androidを給電できる接続へ変えたことの回答を受領し、給電は実際の`dumpsys battery`でも確認して検査を再開した。
+
+Android 10 / Sony I4293では毎週・隔週・毎月の3件を登録した。その後の再開検査`phase4aa-android-waste-final-attempt.log`は50.472秒、code 0、`sharedWasteThreeModesHideRestoreAndEditReopen=true`。当日分をホームから隠し、共有カレンダーで再表示し、毎月の日付を17に変更して編集画面を開き直し、保存値を確認した。登録の実行は先行する検査で行い、再開検査で同じ3件を再作成したとは数えない。
+
+最初は古い開発ビルドに留まったため正しいMetroへ接続し直した。その後、戻り先で保持されたスクロール位置と、表示されていないStack内のScrollViewを検査が混同する失敗があった。さらに画面から消えたチェックをAndroidの古い要素情報で参照する失敗も記録した。helperはQA識別表示の実際の可視性を必須にし、表示中のScrollViewだけを操作し、候補要素を`refresh()`してから照合するよう修正した。新しいUiAutomatorのXMLと画像でもホームに対象カードがないことを独立確認した。これらの先行失敗は保存処理の不具合として数えず、ログを保持する。
+
+iPhone 12 / iOS 26.7.2では`phase4aa-iphone-waste-input.xcresult`と`.log`のXCTest 1件が24.937秒で成功。実際のソフトウェアキーボードを開き、`PET`と入力してペットボトルの候補を選び、毎月の日付を17へ入力・保存し、開き直した入力欄で17を確認した。先行する自動化準備のタイムアウトと、アプリのaccessibilityが準備できる前のDeep Link操作は失敗として保持。数値の先頭にカーソルを置いて削除したため値が変わらない検査も、実映像で原因を確認してカーソルを末尾に置く手順へ直した。入力のassertionを弱めたり、型付けした入力を別手段のDB更新で代用したりしていない。
+
+実機画像で、ゴミ名のない日付がセル中央へ下がる配置と、太い選択枠だけ数字が2px下がる配置を確認した。個人カレンダーと同じ上揃えにし、線幅の差を内側の余白で相殺した。最後の読取専用検査`phase4aa-aligned.xml`と`phase4aa-calendar-native-aligned.json`では、25〜31日の数字7つすべての上端が1672px、下端が1745pxで一致することを検査した。この最後の確認は予定を追加・保存しない。
+
+ローカル証跡は`/tmp/liflow-v2-20261027/`。Androidの画像一覧とSHA-256は`phase4aa-native-android-evidence.json`、iPhoneは`phase4aa-native-ios-evidence.json`。主要画像を目視確認した。
+
+| 画像 | SHA-256 |
+| --- | --- |
+| `phase4aa-final-sharedWasteCalendar.png`（最終揃えの前） | `d7bee9a703508cc6d2dce4aff9476c511d5da93131459d73ff6f06df94e4534f` |
+| `phase4aa-final-sharedWasteReopened.png` | `05da14a2e2ff5e4f4596c6f92e9daabb01f0550394c8a0d2aceac0d8348c903c` |
+| `phase4aa-calendar-native-aligned.png`（最終配置） | `ca133157bcf5f28352b710564904439b4bb804c08c0fb2c716c6eedff7d86653` |
+| iPhone `v2-waste-native-keyboard-after-direct-tap` | `8ce130964a11f8f86d235c731247ff9d6534833bb420c75784d80b99dcf7c06d` |
+| iPhone `v2-waste-native-reopened` | `7b4e83ffd95f9405169f52ba809e7401d1ab10fa961b9d396138b1b15e56ace7` |
+
+両OS条件の実TSX・SQLite検査は各1480件、Firestore Emulatorは27件で成功した。これはv2実アカウント間同期、Google連携、バックグラウンド実行、全新画面の成功を表すものではない。Androidは検査後に再び全給電がfalseとなり、後の画像では残量6%だった。充電状態を推測せず、次の継続した実機操作の前に再確認する。

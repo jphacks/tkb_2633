@@ -2995,5 +2995,75 @@
     "tests": [
       { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "a rejoined member receives a fresh editor while the former membership draft stays separate and cannot save" }
     ]
+  },
+  {
+    "feature": "v2-shared-waste-recurrence-has-an-isolated-bounded-projection",
+    "tests": [
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 shared waste uses the existing weekly biweekly and monthly calculations without private adapters" },
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 waste previews stay within a historical month and stop safely at the supported end date" },
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 waste projections keep a valid edit after a quarantined operation and never rebuild a replica with its causal hole removed" }
+    ]
+  },
+  {
+    "feature": "v2-shared-waste-edits-bind-displayed-sources-and-whole-rules",
+    "tests": [
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 waste edits merge an unrelated name but keep a changed collection rule atomic and reject stale sources" },
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 concurrent shared collection rules remain whole candidates and an explicit resolution converges independently of other chores" },
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 legacy partial collection edits are reconstructed at their original causal cuts rather than producing a mixed rule" },
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "an open shared waste form changes only edited values and refuses a newer same-field overwrite" },
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "shared waste conflicts reveal whole candidates only on request and reject an obsolete resolution button" }
+    ]
+  },
+  {
+    "feature": "v2-shared-waste-visibility-requires-the-current-occurrence-and-explicit-conflict-choice",
+    "tests": [
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 waste hide and restore bind their displayed schedule and visibility without replaying identical requests" },
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 conflicting visibility is unresolved until the current occurrence is explicitly reviewed and tombstones remain reversible" },
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "an unresolved shared waste hide decision keeps its checkbox disabled until an explicit current choice" }
+    ]
+  },
+  {
+    "feature": "v2-shared-waste-home-calendar-and-compact-appearance",
+    "tests": [
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "shared home hides one waste occurrence and its compact calendar checkbox restores the same date without changing chores" },
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "shared calendar waste labels keep type colors and full-height selected outlines while task counts exclude collections" }
+    ]
+  },
+  {
+    "feature": "v2-shared-waste-creation-keeps-its-durable-result-after-a-read-failure",
+    "tests": [
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "shared waste management registers all recurrence modes with the group date and never reads private planning" },
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "a durable shared waste addition survives a failed refresh and retries only its read without creating another schedule" }
+    ]
+  },
+  {
+    "feature": "v2-shared-waste-delete-conflicts-need-reviewed-restoration",
+    "tests": [
+      { "file": "tests/sharing-v2-waste.test.mjs", "name": "v2 a concurrent waste deletion requires a current explicit choice and restoring it binds the reviewed complete rule" },
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "a shared deletion conflict needs a reviewed restoration form and removing the schedule still keeps its signed history" }
+    ]
+  },
+  {
+    "feature": "waste-save-reads-the-latest-input-before-repaint-in-all-workspaces",
+    "tests": [
+      { "file": "tests/sharing-v2-waste-ui.test.mjs", "name": "shared waste editing saves the latest numeric input even when its enabled save handler ran before another paint" },
+      { "file": "tests/waste-search-and-storage.test.mjs", "name": "personal waste editing persists the latest numeric input before another paint" }
+    ]
+  },
+  {
+    "feature": "v2-mutation-refreshes-coalesce-without-losing-during-read-changes",
+    "tests": [
+      { "file": "tests/sharing-v2-refresh-coalescing.test.mjs", "name": "a mutation that throws a non-Error value remains failed and cannot be displayed as a successful completion" },
+      { "file": "tests/sharing-v2-refresh-coalescing.test.mjs", "name": "mutation reads coalesce their own change notifications instead of rereading the same committed state" },
+      { "file": "tests/sharing-v2-refresh-coalescing.test.mjs", "name": "a change arriving during a mutation read is refreshed once afterward instead of being silently dropped" }
+    ]
+  },
+  {
+    "feature": "v2-shared-waste-routes-retain-workspace-and-release-guards",
+    "tests": [
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "selected v2 workspace routes reuse authenticated forms and preserve historical round parameters" },
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "unselected or mismatched v2 workspace routes never load shared controllers or expose edit controls" },
+      { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "v2 every isolated preview route denies release execution before opening the fixture" }
+    ]
   }
 ]

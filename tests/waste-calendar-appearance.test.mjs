@@ -53,5 +53,8 @@ test('waste appearance: the real calendar distinguishes hidden weekly and active
   const date = screen.nodes().find((node) => node.type === 'Pressable' && node.props.accessibilityLabel?.includes('非表示の収集：可燃ごみ'));
   assert.ok(date?.props.accessibilityLabel.includes('粗大ごみ'), 'monthly collection remains visible when a weekly collection is hidden');
   assert.equal(date.props.accessibilityState.selected, true);
+  const plain = screen.nodes().find(node => node.type === 'Pressable' && node !== date && Array.isArray(node.props.style) && node.props.style.some(style => style?.minHeight === 36));
+  const selectedStyle = Object.assign({}, ...date.props.style.filter(Boolean)); const plainStyle = Object.assign({}, ...plain.props.style.filter(Boolean));
+  assert.equal(selectedStyle.borderWidth + selectedStyle.paddingVertical, plainStyle.borderWidth + plainStyle.paddingVertical, 'the selected outline keeps the same date baseline as other days');
   assert.ok(screen.nodes().some((node) => node.type === 'Text' && node.children.includes('粗大ごみ')));
 });

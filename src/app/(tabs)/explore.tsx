@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   wasteOutline: { borderWidth: 1.5, backgroundColor: '#FFFFFF' },
   wasteLabel: { width: '100%', ...typography.calendarLabel, fontWeight: '700', textAlign: 'center' },
   hiddenWeeklyDay: { borderColor: '#929BAA', backgroundColor: '#F3F4F6', borderWidth: 1.5 },
-  selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5 },
+  selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5, paddingVertical: 1 },
   outlinedDayNumber: { color: '#205B79' },
   retainedSelectionRow: { alignItems: 'center', paddingVertical: 4 },
   retainedSelectionText: { ...typography.caption, color: palette.accent, fontWeight: '700', textAlign: 'center' },

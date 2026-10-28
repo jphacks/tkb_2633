@@ -1,6 +1,7 @@
 import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { screenHarness } from './helpers/screen-harness.mjs';
 import { searchWasteTypes } from '../src/features/waste/waste-types.ts';
 import { createDatabase } from './helpers/sqlite.mjs';
 const repository = await import('../src/platform/storage/repository.ts');
@@ -67,5 +68,21 @@ test('personal waste edits preserve newer untouched fields and never resurrect a
     await repository.deleteWeeklyWasteSchedule(h.database, displayed.id);
     await assert.rejects(repository.saveWeeklyWasteSchedule(h.database, displayed, displayed), /見つかりません/);
     assert.equal((await repository.loadPlannerSnapshot(h.database)).wasteSchedules.length, 0);
+  } finally { h.connection.close(); }
+});
+
+for (const platform of ['ios', 'android']) test(`${platform} personal waste editing persists the latest numeric input before another paint`, async () => {
+  const h = createDatabase();
+  try {
+    await repository.initializeLocalDatabase(h.database);
+    await repository.saveWeeklyWasteSchedule(h.database, { id: 'latest-waste-input', label: '粗大ごみ', recurrence: 'monthly', collectionWeekdays: [], monthlyDay: 28 });
+    let snapshot = await repository.loadPlannerSnapshot(h.database);
+    const screen = screenHarness('src/app/waste.tsx', { platform, database: h.database, snapshot: () => snapshot,
+      refresh: async () => { snapshot = await repository.loadPlannerSnapshot(h.database); } });
+    await screen.press('編集'); const save = screen.button('変更を保存');
+    screen.nodes().find(node => node.type === 'TextInput' && node.props.accessibilityLabel === '毎月の収集日').props.onChangeText('17');
+    save.props.onPress();
+    for (let n = 0; n < 30 && snapshot.wasteSchedules[0].monthlyDay !== 17; n++) await screen.flush();
+    assert.equal(snapshot.wasteSchedules[0].monthlyDay, 17); assert.equal(snapshot.wasteSchedules.length, 1);
   } finally { h.connection.close(); }
 });

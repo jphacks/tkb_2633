@@ -39,6 +39,33 @@ export function readV2EditableField(view: V2HistoryView, at: SharedOperation, ty
   return editableFieldFromOperations(view.observed(view.topic(type, entityId), at), field);
 }
 
+/** Reconstruct a displayed simple or compound value only from this entity's observed, authorized sources. */
+export function readV2EditBasis(input: { view: V2HistoryView; at: SharedOperation; type: SharedEntityType; entityId: string; operationIds: readonly string[];
+  accepts: (operation: SharedOperation) => boolean; readValue: (operation: SharedOperation) => JsonValue }): V2EditableField {
+  if (input.operationIds.length > 256 || new Set(input.operationIds).size !== input.operationIds.length) throw new V2StaleSettingsError();
+  const operations = input.operationIds.map(id => {
+    const operation = input.view.byId(id);
+    if (!operation || operation.entityType !== input.type || operation.entityId !== input.entityId || !input.accepts(operation)
+      || input.view.observed([operation], input.at).length !== 1) throw new V2StaleSettingsError();
+    return operation;
+  });
+  const basis = editableValueFromOperations(operations, input.readValue);
+  if (!sameIds(basis.candidates.map(candidate => candidate.operationId), input.operationIds)) throw new V2StaleSettingsError();
+  return basis;
+}
+
+export function compareV2ValueEdit(current: V2EditableField, base: V2EditableField, edit: Pick<V2FieldEdit, 'value' | 'resolveOperationIds'>): boolean {
+  if (edit.resolveOperationIds !== undefined) {
+    if (current.kind !== 'conflict' || !sameIds(current.candidates.map(candidate => candidate.operationId), edit.resolveOperationIds)
+      || new Set(edit.resolveOperationIds).size !== edit.resolveOperationIds.length) throw new V2StaleSettingsError();
+  } else {
+    if (current.kind === 'conflict' || base.kind === 'conflict') throw new V2StaleSettingsError();
+    const currentValue = current.kind === 'value' ? current.value : undefined; const baseValue = base.kind === 'value' ? base.value : undefined;
+    if (!sameValue(currentValue, baseValue) && !sameValue(currentValue, edit.value)) throw new V2StaleSettingsError();
+  }
+  return current.kind !== 'value' || !sameValue(current.value, edit.value);
+}
+
 /** Reconstruct displayed bases from authenticated facts, then merge only the fields the user changed. */
 export function prepareV2FieldEdits(input: { view: V2HistoryView; at: SharedOperation; type: SharedEntityType; entityId: string;
   allowed: readonly string[]; edits: readonly V2FieldEdit[] }) {
@@ -46,25 +73,10 @@ export function prepareV2FieldEdits(input: { view: V2HistoryView; at: SharedOper
   const seen = new Set<string>();
   for (const edit of input.edits) {
     if (!input.allowed.includes(edit.field) || seen.has(edit.field)) throw new Error('変更する項目を確認してください。'); seen.add(edit.field);
-    if (edit.basisOperationIds.length > 256 || new Set(edit.basisOperationIds).size !== edit.basisOperationIds.length) throw new V2StaleSettingsError();
-    const basis = edit.basisOperationIds.map((id) => {
-      const operation = view.byId(id);
-      if (!operation || operation.entityType !== type || operation.entityId !== entityId || !Object.hasOwn(operation.payload, edit.field)
-        || view.observed([operation], at).length !== 1) throw new V2StaleSettingsError();
-      return operation;
-    });
-    const base = editableFieldFromOperations(basis, edit.field);
-    if (!sameIds(base.candidates.map((candidate) => candidate.operationId), edit.basisOperationIds)) throw new V2StaleSettingsError();
+    const base = readV2EditBasis({ view, at, type, entityId, operationIds: edit.basisOperationIds,
+      accepts: operation => Object.hasOwn(operation.payload, edit.field), readValue: operation => operation.payload[edit.field] });
     const current = readV2EditableField(view, at, type, entityId, edit.field); fields[edit.field] = current;
-    if (edit.resolveOperationIds !== undefined) {
-      if (current.kind !== 'conflict' || !sameIds(current.candidates.map((candidate) => candidate.operationId), edit.resolveOperationIds)
-        || new Set(edit.resolveOperationIds).size !== edit.resolveOperationIds.length) throw new V2StaleSettingsError();
-    } else {
-      if (current.kind === 'conflict' || base.kind === 'conflict') throw new V2StaleSettingsError();
-      const currentValue = current.kind === 'value' ? current.value : undefined; const baseValue = base.kind === 'value' ? base.value : undefined;
-      if (!sameValue(currentValue, baseValue) && !sameValue(currentValue, edit.value)) throw new V2StaleSettingsError();
-    }
-    if (current.kind !== 'value' || !sameValue(current.value, edit.value)) patch[edit.field] = clone(edit.value);
+    if (compareV2ValueEdit(current, base, edit)) patch[edit.field] = clone(edit.value);
   }
   return { patch, fields };
 }

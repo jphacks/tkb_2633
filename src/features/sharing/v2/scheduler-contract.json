@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-29",
+  "version": "liflow-shared-2-draft-30",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -56,7 +56,11 @@
     "src/features/sharing/v2/cancellation-proposal.ts",
     "src/features/sharing/v2/field-edit.ts",
     "src/features/sharing/v2/date-rights-edit.ts",
-    "src/features/sharing/v2/membership-period.ts"
+    "src/features/sharing/v2/membership-period.ts",
+    "src/features/sharing/v2/waste-state.ts",
+    "src/features/sharing/v2/waste-actions.ts",
+    "src/features/waste/schedule-policy.ts",
+    "src/features/waste/weekly-scheduler.ts"
   ],
-  "sourceSha256": "ada869a90b241cbbd8f70955096856786cf93cd9da9fa4eb14a100bac72b1456"
+  "sourceSha256": "bb0dd869081d32e076ac17dca63845047f8e460a1a389e17ad74f25c025ac90a"
 }

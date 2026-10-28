@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-24",
+  "version": "liflow-shared-2-draft-25",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -53,7 +53,8 @@
     "src/features/sharing/v2/date-options.ts",
     "src/features/sharing/v2/next-occurrence.ts",
     "src/features/sharing/v2/date-cancellations.ts",
-    "src/features/sharing/v2/cancellation-proposal.ts"
+    "src/features/sharing/v2/cancellation-proposal.ts",
+    "src/features/sharing/v2/field-edit.ts"
   ],
-  "sourceSha256": "85d801327c4d63d1efc54c065da555b7d68ccd93b135ca632acd254df7d17635"
+  "sourceSha256": "cab9ac791a1d67aaef9f22f3c47c87bcd7c8d5b38b70c466d0c79b18c1f9d32e"
 }

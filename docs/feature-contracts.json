@@ -2848,5 +2848,31 @@
       { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "optional development personal overlays use a separate empty synthetic database without cloud or Google changes" },
       { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "development personal-overlay seeding refuses any existing database before modifying its contents" }
     ]
+  },
+  {
+    "feature": "v2-detail-field-edits-validate-displayed-causal-sources",
+    "tests": [
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 detail edits merge unrelated fields and reject a stale overwrite while acknowledging an unchanged current value" },
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 detail bases must belong to their authenticated field and cannot reactivate or resurrect a chore" },
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 members can edit shared descriptions and grouped procedures while cadence and enabled rights remain administrator-only" },
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 offline detail conflicts retain both candidates and require a current explicit resolution without stopping another chore" }
+    ]
+  },
+  {
+    "feature": "v2-editable-source-evidence-is-requested-separately-from-common-planning",
+    "tests": [
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 editable source evidence is loaded only for the requested chore and cannot change its common plan" }
+    ]
+  },
+  {
+    "feature": "v2-text-choice-autosave-preserves-input-and-per-field-bases",
+    "tests": [
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field autosave preserves raw newlines and advances its own causal base when typing continues during a save" },
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field autosave keeps a queued field base after another field saved and refuses a concurrent remote overwrite" },
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field autosave ignores older refreshes and does not replay durable edits after a view refresh fails" },
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field autosave uses the acknowledged current source even when the requested value was already saved by another view" },
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field input binds the value actually rendered when a remote store update arrives before the next paint" },
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field autosave keeps invalid input out of SQLite and prevents leaving until correction or explicit discard" }
+    ]
   }
 ]

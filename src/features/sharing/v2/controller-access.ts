@@ -5,5 +5,5 @@ export function guardV2GroupController(controller: V2GroupController, authorize:
   const actions = Object.fromEntries(Object.entries(controller.actions).map(([name, command]) => [name, async (...args: unknown[]) => {
     await authorize(true); return Reflect.apply(command, undefined, args);
   }])) as V2GroupController['actions'];
-  return { ...controller, actions, readModel: async (range) => { await authorize(false); return controller.readModel(range); } };
+  return { ...controller, actions, readModel: async (range, readOptions) => { await authorize(false); return controller.readModel(range, readOptions); } };
 }

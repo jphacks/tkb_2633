@@ -23,6 +23,8 @@ import { targetCivilDate, validateDesignationTarget } from './date-target.ts';
 import { changeGroupKind } from './model.ts';
 import { prepareV2ConfigurationEdit, mergeV2ConfigurationFieldEdits, V2StaleSettingsError } from './configuration-edit.ts';
 import type { V2ConfigurationPatch, V2ConfigurationFieldEdit } from './configuration-edit.ts';
+import { prepareV2FieldEdits, editableFieldFromOperations, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
+import type { V2FieldEdit, V2FieldSaveResult } from './field-edit';
 import { expandedCommonWindow } from './window-extension.ts';
 import { v2DateDecisionReview, v2AssignmentDecisionReview } from './decision-review.ts';
 import type { V2DateDecisionEdit, V2DecisionEdit } from './decision-review.ts';
@@ -131,6 +133,19 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     readPlan: async (range: Parameters<typeof buildV2CommonPlan>[1]) => buildV2CommonPlan(await repository.readState(), range),
     addChore: (name: string, instructions: string[] = []) => {
       const id = options.makeId(); return repository.commit([draft('chore', id, { name: name.trim(), instructions, enabled: false })]);
+    },
+    patchChoreDetails: async (choreId: string, edits: readonly V2FieldEdit[]): Promise<V2FieldSaveResult> => {
+      let prepared: ReturnType<typeof prepareV2FieldEdits> | undefined;
+      const operations = await repository.commitCurrent(async (state) => {
+        const at = point(state);
+        if (state.assessment.view.field('chore', choreId, '$alive', at)?.value !== true) throw new V2StaleSettingsError();
+        prepared = prepareV2FieldEdits({ view: state.assessment.view, at, type: 'chore', entityId: choreId, edits, allowed: V2_CHORE_DETAIL_FIELDS });
+        return Object.keys(prepared.patch).length ? [draft('chore', choreId, prepared.patch)] : [];
+      });
+      if (!prepared) throw new V2StaleSettingsError();
+      const fields = { ...prepared.fields };
+      for (const field of Object.keys(prepared.patch)) fields[field] = editableFieldFromOperations(operations, field);
+      return { operations, fields };
     },
     patchChore: (choreId: string, patch: Record<string, JsonValue>, effectiveFrom?: LocalDate) => {
       const operationTime = options.now();

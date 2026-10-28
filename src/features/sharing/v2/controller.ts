@@ -8,6 +8,8 @@ import { normalizeV2Configuration } from './configuration-normalization.ts';
 import { observedDateRules } from './formal-rule-view.ts';
 import { v2DecisionReviews } from './decision-review.ts';
 import type { SharedChoreConfiguration } from './model.ts';
+import { readV2EditableField, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
+import type { V2ChoreDetailField, V2EditableField } from './field-edit';
 type V2ModelRange = { from: LocalDate; through: LocalDate; asOfDate: LocalDate };
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
@@ -17,7 +19,7 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
   const actions = createV2PlannerActions(repository, options);
   return {
     actions, sync: options.sync,
-    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange)) {
+    async readModel(inputRange: V2ModelRange | ((context: { timeZone: string }) => V2ModelRange), readOptions: { detailChoreId?: string } = {}) {
       const state = await repository.readState();
       const at = v2ReadPoint(state.assessment.view, state.archive.at(-1)!);
       let range: V2ModelRange;
@@ -36,7 +38,9 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
           candidates: candidates.map((op) => ({ operationId: op.operationId, authorUserId: op.authorUserId, recordedAt: op.recordedAt!, configuration: normalizeV2Configuration(op.payload.configuration as unknown as SharedChoreConfiguration) })) };
       });
       const reviews = v2DecisionReviews(state, repository.scope.userId);
-      return { plan, configurations, viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
+      const choreDetails = plan.chores.filter((chore) => chore.id === readOptions.detailChoreId).map((chore) => ({ choreId: chore.id, alive: readV2EditableField(state.assessment.view, at, 'chore', chore.id, '$alive'),
+        fields: Object.fromEntries(V2_CHORE_DETAIL_FIELDS.map((field) => [field, readV2EditableField(state.assessment.view, at, 'chore', chore.id, field)])) as Record<V2ChoreDetailField, V2EditableField> }));
+      return { plan, configurations, choreDetails, viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
         requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
         dateRuleSources: observedDateRules(state.assessment.view, at, state.assessment.approvedRules, true),

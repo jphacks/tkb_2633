@@ -3759,5 +3759,64 @@
         "name": "private Calendar receiver rejects a tampered real authority archive before advancing protected state"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-fixed-recipient-ciphertext-and-bounded-delivery-retries",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar key outbox persists the exact signed ciphertext across SQL reconstruction without rewrapping or exposing keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar ambiguous key delivery keeps fixed bytes and backoff across restart and reports waiting rather than synchronization success"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar two SQL runtimes prepare one recipient envelope with one nonce allocation"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar new authority retires only obsolete wrapped copies and stale replies cannot acknowledge the new delivery"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar key preparation snapshots caller bytes before awaits and wipes unreturned plaintext on encryption failure"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar corrupt wrapped SQL and account changes fail closed without overwriting the queued ciphertext"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar a new main without its generation key waits for delivery while the original approved issuer may finish distribution"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar fifteen approved recipient deliveries are bounded and one hundred concurrent flushes share one send attempt"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar shared retry policy preserves jitter and cap and refuses unsafe timestamps before saving"
+      },
+      {
+        "file": "tests/sharing-private-calendar-key-delivery.test.mjs",
+        "name": "private Calendar explicit manual key retry bypasses backoff with the same envelope while automatic retries keep waiting"
+      },
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native key outbox remains lazy and uses only the authenticated protected key store and SQLite lock"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar fixed wrapped-key outbox recovers an actual immutable server write after reply loss and SQLite restart"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar a non-main generation issuer distributes the same key to the new main through real Rules and transport"
+      }
+    ]
   }
 ]

@@ -7,6 +7,8 @@ import { advancePrivateCalendarCacheCursor, MAX_PRIVATE_CALENDAR_CACHE_BYTES, op
 import type { PrivateCalendarCryptoGateway } from '../../features/sharing/private-calendar/crypto-gateway.ts';
 import { hexBytes } from '../../features/sharing/private-calendar/validation.ts';
 import { assertSharedIdentifier } from '../../features/sharing/identifier.ts';
+import type { PrivateCalendarDeliveryFailure } from '../../features/sharing/private-calendar/delivery-retry.ts';
+import { assertPrivateCalendarDeliveryFailure, privateCalendarDeliveryRetry } from '../../features/sharing/private-calendar/delivery-retry.ts';
 
 export interface PrivateCalendarCacheStoragePort {
   readonly ownerUserId: string; readonly crypto: PrivateCalendarCryptoGateway;
@@ -20,7 +22,7 @@ interface CacheMetadata {
 }
 interface SavedCache extends CacheMetadata { encrypted_json: string }
 type CacheInput = { authority: VerifiedPrivateCalendarAuthority; calendarBinding: string; accountKey: Uint8Array };
-export type PrivateCalendarDeliveryFailure = 'offline' | 'temporary' | 'auth' | 'permission' | 'unknown';
+export type { PrivateCalendarDeliveryFailure } from '../../features/sharing/private-calendar/delivery-retry.ts';
 const TABLE = `CREATE TABLE IF NOT EXISTS private_calendar_cache (
   id TEXT PRIMARY KEY NOT NULL CHECK (id = 'current'), cursor_json TEXT NOT NULL, encrypted_json TEXT NOT NULL,
   pending INTEGER NOT NULL CHECK (pending IN (0, 1)), attempts INTEGER NOT NULL CHECK (attempts >= 0), retry_at INTEGER, failure_code TEXT
@@ -143,13 +145,12 @@ export function createPrivateCalendarCacheStorage(port: PrivateCalendarCacheStor
     },
     fail(authority: VerifiedPrivateCalendarAuthority, manifestDigest: string, now: number, code: PrivateCalendarDeliveryFailure, randomFraction: number) {
       hexBytes(manifestDigest, 32); timestamp(now);
-      if (!['offline', 'temporary', 'auth', 'permission', 'unknown'].includes(code) || !Number.isFinite(randomFraction) || randomFraction < 0 || randomFraction > 1) throw new Error('再送の条件を確認できません。');
+      assertPrivateCalendarDeliveryFailure(code); privateCalendarDeliveryRetry(0, now, randomFraction);
       return locked(authority, true, async (db) => {
         const row = await metadata(db); if (!row || savedCursor(row).manifestDigest !== manifestDigest || !row.pending) return false;
         if (savedCursor(row).authorityDigest !== authority.digest) throw new Error('本人用Calendarの送信元が更新されています。');
-        const attempts = Math.min(row.attempts + 1, 1_000_000);
-        const delay = Math.round(Math.min(6 * 60 * 60 * 1000, 30_000 * 2 ** Math.min(attempts - 1, 10) * (0.8 + 0.4 * randomFraction)));
-        await db.runAsync('UPDATE private_calendar_cache SET attempts = ?, retry_at = ?, failure_code = ? WHERE id = ?', attempts, now + delay, code, 'current'); return true;
+        const { attempts, retryAt } = privateCalendarDeliveryRetry(row.attempts, now, randomFraction);
+        await db.runAsync('UPDATE private_calendar_cache SET attempts = ?, retry_at = ?, failure_code = ? WHERE id = ?', attempts, retryAt, code, 'current'); return true;
       });
     },
   };

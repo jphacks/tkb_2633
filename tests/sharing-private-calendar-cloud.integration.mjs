@@ -16,6 +16,7 @@ import { createPrivateCalendarCloud } from '../src/platform/sharing/private-cale
 import { openPrivateCalendarCache, sealPrivateCalendarCache } from '../src/features/sharing/private-calendar/cache-crypto.ts';
 import { privateCalendarSetupFixture } from './helpers/private-calendar-setup.mjs';
 import { createPrivateCalendarAuthoritySync } from '../src/features/sharing/private-calendar/authority-sync.ts';
+import { createPrivateCalendarKeyDelivery } from '../src/features/sharing/private-calendar/key-delivery.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Use the local Firestore emulator only.');
 let env;
@@ -333,4 +334,41 @@ test('private Calendar receiver rejects a tampered real authority archive before
   });
   await assert.rejects(() => createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud: left.cloud }).refresh());
   assert.equal((await f.secrets.authority(userId)).digest, root.digest); assert.equal((await f.readProtected()).hasCurrentKey, true);
+});
+
+test('private Calendar fixed wrapped-key outbox recovers an actual immutable server write after reply loss and SQLite restart', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'liflow-key-outbox-cloud-')); t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const path = join(directory, 'keys.db'); const f = privateCalendarSetupFixture(t, { userId, path }); const transport = client(userId);
+  await f.controller(transport.cloud).prepareAndResume(); const root = await f.secrets.authority(userId); const other = await createDeviceIdentity(crypto);
+  const control = createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud: transport.cloud });
+  const approved = await control.change({ mainDeviceId: root.signed.body.mainDeviceId, devices: [...root.signed.body.devices, other], keyVersion: 1 }); const authority = approved.authority;
+  let lose = true; const sent = []; const cloud = { async sendKey(expected, packet) {
+    sent.push(canonicalJson(packet)); await transport.cloud.sendKey(expected, packet);
+    if (lose) { lose = false; throw Object.assign(new Error('reply lost after actual key acceptance'), { code: 'unavailable' }); }
+  } };
+  const service = h => createPrivateCalendarKeyDelivery({ userId, secrets: h.secrets, outbox: h.keyOutbox, cloud, now: () => 1_000, randomFraction: () => 0.5 });
+  const first = service(f); await first.queueApprovedDevices(); assert.equal((await first.flush()).kind, 'deferred');
+  const received = await client(userId).cloud.readKey(authority, other.deviceId); assert.ok(received); assert.equal(canonicalJson(received), sent[0]);
+  const original = await f.secrets.currentKey(userId, authority); const opened = await unwrapPrivateCalendarKey(crypto, received, authority, other); assert.deepEqual(opened, original);
+  const after = privateCalendarSetupFixture(t, { userId, path, values: f.values, state: f.state }); const resumed = service(after); const generations = f.state.generations;
+  await resumed.queueApprovedDevices(); assert.equal((await resumed.flush()).kind, 'waiting'); assert.equal((await resumed.flush({ force: true })).kind, 'sent');
+  assert.equal(sent.length, 2); assert.equal(sent[0], sent[1]); assert.equal(f.state.generations, generations); assert.equal((await after.keyOutbox.status(authority)).pending, 0);
+  const raw = (await getDocFromServer(doc(transport.firestore, 'privateCalendars', userId, 'keyEnvelopes', `${authority.digest}_${other.deviceId}`))).data();
+  for (const secret of [Buffer.from(original).toString('hex'), other.signingSecretKey, other.agreementSecretKey]) assert.equal(JSON.stringify(raw).includes(secret), false);
+  original.fill(0); opened.fill(0);
+});
+
+test('private Calendar a non-main generation issuer distributes the same key to the new main through real Rules and transport', async t => {
+  const f = privateCalendarSetupFixture(t, { userId }); const transport = client(userId); await f.controller(transport.cloud).prepareAndResume();
+  const identity = await f.secrets.identity(userId); const other = await createDeviceIdentity(crypto); const devices = [identity, other];
+  const control = createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud: transport.cloud });
+  await control.change({ mainDeviceId: identity.deviceId, devices, keyVersion: 1 });
+  await control.change({ mainDeviceId: identity.deviceId, devices, keyVersion: 2 });
+  const switched = await control.change({ mainDeviceId: other.deviceId, devices, keyVersion: 2 }); const authority = switched.authority;
+  assert.equal((await f.readProtected()).hasCurrentKey, false); assert.equal(authority.keyIssuer.deviceId, identity.deviceId);
+  const service = createPrivateCalendarKeyDelivery({ userId, secrets: f.secrets, outbox: f.keyOutbox, cloud: transport.cloud });
+  assert.deepEqual(await service.queueApprovedDevices(), { kind: 'queued', count: 1 }); assert.equal((await service.flush()).sent, 1);
+  const packet = await client(userId).cloud.readKey(authority, other.deviceId); const received = await unwrapPrivateCalendarKey(crypto, packet, authority, other);
+  const original = await f.secrets.currentKey(userId, authority); assert.deepEqual(received, original);
+  assert.equal(JSON.parse(await f.vault.getItem(`private-calendar-state:${userId}`)).keys.length, 2); received.fill(0); original.fill(0);
 });

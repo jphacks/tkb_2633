@@ -5,6 +5,7 @@ import { createPrivateCalendarExclusiveStorage } from '../storage/private-calend
 import { createPrivateCalendarCacheStorage } from '../storage/private-calendar-cache.ts';
 import { createPrivateCalendarRootSetupStorage } from '../storage/private-calendar-root-setup.ts';
 import { createPrivateCalendarAuthorityIntentStorage } from '../storage/private-calendar-authority-intents.ts';
+import { createPrivateCalendarKeyOutbox } from '../storage/private-calendar-key-outbox.ts';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getSharingServices } from './firebase-services.ts';
 import { openPrivateCalendarDatabase } from './database-location';
@@ -38,22 +39,24 @@ function nativeStore(development: boolean) {
         assertPrivateCalendarProtectedAuthority(raw, userId, authority, requireMain);
       } });
   }
-  function rootSetup(userId: string) {
+  function protectedPort(userId: string) {
     assertOwner(userId);
-    return createPrivateCalendarRootSetupStorage({ ownerUserId: userId, crypto: nativePrivateCalendarCrypto, assertOwner, exclusive,
+    return { ownerUserId: userId, assertOwner, exclusive,
       async readProtected() {
         const raw = await vault.getItem(`private-calendar-state:${userId}`); assertOwner(userId);
         return readPrivateCalendarProtectedDeviceState(raw, userId);
-      } });
+      } };
+  }
+  function rootSetup(userId: string) {
+    return createPrivateCalendarRootSetupStorage({ ...protectedPort(userId), crypto: nativePrivateCalendarCrypto });
   }
   function authorityIntents(userId: string) {
-    assertOwner(userId);
-    return createPrivateCalendarAuthorityIntentStorage({ ownerUserId: userId, assertOwner, exclusive, async readProtected() {
-      const raw = await vault.getItem(`private-calendar-state:${userId}`); assertOwner(userId);
-      return readPrivateCalendarProtectedDeviceState(raw, userId);
-    } });
+    return createPrivateCalendarAuthorityIntentStorage(protectedPort(userId));
   }
-  return { secrets, cache, rootSetup, authorityIntents };
+  function keyOutbox(userId: string) {
+    return createPrivateCalendarKeyOutbox({ ...protectedPort(userId), crypto: nativePrivateCalendarCrypto });
+  }
+  return { secrets, cache, rootSetup, authorityIntents, keyOutbox };
 }
 
 /** Importing this module does not initialize Firebase or open any user's database. */
@@ -62,6 +65,7 @@ export const nativePrivateCalendarSecrets = native.secrets;
 export const nativePrivateCalendarCache = native.cache;
 export const nativePrivateCalendarRootSetup = native.rootSetup;
 export const nativePrivateCalendarAuthorityIntents = native.authorityIntents;
+export const nativePrivateCalendarKeyOutbox = native.keyOutbox;
 let qaStore: ReturnType<typeof nativeStore> | undefined;
 export function developmentPrivateCalendarSecrets() {
   if (!__DEV__) throw new Error('検査用の鍵保存は開発ビルドだけで使用できます。');
@@ -78,4 +82,8 @@ export function developmentPrivateCalendarRootSetup(userId: string) {
 export function developmentPrivateCalendarAuthorityIntents(userId: string) {
   if (!__DEV__) throw new Error('検査用の本人端末の変更は開発ビルドだけで使用できます。');
   return (qaStore ??= nativeStore(true)).authorityIntents(userId);
+}
+export function developmentPrivateCalendarKeyOutbox(userId: string) {
+  if (!__DEV__) throw new Error('検査用の鍵配布は開発ビルドだけで使用できます。');
+  return (qaStore ??= nativeStore(true)).keyOutbox(userId);
 }

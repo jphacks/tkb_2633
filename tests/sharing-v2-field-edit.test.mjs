@@ -42,6 +42,64 @@ test('v2 detail edits merge unrelated fields and reject a stale overwrite while 
   } finally { d.connection.close(); }
 });
 
+test('v2 detail autosave splits a large multi-field batch into individually bounded facts in one atomic transaction', async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  try {
+    await owner.repository.commit(seeds()); const c = controller(owner); const before = await listSharingOutbox(owner.database, groupId);
+    const description = '説'.repeat(40000); const instructions = ['手'.repeat(14000), '順'.repeat(14000), '文'.repeat(14000)];
+    const saved = await c.actions.patchChoreDetails('floor', [
+      { field: 'description', value: description, basisOperationIds: [] },
+      { field: 'instructions', value: instructions, basisOperationIds: [] },
+    ]);
+    assert.equal(saved.operations.length, 2); assert.deepEqual(saved.operations.map((operation) => operation.deviceSequence), [5, 6]);
+    assert.equal(saved.fields.description.value, description); assert.deepEqual(saved.fields.instructions.value, instructions);
+    assert.deepEqual(ids(saved.fields.description), [saved.operations[0].operationId]); assert.deepEqual(ids(saved.fields.instructions), [saved.operations[1].operationId]);
+    assert.equal((await listSharingOutbox(owner.database, groupId)).length, before.length + 2);
+    await receive(member, await loadSharedFacts(owner.database, groupId));
+    assert.equal((await details(controller(member))).description.value, description);
+    assert.deepEqual((await details(controller(member))).instructions.value, instructions);
+    assert.deepEqual(member.state().rejected, []);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
+
+test('v2 an oversized individual detail rolls back every field and outbox entry without consuming the next device sequence', async () => {
+  const f = await fixture(); const d = await f.device();
+  try {
+    await d.repository.commit(seeds()); const c = controller(d); const initial = await details(c); const before = await listSharingOutbox(d.database, groupId);
+    await assert.rejects(c.actions.patchChoreDetails('floor', [
+      { field: 'name', value: '部分的に保存してはいけない名前', basisOperationIds: ids(initial.name) },
+      { field: 'description', value: '文'.repeat(90000), basisOperationIds: [] },
+    ]), /Shared operation is too large/u);
+    assert.deepEqual(await details(c), initial); assert.deepEqual(await listSharingOutbox(d.database, groupId), before);
+    const saved = await c.actions.patchChoreDetails('floor', [{ field: 'name', value: '再入力した名前', basisOperationIds: ids(initial.name) }]);
+    assert.equal(saved.operations[0].deviceSequence, 5);
+  } finally { d.connection.close(); }
+});
+
+test('v2 large-batch retries revalidate displayed sources after a concurrent save instead of overwriting it', async () => {
+  const f = await fixture(); const d = await f.device(); let intercepted = false;
+  try {
+    await d.repository.commit(seeds()); const before = await listSharingOutbox(d.database, groupId);
+    const wrapped = { ...d.repository, commitCurrent: async (build) => {
+      try { return await d.repository.commitCurrent(build); }
+      catch (cause) {
+        if (!intercepted && cause.message === 'Shared operation is too large') {
+          intercepted = true; await d.repository.commit([draft('intervening-description', 'chore', 'floor', { description: '先に保存された説明' })]);
+        }
+        throw cause;
+      }
+    } };
+    const c = controller({ ...d, repository: wrapped });
+    await assert.rejects(c.actions.patchChoreDetails('floor', [
+      { field: 'description', value: '説'.repeat(40000), basisOperationIds: [] },
+      { field: 'instructions', value: ['手'.repeat(14000), '順'.repeat(14000), '文'.repeat(14000)], basisOperationIds: [] },
+    ]), { code: 'sharing/v2-stale-settings' });
+    assert.equal(intercepted, true); const result = await details(c);
+    assert.equal(result.description.value, '先に保存された説明'); assert.equal(result.instructions.kind, 'missing');
+    assert.equal((await listSharingOutbox(d.database, groupId)).length, before.length + 1);
+  } finally { d.connection.close(); }
+});
+
 test('v2 detail bases must belong to their authenticated field and cannot reactivate or resurrect a chore', async () => {
   const f = await fixture(); const d = await f.device();
   try {

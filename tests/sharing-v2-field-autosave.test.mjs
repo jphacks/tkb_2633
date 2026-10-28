@@ -1,10 +1,11 @@
 import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fixture, seeds, now, groupId } from './helpers/sharing-v2-repository-fixture.mjs';
+import { fixture, seeds, now, groupId, receiptsFor } from './helpers/sharing-v2-repository-fixture.mjs';
 import { createV2GroupController } from '../src/features/sharing/v2/controller.ts';
 import { createV2FieldEditorState } from '../src/features/sharing/v2-ui/field-editor-state.ts';
-import { listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
+import { applyReceivedSharedFacts, loadSharedFacts, listSharingOutbox, readSharingCheckpoint } from '../src/platform/storage/sharing-ledger.ts';
+import { v2ChoreDetailCodecs } from '../src/features/sharing/v2-ui/chore-detail-fields.ts';
 const range = { from: '2026-10-27', through: '2026-11-10', asOfDate: '2026-10-27' };
 const codecs = {
   name: { format: (value) => value ?? '', parse: (text) => { if (!text.trim()) throw new Error('名前を入力してください。'); return text.trim(); } },
@@ -19,6 +20,36 @@ async function setup() {
   return { ...d, c, fields };
 }
 const basis = (field) => field.candidates.map((candidate) => candidate.operationId);
+
+for (const [field, chosen, other, name] of [
+  ['procedureSections', null, [{ title: '別の区分', steps: ['別の手順'] }], 'v2 field resolution preserves the exact authenticated procedureSections candidate instead of parsing its display text'],
+  ['instructions', ['一つの手順に含まれる\n補足の改行'], ['別の手順'], 'v2 field resolution preserves the exact authenticated instructions candidate instead of parsing its display text'],
+]) test(name, async () => {
+  const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);
+  const receive = async (d, facts) => {
+    const checkpoint = await readSharingCheckpoint(d.database, groupId);
+    await applyReceivedSharedFacts(d.database, groupId, facts, String(facts.length), d.repository.project, checkpoint.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts)));
+  };
+  let sequence = 0;
+  const controller = (d) => createV2GroupController(d.repository, { makeId: () => `exact-${d.options.userId}-${++sequence}`, now, sync: async () => {} });
+  const fields = async (c) => (await c.readModel(range, { detailChoreId: 'floor' })).choreDetails[0].fields;
+  try {
+    await owner.repository.commit(seeds()); await receive(member, await loadSharedFacts(owner.database, groupId));
+    const a = controller(owner); const b = controller(member);
+    await a.actions.patchChoreDetails('floor', [{ field, value: chosen, basisOperationIds: [] }]);
+    const original = await b.actions.patchChoreDetails('floor', [{ field, value: other, basisOperationIds: [] }]);
+    await receive(member, await loadSharedFacts(owner.database, groupId));
+    const conflicted = await fields(b); assert.equal(conflicted[field].kind, 'conflict');
+    const store = createV2FieldEditorState({ fields: conflicted, codecs: v2ChoreDetailCodecs, delayMs: 60000,
+      save: (edits) => b.actions.patchChoreDetails('floor', edits), onSaved: async () => {} });
+    store.resolve(field, chosen, basis(conflicted[field])); assert.equal(await store.flush(), true);
+    assert.deepEqual((await fields(b))[field].value, chosen);
+    await receive(owner, await loadSharedFacts(member.database, groupId));
+    assert.deepEqual((await fields(a))[field], (await fields(b))[field]);
+    const history = (await loadSharedFacts(member.database, groupId)).filter((fact) => Object.hasOwn(fact.operation.payload, field));
+    assert.deepEqual(history.find((fact) => fact.operation.operationId === original.operations[0].operationId).operation.payload[field], other);
+  } finally { owner.connection.close(); member.connection.close(); }
+});
 
 test('v2 field autosave preserves raw newlines and advances its own causal base when typing continues during a save', async () => {
   const d = await setup();

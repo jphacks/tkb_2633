@@ -15,7 +15,8 @@ import { V2InitialConfiguration } from './initial-configuration';
 export function V2ConfigurationEditor(props: { model: V2GroupScreenModel; choreId: string;
   controller: V2GroupController; onSaved: () => Promise<void>; onBack?: () => void }) {
   const { model, choreId } = props;
-  if (model.viewerUserId !== model.adminUserId) return <Text style={styles.caption}>周期と有効状態は管理者が変更します。</Text>;
+  if (model.viewerUserId !== model.adminUserId) return <View style={styles.container}>{props.onBack ? <BackButton onPress={props.onBack} /> : null}
+    <Text style={styles.caption}>周期と有効状態は管理者が変更します。</Text></View>;
   return <RetainedEditor key={`${model.plan.groupId}:${choreId}`} {...props} />;
 }
 

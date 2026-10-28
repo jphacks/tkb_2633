@@ -2874,5 +2874,60 @@
       { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field input binds the value actually rendered when a remote store update arrives before the next paint" },
       { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field autosave keeps invalid input out of SQLite and prevents leaving until correction or explicit discard" }
     ]
+  },
+  {
+    "feature": "v2-shared-detail-forms-preserve-rendered-causal-input",
+    "tests": [
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "shared detail forms autosave member edits and preserve grouped procedures during multiple inputs before a repaint" },
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "shared detail input cannot overwrite an authenticated edit received after render and before the input event" },
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "shared detail conflicts require opening a candidate and explicitly resolving its currently displayed sources" }
+    ]
+  },
+  {
+    "feature": "v2-shared-creation-discloses-audience-and-keeps-durable-identity",
+    "tests": [
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "shared chore creation discloses its audience and saves the latest input once without activating a schedule" },
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "a saved shared chore is opened again after navigation fails without creating a duplicate" }
+    ]
+  },
+  {
+    "feature": "v2-shared-catalog-is-virtualized-and-separates-edit-rights",
+    "tests": [
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "shared chore catalogs virtualize a thousand rows and keep ordinary members out of cadence controls" }
+    ]
+  },
+  {
+    "feature": "v2-shared-round-instructions-retain-source-and-edit-routing",
+    "tests": [
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "shared round guides retain grouped steps tools cautions and source links and edit the same shared chore" }
+    ]
+  },
+  {
+    "feature": "v2-initial-activation-supports-a-future-anchor",
+    "tests": [
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "an initial shared chore can start on a future anchor without invalidating its effective date or creating past work" },
+      { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "normal shared creation replaces the add screen and opens its new disabled chore in the same workspace" }
+    ]
+  },
+  {
+    "feature": "v2-shared-management-is-independent-of-private-planning-reads",
+    "tests": [
+      { "file": "tests/sharing-v2-detail-ui.test.mjs", "name": "v2 management reads do not depend on personal preferences, private chores or a recommendation calculation" }
+    ]
+  },
+  {
+    "feature": "v2-resolution-keeps-the-exact-authenticated-candidate",
+    "tests": [
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field resolution preserves the exact authenticated procedureSections candidate instead of parsing its display text" },
+      { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 field resolution preserves the exact authenticated instructions candidate instead of parsing its display text" }
+    ]
+  },
+  {
+    "feature": "v2-detail-batches-respect-operation-limits-with-atomic-retry",
+    "tests": [
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 detail autosave splits a large multi-field batch into individually bounded facts in one atomic transaction" },
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 an oversized individual detail rolls back every field and outbox entry without consuming the next device sequence" },
+      { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 large-batch retries revalidate displayed sources after a concurrent save instead of overwriting it" }
+    ]
   }
 ]

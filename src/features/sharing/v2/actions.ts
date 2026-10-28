@@ -136,12 +136,22 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
     },
     patchChoreDetails: async (choreId: string, edits: readonly V2FieldEdit[]): Promise<V2FieldSaveResult> => {
       let prepared: ReturnType<typeof prepareV2FieldEdits> | undefined;
-      const operations = await repository.commitCurrent(async (state) => {
+      const save = (split: boolean) => repository.commitCurrent(async (state) => {
         const at = point(state);
         if (state.assessment.view.field('chore', choreId, '$alive', at)?.value !== true) throw new V2StaleSettingsError();
         prepared = prepareV2FieldEdits({ view: state.assessment.view, at, type: 'chore', entityId: choreId, edits, allowed: V2_CHORE_DETAIL_FIELDS });
-        return Object.keys(prepared.patch).length ? [draft('chore', choreId, prepared.patch)] : [];
+        if (!Object.keys(prepared.patch).length) return [];
+        return split ? Object.entries(prepared.patch).map(([field, value]) => draft('chore', choreId, { [field]: value }))
+          : [draft('chore', choreId, prepared.patch)];
       });
+      let operations: SharedOperation[];
+      try { operations = await save(false); }
+      catch (cause) {
+        if (!(cause instanceof Error) || cause.message !== 'Shared operation is too large' || Object.keys(prepared?.patch ?? {}).length < 2) throw cause;
+        // The first transaction rolled back. Recheck the displayed bases and commit all bounded fields together.
+        // An individually oversized field still rolls the entire retry back, including its sequence and outbox.
+        operations = await save(true);
+      }
       if (!prepared) throw new V2StaleSettingsError();
       const fields = { ...prepared.fields };
       for (const field of Object.keys(prepared.patch)) fields[field] = editableFieldFromOperations(operations, field);

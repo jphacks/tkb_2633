@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-25",
+  "version": "liflow-shared-2-draft-26",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -56,5 +56,5 @@
     "src/features/sharing/v2/cancellation-proposal.ts",
     "src/features/sharing/v2/field-edit.ts"
   ],
-  "sourceSha256": "cab9ac791a1d67aaef9f22f3c47c87bcd7c8d5b38b70c466d0c79b18c1f9d32e"
+  "sourceSha256": "421b9fb5a63f2961660bfa0255854cccf9f4b16e9a001048c02c8045854fa376"
 }

@@ -25,7 +25,7 @@ export function V2Choices<T extends string>({ label, value, choices, onChange, d
 
 export function V2TextField({ label, ...props }: Omit<TextInputProps, 'style' | 'accessibilityLabel'> & { label: string }) {
   return <View style={v2FormStyles.group}><Text style={v2FormStyles.label}>{label}</Text>
-    <TextInput {...props} accessibilityLabel={label} autoCapitalize="none" style={v2FormStyles.input} />
+    <TextInput {...props} accessibilityLabel={label} autoCapitalize="none" style={[v2FormStyles.input, props.multiline && v2FormStyles.multilineInput]} />
   </View>;
 }
 
@@ -52,6 +52,7 @@ export const v2FormStyles = StyleSheet.create({
   selectedChoice: { backgroundColor: palette.accentSoft, borderColor: palette.accent }, disabled: { opacity: 0.5 },
   choiceText: { ...typography.label, color: palette.ink }, label: { ...typography.label, color: palette.ink },
   input: { ...typography.body, color: palette.ink, minHeight: 46, borderWidth: 1, borderColor: palette.border, borderRadius: 11, paddingHorizontal: 12 },
+  multilineInput: { minHeight: 100, maxHeight: 240, paddingVertical: 10, textAlignVertical: 'top' },
   body: { ...typography.body, color: palette.ink }, caption: { ...typography.caption, color: palette.muted },
   error: { ...typography.caption, color: palette.warning },
 });

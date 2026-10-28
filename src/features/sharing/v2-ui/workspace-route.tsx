@@ -69,6 +69,9 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
     onDate={(occurrenceId, subjectId) => router.push({ pathname: '/group-v2/date', params: { occurrenceId, subjectId, ...anchorContext } })}
     onAssignment={(occurrenceId, subjectId) => router.push({ pathname: '/group-v2/assignment', params: { occurrenceId, subjectId, ...anchorContext } })}
     onConfiguration={(choreId) => router.push({ pathname: '/group-v2/configuration', params: { choreId } })}
+    onDetails={(choreId) => router.push({ pathname: '/group-v2/details', params: { choreId } })}
+    onChoreCreated={(choreId) => router.replace({ pathname: '/group-v2/details', params: { choreId } })}
+    onManageChores={() => router.push('/group-v2/chores')} onAddChore={() => router.push('/group-v2/add-chore')}
     onCalendar={() => router.push('/group-v2/calendar')} onHistory={() => router.push('/group-v2/history')}
     onRequests={() => router.push('/group-v2/requests')} onAssignmentRequests={() => router.push('/group-v2/assignment-requests')} />;
 }

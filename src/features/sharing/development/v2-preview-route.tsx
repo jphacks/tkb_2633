@@ -3,7 +3,7 @@ import { V2DevelopmentPreviewScreen } from './v2-preview-screen';
 import { developmentV2Preview } from '@/platform/sharing/development-v2-preview';
 import { useCallback } from 'react';
 
-export type V2PreviewView = 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar';
+export type V2PreviewView = 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore';
 
 /** Separate Native stack screens retain their own inputs, scroll position and route parameters. */
 export function V2PreviewRoute({ view }: { view: V2PreviewView }) {
@@ -21,6 +21,10 @@ export function V2PreviewRoute({ view }: { view: V2PreviewView }) {
     onAssignment={(occurrenceId, subjectId) => router.push({ pathname: '/development/sharing-v2-preview/assignment', params: { occurrenceId, subjectId, ...context } })}
     onBack={() => router.back()}
     onConfiguration={(choreId) => router.push({ pathname: '/development/sharing-v2-preview/configuration', params: { choreId, ...privateContext } })}
+    onDetails={(choreId) => router.push({ pathname: '/development/sharing-v2-preview/details', params: { choreId, ...privateContext } })}
+    onChoreCreated={(choreId) => router.replace({ pathname: '/development/sharing-v2-preview/details', params: { choreId, ...privateContext } })}
+    onManageChores={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/chores', params: privateContext } : '/development/sharing-v2-preview/chores')}
+    onAddChore={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/add-chore', params: privateContext } : '/development/sharing-v2-preview/add-chore')}
     onHistory={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/history', params: privateContext } : '/development/sharing-v2-preview/history')}
     onCalendar={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/calendar', params: privateContext } : '/development/sharing-v2-preview/calendar')}
     onAssignmentRequests={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/assignment-requests', params: privateContext } : '/development/sharing-v2-preview/assignment-requests')}

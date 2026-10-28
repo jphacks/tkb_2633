@@ -11,7 +11,7 @@ import type { V2PrivateOverlayState, V2PrivateTaskSource } from './private-overl
 export interface V2GroupUiSession {
   controller: V2GroupController; groupId: string; userId: string;
   privateTasks?: V2PrivateTaskSource;
-  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string }) => Promise<V2GroupScreenModel & { personal: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
+  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
 }
 
 /** The UI computes its range and personal suggestions from one authenticated group clock. */
@@ -22,17 +22,20 @@ export function createV2ScreenSession(input: { controller: V2GroupController; gr
   return { controller: input.controller, groupId: input.groupId, userId: input.userId, privateTasks: input.privateTasks,
     async readModel(options) {
       if (options?.calendarMonth && options.focusDate) throw new Error('月表示と家事回の表示を同時に指定できません。');
-      const instant = input.now(); const preferences = await input.readPreferences();
-      if (preferences.ownerUserId !== input.userId) throw new Error('本人の予定設定を確認してください。');
+      if (options?.management && (options.calendarMonth || options.focusDate)) throw new Error('編集画面と月・家事回の表示を同時に指定できません。');
+      const instant = input.now(); const preferences = options?.management ? null : await input.readPreferences();
+      if (preferences && preferences.ownerUserId !== input.userId) throw new Error('本人の予定設定を確認してください。');
       const model = await input.controller.readModel(({ timeZone }) => {
         const date = sharedLocalDate(instant, timeZone); const focus = options?.focusDate as LocalDate | undefined;
+        if (options?.management) return { from: date, through: date, asOfDate: date };
         if (focus) parseLocalDate(focus);
         const calendar = options?.calendarMonth ? v2CalendarMonth(options.calendarMonth === 'current' ? date : options.calendarMonth as LocalDate) : null;
         return { from: addDays(calendar?.from ?? focus ?? date, -14), through: addDays(calendar?.through ?? focus ?? date, 14), asOfDate: date };
       }, { detailChoreId: options?.detailChoreId });
       if (model.viewerUserId !== input.userId || model.plan.groupId !== input.groupId) throw new Error('表示する共有アカウント・グループが変わりました。');
+      if (!preferences) return model;
       let privateOverlay: V2PrivateOverlayState | undefined;
-      if (input.privateTasks) try {
+      if (input.privateTasks && !options?.management) try {
         privateOverlay = await input.privateTasks.read(model.plan.range, instant);
         if (privateOverlay.ownerUserId !== input.userId) throw new Error('本人の個人家事を確認してください。');
       } catch { privateOverlay = { status: 'unavailable', message: '個人家事を取得できませんでした。個人モードの状態を確認し、再読込してください。' }; }

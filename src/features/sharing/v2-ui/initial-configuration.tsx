@@ -31,7 +31,7 @@ export function V2InitialConfiguration({ model, choreId, controller, onSaved, on
       try { parseLocalDate(value.anchor as LocalDate); } catch { throw new Error('基準日をYYYY-MM-DD形式の有効な日付で入力してください。'); }
       await controller.actions.configureChore(choreId, { policy: chorePolicyFromPreset(value.preset, value.memberIds), anchorDate: value.anchor as LocalDate,
         intervalDays: number(value.interval, 1, 3650, '周期'), windowBeforeDays: number(value.before, 0, 14, '基準日より前'), windowAfterDays: number(value.after, 0, 14, '基準日より後'),
-        effectiveFrom: model.plan.range.asOfDate, active: true,
+        effectiveFrom: value.anchor > model.plan.range.asOfDate ? value.anchor as LocalDate : model.plan.range.asOfDate, active: true,
         ...(value.preset === 'eachMember' ? { targetMemberIds: members.map((member) => member.userId) } : {}) }, { expectedRuleVersion: 0 });
       await onSaved();
     } catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : '設定を保存できませんでした。'); }

@@ -47,11 +47,13 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
   function state() { return { fields: known, raw, errors, status: queue.getSnapshot(), refreshError, leaving, removalAllowed, hasDraft: dirty.size > 0 }; }
   let snapshot = state();
   function publish() {
-    const next = state(); if (same(next, snapshot)) return; snapshot = next;
+    const next = state();
+    if (Object.entries(next).every(([key, value]) => value === snapshot[key as keyof typeof snapshot])) return;
+    snapshot = next;
     for (const listener of listeners) try { listener(); } catch { /* Observers cannot discard a saved or pending draft. */ }
   }
   queue.subscribe(publish);
-  function change(field: string, nextRaw: JsonValue, resolveOperationIds?: readonly string[], displayed?: V2EditableField) {
+  function change(field: string, nextRaw: JsonValue, resolveOperationIds?: readonly string[], displayed?: V2EditableField, exact?: { value: JsonValue }) {
     if (!Object.hasOwn(known, field) || !Object.hasOwn(input.codecs, field)) throw new Error('変更する項目を確認してください。');
     if (!dirty.has(field) && displayed) {
       const own = ownAcknowledgements.get(field);
@@ -60,7 +62,7 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
     raw = { ...raw, [field]: nextRaw }; dirty.set(field, ++token);
     const nextErrors = { ...errors }; delete nextErrors[field];
     try {
-      const parsed = input.codecs[field].parse(nextRaw); const currentToken = token;
+      const parsed = exact ? exact.value : input.codecs[field].parse(nextRaw); const currentToken = token;
       if (known[field].kind === 'conflict' && resolveOperationIds === undefined) throw new Error('競合している候補を確認して解決してください。');
       queue.enqueue({ [field]: { value: parsed, token: currentToken, ...(resolveOperationIds ? { resolveOperationIds: [...resolveOperationIds] } : {}) } }, resolveOperationIds !== undefined);
     } catch (cause) { queue.remove(field); nextErrors[field] = cause instanceof Error ? cause.message : '入力内容を確認してください。'; }
@@ -70,16 +72,18 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
   return {
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, getSnapshot: () => snapshot,
     updateInput(next: V2FieldEditorInput) {
-      input = next;
+      input = next; let changed = false;
       for (const [field, current] of Object.entries(next.fields)) {
+        // Authenticated operation IDs bind immutable values; avoid copying long procedures on every render.
+        if (known[field]?.kind === current.kind && same(ids(known[field]), ids(current))) continue;
         if (!known[field] || !covers(current, known[field])) continue;
-        const previous = known[field]; known = { ...known, [field]: current };
+        const previous = known[field]; known = { ...known, [field]: current }; changed = true;
         if (!dirty.has(field)) {
           bases.set(field, ids(current));
           if (!same(value(previous), value(current)) || previous.kind !== current.kind) raw = { ...raw, [field]: next.codecs[field].format(value(current)) };
         }
       }
-      publish();
+      if (changed) publish();
     },
     // UI handlers pass the source actually rendered, even when a store update arrives before the next paint.
     change: (field: string, nextRaw: JsonValue, displayed?: V2EditableField) => change(field, nextRaw, undefined, displayed),
@@ -90,7 +94,9 @@ export function createV2FieldEditorState(initial: V2FieldEditorInput) {
         || own && same(value(own), value(known[field])) && covers(own, displayed);
       change(field, update(useLatest ? raw[field] : renderedRaw), undefined, displayed);
     },
-    resolve: (field: string, candidateValue: JsonValue, observedOperationIds: readonly string[]) => change(field, input.codecs[field].format(candidateValue), observedOperationIds),
+    // Display formatting is lossy (null/empty sections and newlines inside a step); resolve the chosen signed value exactly.
+    resolve: (field: string, candidateValue: JsonValue, observedOperationIds: readonly string[]) => change(field,
+      input.codecs[field].format(candidateValue), observedOperationIds, undefined, { value: candidateValue }),
     flush, hasDraft: () => dirty.size > 0,
     discard(field?: string) {
       for (const key of field ? [field] : Object.keys(known)) {

@@ -1,0 +1,351 @@
+{
+  "date": "2026-10-29",
+  "sourceCommit": "0987fd7ce5a67b366ab167b81f7edb3c4c38d7cf",
+  "scope": "Android10 actual Release cold routes and protocol/development guards; original Debug binary restored; no product source change",
+  "device": "Sony I4293 Android10/API29",
+  "releaseBuild": {
+    "result": "PASS",
+    "seconds": 236,
+    "architecture": "arm64-v8a",
+    "sameSigningCertificate": true,
+    "apkSha256": "32e1c9b1ba6a2aac2a9d7bb758287b2bdc1cebfc6eab60b7cf46ee11233c6072",
+    "originalDebugSha256": "5f7f7c0e57494d5495b288e8d665a26a8b063a3fe91aaaf1f7dadba754001a9d"
+  },
+  "results": {
+    "release-cold-help": {
+      "target": "アプリの使い方",
+      "observed": [
+        "アプリの使い方",
+        "ホーム"
+      ],
+      "success": true,
+      "observationSeconds": 2.841,
+      "dataReset": false
+    },
+    "release-cold-waste": {
+      "target": "ゴミ収集日",
+      "observed": [
+        "ゴミ収集日"
+      ],
+      "success": true,
+      "observationSeconds": 8.152,
+      "dataReset": false
+    },
+    "release-cold-qa-guard": {
+      "target": "開発ビルド専用です。",
+      "observed": [
+        "開発ビルド専用です。",
+        "開発ビルド専用です。"
+      ],
+      "success": true,
+      "observationSeconds": 7.4,
+      "dataReset": false
+    },
+    "release-cold-v2-guard-retry": {
+      "target": "共有グループ",
+      "observed": [
+        "共有グループ",
+        "共有グループ"
+      ],
+      "success": true,
+      "observationSeconds": 9.158,
+      "dataReset": false
+    },
+    "release-vault-guard": {
+      "target": "共有グループ",
+      "observed": [
+        "共有グループ",
+        "共有グループ"
+      ],
+      "success": true,
+      "observationSeconds": 8.508,
+      "dataReset": false
+    },
+    "restored-debug-final": {
+      "target": "今日のタスク",
+      "observed": [
+        "今日のタスク",
+        "ホーム"
+      ],
+      "success": true,
+      "observationSeconds": 23.046,
+      "dataReset": false
+    },
+    "restored-signed-qa": {
+      "originalDevelopmentBuildRestored": true,
+      "qaSignedSQLiteAuthenticatedWithExistingIdentity": true,
+      "savedConnectionStillDisconnected": true,
+      "auditActionsRequestedOAuth": false,
+      "auditActionsRequestedGoogleTasks": false,
+      "dataReset": false
+    }
+  },
+  "dataProtection": {
+    "replacementRoundTripBeforeApplicationLaunch": {
+      "beforeFileCount": 109,
+      "afterFileCount": 109,
+      "exactFileHashEquality": true
+    },
+    "normalForegroundExecution": "Mutable auth/control and SQLite/OS worker files may change during startup; final post-execution files are not claimed byte-identical",
+    "vaultVerification": {
+      "routePassed": true,
+      "restoredExactOriginalDebugApk": true,
+      "vaultManifestsBefore": 23,
+      "allLogicalVaultEntriesRetained": true,
+      "immutableQaIdentityCiphertextUnchanged": true,
+      "retiredPhysicalChunks": 6,
+      "newPhysicalChunks": 6,
+      "normalVaultReplacementProtocol": "New encrypted generation and manifest are committed before obsolete generation chunks are removed",
+      "dataReset": false
+    },
+    "allDatabasesAndKeysPreservedByInstaller": true,
+    "uninstallOrDataReset": false
+  },
+  "developmentColdLinkClassification": {
+    "observed": "Development launcher was shown before the project loaded",
+    "officialSource": "https://docs.expo.dev/develop/development-builds/development-workflows/#app-specific-deep-links",
+    "conclusion": "SDK58 development client does not support cold app-specific links; no product navigation patch was warranted by these failures",
+    "actualReleaseColdChecksPassed": true
+  },
+  "verificationCorrections": [
+    "The first observer tag expression excluded digits in v2 and failed before observation. The actual route guard passed on the corrected observer.",
+    "An initial integrity assertion incorrectly treated retired encrypted chunks as deleted logical values. It was replaced with stable manifest retention and immutable existing identity checks, followed by an actual signed SQLite read.",
+    "The first development launcher URI was not shell-quoted, yielding exit127 although the project loaded. The SDK58 launch was correctly quoted and independently observed again."
+  ],
+  "cleanup": {
+    "generatedOutputKiBRemoved": 2895304,
+    "r8MappingArchiveVerified": true,
+    "debugAndReleaseApksPreserved": true,
+    "debugBuildCachesSourceSdkAndSigningPreserved": true,
+    "spaceObservedDuringBuildGiB": 3.4,
+    "spaceObservedAfterCleanupGiB": 4.7,
+    "note": "Generated apparent sizes include APFS shared blocks; not equated with physical freed bytes"
+  },
+  "regressionStatus": {
+    "sourceUnchangedFrom2009TestsEachPlatformAnd70Cloud": true,
+    "lintTypecheckDoctorAtSourceCommit": "PASS; Doctor20/20",
+    "githubChecksAtSourceCommit": "all4 SUCCESS",
+    "iosPhysicalTasks": "waiting for Mac unlock; not executed"
+  },
+  "evidenceHashes": [
+    {
+      "name": "phase4bb-android-current.png",
+      "sha256": "7ccee5c57373dc08735c8672262224b4b7a316931a12f135e7f0f6d8258c9a8a",
+      "bytes": 146170
+    },
+    {
+      "name": "phase4bb-android-release-build.log",
+      "sha256": "6778581c6db029d6cb0e68c8ddf9652efee7a0ef0e72e541e70da2b73c58e4c0",
+      "bytes": 114984
+    },
+    {
+      "name": "phase4bb-android-true-cold-help.json",
+      "sha256": "4f1f324c6e37d5f81cfd648822df4614ddcf521209214bea6314e0896e4c9de6",
+      "bytes": 377
+    },
+    {
+      "name": "phase4bb-android-true-cold-help.png",
+      "sha256": "6b12f2ed09d183eef0c0c6ba153e313da49b4d9e71d64beb3ed08fda76d90fac",
+      "bytes": 146831
+    },
+    {
+      "name": "phase4bb-android-true-cold-help.xml",
+      "sha256": "da9e5475189c381f8e8beb20ffe9cb90ab7863713679f8dfb833e578033b71dd",
+      "bytes": 21821
+    },
+    {
+      "name": "phase4bb-module-release-cleanup.json",
+      "sha256": "1269202848465f7b7a633d329eac168e4961560184afad8137fc334211678a6c",
+      "bytes": 31275
+    },
+    {
+      "name": "phase4bb-release-cold-help-start.log",
+      "sha256": "73b48a3d54bc00bec549e417f9344e06bdaee666d80aa0b87171482473151f2b",
+      "bytes": 215
+    },
+    {
+      "name": "phase4bb-release-cold-help.json",
+      "sha256": "3ec299f9c4103ea7929f86947268031680af0d3809a3d824c7717f2b74fe7254",
+      "bytes": 178
+    },
+    {
+      "name": "phase4bb-release-cold-help.png",
+      "sha256": "0c26c5de127a7a83cb9a49fbb3b52a2b6f4c94452ee3ba55b604b4fe4d0181d0",
+      "bytes": 274386
+    },
+    {
+      "name": "phase4bb-release-cold-help.xml",
+      "sha256": "c7e85b1c4f06dcf0b3b8c5a37502336550885469258c8d0ff9477260d00b0002",
+      "bytes": 20510
+    },
+    {
+      "name": "phase4bb-release-cold-qa-guard-start.log",
+      "sha256": "1a1a68fc1ed182bcf8eb5012ecee3f6b6764acde809d88c3b1d37a2c6e28785c",
+      "bytes": 246
+    },
+    {
+      "name": "phase4bb-release-cold-qa-guard.json",
+      "sha256": "c17d28f72e928c5976e5234468af63cc63fb112e2f758d8b73f6bc63ce2a377e",
+      "bytes": 215
+    },
+    {
+      "name": "phase4bb-release-cold-qa-guard.png",
+      "sha256": "7e987cd8db2a36150500e72298e28f949778bc0ba0b571a6148707c3d6e3d1a6",
+      "bytes": 65852
+    },
+    {
+      "name": "phase4bb-release-cold-qa-guard.xml",
+      "sha256": "97ae8e42d837071d29fc6a008170c246ed615be4254006ac094baf9384136960",
+      "bytes": 6451
+    },
+    {
+      "name": "phase4bb-release-cold-v2-guard-retry-start.log",
+      "sha256": "da621e6c5b6c1ea68840a0462b461a04e93a7c27438c6c8ede17514259163ae0",
+      "bytes": 232
+    },
+    {
+      "name": "phase4bb-release-cold-v2-guard-retry.json",
+      "sha256": "84eb5f033e6a3600d51e78709328441bcac3b49633215944bde2338f73298220",
+      "bytes": 181
+    },
+    {
+      "name": "phase4bb-release-cold-v2-guard-retry.png",
+      "sha256": "9a9b60c418ff5652d7d7102f9e80097e1ee344c5be1843b80e27f29e6c9f61b8",
+      "bytes": 270492
+    },
+    {
+      "name": "phase4bb-release-cold-v2-guard-retry.xml",
+      "sha256": "566d1e86f297fb1063d1e32b1a7e80ba7c9dd2583748c2fa286ea2bd60636e7a",
+      "bytes": 16857
+    },
+    {
+      "name": "phase4bb-release-cold-v2-guard-start.log",
+      "sha256": "603d06bf301fcba15f8a14af9433f29df6bf3894b157682eb4215e674e65117f",
+      "bytes": 232
+    },
+    {
+      "name": "phase4bb-release-cold-waste-start.log",
+      "sha256": "08d60823ef093b2532c133a897ec36f365284cf06036d75feba066f3fd8f042b",
+      "bytes": 216
+    },
+    {
+      "name": "phase4bb-release-cold-waste.json",
+      "sha256": "95a186ebf9a68eaaa235698bf33c87f3ff1b1411d6424c11c20ca0853d9e167d",
+      "bytes": 149
+    },
+    {
+      "name": "phase4bb-release-cold-waste.png",
+      "sha256": "3faf2584157c205dac23be44a69faa81efae80252466f9ff82fef38d9ed5ab99",
+      "bytes": 298317
+    },
+    {
+      "name": "phase4bb-release-cold-waste.xml",
+      "sha256": "726fcab3182d0b5626c083b191421cd0f077eed172a2c857e67ddc23a203988b",
+      "bytes": 20692
+    },
+    {
+      "name": "phase4bb-release-generated-cleanup.json",
+      "sha256": "ea8d3cd2b9ded746cbdb950ee2fbb493601719f97b33b4a82e6a3514a6b8e20f",
+      "bytes": 9061
+    },
+    {
+      "name": "phase4bb-release-guard-retry.log",
+      "sha256": "eabb42e3855689d13b883800b74f5800173ad6156a6e01423948f8a05ca189dd",
+      "bytes": 441
+    },
+    {
+      "name": "phase4bb-release-route-run.json",
+      "sha256": "32b2edf5a9e46e9588aadb5bd531b63828c6696d5625077d7188cd4fad15bf3a",
+      "bytes": 139
+    },
+    {
+      "name": "phase4bb-release-routes.log",
+      "sha256": "f1853ac8000faf6bc9d8add11d2fd5f989c60070b5299a5f83541774c36e5868",
+      "bytes": 1309
+    },
+    {
+      "name": "phase4bb-release-vault-guard-start.log",
+      "sha256": "7a15d0fd78b74b84d006e109284e3a3aafa8e6804b4df4251e1e79b348906fb0",
+      "bytes": 232
+    },
+    {
+      "name": "phase4bb-release-vault-guard.json",
+      "sha256": "8c79fb685af95ae33946a02149e41e8bc3360ebf57045fdb63eaf6360c3f06e3",
+      "bytes": 181
+    },
+    {
+      "name": "phase4bb-release-vault-guard.png",
+      "sha256": "393311b965298a62fc409ece572557436f354022e1b964563900e2f904959d24",
+      "bytes": 271343
+    },
+    {
+      "name": "phase4bb-release-vault-guard.xml",
+      "sha256": "566d1e86f297fb1063d1e32b1a7e80ba7c9dd2583748c2fa286ea2bd60636e7a",
+      "bytes": 16857
+    },
+    {
+      "name": "phase4bb-release-vault-verification.json",
+      "sha256": "a9108e67a10533cb09a18d96dbd00b7df47bf97c601aa52c5f3cc0cade5e0fac",
+      "bytes": 404
+    },
+    {
+      "name": "phase4bb-release-vault-verification.log",
+      "sha256": "12ffcb1b74d38a8ab577b96584931b4224d7b2430deee226f7fbd1ff7294b778",
+      "bytes": 610
+    },
+    {
+      "name": "phase4bb-restored-debug-correct-launch.log",
+      "sha256": "3c9c42eee8468fa3ff136079f4380ea033d896659ba6aeedf5d205257ab6b762",
+      "bytes": 420
+    },
+    {
+      "name": "phase4bb-restored-debug-final.json",
+      "sha256": "943457b9c956d5e590ca136750fe469d2be10511da6c2feee5b95f67399b89f8",
+      "bytes": 173
+    },
+    {
+      "name": "phase4bb-restored-debug-final.png",
+      "sha256": "755159482f8c5e9ad67c610fefeb7699e5778939627ea1634c62c5a75481f6f9",
+      "bytes": 259716
+    },
+    {
+      "name": "phase4bb-restored-debug-final.xml",
+      "sha256": "a962cd64c79f2059553105cbd86f28a6028ef991498a5487efecaf818cbbc172",
+      "bytes": 30111
+    },
+    {
+      "name": "phase4bb-restored-debug-home.json",
+      "sha256": "c8eb878d59f16ea1b3a94f814c2aa4aa7f0f21684c3c9a5b39d0aa6f24043479",
+      "bytes": 173
+    },
+    {
+      "name": "phase4bb-restored-debug-home.png",
+      "sha256": "4f6be02517307daa31fb31c0808d94e72c00b153eff021ffc8bef2e6c07a0a61",
+      "bytes": 266103
+    },
+    {
+      "name": "phase4bb-restored-debug-home.xml",
+      "sha256": "cefa570cd50fa6c182ad7943b7796d44460863627bd9ab3b9c5b98fefd30a3cc",
+      "bytes": 31411
+    },
+    {
+      "name": "phase4bb-restored-signed-qa.json",
+      "sha256": "82cc4a657be02fbf061fcd271e9a157febd9eec79feeb37465520dc5180baba5",
+      "bytes": 256
+    },
+    {
+      "name": "phase4bb-restored-signed-qa.png",
+      "sha256": "8d60d3fa95a280d4aeafd5f738738ddf18ec2b35799b1f0b6d74d13fe2cf4fac",
+      "bytes": 398855
+    },
+    {
+      "name": "phase4bb-restored-signed-qa.xml",
+      "sha256": "c10b954c35861b06c77734ced001cb70270653cab8f1613ef5cf983d4afab3e1",
+      "bytes": 14905
+    }
+  ],
+  "phase6Complete": false,
+  "mainMerged": false,
+  "productionDeployed": false,
+  "uiPolishStarted": false
+}

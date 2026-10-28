@@ -3347,5 +3347,101 @@
         "name": "private Calendar persisted-key screen cannot open its Native store in a release build"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-complete-ciphertext-cursor-atomic-storage",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar ciphertext ledger atomically saves one complete cache with its cursor and outbox, and survives reopening SQLite"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar missing, tampered and wrongly bound incoming snapshots leave the previous cache and pending retry untouched"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar a failure after writing SQL rolls back cache, cursor and outbox together"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar simultaneous SQLite connections preserve the largest sequence and never choose a last-writer winner for forks"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-fixed-envelope-retry-and-supersession",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar stale acknowledgement and stale failure cannot erase or delay a newer pending snapshot"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar retry retains exact ciphertext and applies exponential backoff with bounded jitter without resetting on duplicate saves"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar newer complete remote snapshots supersede obsolete cached publications but reject old sequences and same-sequence forks"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar corrupt persisted cursor or ciphertext is rejected rather than published or accepted as a duplicate"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar metadata status, delivery acknowledgement and retry updates avoid transferring the full encrypted cache from SQLite"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-native-cache-account-and-main-fences",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar save owns its key, origin and ciphertext before the first account or native await"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar an account switch after SQLite commits cannot expose the previous account result but preserves its durable snapshot"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar read refuses an obsolete clear result when a newer complete snapshot arrives during native decryption"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-store.test.mjs",
+        "name": "private Calendar a main change during native validation cannot commit or return an obsolete pending publication"
+      },
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native cache uses the same protected vault and transaction lock and never writes plaintext or bypasses missing trust"
+      },
+      {
+        "file": "tests/sharing-private-calendar-lock.test.mjs",
+        "name": "private Calendar SQL callbacks receive the exclusive transaction connection rather than using the base connection"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar already-locked cache checks distinguish the approved reader from the main publisher and reject a revoked identity"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-synthetic-native-ciphertext-persistence-audit",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native ciphertext audit persists twenty thousand intervals and resumes the exact previous snapshot without accessing an account"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-ui.test.mjs",
+        "name": "private ciphertext cache screen refuses native access in release mode"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cache-ui.test.mjs",
+        "name": "private ciphertext cache audit starts once from its explicit button and exposes only synthetic public proof"
+      }
+    ]
   }
 ]

@@ -4,7 +4,7 @@ import test from 'node:test';
 import { randomBytes } from 'node:crypto';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { createSecureVault } from '../src/features/sharing/secure-vault.ts';
-import { createPrivateCalendarSecretStore } from '../src/features/sharing/private-calendar/secret-store.ts';
+import { assertPrivateCalendarProtectedAuthority, createPrivateCalendarSecretStore } from '../src/features/sharing/private-calendar/secret-store.ts';
 import { createPrivateCalendarRoot, advancePrivateCalendarAuthority } from '../src/features/sharing/private-calendar/authority.ts';
 import { wrapPrivateCalendarKey } from '../src/features/sharing/private-calendar/key-envelope.ts';
 
@@ -142,4 +142,18 @@ test('private Calendar corrupted protected records fail closed and never silentl
     assert.equal(f.a.writes(), before);
   }
   await f.a.vault.setItem(recordName, original); assert.equal((await f.a.reopen().currentKey(userId, f.root)).length, 32);
+});
+
+test('private Calendar already-locked cache checks distinguish the approved reader from the main publisher and reject a revoked identity', async () => {
+  const f = await pair(); const name = `private-calendar-state:${userId}`;
+  const first = await f.a.vault.getItem(name); const second = await f.b.vault.getItem(name);
+  assert.doesNotThrow(() => assertPrivateCalendarProtectedAuthority(first, userId, f.joined, true));
+  assert.doesNotThrow(() => assertPrivateCalendarProtectedAuthority(second, userId, f.joined, false));
+  assert.throws(() => assertPrivateCalendarProtectedAuthority(second, userId, f.joined, true), /メイン/u);
+  assert.throws(() => assertPrivateCalendarProtectedAuthority(second, 'another-owner', f.joined), /アカウント/u);
+  const removed = advancePrivateCalendarAuthority(f.joined, { mainDeviceId: f.identity.deviceId, devices: [f.identity], keyVersion: 2 }, f.identity);
+  await f.b.store.acceptAuthorityUpdate(userId, removed.signed);
+  assert.throws(() => assertPrivateCalendarProtectedAuthority(null, userId, removed), /準備/u);
+  const revoked = await f.b.vault.getItem(name);
+  assert.throws(() => assertPrivateCalendarProtectedAuthority(revoked, userId, removed), /承認/u);
 });

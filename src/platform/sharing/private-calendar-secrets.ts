@@ -1,7 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 import { createSecureVault } from '../../features/sharing/secure-vault.ts';
-import { createPrivateCalendarSecretStore } from '../../features/sharing/private-calendar/secret-store.ts';
+import { assertPrivateCalendarProtectedAuthority, createPrivateCalendarSecretStore } from '../../features/sharing/private-calendar/secret-store.ts';
 import { createPrivateCalendarExclusiveStorage } from '../storage/private-calendar-store.ts';
+import { createPrivateCalendarCacheStorage } from '../storage/private-calendar-cache.ts';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { getSharingServices } from './firebase-services.ts';
 import { openPrivateCalendarDatabase } from './database-location';
 import { nativePrivateCalendarCrypto } from './native-private-calendar-crypto';
@@ -17,21 +19,36 @@ function nativeStore(development: boolean) {
   const assertOwner = (userId: string) => {
     if (development ? !__DEV__ || !userId.startsWith('development-calendar-') : getSharingServices().auth.currentUser?.uid !== userId) throw new Error('本人用Calendarのアカウントが変わりました。');
   };
-  return createPrivateCalendarSecretStore({ vault, crypto: nativePrivateCalendarCrypto, assertOwner,
-    async exclusive(userId, work) {
-      assertOwner(userId); let pending = stores.get(userId);
-      if (!pending) {
-        pending = openPrivateCalendarDatabase(userId, development).then(createPrivateCalendarExclusiveStorage); stores.set(userId, pending);
-        void pending.catch(() => { if (stores.get(userId) === pending) stores.delete(userId); });
-      }
-      const store = await pending; assertOwner(userId); return store.exclusive(userId, work);
-    } });
+  async function exclusive<T>(userId: string, work: (transaction: SQLiteDatabase) => Promise<T>): Promise<T> {
+    assertOwner(userId); let pending = stores.get(userId);
+    if (!pending) {
+      pending = openPrivateCalendarDatabase(userId, development).then(createPrivateCalendarExclusiveStorage); stores.set(userId, pending);
+      void pending.catch(() => { if (stores.get(userId) === pending) stores.delete(userId); });
+    }
+    const store = await pending; assertOwner(userId); return store.exclusive(userId, work);
+  }
+  const secrets = createPrivateCalendarSecretStore({ vault, crypto: nativePrivateCalendarCrypto, assertOwner, exclusive });
+  function cache(userId: string) {
+    assertOwner(userId);
+    return createPrivateCalendarCacheStorage({ ownerUserId: userId, crypto: nativePrivateCalendarCrypto, assertOwner, exclusive,
+      async assertAuthority(authority, requireMain) {
+        const raw = await vault.getItem(`private-calendar-state:${userId}`); assertOwner(userId);
+        assertPrivateCalendarProtectedAuthority(raw, userId, authority, requireMain);
+      } });
+  }
+  return { secrets, cache };
 }
 
 /** Importing this module does not initialize Firebase or open any user's database. */
-export const nativePrivateCalendarSecrets = nativeStore(false);
+const native = nativeStore(false);
+export const nativePrivateCalendarSecrets = native.secrets;
+export const nativePrivateCalendarCache = native.cache;
 let qaStore: ReturnType<typeof nativeStore> | undefined;
 export function developmentPrivateCalendarSecrets() {
   if (!__DEV__) throw new Error('検査用の鍵保存は開発ビルドだけで使用できます。');
-  return qaStore ??= nativeStore(true);
+  return (qaStore ??= nativeStore(true)).secrets;
+}
+export function developmentPrivateCalendarCache(userId: string) {
+  if (!__DEV__) throw new Error('検査用のCalendar保存は開発ビルドだけで使用できます。');
+  return (qaStore ??= nativeStore(true)).cache(userId);
 }

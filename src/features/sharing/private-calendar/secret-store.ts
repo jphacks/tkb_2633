@@ -60,6 +60,14 @@ function requiredState(state: SecretState | null): SecretState {
   if (!state) throw new Error('本人端末を先に準備してください。既存の鍵は自動で置き換えません。'); return state;
 }
 
+/** Read only the protected vault while its caller already holds the same UID's SQLite lock. */
+export function assertPrivateCalendarProtectedAuthority(raw: string | null, userId: string, expected: VerifiedPrivateCalendarAuthority, requireMain = false): void {
+  assertSharedIdentifier(userId);
+  const state = requiredState(raw === null ? null : stateFromProtectedStorage(raw, userId));
+  const authority = approvedAuthority(state, expected);
+  if (requireMain && authority.signed.body.mainDeviceId !== state.identity.deviceId) throw new Error('本人用Calendarの送信はメイン端末だけが行えます。');
+}
+
 /** No remove/reset API. Only explicitly confirmed trust and immutable key generations enter protected storage. */
 export function createPrivateCalendarSecretStore(port: PrivateCalendarSecretPort) {
   async function transact<T>(userId: string, work: (state: SecretState | null) => Promise<{ value: T; write?: SecretState }>): Promise<T> {

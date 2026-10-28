@@ -298,3 +298,24 @@ Androidはforce-stopと起動、iPhoneはdevicectlのterminate-existing指定と
 | Android復元 | `e883a91ccd03297700cc4120e8f8dd5e308e075e57ba66bfbcd808ca27fc9903` |
 
 実行記録と比較は`phase4ah-native-and-code-evidence.json`へ保存した。本人用クラウド同期や異種OS間の共有E2Eは引き続き未完である。
+
+
+## 14. 本人Calendarの暗号化SQLiteとアプリ再起動
+
+`development/private-calendar-cache-preview`の明示ボタンから、合成QA専用UID・service・DBで2万区間・22片を検査した。保護保存の4項目に、既存cacheの有無、完全な暗号文とcursorと送信待ちの同時保存、同じ暗号文の再送待ち、確認後の再登録防止と全区間復元の4項目を加えた。画面には秘密値を出さず、QAの公開照合値・連番・片数のみ表示する。
+
+| 環境 | 初回 | プロセス終了・再起動後 | 結果 |
+| --- | --- | --- | --- |
+| 物理iPhone・XCTest | 14.325秒 | 16.461秒 | 8項目ずつ成功、SQL cache復元後に連番1→2 |
+| 物理Android 10・ADB補助 | 36.110秒、code 0 | 41.292秒、code 0 | 同上、プロセスIDも変更 |
+
+復元回は既存cacheの復号も行う。初回と復元回を性能改善の前後比較にしない。Androidの最初の再起動検査は開発clientの画面準備前で止まり、routeだけを開き直して同じ保存値から成功した。iPhoneのterminate-existing指定も結果JSONで確認した。OS再起動・長時間のbackground実行・端末間の実通信を検査したという意味ではない。
+
+| 実画像 | SHA-256 |
+| --- | --- |
+| iPhone初回 | `dfab9a2fdb94c20da67f700e1bff7e5a1afb3857d6a11f456d49077628d02b8f` |
+| iPhone復元 | `cacbed87a3a21874e71d6fc0b6168d2d3e2e0d4d407eed4c77e04489f3344503` |
+| Android初回 | `cc8402c852876636d18b5aca5f39f2a9ef08a0c9969e7a893e5166d21f404af5` |
+| Android復元 | `149540398ba18bc0cfbc3a535648a94a571b98f961002c88a415572ca1c76340` |
+
+全画像とQA要素情報を確認し、`phase4ai-native-and-code-evidence.json`へ範囲と結果を保存した。実Google/Firebaseアカウントの情報、本番Rules、元個人DB、共有Outboxはこの検査へ使わない。

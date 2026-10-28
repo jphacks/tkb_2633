@@ -105,35 +105,50 @@ export async function sealPrivateCalendarCache(crypto: PrivateCalendarCryptoGate
     return { manifest, chunks };
   } finally { plain.fill(0); input.accountKey.fill(0); }
 }
+/** Bounded owned transport copy. Ciphertext digests are checked by verify/open, not by this snapshot alone. */
+export function snapshotEncryptedPrivateCalendarCache(encrypted: EncryptedPrivateCalendarCache, authority: VerifiedPrivateCalendarAuthority): EncryptedPrivateCalendarCache {
+  exactRecord(encrypted, ['manifest', 'chunks']);
+  const header = checkHeader(encrypted.manifest, authority);
+  if (!Array.isArray(encrypted.chunks) || encrypted.chunks.length !== header.chunkCount) throw new Error('本人用Calendarの取得が完了していません。');
+  const seen = new Set<number>();
+  const chunks = encrypted.chunks.map((chunk): PrivateCalendarCacheChunk => {
+    exactRecord(chunk, ['index', 'salt', 'nonce', 'encryptedPayload']);
+    if (!Number.isSafeInteger(chunk.index) || chunk.index < 0 || chunk.index >= header.chunkCount || seen.has(chunk.index)) throw new Error('本人用Calendarの分割順序が無効です。');
+    seen.add(chunk.index); hexBytes(chunk.salt, 32); hexBytes(chunk.nonce, 12);
+    if (typeof chunk.encryptedPayload !== 'string' || chunk.encryptedPayload.length <= 32 || chunk.encryptedPayload.length > (PRIVATE_CALENDAR_CHUNK_BYTES + 16) * 2
+      || chunk.encryptedPayload.length % 2 !== 0 || !/^[0-9a-f]+$/u.test(chunk.encryptedPayload)) throw new Error('本人用Calendarの暗号サイズが無効です。');
+    if (chunk.index < header.chunkCount - 1 && chunk.encryptedPayload.length !== (PRIVATE_CALENDAR_CHUNK_BYTES + 16) * 2) throw new Error('本人用Calendarの分割サイズが異なります。');
+    return { ...chunk };
+  });
+  return { manifest: { body: { ...header, chunkDigests: [...encrypted.manifest.body.chunkDigests] }, signature: encrypted.manifest.signature }, chunks };
+}
+async function inspectCiphertext(crypto: PrivateCalendarCryptoGateway, encrypted: EncryptedPrivateCalendarCache) {
+  const parts: { chunk: PrivateCalendarCacheChunk; encrypted: Uint8Array; salt: Uint8Array; nonce: Uint8Array }[] = [];
+  let total = 0;
+  for (const chunk of encrypted.chunks) {
+    const ciphertext = hexBytes(chunk.encryptedPayload, chunk.encryptedPayload.length / 2);
+    if (await chunkDigest(crypto, chunk, ciphertext) !== encrypted.manifest.body.chunkDigests[chunk.index]) throw new Error('本人用Calendarの改ざんを検出しました。');
+    total += ciphertext.length - 16; if (total > MAX_PRIVATE_CALENDAR_CACHE_BYTES) throw new Error('本人用Calendar情報が保存上限を超えています。');
+    parts[chunk.index] = { chunk, encrypted: ciphertext, salt: hexBytes(chunk.salt, 32), nonce: hexBytes(chunk.nonce, 12) };
+  }
+  return { parts, total };
+}
+/** Returns the same owned bytes that passed signature and all-part digest verification; no decryption key is needed. */
+export async function verifyPrivateCalendarCacheCiphertext(crypto: PrivateCalendarCryptoGateway, encrypted: EncryptedPrivateCalendarCache,
+  authority: VerifiedPrivateCalendarAuthority): Promise<EncryptedPrivateCalendarCache> {
+  const owned = snapshotEncryptedPrivateCalendarCache(encrypted, authority); await inspectCiphertext(crypto, owned); return owned;
+}
 /** Verify every part before exposing any plaintext or replacing the last complete local cache. */
 export async function openPrivateCalendarCache(crypto: PrivateCalendarCryptoGateway, encrypted: EncryptedPrivateCalendarCache, input: {
   authority: VerifiedPrivateCalendarAuthority; calendarBinding: string; accountKey: Uint8Array;
 }): Promise<PrivateBusyCache> {
-  exactRecord(encrypted, ['manifest', 'chunks']);
+  encrypted = snapshotEncryptedPrivateCalendarCache(encrypted, input.authority);
   if (input.accountKey.length !== 32) throw new Error('本人用Calendarの鍵が無効です。');
-  const header = checkHeader(encrypted.manifest, input.authority);
-  if (!Array.isArray(encrypted.chunks) || encrypted.chunks.length !== header.chunkCount) throw new Error('本人用Calendarの取得が完了していません。');
-  const digests = [...encrypted.manifest.body.chunkDigests];
-  const chunks = encrypted.chunks.map((chunk) => {
-    exactRecord(chunk, ['index', 'salt', 'nonce', 'encryptedPayload']);
-    return { ...chunk };
-  });
+  const { chunkDigests: _digests, ...header } = encrypted.manifest.body;
   input = { ...input, accountKey: input.accountKey.slice() };
   let plain: Uint8Array | undefined;
   try {
-    const parts: { chunk: PrivateCalendarCacheChunk; encrypted: Uint8Array; salt: Uint8Array; nonce: Uint8Array }[] = [];
-    let total = 0;
-    for (const chunk of chunks) {
-      if (!Number.isSafeInteger(chunk.index) || chunk.index < 0 || chunk.index >= header.chunkCount || parts[chunk.index]) throw new Error('本人用Calendarの分割順序が無効です。');
-      const salt = hexBytes(chunk.salt, 32); const nonce = hexBytes(chunk.nonce, 12);
-      if (typeof chunk.encryptedPayload !== 'string' || chunk.encryptedPayload.length <= 32 || chunk.encryptedPayload.length > (PRIVATE_CALENDAR_CHUNK_BYTES + 16) * 2
-        || chunk.encryptedPayload.length % 2 !== 0) throw new Error('本人用Calendarの暗号サイズが無効です。');
-      const ciphertext = hexBytes(chunk.encryptedPayload, chunk.encryptedPayload.length / 2);
-      if (chunk.index < header.chunkCount - 1 && ciphertext.length !== PRIVATE_CALENDAR_CHUNK_BYTES + 16) throw new Error('本人用Calendarの分割サイズが異なります。');
-      if (await chunkDigest(crypto, chunk, ciphertext) !== digests[chunk.index]) throw new Error('本人用Calendarの改ざんを検出しました。');
-      total += ciphertext.length - 16; if (total > MAX_PRIVATE_CALENDAR_CACHE_BYTES) throw new Error('本人用Calendar情報が保存上限を超えています。');
-      parts[chunk.index] = { chunk, encrypted: ciphertext, salt, nonce };
-    }
+    const { parts, total } = await inspectCiphertext(crypto, encrypted);
     plain = new Uint8Array(total); let offset = 0;
     for (const { chunk, encrypted: ciphertext, salt, nonce } of parts) {
       const aad = chunkAad(header, chunk); const key = hkdf(sha256, input.accountKey, salt, aad, 32);
@@ -149,6 +164,12 @@ export async function openPrivateCalendarCache(crypto: PrivateCalendarCryptoGate
 }
 
 export interface PrivateCalendarCacheCursor { accountGeneration: string; authorityRevision: number; authorityDigest: string; sequence: number; manifestDigest: string }
+export function snapshotPrivateCalendarCacheCursor(value: PrivateCalendarCacheCursor): PrivateCalendarCacheCursor {
+  exactRecord(value, ['accountGeneration', 'authorityRevision', 'authorityDigest', 'sequence', 'manifestDigest']);
+  positiveInteger(value.sequence); positiveInteger(value.authorityRevision);
+  hexBytes(value.accountGeneration, 32); hexBytes(value.authorityDigest, 32); hexBytes(value.manifestDigest, 32);
+  return { ...value };
+}
 /** Persist this comparison with the complete cache in the same local transaction. Clock time never selects a winner. */
 export function advancePrivateCalendarCacheCursor(previous: PrivateCalendarCacheCursor | null, manifest: PrivateCalendarCacheManifest,
   authority: VerifiedPrivateCalendarAuthority): { kind: 'new' | 'duplicate'; cursor: PrivateCalendarCacheCursor } {
@@ -156,9 +177,7 @@ export function advancePrivateCalendarCacheCursor(previous: PrivateCalendarCache
   const cursor = { accountGeneration: manifest.body.accountGeneration, authorityRevision: manifest.body.mainRevision,
     authorityDigest: authority.digest, sequence: manifest.body.sequence, manifestDigest: sharedDocumentDigest(manifest) };
   if (previous) {
-    exactRecord(previous, ['accountGeneration', 'authorityRevision', 'authorityDigest', 'sequence', 'manifestDigest']);
-    positiveInteger(previous.sequence); positiveInteger(previous.authorityRevision);
-    hexBytes(previous.accountGeneration, 32); hexBytes(previous.authorityDigest, 32); hexBytes(previous.manifestDigest, 32);
+    previous = snapshotPrivateCalendarCacheCursor(previous);
     if (previous.accountGeneration !== cursor.accountGeneration || cursor.authorityRevision < previous.authorityRevision
       || cursor.authorityRevision === previous.authorityRevision && cursor.authorityDigest !== previous.authorityDigest) throw new Error('本人用Calendarの認証世代を巻き戻せません。明示的な復旧が必要です。');
     if (previous.authorityDigest === cursor.authorityDigest) {

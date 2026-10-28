@@ -17,7 +17,7 @@ export function createPrivateCalendarExclusiveStorage(connection: PrivateCalenda
     const row = await db.getFirstAsync<{ owner_user_id: string; schema_version: number }>('SELECT owner_user_id, schema_version FROM private_calendar_scope WHERE id = ?', 'scope');
     if (!row || row.owner_user_id !== ownerUserId || row.schema_version !== 1) throw new Error('本人専用DBのアカウントが一致しません。');
   }
-  async function run<T>(expectedUserId: string, work: () => Promise<T>): Promise<T> {
+  async function run<T>(expectedUserId: string, work: (transaction: SQLiteDatabase) => Promise<T>): Promise<T> {
     if (expectedUserId !== ownerUserId) throw new Error('本人専用DBの接続先が変わりました。');
     for (let attempt = 0; ; attempt++) {
       let entered = false;
@@ -36,7 +36,7 @@ export function createPrivateCalendarExclusiveStorage(connection: PrivateCalenda
           const locked = await transaction.runAsync('UPDATE private_calendar_scope SET lock_toggle = 1 - lock_toggle WHERE id = ? AND owner_user_id = ?', 'scope', ownerUserId);
           if (locked.changes !== 1) throw new Error('本人専用DBをロックできません。');
           await scope(transaction); entered = true;
-          return work();
+          return work(transaction);
         });
       } catch (error) {
         // Never replay a callback that may already have committed to SecureStore.
@@ -46,7 +46,7 @@ export function createPrivateCalendarExclusiveStorage(connection: PrivateCalenda
     }
   }
   return {
-    exclusive<T>(userId: string, work: () => Promise<T>): Promise<T> {
+    exclusive<T>(userId: string, work: (transaction: SQLiteDatabase) => Promise<T>): Promise<T> {
       const pending = tail.then(() => run(userId, work), () => run(userId, work));
       tail = pending.then(() => undefined, () => undefined); return pending;
     },

@@ -94,3 +94,16 @@ test('private Calendar a persisted foreign owner blocks access without relabelin
   await assert.rejects(() => h.storage.exclusive(userId, async () => { entered = true; }), /本人/u);
   assert.equal(entered, false); assert.equal(h.connection.prepare('SELECT owner_user_id FROM private_calendar_scope').get().owner_user_id, 'another-user');
 });
+
+test('private Calendar SQL callbacks receive the exclusive transaction connection rather than using the base connection', async t => {
+  const bridge = createDatabase(); t.after(() => bridge.connection.close());
+  const transaction = { ...bridge.database };
+  const base = { ...bridge.database, async withExclusiveTransactionAsync(callback) { await bridge.database.withTransactionAsync(() => callback(transaction)); } };
+  const storage = createPrivateCalendarExclusiveStorage({ kind: 'private-calendar', ownerUserId: userId,
+    filename: privateCalendarDatabaseFilename(userId), development: false, database: base });
+  await storage.exclusive(userId, async db => {
+    assert.equal(db, transaction); assert.notEqual(db, base);
+    await db.execAsync('CREATE TABLE lock_result (value INTEGER)'); await db.runAsync('INSERT INTO lock_result VALUES (?)', 17);
+  });
+  assert.equal(bridge.connection.prepare('SELECT value FROM lock_result').get().value, 17);
+});

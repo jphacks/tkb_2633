@@ -235,3 +235,9 @@ Android実機では、127.0.0.1:8787へのADB転送を一時的に設定し、�
 | iPhone・一覧へ戻った状態 | `146b06fde6ac7b3b9975692de6a0822f4d330cff0a8c6d5f8ee6789a0645658c` |
 | Android・実APIで保存した家電の開き直し | `a5dc0131321aba0e38d58e786170631d75a6ae5b44ee0c96d552d1102e27add4` |
 | Android・再保存で新規0件の実描画 | `533e435f6fcd3dee2dffaa732dd82b92b228c3f42a5671929325bcd5c58bfed7` |
+
+## Phase 4ad：共通の中止処理をNative navigationへ接続した後の確認
+
+`phase4ad-iphone-appliance-form.xcresult`のXCTest 1件は31.399秒で成功。iPhone 12 / iOS 26.7.2で、共有家電の入力欄を実際のソフトウェアキーボードで編集し、Nativeの戻る操作で一覧へ復帰した。共通のblur/unmount listenerが接続された画面の入力・遷移の確認であり、通信途中のblurを実APIで実施した検査ではない。その競合は`phase4ad-blur-before.log`、`phase4ad-delayed-before.log`、`phase4ad-save-lock-before.log`の反例と、`phase4ad-save-lock-after.log`の40件で確認する。
+
+画像一覧は`phase4ad-native-ios-evidence.json`。入力後の実画像SHA-256は`f8df6dbb3371609c719b1217cbb9114e84b2f31fc02c18f5d703789598cb1caa`、一覧へ戻った実画像は`9c33c036694ced123d5a5d51c18414443263a57b241fb9846d99f681b31f89dd`。入力後を目視確認した。Androidの新しいNative検査は追加しておらず、低残量の端末は消灯したまま充電する。

@@ -3145,5 +3145,15 @@
       { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "unselected or mismatched v2 workspace routes never load shared controllers or expose edit controls" },
       { "file": "tests/sharing-v2-development-preview.test.mjs", "name": "v2 every isolated preview route denies release execution before opening the fixture" }
     ]
+  },
+  {
+    "feature": "appliance-client-polling-stops-on-retained-route-blur-and-can-retry",
+    "tests": [
+      { "file": "tests/mobile-ui-audit.test.mjs", "name": "leaving a personal appliance during its committed save preserves the save lock until SQLite finishes" },
+      { "file": "tests/mobile-ui-audit.test.mjs", "name": "appliance analysis aborts when a retained screen blurs and permits another request" },
+      { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "leaving a retained shared appliance review aborts polling and ignores a late result without preventing a fresh attempt" },
+      { "file": "tests/mobile-ui-audit.test.mjs", "name": "appliance analysis aborts on" },
+      { "file": "tests/appliance-care-client.test.mjs", "name": "cancelled appliance requests make no network call and abort an in-flight request" }
+    ]
   }
 ]

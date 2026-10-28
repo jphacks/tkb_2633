@@ -54,7 +54,8 @@ export function screenHarness(filename, options = {}) {
     'expo-router': {
       useLocalSearchParams: () => options.params ?? {},
       useRouter: () => options.scopedRouter ?? mocks['expo-router'].router,
-      useNavigation: () => ({ addListener: () => () => {}, setParams: (value) => { options.params = { ...options.params, ...value }; } }),
+      useNavigation: () => ({ addListener: (event, listener) => { options.navigationListener?.(event, listener); return () => options.navigationUnsubscribe?.(event, listener); },
+        setParams: (value) => { options.params = { ...options.params, ...value }; } }),
       router: { ...Object.fromEntries(['push', 'navigate', 'replace', 'back', 'dismissTo'].map((name) => [name, (...args) => options.navigate?.(name, ...args)])),
         setParams: (value) => { options.params = { ...options.params, ...value }; } },
       Tabs: { Screen: 'TabsScreen' }, useFocusEffect: (callback) => options.focusEffect?.(callback),

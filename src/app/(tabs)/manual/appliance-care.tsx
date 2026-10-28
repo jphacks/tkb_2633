@@ -6,6 +6,7 @@ import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palet
 import { NumberInputField } from '@/components/number-input-field';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse, ProductVerifiedResponse } from '@/features/appliance-care/api-contracts';
 import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-client';
+import { useAbortApplianceRequestOnLeave } from '@/features/appliance-care/use-abort-on-leave';
 import type { ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
 import { automaticApplianceTasks, defaultApplianceCycles } from '@/features/appliance-care/auto-save-policy';
 import { applianceCategoryLabel, searchApplianceCategories } from '@/features/appliance-care/categories';
@@ -38,7 +39,7 @@ export default function ApplianceCareScreen() {
   const [stage, setStage] = useState<ApplianceCareAnalysisStage>('product_verification');
   const [savedContext, setSavedContext] = useState<ApplianceCareReviewContext | null>(null);
   const loadingAppliance = Boolean(applianceId) && !savedContext && !message;
-  useEffect(() => () => { analysisRequest.current?.abort(); }, []);
+  const beginRequest = useAbortApplianceRequestOnLeave(analysisRequest);
 
   useEffect(() => {
     if (!applianceId) return;
@@ -75,17 +76,19 @@ export default function ApplianceCareScreen() {
       return;
     }
     savingRef.current = true;
-    const controller = new AbortController();
-    analysisRequest.current = controller;
+    const controller = beginRequest(() => { savingRef.current = false; setWorking(false); });
     setWorking(true);
     setMessage(null);
     setResult(null);
     setAnalysisSaved(false);
     setStage('product_verification');
+    let responseReceived = false;
     try {
       const nextResult = await analyzeApplianceCareRequest(request, undefined, undefined,
         (nextStage) => { if (!controller.signal.aborted) setStage(nextStage); }, controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || analysisRequest.current !== controller) return;
+      // Polling is finished. Leaving now must not release the separate, already-started local save.
+      responseReceived = true; analysisRequest.current = null;
       setResult(nextResult);
       if (nextResult.status === 'verified') {
         const values = defaultApplianceCycles(nextResult.analysis, savedContext?.chores);
@@ -102,9 +105,10 @@ export default function ApplianceCareScreen() {
       if (controller.signal.aborted) return;
       setMessage(cause instanceof Error ? cause.message : '解析に失敗しました。');
     } finally {
-      if (analysisRequest.current === controller) analysisRequest.current = null;
-      savingRef.current = false;
-      if (!controller.signal.aborted) setWorking(false);
+      if (responseReceived || analysisRequest.current === controller) {
+        if (analysisRequest.current === controller) analysisRequest.current = null;
+        savingRef.current = false; setWorking(false);
+      }
     }
   };
 

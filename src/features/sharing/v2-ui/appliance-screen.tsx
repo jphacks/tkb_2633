@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import type { Appliance } from '../../appliance-care/contracts';
 import type { ApplianceCareApiRequest, ProductVerifiedResponse } from '../../appliance-care/api-contracts';
 import { analyzeApplianceCareRequest } from '../../appliance-care/api-client';
 import { MaintenanceTaskCard, OfficialLink } from '../../appliance-care/appliance-detail-content';
+import { useAbortApplianceRequestOnLeave } from '../../appliance-care/use-abort-on-leave';
 import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import type { V2ApplianceReview, V2ApplianceReviewResult } from '../v2/appliance-actions';
 import type { V2MutationOutcome } from './mutation-outcome';
@@ -43,7 +44,7 @@ export function V2ApplianceScreen({ model, mode, applianceId, actions, busy, per
   const [error, setError] = useState<string | null>(null); const [pendingRead, setPendingRead] = useState(false);
   const [saved, setSaved] = useState<V2ApplianceReviewResult | null>(null); const [analyzing, setAnalyzing] = useState(false); const [stage, setStage] = useState('公式資料を確認しています');
   const working = useRef(false); const request = useRef<AbortController | null>(null);
-  useEffect(() => () => { request.current?.abort(); }, []);
+  const beginRequest = useAbortApplianceRequestOnLeave(request);
   const locked = busy || pendingRead || analyzing;
   const check = (value: boolean) => { reviewedRef.current = value; setReviewed(value); };
   const change = (field: 'manufacturer' | 'productName' | 'modelNumber', value: string) => {
@@ -52,7 +53,8 @@ export function V2ApplianceScreen({ model, mode, applianceId, actions, busy, per
   };
   const analyze = async (override?: ApplianceCareApiRequest) => {
     if (working.current || locked) return;
-    working.current = true; const controller = new AbortController(); request.current = controller; setAnalyzing(true); setResponse(null); check(false); setError(null); setSaved(null);
+    working.current = true; const controller = beginRequest(() => { working.current = false; setAnalyzing(false); });
+    setAnalyzing(true); setResponse(null); check(false); setError(null); setSaved(null);
     try {
       const result = await analyzeApplianceCareRequest({ ...(override ?? draft.current), ...(applianceId ? { forceReanalysis: true } : {}) }, undefined, undefined,
         value => { if (request.current === controller && !controller.signal.aborted) setStage(value === 'product_verification' ? '製品を確認しています' : '公式取扱説明書を解析しています'); }, controller.signal);

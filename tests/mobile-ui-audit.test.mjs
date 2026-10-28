@@ -5,6 +5,7 @@ import { screenHarness } from './helpers/screen-harness.mjs';
 import { createDatabase } from './helpers/sqlite.mjs';
 import { localDateFromDate, weekdayOf } from '../src/domain/scheduling/local-date.ts';
 import { typography } from '../src/components/planner-typography.ts';
+import { applianceResult } from './helpers/sharing-v2-appliance.mjs';
 
 const repository = await import('../src/platform/storage/repository.ts');
 const today = localDateFromDate(new Date());
@@ -212,20 +213,56 @@ test('onboarding finish cannot initialize twice and a failed save keeps selectio
   } finally { h.connection.close(); }
 });
 
-for (const leave of ['back', 'unmount']) {
-  test(`appliance analysis aborts on ${leave} and ignores late results before saving`, async () => {
-    const pending = deferred(); let signal; let saved = 0; const effects = []; const navigation = [];
-    const screen = screenHarness('src/app/(tabs)/manual/appliance-care.tsx', { params: { returnTo: '/manual' }, effect: (callback) => effects.push(callback), navigate: (...args) => navigation.push(args), mocks: {
-      '@/features/appliance-care/api-client': { analyzeApplianceCareRequest: async (_request, _fetch, _baseUrl, _stage, requestSignal) => { signal = requestSignal; return pending.promise; } },
+async function verifyApplianceAbortOnLeave(leave) {
+    const pending = deferred(); const retry = deferred(); let signal; let saved = 0; let blur; let requests = 0; const effects = []; const navigation = [];
+    const screen = screenHarness('src/app/(tabs)/manual/appliance-care.tsx', { params: { returnTo: '/manual' }, effect: (callback) => effects.push(callback), navigate: (...args) => navigation.push(args),
+      navigationListener: (event, listener) => { if (event === 'blur') blur = listener; }, mocks: {
+      '@/features/appliance-care/api-client': { analyzeApplianceCareRequest: async (_request, _fetch, _baseUrl, _stage, requestSignal) => { signal = requestSignal; requests++; return requests === 1 ? pending.promise : retry.promise; } },
       '@/platform/storage/repository': { saveReviewedApplianceCare: async () => { saved++; } },
     } });
     const cleanups = effects.map((callback) => callback());
     await screen.change('メーカー名', 'Dyson'); await screen.change('製品名', 'V12'); await screen.change('型番', 'SV20');
     await screen.press('公式資料を検索して解析'); assert.equal(signal.aborted, false);
-    if (leave === 'back') await screen.press('前の画面に戻る'); else for (const cleanup of cleanups) cleanup?.();
+    if (leave === 'back') await screen.press('前の画面に戻る');
+    else if (leave === 'blur') { assert.equal(typeof blur, 'function', 'a retained stack screen needs a native blur listener'); blur(); }
+    else for (const cleanup of cleanups) cleanup?.();
     assert.equal(signal.aborted, true);
-    pending.resolve({ status: 'verified' }); await screen.flush();
+    if (leave === 'blur') {
+      await screen.flush();
+      assert.equal(screen.button('公式資料を検索して解析').props.accessibilityState.disabled, false, 'an aborted retained screen must allow another request');
+      await screen.press('公式資料を検索して解析'); assert.equal(requests, 2); assert.equal(saved, 0);
+      pending.resolve({ status: 'verified' }); await screen.flush();
+      assert.equal(screen.button('解析しています…').props.accessibilityState.disabled, true, 'an old attempt cannot unlock a newer pending request');
+      retry.resolve({ status: 'not_found', message: '入力を確認してください。' }); await screen.flush();
+    } else { pending.resolve({ status: 'verified' }); await screen.flush(); }
     assert.equal(saved, 0); assert.ok(!screen.text().includes('メーカー公式情報で確認済み'));
     if (leave === 'back') assert.deepEqual(navigation, [['dismissTo', '/manual']]);
-  });
 }
+for (const leave of ['back', 'unmount']) {
+  test(`appliance analysis aborts on ${leave} and ignores late results before saving`, () => verifyApplianceAbortOnLeave(leave));
+}
+test('appliance analysis aborts when a retained screen blurs and permits another request', () => verifyApplianceAbortOnLeave('blur'));
+
+test('leaving a personal appliance during its committed save preserves the save lock until SQLite finishes', async () => {
+  const f = await fixture(); const gate = deferred(); const done = deferred(); let blur; let signal; let requests = 0; let saves = 0; let screen; const cleanups = [];
+  try {
+    screen = screenHarness('src/app/(tabs)/manual/appliance-care.tsx', { ...f.options,
+      effect: callback => { const cleanup = callback(); if (cleanup) cleanups.push(cleanup); },
+      navigationListener: (event, listener) => { if (event === 'blur') blur = listener; }, mocks: {
+        '@/features/appliance-care/api-client': { analyzeApplianceCareRequest: async (_request, _base, _timeout, _stage, inputSignal) => { requests++; signal = inputSignal; return applianceResult(); } },
+        '@/platform/storage/repository': { ...repository, saveReviewedApplianceCare: async (...args) => {
+          saves++; await gate.promise; try { return await repository.saveReviewedApplianceCare(...args); } finally { done.resolve(); }
+        } },
+      } });
+    await screen.change('メーカー名', 'Dyson'); await screen.change('製品名', 'V12'); await screen.change('型番', 'SV20');
+    const originalStart = screen.button('公式資料を検索して解析'); originalStart.props.onPress();
+    for (let n = 0; n < 30 && saves === 0; n++) await screen.flush(); assert.equal(saves, 1); assert.equal(requests, 1);
+    assert.equal(typeof blur, 'function'); blur(); await screen.flush();
+    assert.equal(signal.aborted, false, 'a completed network request is detached before the local save begins');
+    assert.equal(screen.button('解析しています…').props.accessibilityState.disabled, true);
+    originalStart.props.onPress(); await screen.flush(); assert.equal(requests, 1); assert.equal(saves, 1);
+    gate.resolve(); await done.promise;
+    for (let n = 0; n < 30 && !screen.text().includes('解析結果を保存し'); n++) await screen.flush();
+    assert.match(screen.text(), /解析結果を保存し/u); assert.equal(f.connection.prepare('SELECT COUNT(*) AS n FROM appliances').get().n, 1);
+  } finally { gate.resolve(); if (saves) await done.promise; await screen?.flush(); cleanups.forEach(cleanup => cleanup()); f.connection.close(); }
+});

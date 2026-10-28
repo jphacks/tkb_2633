@@ -16,5 +16,5 @@ export function recordedInstructionAt(view: V2HistoryView, operation: SharedOper
   const target = materializeRuleTarget(selected.fact.rule, occurrence, timeZone);
   if (target.kind === 'review') return { kind: 'unconfirmed', reason: target.reason, timeZone };
   return { kind: 'designated', ruleId: selected.fact.operationId, mode: selected.fact.rule.mode, target: target.target,
-    strict: selected.fact.rule.strict, timeZone };
+    strict: selected.fact.rule.strict, timeZone: selected.fact.rule.timeZoneAtCreation };
 }

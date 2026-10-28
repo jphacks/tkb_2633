@@ -30,6 +30,7 @@ export interface V2DateRequestState {
   requestId: string;
   kind: Summary['kind'] | 'pendingDelivery' | 'tooLate' | 'expired' | 'blocked';
   original: DateTarget | null;
+  originalTimeZone: string;
   originalWasConflicted: boolean;
   originalRuleIds: string[];
   formal: DateTarget | null;
@@ -42,6 +43,7 @@ export interface V2DateRequestState {
   conflictIds: string[];
   decisions: { operationId: string; kind: AuditKind }[];
   timeZone: string;
+  proposedTimeZone: string;
   audience: V2DateDecisionAudience;
   /** Present only for removal requests; a counteroffer remains a real designation, even at the same reference date. */
   formalAction?: 'cancel' | 'designate' | null;
@@ -57,7 +59,8 @@ export function deriveV2DateRequest(input: {
   decisions: readonly AuthenticatedSharedOperation[];
   receipts: ReadonlyMap<string, V2ServerReceipt>;
   archive: readonly VerifiedSharedRoster[];
-  context: { permission: DateChangePermission; assigneeIds: readonly string[]; timeZone: string; originalWasConflicted?: boolean; originalMissingTime?: boolean; originalReferenceAt?: number | null; basisRuleIds?: readonly string[] };
+  context: { permission: DateChangePermission; assigneeIds: readonly string[]; timeZone: string; originalWasConflicted?: boolean; originalMissingTime?: boolean;
+    originalReferenceAt?: number | null; originalTimeZone?: string; proposedReferenceAt?: number | null; proposedTimeZone?: string; basisRuleIds?: readonly string[] };
   confirmedServerTime?: number;
 }): V2DateRequestState {
   const request = input.request.operation;
@@ -69,10 +72,12 @@ export function deriveV2DateRequest(input: {
   const proposed = validateDesignationTarget(proposal.proposedMode, proposal.proposed);
   const requestReceipt = input.receipts.get(request.operationId);
   const deadline = approvalDeadline({ serverRequestedAt: requestReceipt?.receivedAtMs ?? null,
-    original, originalReferenceAt: input.context.originalReferenceAt, proposed, timeZone: input.context.timeZone });
-  const result: V2DateRequestState = { requestId: request.operationId, kind: 'pendingDelivery', original, formal: original, formalOptions: null,
+    original, originalReferenceAt: input.context.originalReferenceAt, proposed, proposedReferenceAt: input.context.proposedReferenceAt, timeZone: input.context.timeZone });
+  const result: V2DateRequestState = { requestId: request.operationId, kind: 'pendingDelivery', original, originalTimeZone: input.context.originalTimeZone ?? input.context.timeZone,
+    formal: original, formalOptions: null,
     originalWasConflicted: input.context.originalWasConflicted ?? false, originalRuleIds: [...(input.context.basisRuleIds ?? [])].sort(compareOperationIds),
     proposal, deadline, confirmation: null, confirmedAt: null, counteroffers: [], conflictIds: [], decisions: [], timeZone: input.context.timeZone,
+    proposedTimeZone: input.context.proposedTimeZone ?? input.context.timeZone,
     audience: v2DateDecisionAudience(input.context.permission, input.context.assigneeIds, request.authorUserId), ...(proposal.cancellation ? { formalAction: null } : {}) };
   if (!requestReceipt) return result;
   bindV2ServerReceipt(requestReceipt, input.request, input.archive);

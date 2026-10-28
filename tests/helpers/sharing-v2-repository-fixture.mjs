@@ -20,13 +20,13 @@ export const seeds = () => [
   draft('configuration', 'chorePolicy', 'floor', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate: '2026-10-27',
     intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
 ];
-export async function fixture() {
+export async function fixture({ clock = now } = {}) {
   const owner = await createDeviceIdentity(crypto); const member = await createDeviceIdentity(crypto);
   const archive = [createSharedRoster(groupId, 'owner', owner, { schemaVersion: 2 })]; archive.push(approveSharedDevice(archive[0], owner, 'member', member));
   async function device(userId = 'owner', identity = owner) {
     const h = createDatabase(); await initializeV2EventStore(h.database, { ...scope, userId });
     let writable = true;
-    const options = { ...scope, userId, identity, anchor: archive[0], archive: () => archive, now, assertWritable: () => { if (!writable) throw new Error('account changed'); } };
+    const options = { ...scope, userId, identity, anchor: archive[0], archive: () => archive, now: clock, assertWritable: () => { if (!writable) throw new Error('account changed'); } };
     const repository = createV2EventRepository(h.database, options);
     return { ...h, repository, options, stopWrites: () => { writable = false; },
       state: () => { const row = h.connection.prepare('SELECT * FROM sharing_v2_projection').get(); return row ? {

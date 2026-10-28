@@ -135,14 +135,30 @@ for (const platform of ['ios', 'android']) {
       assert.equal((await f.a.readModel(range)).requests[0].kind, 'awaiting');
     } finally { f.close(); }
   });
-  test(`${platform} v2 old timezone requests cannot be reinterpreted through a fresh screen and an uninitialized group cannot answer`, async () => {
+  test(`${platform} v2 D9 old-region requests remain answerable in their original region and an uninitialized group cannot answer`, async () => {
     const f = await decisionFixture();
     try {
       await f.owner.repository.commit([draft('updated-zone', 'settings', 'settings', { timeZone: 'America/New_York' })]);
       const { screen, props } = await ui(f, 'owner', platform);
-      assert.ok(screen.text().includes('この申請の地域を読み替えず')); assert.equal(screen.button('日時変更を承認').props.disabled, true);
+      assert.ok(screen.text().includes('申請時の地域（Asia/Tokyo）を維持')); assert.equal(screen.button('日時変更を承認').props.disabled, false);
       props.model.plan.initialized = false; screen.render(); assert.ok(screen.text().includes('地域・共通設定を確認してから'));
       assert.equal(screen.button('日時変更を拒否').props.disabled, true);
+    } finally { f.close(); }
+  });
+  for (const cancellation of [false, true]) test(`${platform} v2 D9 ${cancellation ? 'removal' : 'date'} approval keeps its original receipt deadline after a live region change and explicit review`, async () => {
+    const f = await decisionFixture({ cancellation });
+    try {
+      const { screen, props, update } = await ui(f, 'owner', platform); const before = structuredClone(props.model.requests[0].deadline);
+      await f.owner.repository.commit([draft('changed-region-during-review', 'settings', 'settings', { timeZone: 'America/New_York' })]);
+      await update(); const button = cancellation ? '日時指定の解除を承認' : '日時変更を承認';
+      assert.equal(screen.button(button).props.disabled, true, 'a changed group context must first be reviewed');
+      await screen.press('最新の申請内容を表示'); assert.equal(screen.button(button).props.disabled, false);
+      assert.deepEqual(props.model.requests[0].deadline, before); await screen.press(button); assert.ok(screen.text().includes('回答を端末に保存'));
+      await f.deliver(f.owner); await update(); assert.equal(props.model.requests[0].kind, 'approved'); assert.deepEqual(props.model.requests[0].deadline, before);
+      assert.equal(props.model.requests[0].timeZone, 'Asia/Tokyo');
+      const round = props.model.plan.occurrences.find((entry) => entry.anchorDate === ref.anchorDate);
+      assert.equal(round.subjects[0].formalDate.kind, cancellation ? 'automatic' : 'manual');
+      if (!cancellation) assert.equal(round.subjects[0].formalDate.timeZone, 'Asia/Tokyo');
     } finally { f.close(); }
   });
   test(`${platform} v2 an expired request keeps an offline answer visibly unconfirmed and cannot offer approval controls`, async () => {

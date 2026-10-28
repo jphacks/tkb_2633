@@ -1,10 +1,11 @@
 import { addDays, daysBetween, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
 import { canonicalJson } from '../operations.ts';
+import { sharedDateAtTime } from '../group-clock.ts';
 import { uniqueCausalFacts } from './causal-facts.ts';
 import { maximalManualRules } from './formal-rules.ts';
 import type { LocalDate } from '../../../domain/shared/types.ts';
 import type { CivilRange, ManualRuleFact, SharedOccurrence, RuleSelector } from './model.ts';
-import { normalizeDateTarget } from './date-target.ts';
+import { normalizeDateTarget, targetReferenceTime } from './date-target.ts';
 import { materializeRuleTarget } from './rule-target.ts';
 
 function validateRange(range: CivilRange): void {
@@ -72,7 +73,11 @@ export function selectManualRule(facts: readonly ManualRuleFact[], occurrence: S
         : (() => { throw new Error('A shared timezone is required to compare repeating clock times'); })();
     const reviewSource = 'kind' in target && target.kind === 'review' ? { target: raw, referenceAnchorDate: fact.rule.referenceAnchorDate,
       timeZoneAtCreation: fact.rule.timeZoneAtCreation, ruleVersion: fact.rule.ruleVersion } : null;
-    return canonicalJson({ mode: fact.rule.mode, target, reviewSource,
+    const materialized = 'kind' in target ? target.kind === 'target' ? target.target : null : target;
+    const dateReference = materialized?.precision === 'date' ? targetReferenceTime(materialized, fact.rule.timeZoneAtCreation) : null;
+    const dayStartsAt = fact.rule.mode === 'day' && materialized?.precision === 'date'
+      ? sharedDateAtTime(materialized.date, 0, 0, fact.rule.timeZoneAtCreation).getTime() : null;
+    return canonicalJson({ mode: fact.rule.mode, target, dateReference, dayStartsAt, reviewSource,
     strict: fact.rule.strict, adminLocked: fact.rule.adminLocked, forbidEarlier: fact.rule.forbidEarlier,
     allowDuringCooldown: fact.rule.allowDuringCooldown === true });
   };

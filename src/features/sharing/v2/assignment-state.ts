@@ -69,9 +69,8 @@ export function approvedV2AssignmentId(request: SharedOperation): string {
 export function v2AssignmentRequestReference(view: V2HistoryView, at: SharedOperation, frame: SharedOccurrence, subjectIds: readonly string[], formalRules: readonly ManualRuleFact[]) {
   const instructions = (subjectIds.length ? subjectIds : [null]).map((subject) => recordedInstructionAt(view, at, frame, subject, formalRules));
   if (instructions.some((instruction) => instruction.kind === 'unconfirmed')) throw new Error('日時を確認してから担当変更を申請してください。');
-  const timeZone = instructions[0].timeZone;
-  const targets = instructions.map((instruction) => instruction.kind === 'designated' ? instruction.target : { precision: 'date' as const, date: frame.anchorDate });
-  return { reference: targets.sort((a, b) => targetReferenceTime(a, timeZone) - targetReferenceTime(b, timeZone))[0], timeZone };
+  const targets = instructions.map((instruction) => ({ reference: instruction.kind === 'designated' ? instruction.target : { precision: 'date' as const, date: frame.anchorDate }, timeZone: instruction.timeZone }));
+  return targets.sort((a, b) => targetReferenceTime(a.reference, a.timeZone) - targetReferenceTime(b.reference, b.timeZone))[0];
 }
 
 export function deriveV2AssignmentRequest(request: SharedOperation, input: readonly SharedOperation[], archive: readonly VerifiedSharedRoster[], evidence?: Evidence,

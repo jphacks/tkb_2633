@@ -228,11 +228,11 @@ test('v2 requests preserve explicit deadline meaning and cannot automatically do
   locked.validate(); assert.deepEqual(dateChangeContextAtOperation(createV2HistoryView(buildSharedReplica(groupId, locked.operations)), locked.archive, change).permission,
     { kind: 'approvalRequired', approver: 'admin', reason: 'fixed' });
 });
-test('v2 clock rules bind their authoring group timezone and repeating rules request review after a timezone change', async () => {
+test('v2 clock rules bind their authoring group timezone and D9 repeating rules retain that region after a group change', async () => {
   const f = await fixture('assigned', ['a']); const fact = f.designation('owner', time('2026-10-27T09:00:00Z', '2026-10-27T10:00:00Z'),
     { selector: { scope: 'ongoing', from: anchorDate } }); f.validate();
   const occurrence = { id: f.occurrenceId, choreId: 'floor', anchorDate, ruleVersion: 1 };
-  assert.deepEqual(materializeRuleTarget(fact.payload.configuration, occurrence, 'America/New_York'), { kind: 'review', reason: 'timeZoneChanged' });
+  assert.deepEqual(materializeRuleTarget(fact.payload.configuration, occurrence, 'America/New_York'), { kind: 'target', target: time('2026-10-27T09:00:00.000Z', '2026-10-27T10:00:00.000Z') });
   const once = { ...fact.payload.configuration, selector: { scope: 'once', occurrenceId: f.occurrenceId, anchorDate } };
   assert.equal(materializeRuleTarget(once, occurrence, 'America/New_York').kind, 'target');
   fact.payload.configuration.timeZoneAtCreation = 'UTC'; assert.throws(() => f.validate(), /group timezone/);

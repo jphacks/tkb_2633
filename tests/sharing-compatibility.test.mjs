@@ -80,6 +80,7 @@ test('v2 draft scheduler has an independent source and timezone contract without
     assert.ok(draft.sourceFiles.includes(`src/features/sharing/v2/${file}.ts`));
   }
   assert.ok(draft.sourceFiles.includes('node_modules/moment-timezone/data/packed/latest.json'));
+  assert.ok(draft.sourceFiles.includes('src/domain/scheduling/local-date.ts'));
   assert.throws(() => assertSharedSchedulerVersion(draft, draft), /Invalid/);
   assertSharedSchedulerVersion(draft, draft, { allowDraft: true });
   assert.throws(() => assertSharedSchedulerVersion({ ...draft, sourceSha256: 'a'.repeat(64) }, draft, { allowDraft: true }), /without/);

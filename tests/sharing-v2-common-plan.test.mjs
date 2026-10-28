@@ -303,7 +303,7 @@ test('v2 administrators can explicitly cancel a repeating clock rule after timez
   const f = await fixture(); const rule = f.designation({ precision: 'interval', start: '2026-10-27T01:00:00Z', end: '2026-10-27T02:00:00Z' }, { selector: { scope: 'ongoing', from: anchorDate } });
   f.complete(); accepted(f); const before = f.plan().history;
   f.make('settings', { timeZone: 'America/New_York' }, { entityId: 'settings' }); accepted(f);
-  assert.equal(slot(f.plan()).formalDate.kind, 'review');
+  assert.equal(slot(f.plan()).formalDate.kind, 'manual'); assert.equal(slot(f.plan()).formalDate.timeZone, 'Asia/Tokyo');
   f.make('designationCancel', { targetOperationIds: [rule.operationId] }); accepted(f);
   const plan = f.plan(); assert.deepEqual(plan.history, before); assert.equal(slot(plan).formalDate.kind, 'automatic');
 });

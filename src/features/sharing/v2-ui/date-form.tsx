@@ -30,7 +30,8 @@ function displayedState({ model, round, subject }: Props) {
     expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId), expectedTimeZone: model.plan.timeZone };
   let originalMissingTime = false;
   try { const source = v2DateChangeOriginal(rules.map((fact) => fact.rule), round, model.plan.timeZone); originalMissingTime = source.originalMissingTime && source.originalReferenceAt === null; } catch { /* Changed recurrence and timezone stay explicit reviews. */ }
-  return { ref, ruleIds, rules, target, mode, originalMissingTime, timeZone: model.plan.timeZone, assignees: [...subject.assigneeIds],
+  return { ref, ruleIds, rules, target, mode, originalMissingTime, originalTimeZone: formal.kind === 'manual' ? formal.timeZone : model.plan.timeZone,
+    timeZone: model.plan.timeZone, assignees: [...subject.assigneeIds],
     assignmentIds: [...round.assignmentOperationIds], conflictIds: [...round.assignmentConflictIds], reviewIds: [...subject.requestReviewIds],
     needsReview: formal.kind === 'conflict' || formal.kind === 'review' || subject.requestReviewIds.length > 0,
     fields: v2InitialTargetFields(target, model.plan.timeZone),
@@ -130,8 +131,9 @@ function DateEditor(props: Props) {
   return <Card><SectionHeading title="日時の指定・変更" />
     {stale ? <Text accessibilityRole="alert" style={styles.error}>地域・担当・日時指定または共通設定が変更されています。入力は保持しています。現在の内容を確認して開き直してください。</Text> : null}
     <Text style={styles.caption}>日時の地域：{displayed.timeZone}。基本周期と完了済みの履歴は変更しません。</Text>
+    {displayed.originalTimeZone !== displayed.timeZone ? <Text style={styles.caption}>現在の指定：{v2TargetLabel(displayed.target, displayed.originalTimeZone)} · {displayed.originalTimeZone}。既存の指定は元の地域を維持します。この画面で新しく指定する日時には{displayed.timeZone}を使います。</Text> : null}
     {displayed.needsReview ? <View style={{ gap: 8 }}><Text style={styles.error}>元の指定が未確定か、回答が競合しています。内容を確認して申請してください。</Text>
-      {displayed.rules.map((fact) => <Text key={fact.operationId} style={styles.caption}>元の指定：{v2TargetLabel(fact.rule.target, fact.rule.timeZoneAtCreation)} · {fact.rule.selector.scope === 'once' ? '今回だけ' : '繰り返しの基準回'}</Text>)}
+      {displayed.rules.map((fact) => <Text key={fact.operationId} style={styles.caption}>元の指定：{v2TargetLabel(fact.rule.target, fact.rule.timeZoneAtCreation)} · {fact.rule.timeZoneAtCreation} · {fact.rule.selector.scope === 'once' ? '今回だけ' : '繰り返しの基準回'}</Text>)}
       {displayed.originalMissingTime ? <Text style={styles.caption}>元の時刻がこの地域には存在しないため、変更先を基準に申請期限を計算します。承認までは元の正式時刻は未確定です。</Text> : null}
       <V2Flag label="元の指定・競合内容を確認した" value={reviewed} onChange={(value) => edit({ reviewed: value })} disabled={disabled} />
     </View> : null}

@@ -132,7 +132,7 @@ test('v2 uncertain future clocks always require a signed request including admin
   assert.equal(state.unresolved, true); assert.equal(state.originalMissingTime, false); assert.deepEqual(state.original, { precision: 'instant', at: '2026-11-01T05:30:00.000Z' });
   assert.equal(state.targets.length, 2);
   assert.throws(() => v2DateChangeOriginal([rule], { ...round, ruleVersion: 2 }, 'America/New_York'), /周期や地域/);
-  assert.throws(() => v2DateChangeOriginal([rule], round, 'Asia/Tokyo'), /周期や地域/);
+  assert.deepEqual(v2DateChangeOriginal([rule], round, 'Asia/Tokyo'), state, 'D9 keeps both original-region fold candidates even after the group display region changes');
 });
 
 test('v2 a missing interval end cannot extend approval past its real known start even though the whole formal interval is unresolved', async () => {

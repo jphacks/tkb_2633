@@ -6,6 +6,7 @@ import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import type { V2CompletionRecord } from '../v2/completion-history';
 import { v2FormStyles as styles } from './form-controls';
 import { v2CanShowCompletion } from './round-visibility';
+import { v2TargetLabel } from './target-form';
 
 export function V2CompletionHistoryCard({ model, record, actions, busy, run }: {
   model: V2GroupScreenModel; record: V2CompletionRecord; actions: V2GroupController['actions']; busy: boolean;
@@ -24,6 +25,7 @@ export function V2CompletionHistoryCard({ model, record, actions, busy, run }: {
     <Text style={styles.caption}>本来の担当：{record.originalAssigneeIds.length ? record.originalAssigneeIds.map(nameOf).join('・') : '担当未確定'}</Text>
     <Text style={styles.caption}>登録者：{nameOf(record.recorderUserId)}</Text>
     <Text style={styles.caption}>登録：{date(record.recordedAt)} · {model.plan.timeZone}</Text>
+    {record.instruction?.kind === 'designated' ? <Text style={styles.caption}>実施時点の指定：{v2TargetLabel(record.instruction.target, record.instruction.timeZone, { includeYear: true })} · {record.instruction.timeZone}</Text> : null}
     {record.active && record.strictInstructionFulfilled === false ? <Text style={styles.error}>実施した事実は保存されています。指定日時の条件は未達成です。</Text> : null}
     {record.active && record.acceptance === 'pending' && admin ? <View style={styles.choices}>
       <AppButton title="代行の実施を承認" compact disabled={busy} onPress={() => run(() => actions.approveSubstitution(record.operationId, 'approve'))} />

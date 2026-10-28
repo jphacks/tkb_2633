@@ -6,11 +6,14 @@ export type ApprovalDeadline = { kind: 'pendingDelivery' } | { kind: 'tooLate'; 
   | { kind: 'open'; referenceAt: number; requestedAt: number; expiresAt: number; graceHours: number };
 
 /** requestedAt is an immutable server receipt, never an untrusted device timestamp. */
-export function approvalDeadline(input: { serverRequestedAt: number | null; original: DateTarget | null; originalReferenceAt?: number | null; proposed: DateTarget; timeZone: string }): ApprovalDeadline {
-  const proposedAt = targetReferenceTime(input.proposed, input.timeZone);
+export function approvalDeadline(input: { serverRequestedAt: number | null; original: DateTarget | null; originalReferenceAt?: number | null;
+  proposed: DateTarget; proposedReferenceAt?: number | null; timeZone: string }): ApprovalDeadline {
+  const proposedAt = input.proposedReferenceAt ?? targetReferenceTime(input.proposed, input.timeZone);
+  if (!Number.isSafeInteger(proposedAt)) throw new Error('変更先の指定から検証した時刻を確認してください。');
   const verifiedStart = input.originalReferenceAt ?? null;
   if (verifiedStart !== null && !Number.isSafeInteger(verifiedStart)) throw new Error('元の指定から検証した開始時刻を確認してください。');
-  const originalAt = input.original === null ? verifiedStart : Math.min(targetReferenceTime(input.original, input.timeZone), verifiedStart ?? Infinity);
+  // The receiver derives this from every authenticated source in its original region (including known DST starts).
+  const originalAt = verifiedStart ?? (input.original === null ? null : targetReferenceTime(input.original, input.timeZone));
   const referenceAt = originalAt === null ? proposedAt : Math.min(originalAt, proposedAt);
   if (input.serverRequestedAt === null) return { kind: 'pendingDelivery' };
   const requestedAt = input.serverRequestedAt;

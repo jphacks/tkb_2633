@@ -1488,7 +1488,7 @@
       },
       {
         "file": "tests/sharing-v2-authority.test.mjs",
-        "name": "v2 clock rules bind their authoring group timezone and repeating rules request review after a timezone change"
+        "name": "v2 clock rules bind their authoring group timezone and D9 repeating rules retain that region after a group change"
       }
     ]
   },
@@ -2280,7 +2280,7 @@
       },
       {
         "file": "tests/sharing-v2-date-requests-ui.test.mjs",
-        "name": "v2 old timezone requests cannot be reinterpreted through a fresh screen and an uninitialized group cannot answer"
+        "name": "v2 D9 old-region requests remain answerable in their original region and an uninitialized group cannot answer"
       },
       {
         "file": "tests/sharing-v2-date-requests-ui.test.mjs",
@@ -3154,6 +3154,35 @@
       { "file": "tests/sharing-v2-appliance-ui.test.mjs", "name": "leaving a retained shared appliance review aborts polling and ignores a late result without preventing a fresh attempt" },
       { "file": "tests/mobile-ui-audit.test.mjs", "name": "appliance analysis aborts on" },
       { "file": "tests/appliance-care-client.test.mjs", "name": "cancelled appliance requests make no network call and abort an in-flight request" }
+    ]
+  },
+  {
+    "feature": "shared-v2-existing-designations-retain-original-region",
+    "tests": [
+      {
+        "name": "D9 existing repeating instants keep their creation region across another display region and its daylight saving changes",
+        "file": "tests/sharing-v2-timezone-history.test.mjs"
+      },
+      {
+        "name": "D9 receipt deadlines use authenticated old-region references in both timezone directions rather than recomputing them in the new region",
+        "file": "tests/sharing-v2-timezone-history.test.mjs"
+      },
+      {
+        "name": "D9 preserving an old signed region does not permit a new author to forge that old region after settings changed",
+        "file": "tests/sharing-v2-timezone-history.test.mjs"
+      },
+      {
+        "name": "D9 inverse calendar queries include the source round when a new display region crosses midnight after DST",
+        "file": "tests/sharing-v2-timezone-history.test.mjs"
+      },
+      {
+        "name": "D9 two isolated SQLite receivers converge on the original region after receiving the signed region change out of order",
+        "file": "tests/sharing-v2-timezone-history.test.mjs"
+      },
+      {
+        "name": "D9 cards show the old region while new designation inputs use the current group region",
+        "file": "tests/sharing-v2-timezone-history.test.mjs"
+      }
     ]
   }
 ]

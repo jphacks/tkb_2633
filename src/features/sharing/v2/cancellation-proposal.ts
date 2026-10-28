@@ -3,6 +3,7 @@ import type { DateRuleCancellation, DateTarget, DesignationMode, DesignationOpti
 import { cancellationScopeMatches } from './date-cancellations.ts';
 import { selectManualRule } from './period-rules.ts';
 import { materializeRuleTarget } from './rule-target.ts';
+import { targetReferenceTime } from './date-target.ts';
 
 export function v2CancellationSelector(rules: readonly ManualRuleFact[], cancellation: DateRuleCancellation): RuleSelector {
   if (cancellation.selector) return cancellation.selector;
@@ -25,14 +26,14 @@ export function v2CancellationProposal(rules: readonly ManualRuleFact[], frame: 
   if (cancellation.selector && targets.some((fact) => !cancellationScopeMatches(fact.rule, cancellation.selector!, frame))) throw new Error('解除範囲の開始回を確認してください。');
   const remaining = selectManualRule(rules.filter((fact) => !cancellation.targetOperationIds.includes(fact.operationId)), frame, subject, timeZone);
   let target: DateTarget = { precision: 'date', date: frame.anchorDate }; let mode: DesignationMode = 'day';
-  let options: DesignationOptions = { strict: false, adminLocked: false, forbidEarlier: false };
+  let options: DesignationOptions = { strict: false, adminLocked: false, forbidEarlier: false }; let targetTimeZone = timeZone;
   if (remaining.kind === 'conflict') throw new Error('解除後に残る日時指定が競合しています。先に内容を確認してください。');
   if (remaining.kind === 'selected') {
     const materialized = materializeRuleTarget(remaining.fact.rule, frame, timeZone);
     if (materialized.kind !== 'target') throw new Error('解除後に残る日時指定を確定できません。地域と周期を確認してください。');
-    target = materialized.target; const rule = remaining.fact.rule; mode = rule.mode;
+    target = materialized.target; const rule = remaining.fact.rule; mode = rule.mode; targetTimeZone = rule.timeZoneAtCreation;
     options = { strict: rule.strict, adminLocked: rule.adminLocked, forbidEarlier: rule.forbidEarlier,
       ...(rule.allowDuringCooldown === undefined ? {} : { allowDuringCooldown: rule.allowDuringCooldown }) };
   }
-  return { target, mode, options, automatic: remaining.kind === 'automatic' };
+  return { target, mode, options, automatic: remaining.kind === 'automatic', referenceAt: targetReferenceTime(target, targetTimeZone), timeZone: targetTimeZone };
 }

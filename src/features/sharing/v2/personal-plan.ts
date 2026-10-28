@@ -8,7 +8,7 @@ import { compareOperationIds } from '../operations.ts';
 import type { V2CommonPlan, V2SubjectPlan, V2PlannedOccurrence } from './common-plan.ts';
 import type { PrivateBusyCache, PrivateBusyBinding, CalendarConflict } from './private-availability.ts';
 import { createPrivateCalendarAvailability } from './private-availability.ts';
-import { targetCivilDate } from './date-target.ts';
+import { targetReferenceCivilDate } from './date-target.ts';
 
 export interface V2PersonalDayLoad { heavy: number; normal: number; total: number }
 export interface V2Recommendation {
@@ -79,7 +79,7 @@ export function buildV2PersonalPlan(common: V2CommonPlan, input: {
         .filter((value): value is LocalDate => value !== null).sort().at(-1)!;
       let end = subject.executionWindowEnd < common.range.through ? subject.executionWindowEnd : common.range.through;
       if (subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'deadline') {
-        const deadline = targetCivilDate(subject.formalDate.target, common.timeZone); if (deadline < end) end = deadline;
+        const deadline = targetReferenceCivilDate(subject.formalDate.target, subject.formalDate.timeZone, common.timeZone); if (deadline < end) end = deadline;
       }
       let best: { date: LocalDate; score: number[] } | null = null;
       for (let candidate = start; candidate <= end; candidate = addDays(candidate, 1)) {

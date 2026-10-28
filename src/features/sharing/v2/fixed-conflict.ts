@@ -30,10 +30,11 @@ export function fixedConflictAtOperation(view: V2HistoryView, archive: readonly 
     let anchors: LocalDate[];
     if (rule.selector.scope === 'once') anchors = [rule.selector.anchorDate];
     else {
-      const startOffset = daysBetween(rule.referenceAnchorDate, sharedLocalDate(new Date(previous.start), zone));
-      const endOffset = daysBetween(rule.referenceAnchorDate, sharedLocalDate(new Date(previous.end), zone));
-      let from = addDays(sharedLocalDate(new Date(interval.start), zone), -endOffset - 1);
-      let through = addDays(sharedLocalDate(new Date(interval.end), zone), -startOffset + 1);
+      const sourceZone = rule.timeZoneAtCreation;
+      const startOffset = daysBetween(rule.referenceAnchorDate, sharedLocalDate(new Date(previous.start), sourceZone));
+      const endOffset = daysBetween(rule.referenceAnchorDate, sharedLocalDate(new Date(previous.end), sourceZone));
+      let from = addDays(sharedLocalDate(new Date(interval.start), sourceZone), -endOffset - 1);
+      let through = addDays(sharedLocalDate(new Date(interval.end), sourceZone), -startOffset + 1);
       const selectorFrom = rule.selector.scope === 'period' ? rule.selector.range.from : rule.selector.from;
       const selectorThrough = rule.selector.scope === 'period' ? rule.selector.range.through : null;
       if (from < selectorFrom) from = selectorFrom; if (selectorThrough && through > selectorThrough) through = selectorThrough;

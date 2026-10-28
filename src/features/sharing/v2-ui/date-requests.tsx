@@ -48,8 +48,8 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
   const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false); const [error, setError] = useState<string | null>(null);
   const request = displayed.request; const review = displayed.review;
   const stale = review.revision !== liveReview.revision;
-  const zoneChanged = request.timeZone !== model.plan.timeZone;
-  const disabled = busy || saving || stale || saved || !model.plan.initialized || zoneChanged;
+  const previousRegion = request.timeZone !== model.plan.timeZone;
+  const disabled = busy || saving || stale || saved || !model.plan.initialized;
   const canAnswer = !disabled && (request.kind !== 'conflict' || draft.reviewed);
   const nameOf = v2MemberLabels(model.plan.members);
   const resetConfirmation = () => { setConfirmation(null); setCalendarStatus(null); confirmedFor.current = null; confirmed.current = { recentWork: false, highLoad: false, calendar: false }; };
@@ -102,8 +102,10 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
   return <Card><SectionHeading title={model.plan.chores.find((chore) => chore.id === request.proposal.choreId)?.name ?? '日時変更の申請'} />
     {removal ? <Text style={styles.body}>日時指定の解除申請</Text> : null}
     <Text style={styles.caption}>申請者：{nameOf(request.proposal.requesterUserId)} · 日時の地域：{request.timeZone}</Text>
-    <Text style={styles.body}>{request.kind === 'approved' ? '変更前の日時' : '正式な日時'}：{request.original ? label(request.original) : '元の時刻が存在しないため未確定'}</Text>
-    <Text style={styles.body}>{removal ? '解除後の期限計算の基準' : '申請した日時'}：{label(request.proposal.proposed)}</Text>
+    <Text style={styles.body}>{request.kind === 'approved' ? '変更前の日時' : '正式な日時'}：{request.original ? v2TargetLabel(request.original, request.originalTimeZone, { includeYear: true }) : '元の時刻が存在しないため未確定'}</Text>
+    {request.originalTimeZone !== request.timeZone ? <Text style={styles.caption}>元の指定の地域：{request.originalTimeZone}</Text> : null}
+    <Text style={styles.body}>{removal ? '解除後の期限計算の基準' : '申請した日時'}：{v2TargetLabel(request.proposal.proposed, request.proposedTimeZone, { includeYear: true })}</Text>
+    {removal && request.proposedTimeZone !== request.timeZone ? <Text style={styles.caption}>残る指定の地域：{request.proposedTimeZone}</Text> : null}
     {removal ? <Text style={styles.caption}>この申請で新しい手動日時は指定しません。解除後は残る指定、または自動計算した予定を適用します。</Text>
       : <Text style={styles.caption}>指定の種類：{request.proposal.proposedMode === 'fixed' ? '固定日時に実施' : request.proposal.proposedMode === 'deadline' ? '期限までに実施' : 'この日に実施'}</Text>}
     <Text style={styles.caption}>適用範囲：{!selector ? '表示した元指定の全期間' : selector.scope === 'once' ? `今回だけ（基準日 ${selector.anchorDate}）` : selector.scope === 'ongoing' ? `${selector.from}から無期限` : `${selector.range.from}〜${selector.range.through ?? '無期限'}`}</Text>
@@ -126,7 +128,7 @@ function DateRequestCard({ model, actions, busy, run, requestId, readOwnCalendar
       ? '送信待ちの回答は履歴に残し、この申請を自動で承認済みに戻しません。' : '正式な承認はサーバーの受付後に判定します。'}</Text> : null}
     {saved ? <Text accessibilityLiveRegion="polite" style={styles.body}>回答を端末に保存しました。正式な確定は受付と必要な同意の確認後です。</Text> : null}
     {stale ? <Text accessibilityRole="alert" style={styles.error}>別の回答・設定・権限の変更が届いています。入力は保持しています。最新の状態：{labels[liveRequest.kind]}。最新の内容を確認してから回答してください。</Text> : null}
-    {zoneChanged ? <Text accessibilityRole="alert" style={styles.error}>グループの地域が変更されています。この申請の地域を読み替えず、家事回を開いて現在の地域で申請し直してください。</Text> : null}
+    {previousRegion ? <Text style={styles.caption}>この申請と回答は申請時の地域（{request.timeZone}）を維持します。現在のグループ地域は{model.plan.timeZone}です。</Text> : null}
     {!model.plan.initialized ? <Text style={styles.error}>地域・共通設定を確認してから回答してください。</Text> : null}
     {stale || saved ? <AppButton title="最新の申請内容を表示" variant="secondary" disabled={busy || saving} onPress={reload} /> : null}
     {request.kind === 'conflict' ? <><Text style={styles.error}>異なる回答を保持しています。表示した回答を確認してから解決してください。到着順では決めません。</Text>

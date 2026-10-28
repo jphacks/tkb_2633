@@ -499,6 +499,30 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     assert.equal(planned.subjects[0].suggestedDate, addLocalDays(anchorDate, 5));
     assert.deepEqual(ownerPlan.occurrences.find((entry) => entry.choreId === 'approval-floor' && entry.anchorDate === addLocalDays(anchorDate, 7)).assigneeIds, ['owner']);
     for (const d of [owner, member, restored]) assert.equal((await listSharingOutbox(d.database, groupId)).length, 0);
+    // D9 uses real encrypted events, immutable receipts and independent SQLite projections through a region change.
+    await owner.repository.commit([
+      change('old-region-chore', 'chore', 'region-clock', { name: '元の地域の時刻指定', enabled: true }),
+      change('old-region-cfg', 'chorePolicy', 'region-clock', { configuration: { policy: chorePolicyFromPreset('common'), anchorDate,
+        intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, ruleVersion: 1 } }),
+    ]);
+    const regionRef = { choreId: 'region-clock', anchorDate, ruleVersion: 1, subjectUserId: null };
+    const regionTarget = { precision: 'interval', start: `${addLocalDays(anchorDate, 1)}T00:15:00.000Z`, end: `${addLocalDays(anchorDate, 1)}T00:45:00.000Z` };
+    const [regionRule] = await ownerActions.changeDate(regionRef, { mode: 'fixed', target: regionTarget, selector: { scope: 'ongoing', from: anchorDate } });
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); await restored.sync.sync({ force: true });
+    const originalRegionFact = (await loadSharedFacts(owner.database, groupId)).find((fact) => fact.operation.operationId === regionRule.operationId);
+    await owner.repository.commit([change('changed-group-region', 'settings', 'settings', { timeZone: 'America/New_York' })]);
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); await restored.sync.sync({ force: true });
+    const regionPlan = await ownerActions.readPlan(planRange);
+    for (const d of [owner, member, restored]) {
+      const plan = buildV2CommonPlan(await d.repository.readState(), planRange); assert.deepEqual(plan, regionPlan);
+      const old = plan.occurrences.find((entry) => entry.choreId === 'region-clock' && entry.anchorDate === anchorDate).subjects[0];
+      assert.equal(old.formalDate.kind, 'manual'); assert.equal(old.formalDate.timeZone, 'Asia/Tokyo'); assert.deepEqual(old.formalDate.target, regionTarget);
+      assert.deepEqual((await loadSharedFacts(d.database, groupId)).find((fact) => fact.operation.operationId === regionRule.operationId), originalRegionFact);
+    }
+    const [newRegionRule] = await ownerActions.changeDate(regionRef, { mode: 'day', target: day(addLocalDays(anchorDate, 1)) });
+    assert.equal(newRegionRule.payload.configuration.timeZoneAtCreation, 'America/New_York');
+    await owner.sync.sync({ force: true }); await member.sync.sync({ force: true }); await restored.sync.sync({ force: true });
+    assert.equal(hash(owner), hash(member)); assert.equal(hash(owner), hash(restored));
     const beforeRemoval = ownerPlan.history;
     await owner.manager.removeMembers(['member']); const removed = await f.cloud.readGroup(groupId);
     assert.equal(removed.roster.body.keyVersion, 3); assert.deepEqual(removed.roster.body.members.map((person) => person.userId), ['owner']);

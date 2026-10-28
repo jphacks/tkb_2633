@@ -4,7 +4,7 @@ import type { VerifiedSharedRoster } from '../roster.ts';
 import { createV2AuthorityIndex } from './history-view.ts';
 import type { V2HistoryView } from './history-view.ts';
 import { buildV2CommonPlan } from './common-plan.ts';
-import { fixedInterval, targetCivilDate, targetReferenceTime } from './date-target.ts';
+import { fixedInterval, targetCivilDate, targetReferenceTime, targetReferenceCivilDate } from './date-target.ts';
 import type { DateTarget, DesignationMode, ManualRuleFact, SharedOccurrence } from './model.ts';
 import type { V2DateRequestState } from './request-state.ts';
 import type { V2ServerReceipt } from './server-receipts.ts';
@@ -24,7 +24,8 @@ export function violatesV2RequiredOrder(input: { view: V2HistoryView; archive: r
   if (!slot) return plan.dependencies.some((edge) => edge.required && edge.successorChoreId === input.frame.choreId);
   if (slot.completed) return false;
   if (slot.dependencyBlocked && !slot.dependencyNotBefore) return true;
-  if (slot.dependencyNotBefore && targetCivilDate(input.target, input.timeZone) < slot.dependencyNotBefore) return true;
+  const proposedDay = input.mode === 'deadline' ? targetReferenceCivilDate(input.target, input.timeZone, plan.timeZone) : targetCivilDate(input.target, plan.timeZone);
+  if (slot.dependencyNotBefore && proposedDay < slot.dependencyNotBefore) return true;
   const interval = fixedInterval(input.target);
   const exact = interval?.start ?? (input.mode === 'deadline' ? targetReferenceTime(input.target, input.timeZone) : null);
   return exact !== null && slot.dependencyNotBeforeInstant !== null && exact < slot.dependencyNotBeforeInstant;

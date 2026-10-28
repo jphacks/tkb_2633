@@ -43,6 +43,10 @@ export function targetCivilDate(input: DateTarget, timeZone: string) {
   const target = normalizeDateTarget(input);
   return target.precision === 'date' ? target.date : sharedLocalDate(new Date(targetReferenceTime(target, timeZone)), timeZone);
 }
+/** A date-only deadline has a real 23:59 boundary in its source region; display regions can call it the previous day. */
+export function targetReferenceCivilDate(input: DateTarget, sourceTimeZone: string, displayTimeZone: string) {
+  return sharedLocalDate(new Date(targetReferenceTime(input, sourceTimeZone)), displayTimeZone);
+}
 export function fixedInterval(input: DateTarget): InstantRange | null {
   const target = normalizeDateTarget(input);
   return target.precision === 'interval' ? { start: instantMilliseconds(target.start), end: instantMilliseconds(target.end) } : null;

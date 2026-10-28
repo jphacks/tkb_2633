@@ -17,13 +17,13 @@ import { frameAtOperation } from './authority-context.ts';
 import { v2SubjectOccurrenceId } from './occurrence-id.ts';
 import { observedDateRules } from './formal-rule-view.ts';
 import { manualRuleMatches, selectManualRule, uncancelledRuleRanges } from './period-rules.ts';
-import { materializeRuleTarget } from './rule-target.ts';
+import { materializeRuleTarget, v2RuleCalendarAnchorRange } from './rule-target.ts';
 import { v2ConfigurationTimeline } from './configuration-timeline.ts';
 import { v2CompletionHistory } from './completion-history.ts';
 import type { V2CompletionRecord } from './completion-history.ts';
 import { expandedCommonWindow } from './window-extension.ts';
 import { unresolvedRequestReviews } from './request-review.ts';
-import { targetCivilDate, fixedInterval, targetReferenceTime } from './date-target.ts';
+import { targetCivilDate, fixedInterval, targetReferenceTime, targetReferenceCivilDate } from './date-target.ts';
 import { showExpiredOnHome } from './completion-state.ts';
 import { maximalCausalFacts } from './causal-facts.ts';
 import { v2Dependency, cyclicV2Dependencies, dependencyLowerBound } from './dependency-constraints.ts';
@@ -32,7 +32,7 @@ import type { V2Dependency } from './dependency-constraints.ts';
 export type V2Assessment = Pick<ReturnType<typeof assessV2BusinessHistory>, 'view' | 'requestStates' | 'approvedRules' | 'receiptEpochs'>;
 export interface V2PlanIssue { kind: string; choreId: string | null; occurrenceId: string | null; subjectUserId: string | null; operationIds: string[] }
 export type V2FormalDate = { kind: 'automatic' }
-  | { kind: 'manual'; ruleId: string; equivalentRuleIds: string[]; mode: DesignationMode; target: DateTarget; strict: boolean; allowDuringCooldown: boolean }
+  | { kind: 'manual'; ruleId: string; equivalentRuleIds: string[]; mode: DesignationMode; target: DateTarget; timeZone: string; strict: boolean; allowDuringCooldown: boolean }
   | { kind: 'conflict'; ruleIds: string[] } | { kind: 'review'; reason: string; ruleIds: string[] };
 export interface V2SubjectPlan {
   id: string; subjectUserId: string | null; required: boolean; assigneeIds: string[]; formalDate: V2FormalDate;
@@ -176,10 +176,10 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       for (const fact of allRules) {
         const rule = fact.rule; if (rule.choreId !== chore.id || rule.selector.scope === 'once' || rule.ruleVersion !== slice.version) continue;
         try {
-          const delta = daysBetween(rule.referenceAnchorDate, targetCivilDate(rule.target, timeZone));
+          const inverse = v2RuleCalendarAnchorRange(rule, range.from, range.through, timeZone);
           const first = rule.selector.scope === 'period' ? rule.selector.range.from : rule.selector.from;
           const last = rule.selector.scope === 'period' ? rule.selector.range.through : null;
-          const from = addDays(range.from, -delta); const through = addDays(range.through, -delta);
+          const { from, through } = inverse;
           const bound = { from: from > first ? from : first, through: last && last < through ? last : through };
           if (bound.from <= bound.through) for (const part of uncancelledRuleRanges(fact, bound)) bounds.push({ from: part.from, through: part.through ?? bound.through });
         } catch { issue('repeatingMappingNeedsReview', chore.id, null, rule.subjectUserId, [fact.operationId]); }
@@ -204,7 +204,8 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
     // A moved one-off date stays visible even when its anchor falls outside the displayed date range.
     for (const fact of allRules.filter((rule) => rule.rule.choreId === chore.id && rule.rule.selector.scope === 'once')) {
       const selector = fact.rule.selector; if (selector.scope !== 'once') continue;
-      const targetDate = targetCivilDate(fact.rule.target, timeZone); if (targetDate < range.from || targetDate > range.through) continue;
+      const targetDate = fact.rule.mode === 'deadline' ? targetReferenceCivilDate(fact.rule.target, fact.rule.timeZoneAtCreation, timeZone) : targetCivilDate(fact.rule.target, timeZone);
+      if (targetDate < range.from || targetDate > range.through) continue;
       const source = view.byId(fact.sourceRequestId ?? fact.operationId);
       if (!source) { issue('oneOffMappingNeedsReview', chore.id, selector.occurrenceId, fact.rule.subjectUserId, [fact.operationId]); continue; }
       try { const frame = frameAtOperation(view, input.archive, source, chore.id, selector.anchorDate, fact.rule.ruleVersion).frame;
@@ -282,8 +283,9 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
         } else if (selected.kind === 'selected') {
           candidates = allRules.filter((fact) => selected.equivalentOperationIds.includes(fact.operationId)); const target = materializeRuleTarget(selected.fact.rule, frame, timeZone);
           if (target.kind === 'review') { formalDate = { kind: 'review', reason: target.reason, ruleIds: selected.equivalentOperationIds }; issue(target.reason, chore.id, frame.id, subjectUserId, selected.equivalentOperationIds); }
-          else { formalDate = { kind: 'manual', ruleId: selected.fact.operationId, equivalentRuleIds: selected.equivalentOperationIds, mode: selected.fact.rule.mode, target: target.target,
-            strict: selected.fact.rule.strict, allowDuringCooldown: selected.fact.rule.allowDuringCooldown === true }; suggestedDate = targetCivilDate(target.target, timeZone); }
+          else { formalDate = { kind: 'manual', ruleId: selected.fact.operationId, equivalentRuleIds: selected.equivalentOperationIds, mode: selected.fact.rule.mode, target: target.target, timeZone: selected.fact.rule.timeZoneAtCreation,
+            strict: selected.fact.rule.strict, allowDuringCooldown: selected.fact.rule.allowDuringCooldown === true };
+            suggestedDate = selected.fact.rule.mode === 'deadline' ? targetReferenceCivilDate(target.target, selected.fact.rule.timeZoneAtCreation, timeZone) : targetCivilDate(target.target, timeZone); }
         }
         const reviews = unresolvedRequestReviews({ occurrence: frame, subjectUserId, candidates, allRules, requests: assessment.requestStates, view });
         if (reviews.length) issue('requestConflict', chore.id, frame.id, subjectUserId, reviews);
@@ -378,7 +380,9 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
           else {
             const target = materializeRuleTarget(selected.fact.rule, frame, timeZone); if (target.kind === 'review') break;
             const exact = fixedInterval(target.target);
-            endings.push({ day: exact ? sharedLocalDate(new Date(exact.end), timeZone) : targetCivilDate(target.target, timeZone), instant: exact?.end ?? null });
+            const deadline = selected.fact.rule.mode === 'deadline' ? targetReferenceTime(target.target, selected.fact.rule.timeZoneAtCreation) : null;
+            const instant = exact?.end ?? deadline;
+            endings.push({ day: instant === null ? targetCivilDate(target.target, timeZone) : sharedLocalDate(new Date(instant), timeZone), instant });
           }
         }
         if (endings.length === subjects.length && (occurrencesById.has(frame.id) || !(incoming.get(choreId) ?? []).some((entry) => entry.required))) {
@@ -409,7 +413,7 @@ export function buildV2CommonPlan(input: { assessment: V2Assessment; archive: re
       if (edge.required && edge.minimumGapDays === 0 && end?.instant !== null && end?.instant !== undefined
         && (subject.dependencyNotBeforeInstant === null || end.instant > subject.dependencyNotBeforeInstant)) subject.dependencyNotBeforeInstant = end.instant;
       const fixed = subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'fixed' ? fixedInterval(subject.formalDate.target) : null;
-      const exact = fixed?.start ?? (subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'deadline' ? targetReferenceTime(subject.formalDate.target, timeZone) : null);
+      const exact = fixed?.start ?? (subject.formalDate.kind === 'manual' && subject.formalDate.mode === 'deadline' ? targetReferenceTime(subject.formalDate.target, subject.formalDate.timeZone) : null);
       const violation = !lower || subject.suggestedDate < lower || edge.minimumGapDays === 0 && end?.instant !== null && exact !== null && exact < end!.instant!;
       if (!violation) continue;
       if (edge.required && !subject.completed && subject.formalDate.kind === 'automatic' && lower && lower <= subject.executionWindowEnd) {

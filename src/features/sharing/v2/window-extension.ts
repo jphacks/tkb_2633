@@ -27,11 +27,9 @@ export function expandedCommonWindow(input: { frame: SharedOccurrence; timeZone:
     const rule = byRequest.get(request.requestId); if (!rule || dateRuleCancelledAt(cancellations, rule.operationId, input.frame) || rule.rule.ruleVersion !== input.frame.ruleVersion) continue;
     if (request.proposal.extensionScope === 'once' ? request.proposal.occurrenceId !== input.frame.id : request.proposal.anchorDate > input.frame.anchorDate) continue;
     if (!administratorBacked(request.confirmation, input.view, input.receiptEpochs)) continue;
-    if (request.proposal.extensionScope === 'future' && request.formal.precision !== 'date' && rule.rule.timeZoneAtCreation !== input.timeZone) {
-      reviews.push(request.requestId); continue;
-    }
-    const start = targetCivilDate(request.formal, input.timeZone);
-    const end = request.formal.precision === 'interval' ? sharedLocalDate(new Date(instantMilliseconds(request.formal.end)), input.timeZone) : start;
+    const sourceZone = rule.rule.timeZoneAtCreation;
+    const start = targetCivilDate(request.formal, sourceZone);
+    const end = request.formal.precision === 'interval' ? sharedLocalDate(new Date(instantMilliseconds(request.formal.end)), sourceZone) : start;
     before = Math.max(before, -daysBetween(request.proposal.anchorDate, start)); after = Math.max(after, daysBetween(request.proposal.anchorDate, end));
     sources.push(request.requestId);
   }

@@ -10,6 +10,7 @@ import type { readSharingCheckpoint } from '../storage/sharing-ledger';
 import type { createSharedPlannerRepository } from '../storage/shared-planner-repository';
 import type { SharedEntityType } from '../../features/sharing/operations';
 import type { V2WorkspaceSession } from '../../features/sharing/v2/workspace-session';
+import type { V2ReminderRuntime } from '../../features/sharing/v2/reminder-runtime';
 
 export interface SharedWorkspaceOverview {
   timeZone: string; members: { id: string; displayName: string }[]; chores: { id: string; name: string }[]; hasConflicts: boolean;
@@ -31,6 +32,7 @@ export interface LegacySharedWorkspace extends SharedWorkspaceBase {
 export interface V2SharedWorkspace extends SharedWorkspaceBase {
   protocol: 2; database: SQLiteDatabase; session: V2WorkspaceSession;
   manager: ReturnType<typeof createSharedGroupManager>;
+  reminders: () => Promise<V2ReminderRuntime>;
 }
 export interface PendingSharedWorkspace extends SharedWorkspaceBase {
   protocol: null; database: null; manager: null;

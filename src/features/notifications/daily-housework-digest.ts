@@ -4,6 +4,7 @@ import { addDays, localDateFromDate } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import type { LocalNotificationGateway, LocalNotificationRequest } from '@/features/notifications/contracts';
 import { sharedDateAtTime, sharedLocalDate } from '../sharing/group-clock';
+import { reconcileLocalNotifications } from './reconcile-local-notifications';
 
 const DAILY_DIGEST_KEY_PREFIX = 'housework-digest:';
 const SCHEDULE_HORIZON_DAYS = 30;
@@ -61,61 +62,15 @@ export async function syncDailyHouseworkDigest(
   snapshot: DailyDigestSnapshot,
   now?: Date,
 ): Promise<void> {
-  const queue = syncQueues.get(gateway) ?? Promise.resolve();
-  const operation = queue.then(
-    () => performSync(gateway, snapshot, now ?? new Date()),
-    () => performSync(gateway, snapshot, now ?? new Date()),
-  );
-  const tail = operation.then(() => undefined, () => undefined);
-  syncQueues.set(gateway, tail);
-  void tail.then(() => {
-    if (syncQueues.get(gateway) === tail) syncQueues.delete(gateway);
-  });
-  await operation;
-}
-
-const syncQueues = new WeakMap<LocalNotificationGateway, Promise<void>>();
-
-async function performSync(
-  gateway: LocalNotificationGateway,
-  snapshot: DailyDigestSnapshot,
-  now: Date,
-): Promise<void> {
-  const existing = await gateway.getScheduledRequests();
-  const enabled = snapshot.settings.notificationsEnabled && snapshot.settings.setupCompleted && await gateway.hasPermission();
-  const requests = enabled ? createDailyHouseworkDigestRequests(snapshot, now) : [];
-  const desiredKeys = new Set(requests.map((request) => request.key));
-  const existingByKey = new Map(existing.map((request) => [request.key, request]));
-  const failures: unknown[] = [];
-  for (const request of requests) {
-    const previous = existingByKey.get(request.key);
-    if (!previous || requestSignature(previous) !== requestSignature(request)) {
-      try { await gateway.schedule(request); }
-      catch (error) { failures.push(error); }
-    }
-  }
-  for (const request of existing) {
-    if (request.key.startsWith(notificationPrefix(snapshot)) && !desiredKeys.has(request.key)) {
-      try { await gateway.cancel(request.key); }
-      catch (error) { failures.push(error); }
-    }
-  }
-  // Keep reminders whose replacements failed, but do not leave unrelated obsolete
-  // reminders active just because another operation failed.
-  if (failures.length > 0) throw failures[0];
+  const enabled = snapshot.settings.notificationsEnabled && snapshot.settings.setupCompleted;
+  await reconcileLocalNotifications(gateway, { prefix: notificationPrefix(snapshot), enabled,
+    desired: enabled ? createDailyHouseworkDigestRequests(snapshot, now ?? new Date()) : [] });
 }
 
 function notificationPrefix(snapshot: DailyDigestSnapshot): string {
   if (!snapshot.notificationScope) return DAILY_DIGEST_KEY_PREFIX;
   if (!/^[a-f0-9]{64}$/u.test(snapshot.notificationScope)) throw new Error('Invalid notification workspace');
   return `liflow-group-digest:${snapshot.notificationScope}:`;
-}
-
-function requestSignature(request: LocalNotificationRequest): string {
-  return JSON.stringify([
-    request.title, request.subtitle ?? '', request.body, request.fireAt,
-    Object.entries(request.data ?? {}).sort(([left], [right]) => left.localeCompare(right)),
-  ]);
 }
 
 function isNotificationDay(entry: ChoreScheduleEntry, date: LocalDate): boolean {

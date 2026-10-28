@@ -458,3 +458,12 @@ iPhoneの実プロセス終了後の全値照合は16.012秒のXCTestで成功�
 Androidは最初のcold QA URLでホームへ戻り、同じ新プロセスでURLを再び開く必要があった。cold deep linkの成功とは扱わない。また部分表示ボタンのaccessibility操作は成功を返しても送信しない場合があり、実画面の完全なboundsを観測してADB tapした。開発用QAの終了済み接続再利用は別の2件の反例テストで修正した。これらの失敗ログも保持する。
 
 最終AndroidとiPhoneの照合画像を実際に確認した。画像hash・コードhash・各ログ・先行失敗・限界は`evidence/2026-10-29-private-planner-sync.json`。サービス停止試験はOSの自然なbackground実行や実Googleアカウントの転送を証明せず、Phase 6全体も未完である。
+
+
+## 2026-10-29：v2端末別通知の実OS予約
+
+独立した`development-reminders-20261029`の合成UID/groupと、通常画面・同じruntimeを使った。iPhone 12 / iOS26.7.2はXCTest、Sony I4293 / Android10はADB実入力で19:17・ONを保存し、31日分のOS予約を確認。署名付きの当日完了で予約取消、対象完了のundoで復元、他領域の全予約hashを各操作で照合した。実際のアプリ終了後も同じ設定版3を読み、最後に検査設定だけOFF・検査予約0件へ戻した。
+
+実際の各XCTest時間は証拠JSONの`iosXCTestSeconds`へ記録した。入力欄がキーボードに隠れる実不具合を修正し、閉じたQA接続がFast Refreshで残る無効な試行は再起動後の成功から区別した。Androidの最初のcold URLと保存照合後のwarm再入も同様に記録した。
+
+証拠は`evidence/2026-10-29-v2-reminders.json`。クラウド未接続の独立した端末別検査で、実通知の配信・自然なOS背景実行・異種OS間の共有完了同期の総合検査ではない。個人DB・v1・Google認証・共有鍵は初期化していない。

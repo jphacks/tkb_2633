@@ -13,7 +13,7 @@ export interface V2GroupUiSession {
   controller: V2GroupController; groupId: string; userId: string;
   privateTasks?: V2PrivateTaskSource;
   readOwnCalendar?: PrivateCalendarRuntime['readOwnCalendar'];
-  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean; appliances?: boolean; applianceId?: string }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
+  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean; appliances?: boolean; applianceId?: string; reminders?: boolean }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
 }
 
 /** The UI computes its range and personal suggestions from one authenticated group clock. */
@@ -25,12 +25,14 @@ export function createV2ScreenSession(input: { controller: V2GroupController; gr
   return { controller: input.controller, groupId: input.groupId, userId: input.userId, privateTasks: input.privateTasks,
     readOwnCalendar: input.calendar?.readOwnCalendar,
     async readModel(options) {
+      if (options?.reminders && (options.management || options.calendarMonth || options.focusDate)) throw new Error('通知用と画面用の予定範囲を同時に指定できません。');
       if (options?.calendarMonth && options.focusDate) throw new Error('月表示と家事回の表示を同時に指定できません。');
       if (options?.management && (options.calendarMonth || options.focusDate)) throw new Error('編集画面と月・家事回の表示を同時に指定できません。');
       const instant = input.now(); const preferences = options?.management ? null : await input.readPreferences();
       if (preferences && preferences.ownerUserId !== input.userId) throw new Error('本人の予定設定を確認してください。');
       const model = await input.controller.readModel(({ timeZone }) => {
         const date = sharedLocalDate(instant, timeZone); const focus = options?.focusDate as LocalDate | undefined;
+        if (options?.reminders) return { from: addDays(date, -5), through: addDays(date, 30), asOfDate: date };
         if (options?.management) return { from: date, through: date, asOfDate: date };
         if (focus) parseLocalDate(focus);
         const calendar = options?.calendarMonth ? v2CalendarMonth(options.calendarMonth === 'current' ? date : options.calendarMonth as LocalDate) : null;

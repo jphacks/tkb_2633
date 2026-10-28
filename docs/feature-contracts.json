@@ -4617,5 +4617,131 @@
         "name": "private planner Cloud watch observes confirmed snapshots without repeating equal heads and detaches on cleanup"
       }
     ]
+  },
+  {
+    "feature": "v2-notifications-own-assignment-and-shared-completion",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-reminders.test.mjs",
+        "name": "v2 unassigned common chores remind each member with a protocol/owner/group-separated opaque scope"
+      },
+      {
+        "file": "tests/sharing-v2-reminders.test.mjs",
+        "name": "v2 reminders follow a claim and do not nag another person even when the viewer is administrator"
+      },
+      {
+        "file": "tests/sharing-v2-reminders.test.mjs",
+        "name": "v2 concurrent claims remind the actual provisional claimants, not unrelated members"
+      },
+      {
+        "file": "tests/sharing-v2-reminders.test.mjs",
+        "name": "v2 each-member completion cancels only that person’s reminder"
+      }
+    ]
+  },
+  {
+    "feature": "v2-notification-completion-undo-and-race-reconciliation",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "v2 reminders reconcile local completion and targeted undo without changing private/v1 reminders"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "v2 group changes during native scheduling trigger a fresh plan and remove the stale reminder"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "a shorter worker budget fences an already running reminder operation before it reaches native writes"
+      }
+    ]
+  },
+  {
+    "feature": "v2-device-private-notification-settings-and-autosave",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "v2 reminder settings are device-local, bound to real v2 SQLite, revision-checked and restart-compatible"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "a lost notification-settings save reply recovers its accepted revision without repeating a write"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "v2 reminders reject a legacy personal database before adding any v2 settings table or editing existing rows"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-ui.test.mjs",
+        "name": "${platform} v2 invalid reminder times remain visible, block leaving, and can be explicitly discarded"
+      }
+    ]
+  },
+  {
+    "feature": "native-notification-capacity-and-cross-scope-queue",
+    "tests": [
+      {
+        "file": "tests/local-notification-reconciliation.test.mjs",
+        "name": "local notification domains share an app-wide capacity and retain other domains unchanged"
+      },
+      {
+        "file": "tests/local-notification-reconciliation.test.mjs",
+        "name": "parallel scopes cannot overbook native capacity or cancel each other’s pending notifications"
+      },
+      {
+        "file": "tests/local-notification-reconciliation.test.mjs",
+        "name": "a caller cannot mutate a queued notification into another scope after validation"
+      }
+    ]
+  },
+  {
+    "feature": "v2-notification-normal-route-native-worker-and-access",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "normal v2 workspace commits refresh its local reminders and retain the real account and group guard"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-native.test.mjs",
+        "name": "native v2 reminders default off without permission, personal-data read or OAuth, then reuse owner-only planning"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-ui.test.mjs",
+        "name": "${platform} normal v2 notification route fences stale UI writes after the selected workspace changes"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-native.test.mjs",
+        "name": "native v2 cleanup retains valid current-account scopes and never cancels personal or v1 notifications"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "v2 native notification cleanup failure remains observable after unrelated legacy sync and reminders run"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a bounded v2 worker does not launch an independent notification pass after its cloud budget expires"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a local commit during a bounded v2 sync cannot escape the worker through its debounce callback"
+      }
+    ]
+  },
+  {
+    "feature": "v2-notification-keyboard-safe-input-and-qa-release-boundary",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-reminder-ui.test.mjs",
+        "name": "${platform} v2 reminders UI requests permission only on enable and valid time edits autosave"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-ui.test.mjs",
+        "name": "${platform} v2 reminder QA route is unavailable in release before any identity database or notification permission opens"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-ui.test.mjs",
+        "name": "v2 reminder QA service rejects release calls before Native device identity or database access"
+      }
+    ]
   }
 ]

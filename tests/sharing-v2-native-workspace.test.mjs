@@ -104,3 +104,51 @@ test('normal workspace dispatch refuses an unprepared v1 upgrade before opening 
     const record = await readSharingWorkspace(h.index.database, 'owner', h.record.groupId); assert.deepEqual(record.anchor, h.initial);
   } finally { await h.close(); }
 });
+
+test('normal v2 workspace commits refresh its local reminders and retain the real account and group guard', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] }); const h = await workspaceHarness();
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record);
+    await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, value => ({ ...value, status: 'active' })); await workspace.record();
+    const chore = (await workspace.readOverview()).chores[0]; await workspace.session.controller.actions.patchChore(chore.id, { name: '通知経路の検査用' });
+    for (let i = 0; i < 12; i++) await new Promise(setImmediate);
+    assert.equal(h.reminderCalls.filter(value => value === 'factory').length, 1); assert.ok(h.reminderCalls.includes('sync'));
+    const runtime = await workspace.reminders(); assert.equal((await runtime.store.read()).preferences.enabled, false);
+    assert.equal(h.reminderCalls.includes('permission'), false); assert.equal('adapter' in workspace, false);
+    h.auth.uid = 'other'; await assert.rejects(runtime.synchronize(), /切り替わり/u);
+    assert.equal(h.handles[1].connection.prepare('SELECT COUNT(*) AS n FROM households').get().n, 0);
+  } finally { await h.close(); }
+});
+
+test('a bounded v2 worker does not launch an independent notification pass after its cloud budget expires', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] }); const previousNow = Date.now; let now = previousNow();
+  Date.now = () => now;
+  let reads = 0;
+  const h = await workspaceHarness({ cloud: { readGroup: async () => { reads++; now += 30_000; throw new Error('cloud unavailable after deadline'); } } });
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record);
+    const attempts = Array.from({ length: 100 }, () => workspace.sync({ budgetMs: 1_000 }));
+    assert.equal(new Set(attempts).size, 1); await assert.rejects(attempts[0], /cloud unavailable/u);
+    for (let i = 0; i < 12; i++) await new Promise(setImmediate);
+    assert.equal(h.reminderCalls.includes('factory'), false, 'the coordinator owns the remaining worker budget');
+    assert.equal(h.reminderCalls.includes('sync'), false);
+    t.mock.timers.tick(1_000); for (let i = 0; i < 12; i++) await new Promise(setImmediate);
+    assert.equal(reads, 1, 'coalesced worker requests retain their original deadline after the first pass');
+  } finally { Date.now = previousNow; await h.close(); }
+});
+
+test('a local commit during a bounded v2 sync cannot escape the worker through its debounce callback', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] }); const previousNow = Date.now; let now = previousNow();
+  Date.now = () => now; let workspace; let choreId; let reads = 0;
+  const h = await workspaceHarness({ cloud: { readGroup: async () => {
+    reads++; await workspace.session.controller.actions.patchChore(choreId, { name: 'worker中の保存' });
+    now += 30_000; throw new Error('cloud unavailable after commit');
+  } } });
+  try {
+    workspace = await h.api.openSharedWorkspace(h.record); choreId = (await workspace.readOverview()).chores[0].id;
+    await assert.rejects(workspace.sync({ budgetMs: 1_000 }), /cloud unavailable/u);
+    t.mock.timers.tick(1_000); for (let i = 0; i < 12; i++) await new Promise(setImmediate);
+    assert.equal(reads, 1); assert.equal(h.reminderCalls.includes('factory'), false);
+    assert.equal((await workspace.readOverview()).chores.find(row => row.id === choreId).name, 'worker中の保存', 'the local edit stays durable for the next sync');
+  } finally { Date.now = previousNow; await h.close(); }
+});

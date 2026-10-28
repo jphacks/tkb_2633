@@ -43,7 +43,7 @@ export interface V2GroupScreenProps {
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
   onCalendar?: () => void;
   onManageChores?: () => void; onDetails?: (choreId: string) => void; onAddChore?: () => void; onChoreCreated?: (choreId: string) => void;
-  onGroupPolicy?: () => void;
+  onGroupPolicy?: () => void; onNotifications?: () => void;
   onDateRights?: (choreId: string) => void;
   onWaste?: () => void;
   onAppliances?: () => void; onAppliance?: (id: string) => void; onApplianceReview?: (id?: string) => void;
@@ -60,7 +60,7 @@ function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: strin
   return view === 'calendar' ? { calendarMonth: 'current', waste: true } : view === 'home' ? { waste: true } : undefined;
 }
 
-export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, applianceId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onDateRights, onWaste, onAppliances, onAppliance, onApplianceReview }: V2GroupScreenProps) {
+export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, applianceId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onNotifications, onDateRights, onWaste, onAppliances, onAppliance, onApplianceReview }: V2GroupScreenProps) {
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
@@ -124,6 +124,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、共有操作をクラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
     {purpose === 'workspace' && onManage ? <AppButton title="グループの管理・切り替え" variant="quiet" compact onPress={onManage} /> : null}
     {view === 'home' && onGroupPolicy ? <AppButton title="グループのルール" variant="quiet" compact onPress={onGroupPolicy} /> : null}
+    {view === 'home' && onNotifications ? <AppButton title="この端末の共有通知" variant="quiet" compact onPress={onNotifications} /> : null}
     {workspaceError ? <Text accessibilityRole="alert" style={styles.error}>{workspaceError}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </View>;

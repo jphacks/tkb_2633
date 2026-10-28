@@ -77,6 +77,10 @@ function fixture(options = {}) {
     '../../features/google-sync/coordinator': { syncGoogleTasks: async (db) => { events.push(`google-sync:${db.groupId}`); } },
     '../../features/notifications/daily-housework-digest': { syncDailyHouseworkDigest: async (_gateway, snapshot) => { events.push(`notify:${snapshot.groupId}`); } },
     '../notifications/expo-local-notification-gateway': { expoLocalNotificationGateway: {} },
+    './v2-reminders': { clearInactiveV2Reminders: async (_allowed, assertCurrent) => {
+      await assertCurrent(); events.push('v2-reminder-cleanup');
+      if (options.failReminderCleanup) throw new Error('v2 reminder cleanup failed');
+    } },
     '../../features/google-sync/workspace-policy': { sharedGoogleNamespace: () => 'a'.repeat(64) },
   });
   return { api, events, handles, records, synchronizers, syncBudgets, session };
@@ -105,6 +109,12 @@ test('one unavailable shared database does not prevent later groups or the selec
   await assert.rejects(h.api.syncKnownSharingWorkspaces(), /open failed:broken/);
   assert.ok(h.events.includes('sync:healthy'), 'a healthy group must not depend on an unrelated database opening');
   assert.ok(h.events.includes('notify:healthy'));
+});
+
+test('v2 native notification cleanup failure remains observable after unrelated legacy sync and reminders run', async () => {
+  const h = fixture({ groups: ['healthy'], failReminderCleanup: true, selection: { userId: 'member', groupId: 'healthy' } });
+  await assert.rejects(h.api.syncKnownSharingWorkspaces(), /v2 reminder cleanup failed/u);
+  assert.ok(h.events.includes('sync:healthy')); assert.ok(h.events.includes('notify:healthy'));
 });
 
 test('a private Google-state read failure is isolated to its group while the original error remains observable', async () => {

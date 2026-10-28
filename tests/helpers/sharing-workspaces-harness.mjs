@@ -17,10 +17,13 @@ import * as point from '../../src/features/sharing/v2/view-point.ts';
 import * as controllerAccess from '../../src/features/sharing/v2/controller-access.ts';
 import * as registry from '../../src/platform/storage/sharing-registry.ts';
 import * as ledger from '../../src/platform/storage/sharing-ledger.ts';
+import { createV2ReminderStore } from '../../src/platform/storage/sharing-v2-reminders.ts';
+import { createV2ReminderRuntime } from '../../src/features/sharing/v2/reminder-runtime.ts';
+import { addDays } from '../../src/domain/scheduling/local-date.ts';
 
 /** Real signatures, event repository and SQLite; only native handles/account storage/cloud I/O are injected. */
 export async function workspaceHarness({ pending = false, version = 2, cloud: overrides = {}, deferWorkspaceTimers = false, privateCalendarNeeded = false } = {}) {
-  const handles = []; const calls = []; let ordinal = 0;
+  const handles = []; const calls = []; const reminderCalls = []; let ordinal = 0;
   const create = () => { const h = createDatabase(); let closed = false;
     h.database.closeAsync = async () => { if (!closed) { closed = true; h.connection.close(); } }; handles.push(h); return h; };
   const index = create(); await registry.initializeSharingRegistry(index.database);
@@ -65,7 +68,19 @@ export async function workspaceHarness({ pending = false, version = 2, cloud: ov
       loadGoogleSyncState: async () => { throw new Error('legacy Google state queried'); } },
     '../../features/google-sync/background-task': { registerGoogleSyncBackgroundTask: async () => {} },
     './private-calendar-sync': { isPrivateCalendarWorkerNeeded: async () => privateCalendarNeeded },
+    './v2-reminders': {
+      createNativeV2Reminders(input) {
+        reminderCalls.push('factory');
+        const runtime = createV2ReminderRuntime({ ...input, store: createV2ReminderStore(input.database, input),
+          gateway: { async requestPermission() { reminderCalls.push('permission'); return true; }, async hasPermission() { return true; },
+            async getScheduledRequests() { return []; }, async schedule() { throw new Error('unexpected reminder creation'); }, async cancel() {} },
+          readModel: async now => input.controller.readModel(({ timeZone }) => { const today = groupClock.sharedLocalDate(now, timeZone); return { from: addDays(today, -5), through: addDays(today, 30), asOfDate: today }; }) });
+        const synchronize = runtime.synchronize; runtime.synchronize = (...args) => { reminderCalls.push('sync'); return synchronize(...args); }; return runtime;
+      },
+      async clearInactiveV2Reminders(_allowed, guard = () => {}) { await guard(); reminderCalls.push('clear-inactive'); },
+      async clearV2RemindersForScope() { reminderCalls.push('clear-scope'); },
+    },
   }, deferWorkspaceTimers ? { setTimeout: () => 1, clearTimeout: () => {} } : {});
-  return { api, handles, index, calls, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
+  return { api, handles, index, calls, reminderCalls, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
     close: async () => { for (const h of handles) await h.database.closeAsync(); } };
 }

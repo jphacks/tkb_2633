@@ -7,7 +7,7 @@ import { usePlannerData } from '../../../hooks/use-planner-data';
 import { V2GroupScreen } from './group-screen';
 import type { V2GroupScreenProps } from './group-screen';
 import { createV2ScreenSession } from './screen-session';
-import type { Weekday } from '../../../domain/shared/types';
+import { v2OwnerScheduleSettings } from './owner-preferences';
 import { sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
 import { createV2PrivateTaskSource } from './private-overlay';
 import { readPersonalPlannerOverlaySnapshot, setPersonalDateTaskCompleted } from '../../../platform/storage/repository';
@@ -63,15 +63,9 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
       },
       controller: { ...active.session.controller, sync: () => active.sync({ force: true }) },
       readPreferences: async () => {
-        await active.record(); const settings = personalSnapshot?.settings;
-        if (!settings) throw new Error('本人の予定設定を読み込んでいます。しばらくしてから再試行してください。');
-        const restDays = settings.restDays.filter((day): day is Weekday => Number.isInteger(day) && day >= 1 && day <= 7);
-        if (restDays.length !== settings.restDays.length) throw new Error('本人の休日設定を確認してください。');
+        await active.record();
         const calendar = await openCalendar(); const own = await calendar.readPlannerPreferences?.(); await assertWorkspaceAccess();
-        if (own && own.ownerUserId !== active.userId) throw new Error('本人の予定設定を確認してください。');
-        if (own) return { ownerUserId: active.userId, settings: { frequencyMode: settings.frequencyMode, restDays: own.restDays, loadLimits: own.loadLimits } };
-        return { ownerUserId: active.userId, settings: { frequencyMode: settings.frequencyMode, restDays,
-          loadLimits: { heavyDailyLimit: settings.heavyDailyLimit, normalDailyLimit: settings.normalDailyLimit } } };
+        return v2OwnerScheduleSettings(active.userId, personalSnapshot?.settings, own);
       } });
   }, [active, context.userId, personalDatabase, refreshPersonal, personalSnapshot, assertWorkspaceAccess, openCalendar]);
   if (!context.ready || !active || active.userId !== context.userId) return <Page><Card><Text style={typography.body}>共有グループを選択してください。</Text>
@@ -92,6 +86,7 @@ export function V2WorkspaceRoute({ view }: { view: V2GroupScreenProps['view'] })
     onChoreCreated={(choreId) => router.replace({ pathname: '/group-v2/details', params: { choreId } })}
     onManageChores={() => router.push('/group-v2/chores')} onAddChore={() => router.push('/group-v2/add-chore')}
     onGroupPolicy={() => router.push('/group-v2/group-rules')}
+    onNotifications={() => router.push('/group-v2/notifications')}
     onWaste={() => router.push('/group-v2/waste')}
     onAppliances={() => router.push('/group-v2/appliances')}
     onAppliance={(applianceId) => router.push({ pathname: '/group-v2/appliance', params: { applianceId } })}

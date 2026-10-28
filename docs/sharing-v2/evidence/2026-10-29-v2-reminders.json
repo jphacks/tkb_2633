@@ -1,0 +1,242 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "36d106f",
+  "scope": "v2 local reminders: actual isolated SQLite events and OS scheduled-notification queues; synthetic local fixtures, no Firebase or Google connection",
+  "checks": {
+    "ios": 1962,
+    "android": 1962,
+    "cloud": 70,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 287,
+    "mandatoryCloudTests": 40,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "doctor": "20/20",
+    "scheduler": "v1 unchanged; v2 draft-34 unchanged",
+    "audit": {
+      "info": 0,
+      "low": 7,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 7
+    }
+  },
+  "behavior": {
+    "defaultEnabled": false,
+    "permissionOnlyExplicitEnable": true,
+    "settingsAreDeviceAndOwnerLocal": true,
+    "allScopesShareNativeQueue": true,
+    "iosAppReservationCap": 60,
+    "planningDays": 31,
+    "otherScopesKeptUnchanged": true,
+    "targetedCompletionUndo": true,
+    "sameWorkerNoExtraTimer": true,
+    "groupAccessCheckedBeforeEveryNativeWrite": true,
+    "invalidDraftRetained": true
+  },
+  "native": {
+    "devices": [
+      "iPhone12 iOS26.7.2",
+      "Sony I4293 Android10/API29"
+    ],
+    "fixture": "development-reminders-20261029; own UID/group; not a cloud-synchronized group",
+    "reservationsEachDevice": 31,
+    "savedHour": 19,
+    "savedMinute": 17,
+    "savedRevisionBeforeCleanup": 3,
+    "finalQASetting": "OFF; only QA scheduled notifications cleared",
+    "actualNotificationDelivery": "not tested by this queue inspection",
+    "naturalOSBackground": "not established by these forced foreground operations",
+    "dataReset": false,
+    "iosXCTestSeconds": {
+      "setup": 31.033,
+      "completeAndUndo": 9.679,
+      "restartRead": 4.599,
+      "cleanup": 4.539
+    },
+    "androidRestart": {
+      "beforePid": "9444",
+      "afterPid": "14600",
+      "dataReset": false
+    },
+    "iosRestart": "two devicectl launches with terminate-existing; QA reopened after normal workspace restoration; not a cold URL guarantee"
+  },
+  "reproductions": [
+    "Queued caller object mutation changed native scope after validation: red then snapshot fix",
+    "Lost accepted local settings save response could not recover revision: red then idempotent CAS fix",
+    "iPhone numeric keyboard overlaid the minute input: actual geometry captured; opt-in keyboard insets and drag dismissal fixed",
+    "Native test after source Fast Refresh retained a closed QA context; not counted as scheduling failure; actual app restarted without data reset and all steps passed",
+    "Full regression first run failed six old harness imports after new native cleanup dependency; mocks updated without weakening assertions and extra fault-isolation case added; both OS suites then passed",
+    "Bounded workspace sync finally/debounce/coalesced follow-ups could start a fresh notification or Cloud budget. Red test and 100 concurrent requests reproduced; original deadline now retained; local edits remain durable."
+  ],
+  "limitations": [
+    "Phase6 remains incomplete: personal relocation/history, v2 Tasks/Widget, completion push preference, explicit copy/migration and integrated30-case E2E remain",
+    "No production Rules/schema deployment, real group migration, main merge or Draft publication",
+    "Native scheduled requests are not proof of delivered notifications or OS natural background execution"
+  ],
+  "images": [
+    {
+      "purpose": "ios input and permission",
+      "file": "phase4az-ios-fresh-setup-attachments/16F095BB-9DDF-4C35-BD05-2DBA6466BE01.png",
+      "sha256": "3895e9f8eec057cff71ba32673bbf4df70b9235c892f0a9fbc5db47777231626"
+    },
+    {
+      "purpose": "ios 31 reservations",
+      "file": "phase4az-ios-fresh-setup-attachments/06A2C742-4825-4523-97BE-A3D87A8E4260.png",
+      "sha256": "d97f9a89658874f3523bc429d9f09d0a27fcdb55599c22d54746f84fd05d985c"
+    },
+    {
+      "purpose": "ios visible minute input",
+      "file": "phase4az-ios-fresh-setup-attachments/C4FDE79D-F7E3-477B-8892-355F080DCFC5.png",
+      "sha256": "611fc8ea1ba85bfca17f26519cf4a70852706ceda8a7b25e5ba82869859d7de4"
+    },
+    {
+      "purpose": "ios targeted undo",
+      "file": "phase4az-ios-fresh-round-attachments/CE04784C-C632-4AE4-8B53-FC99EB86320A.png",
+      "sha256": "0afa5a865a55ea3f4614b941fcf36fdf9adc8e14366c6dbe26ab3d4704464721"
+    },
+    {
+      "purpose": "ios process restart",
+      "file": "phase4az-ios-restored-attachments/262CA7E3-7C49-4FE1-9CC6-9D8348C4F95E.png",
+      "sha256": "3d4475e21eed97c455f0d000b3843ecfb745e4a80b7940d600f533c3b9d9cdc2"
+    },
+    {
+      "purpose": "ios cleanup",
+      "file": "phase4az-ios-clean-attachments/212EA7D7-F423-41E2-9DA5-10D5EB1057AF.png",
+      "sha256": "529dd81b7cb9d9f31af7ec38abd97c61c2bf79714155bc4d56821d82b6ddad1a"
+    },
+    {
+      "purpose": "android saved19:17",
+      "file": "phase4az-android-actual-input-first-saved.png",
+      "sha256": "56467f2f2f2f09617f41216c664b4f1fa7620370a8326c9333d8a55bcf284e1a"
+    },
+    {
+      "purpose": "android completion",
+      "file": "phase4az-android-actual-complete-undo-completed.png",
+      "sha256": "59b73af978a08fd51c8d8a3be1b37a1e7327fbe57d6ed96df2d2b50aa8b83bc3"
+    },
+    {
+      "purpose": "android targeted undo",
+      "file": "phase4az-android-actual-complete-undo-undone.png",
+      "sha256": "412e95a1de6dcee738a898302fec78825e6aba92e7a1df85144dda0768859e6c"
+    },
+    {
+      "purpose": "android process restart",
+      "file": "phase4az-android-restored-settings-restored.png",
+      "sha256": "a94aee3975d124d777b38c6f8772de8e49076451ac147eefdd5d840051c0edc7"
+    },
+    {
+      "purpose": "android cleanup",
+      "file": "phase4az-android-phase4az-android-final-clean-cleaned.png",
+      "sha256": "527c86bfb1edf8cf3465acaf95df58a5ce09cc6223f96c149a36aa7cb73446ea"
+    }
+  ],
+  "logs": [
+    {
+      "file": "phase4az-full-ios-final.log",
+      "sha256": "2482d500c048335e2ee170c78de6c867d25f388d0ee33034e3971004654a4bf2"
+    },
+    {
+      "file": "phase4az-full-android-final.log",
+      "sha256": "f6031531ea47ff88116f58b9785e79aa7657b708c1c436874e5c986c29f5aa3e"
+    },
+    {
+      "file": "phase4az-cloud.log",
+      "sha256": "f025a6ac8afe1e30228687dfca3cc347f456c9450971ed6db8f5b18aabbbb29d"
+    },
+    {
+      "file": "phase4az-final-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    {
+      "file": "phase4az-final-types.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    },
+    {
+      "file": "phase4az-doctor.log",
+      "sha256": "ab39d6a58873a0d1151d2a625641a5db22b312df3276b2c2ab3d03a3e9dbe4e1"
+    },
+    {
+      "file": "phase4az-recovery-green.log",
+      "sha256": "905a9abfb9e0b12cad10b4f17d84b10a24328b97321216b6b2e3650896abfffc"
+    },
+    {
+      "file": "phase4az-queue-snapshot-red.log",
+      "sha256": "36a1fea93f0f5396d2163e91dc5239e4523234a7a325f9599891ee1f0aee7cb5"
+    },
+    {
+      "file": "phase4az-save-reply-red.log",
+      "sha256": "98af193810417b08b06529b67a0a349411c1640f1057b41a04d5f4019fc5ef10"
+    },
+    {
+      "file": "phase4az-ios-actual-input-first.log",
+      "sha256": "08a119b67b7cf352e79f524cf729e25c8aed5997239ac73751097f941701306a"
+    },
+    {
+      "file": "phase4az-ios-actual-input-keyboard-fixed.log",
+      "sha256": "311aceb36b736053f2545d8b2e073f2421a5de88ca97482471b855be0cedb52c"
+    },
+    {
+      "file": "phase4az-ios-fresh-setup.log",
+      "sha256": "d2755c39504efc432f276350336e34b94ff2677d2e31afd702829cb1e5db3289"
+    },
+    {
+      "file": "phase4az-ios-fresh-round.log",
+      "sha256": "1bd09a2d0283ffc1835ba6fc644cc7905eab0a212566f85b506e546379e3ca6c"
+    },
+    {
+      "file": "phase4az-ios-restored.log",
+      "sha256": "d87f19686b5a0511655e6776ba89dea536533a2fb25fd85ee83bfea28891a439"
+    },
+    {
+      "file": "phase4az-ios-clean.log",
+      "sha256": "351ad4a94bf2de803b2a68921a426fad05dd3f60167bcf470e882e19b87d77d9"
+    },
+    {
+      "file": "phase4az-android-actual-input-first.log",
+      "sha256": "38611aa86f8b3a571652d93852222dfae58b6ba3f6f0f431bc855c0cd035513b"
+    },
+    {
+      "file": "phase4az-android-actual-complete-undo.log",
+      "sha256": "5f1c95488812873bd07e8840fcd93953104b47baa571bd6df5cf2179cf5fa6a6"
+    },
+    {
+      "file": "phase4az-android-restored-settings.log",
+      "sha256": "2702550dc86e698fbfbc66b86865d9aa95b0057aadd8acc9c25106229da9bfc6"
+    },
+    {
+      "file": "phase4az-android-final-clean.log",
+      "sha256": "f543060a7f600c409c42dc62d9672dd482ab164c7c98f948a427961d33017e06"
+    },
+    {
+      "file": "phase4az-verified-ios.log",
+      "sha256": "ad069d98bb84ba594521c2031e254cf2ca00d531ef9f1d5e4b282ba0a42cb05d"
+    },
+    {
+      "file": "phase4az-verified-android.log",
+      "sha256": "bfb8b75ab094a03352ba53904d1fabe52b25deec79a7d74c89a192732d32b767"
+    },
+    {
+      "file": "phase4az-verified-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    {
+      "file": "phase4az-verified-types.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    },
+    {
+      "file": "phase4az-worker-tail-red.log",
+      "sha256": "49bc4c910209df688d43b8a146719fbeb9fd9e7210e3857ac3d0e1b26053694b"
+    },
+    {
+      "file": "phase4az-worker-tail-complete-green.log",
+      "sha256": "2bb281d911bf3ebcbc138c396fb5103288b303d681fd76da5687d5ea30b8a8b5"
+    },
+    {
+      "file": "phase4az-worker-tail-final-green.log",
+      "sha256": "2cec40813dce04f471f624d6a70ae65cef1befa8d1ed0a289902259399013ca3"
+    }
+  ]
+}

@@ -38,6 +38,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       registryError.current = true; setError('共有グループ一覧を読み込めませんでした。保存内容を保持しています。本人用Calendarの同期は個別に確認できます。');
     }
     groupsOwner.current = user?.uid ?? null;
+    if (next) void import('@/platform/sharing/v2-reminders').then(module => module.clearInactiveV2Reminders(next.filter(group => group.status === 'active'), async () => {
+      if ((await sharingSessionUser())?.uid !== user?.uid || !alive.current || revision.current !== current) throw new Error('通知を更新するアカウントが変わりました。');
+    })).catch(() => undefined);
     if (activeRef.current && (!user || activeRef.current.userId !== user.uid
       || next?.some((group) => group.groupId === activeRef.current!.groupId && ['left', 'removed'].includes(group.status)))) {
       activeRef.current = null; setActive(null);

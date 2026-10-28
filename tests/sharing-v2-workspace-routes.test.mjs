@@ -65,6 +65,7 @@ for (const platform of ['ios', 'android']) {
       await home.screen.press('共有カレンダー'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/calendar']);
       await home.screen.press('共有家事の一覧・編集'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/chores']);
       await home.screen.press('グループのルール'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/group-rules']);
+      await home.screen.press('この端末の共有通知'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/notifications']);
       await home.screen.press('共有のゴミ収集日'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/waste']);
       await home.screen.press('共有の家電'); assert.deepEqual(home.navigation.at(-1), ['push', '/group-v2/appliances']);
       assert.equal(home.screen.text().includes('設定を検査'), false);

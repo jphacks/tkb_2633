@@ -21,7 +21,7 @@ export function NotificationWorkspaceBridge() {
         if (handled.current.has(id)) return;
         const current = latest.current; const data = response.notification.request.content.data;
         const selection = notificationWorkspace(data, current.userId, current.groups);
-        if (!data || data.kind !== 'daily-housework-digest') return;
+        if (!data || !['daily-housework-digest', 'v2-housework-digest'].includes(String(data.kind))) return;
         if (selection === undefined) router.replace('/sharing');
         else { await current.switchTo(selection); if (live) router.replace('/'); }
         handled.current.add(id);

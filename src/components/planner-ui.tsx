@@ -23,13 +23,14 @@ export const palette = {
   goldSoft: '#F6F0E3',
 };
 
-export function Page({ children, contentStyle }: PropsWithChildren<{ contentStyle?: object }>) {
+export function Page({ children, contentStyle, keyboardAware = false }: PropsWithChildren<{ contentStyle?: object; keyboardAware?: boolean }>) {
   const workspace = useContext(WorkspaceContext);
   const issues = useContext(PlannerIssuesContext);
   const issueCount = workspace?.active?.groupId === issues?.groupId ? issues?.issueCount ?? 0 : 0;
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.page, contentStyle]}>
+      <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={keyboardAware}
+        keyboardDismissMode={keyboardAware ? 'on-drag' : 'none'} contentContainerStyle={[styles.page, contentStyle]}>
         {workspace?.active ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
           style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><Text style={styles.workspaceSwitch}>切り替え ›</Text></Pressable> : null}
         {workspace?.error ? <Text accessibilityRole="alert" style={styles.workspaceError}>{workspace.error}</Text> : null}

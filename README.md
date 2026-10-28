@@ -598,13 +598,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **1915 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む。2026-10-29）** |
+| 自動テスト | **1962 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む。2026-10-29）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **281機能（従来276を保持、元の44を含む）／必須Cloud回帰40件** |
+| 保護対象feature contract | **287機能（従来281を保持、元の44を含む）／必須Cloud回帰40件** |
 | Firestore Emulator | **70 tests PASS（本番へのv2 Rules配備とは別）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |

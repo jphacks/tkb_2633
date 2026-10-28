@@ -27,6 +27,7 @@ import { prepareV2FieldEdits, editableFieldFromOperations, readV2EditableField, 
 import type { V2FieldEdit, V2FieldSaveResult } from './field-edit';
 import { editableDateRightsFromOperations, prepareV2DateRightsEdit } from './date-rights-edit.ts';
 import type { V2DateRightsEdit } from './date-rights-edit';
+import { v2MembershipStart } from './membership-period.ts';
 import { expandedCommonWindow } from './window-extension.ts';
 import { v2DateDecisionReview, v2AssignmentDecisionReview } from './decision-review.ts';
 import type { V2DateDecisionEdit, V2DecisionEdit } from './decision-review.ts';
@@ -316,7 +317,11 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
           || !sameIds(expectedPolicyIds, policy.candidates.map(candidate => candidate.operationId))) throw new V2StaleSettingsError();
         if (edits.length > 16 || new Set(edits.map(edit => edit.userId)).size !== edits.length) throw new Error('変更するメンバーを確認してください。');
         if (edits.some(edit => !state.archive.at(-1)!.body.members.some(member => member.userId === edit.userId))) throw new V2StaleSettingsError();
-        prepared = edits.map(edit => prepareV2DateRightsEdit({ view: state.assessment.view, at, choreId, edit }));
+        prepared = edits.map(edit => {
+          const membershipStart = v2MembershipStart(state.archive, edit.userId, at.keyVersion);
+          if (membershipStart === null) throw new V2StaleSettingsError();
+          return prepareV2DateRightsEdit({ view: state.assessment.view, at, choreId, edit, membershipStart });
+        });
         if ((policy.value as unknown as GroupPolicy).delegationEnabled !== true && prepared.some(entry => entry.payload.enabled !== false)) {
           throw new Error('委譲機能を有効にしてから権限を付与してください。');
         }

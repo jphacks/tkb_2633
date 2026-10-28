@@ -2980,5 +2980,20 @@
     "tests": [
       { "file": "tests/sharing-v2-field-autosave.test.mjs", "name": "v2 a newly available editor field can save without losing another draft and a retired field keeps its discard codec" }
     ]
+  },
+  {
+    "feature": "v2-rejoining-requires-new-delegation-with-continuous-device-rights-preserved",
+    "tests": [
+      { "file": "tests/sharing-v2-membership-rights.test.mjs", "name": "v2 membership periods preserve continuous users across device changes and invalidate an appended removal and rejoin" },
+      { "file": "tests/sharing-v2-membership-rights.test.mjs", "name": "v2 rejoining does not resurrect old delegated rights and a new grant preserves the formerly authorized shared instruction" },
+      { "file": "tests/sharing-v2-membership-rights.test.mjs", "name": "v2 another device and another member do not revoke an uninterrupted user delegation" },
+      { "file": "tests/sharing-v2-membership-rights.test.mjs", "name": "v2 a permission editor from a former membership cannot grant even with an empty field base and unchanged group policy" }
+    ]
+  },
+  {
+    "feature": "v2-former-membership-ui-drafts-cannot-become-new-grants",
+    "tests": [
+      { "file": "tests/sharing-v2-date-rights-ui.test.mjs", "name": "a rejoined member receives a fresh editor while the former membership draft stays separate and cannot save" }
+    ]
   }
 ]

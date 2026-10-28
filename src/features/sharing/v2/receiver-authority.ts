@@ -12,6 +12,7 @@ import { deriveClaims } from './claims.ts';
 import type { ClaimFact, ClaimRelease, ClaimResolution } from './claims.ts';
 import { evaluateDateChangePermission, mayUndoCompletion, v2DateDecisionAudience } from './permissions.ts';
 import type { DatePermissionFact, DateChangePermission } from './permissions.ts';
+import { v2MembershipStart } from './membership-period.ts';
 import { normalizeDateTarget, targetCivilDate, targetReferenceTime, validateDesignationTarget } from './date-target.ts';
 import type { DateRuleCancellation, DateTarget, DesignationMode, DesignationOptions, ManualRule, ManualRuleFact, RuleSelector, SharedChoreConfiguration } from './model.ts';
 import { cancellationScopeMatches } from './date-cancellations.ts';
@@ -520,7 +521,10 @@ function dateContext(view: V2HistoryView, archive: readonly VerifiedSharedRoster
       && op.payload.originalDesignationId === (current.kind === 'selected' ? current.fact.operationId : null), 'Request must reference the formal date observed by its author');
   }
   const assigneeIds = subject === null ? context.assigneeIds : [subject]; const date = targetCivilDate(proposed, zone);
-  const grants = view.observed(view.ofType('datePermission'), op).map((fact) => ({ ...fact, ...fact.payload }) as unknown as DatePermissionFact);
+  const memberSince = v2MembershipStart(archive, op.authorUserId, epoch.body.keyVersion);
+  const grants = view.observed(view.ofType('datePermission'), op).filter(fact => memberSince !== null && fact.payload.userId === op.authorUserId
+    && fact.payload.choreId === choreId && fact.keyVersion >= memberSince && fact.keyVersion <= epoch.body.keyVersion)
+    .map((fact) => ({ ...fact, ...fact.payload }) as unknown as DatePermissionFact);
   let permission: DateChangePermission = evaluateDateChangePermission({ actorUserId: op.authorUserId, adminUserId: epoch.body.ownerUserId,
       activeMemberIds: epoch.body.members.map((member) => member.userId), choreId, assigneeIds, policy, grants,
       movingEarlier: !source.unresolved && original !== null && targetReferenceTime(proposed, zone) < Math.max(...(originalTargets.length ? originalTargets : [original]).map((target) => targetReferenceTime(target, zone))), beforeWindow: date < context.frame.windowStart,

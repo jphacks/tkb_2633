@@ -53,7 +53,7 @@ for (const platform of ['ios', 'android']) {
   test(`${platform} disabled group delegation blocks new grants but still permits a member's explicit revocation`, async () => {
     const f = await setup(); let ui;
     try {
-      const original = await source(f.c); await f.c.actions.editDateRights('floor', [{ userId: 'member', value: { enabled: true,
+      const original = await source(f.c); await f.c.actions.editDateRights('floor', [{ userId: 'member', expectedMembershipStart: 2, value: { enabled: true,
         rights: { changeDate: true, changeOthers: true, changeBeforeWindow: true } }, basisOperationIds: [] }], ids(original.groupPolicy));
       await f.c.actions.patchGroupPolicy({ delegationEnabled: false }); ui = await open(f.c, platform); await expand(ui); const name = ui.nameOf('member');
       assert.match(ui.screen.text(), /委譲機能はOFF/u); assert.equal(control(ui, `${name}：日時を指定できる`).props.disabled, true);
@@ -125,8 +125,8 @@ for (const platform of ['ios', 'android']) {
       await applyReceivedSharedFacts(d.database, groupId, facts, String(facts.length), d.repository.project, checkpoint.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts))); };
     try {
       await receive(other, await loadSharedFacts(f.d.database, groupId)); const policyIds = ids((await source(f.c)).groupPolicy);
-      await f.c.actions.editDateRights('floor', [{ userId: 'member', value: { enabled: true, rights: { changeDate: true, changeOthers: false, changeBeforeWindow: false } }, basisOperationIds: [] }], policyIds);
-      await second.actions.editDateRights('floor', [{ userId: 'member', value: { enabled: false, rights: { changeDate: true, changeOthers: true, changeBeforeWindow: true } }, basisOperationIds: [] }], policyIds);
+      await f.c.actions.editDateRights('floor', [{ userId: 'member', expectedMembershipStart: 2, value: { enabled: true, rights: { changeDate: true, changeOthers: false, changeBeforeWindow: false } }, basisOperationIds: [] }], policyIds);
+      await second.actions.editDateRights('floor', [{ userId: 'member', expectedMembershipStart: 2, value: { enabled: false, rights: { changeDate: true, changeOthers: true, changeBeforeWindow: true } }, basisOperationIds: [] }], policyIds);
       await receive(f.d, await loadSharedFacts(other.database, groupId)); ui = await open(f.c, platform); await expand(ui);
       const current = ui.props.model.dateRights.fields.member; assert.equal(current.kind, 'conflict');
       assert.equal(ui.screen.nodes().some(node => node.type === 'Switch'), false); assert.throws(() => ui.screen.button(`${ui.nameOf('member')}の権限候補1で解決する`), /missing button/u);
@@ -134,5 +134,22 @@ for (const platform of ['ios', 'android']) {
       await ui.settle(() => ui.props.model.dateRights.fields.member.kind === 'value');
       assert.deepEqual(ui.props.model.dateRights.fields.member.value, current.candidates[0].value);
     } finally { await ui?.close(); other.connection.close(); f.close(); }
+  });
+
+  test(`${platform} a rejoined member receives a fresh editor while the former membership draft stays separate and cannot save`, async () => {
+    const f = await setup(); const entered = deferred(); const release = deferred(); let ui;
+    const delayed = { ...f.c, actions: { ...f.c.actions, editDateRights: async (...args) => { entered.resolve(); await release.promise; return f.c.actions.editDateRights(...args); } } };
+    try {
+      ui = await open(delayed, platform); await expand(ui); const before = await listSharingOutbox(f.d.database, groupId);
+      control(ui, `${ui.nameOf('member')}への権限を有効にする`).props.onValueChange(true); await ui.screen.press('戻る'); await entered.promise;
+      f.f.archive.push(removeSharedMembers(f.f.archive.at(-1), f.f.owner, ['member']));
+      f.f.archive.push(approveSharedDevice(f.f.archive.at(-1), f.f.owner, 'member', f.f.member));
+      ui.props.model = await source(f.c); ui.screen.render(); await ui.settle(); release.resolve();
+      await ui.settle(() => ui.screen.text().includes('別の変更が届いています'));
+      assert.match(ui.screen.text(), /以前の参加/u); assert.equal(ui.props.model.dateRights.membershipStarts.member, 4);
+      assert.equal((await source(f.c)).dateRights.fields.member.kind, 'missing'); assert.deepEqual(await listSharingOutbox(f.d.database, groupId), before);
+      await ui.screen.press('入力を最新の権限に戻す'); await ui.settle(); await expand(ui);
+      assert.equal(control(ui, `${ui.nameOf('member')}への権限を有効にする`).props.value, false);
+    } finally { release.resolve(); await ui?.close(); f.close(); }
   });
 }

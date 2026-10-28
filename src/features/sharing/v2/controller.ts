@@ -11,6 +11,7 @@ import type { SharedChoreConfiguration } from './model.ts';
 import { readV2EditableField, V2_CHORE_DETAIL_FIELDS } from './field-edit.ts';
 import type { V2ChoreDetailField, V2EditableField } from './field-edit';
 import { readV2DateRights } from './date-rights-edit.ts';
+import { v2MembershipStart } from './membership-period.ts';
 type V2ModelRange = { from: LocalDate; through: LocalDate; asOfDate: LocalDate };
 
 /** Injected transport keeps the screen independent of production, Emulator, and offline test workspaces. */
@@ -43,9 +44,14 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
         fields: Object.fromEntries(V2_CHORE_DETAIL_FIELDS.map((field) => [field, readV2EditableField(state.assessment.view, at, 'chore', chore.id, field)])) as Record<V2ChoreDetailField, V2EditableField> }));
       const groupPolicy = readOptions.groupPolicy || readOptions.permissionsChoreId ? readV2EditableField(state.assessment.view, at, 'groupPolicy', 'policy', 'configuration') : undefined;
       const permissionChore = readOptions.permissionsChoreId ? plan.chores.find(chore => chore.id === readOptions.permissionsChoreId) : undefined;
+      const permissionMembers = permissionChore ? plan.members.filter(member => member.active && member.userId !== state.archive.at(-1)!.body.ownerUserId)
+        .map(member => {
+          const start = v2MembershipStart(state.archive, member.userId, at.keyVersion);
+          if (start === null) throw new Error('メンバーの参加状態を確認してください。'); return { userId: member.userId, start };
+        }) : [];
       const dateRights = permissionChore ? { choreId: permissionChore.id, alive: readV2EditableField(state.assessment.view, at, 'chore', permissionChore.id, '$alive'),
-        fields: Object.fromEntries(plan.members.filter(member => member.active && member.userId !== state.archive.at(-1)!.body.ownerUserId)
-          .map(member => [member.userId, readV2DateRights(state.assessment.view, at, permissionChore.id, member.userId)])) } : undefined;
+        membershipStarts: Object.fromEntries(permissionMembers.map(member => [member.userId, member.start])),
+        fields: Object.fromEntries(permissionMembers.map(member => [member.userId, readV2DateRights(state.assessment.view, at, permissionChore.id, member.userId, member.start)])) } : undefined;
       return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(dateRights ? { dateRights } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
         requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),

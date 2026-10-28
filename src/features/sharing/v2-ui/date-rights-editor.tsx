@@ -16,6 +16,12 @@ const empty: V2DateRightsValue = { enabled: false, rights: { changeDate: false, 
 const codec: V2FieldCodec = { format: value => value ?? JSON.parse(JSON.stringify(empty)), parse: raw => raw };
 const rights = [['changeDate', '日時を指定できる'], ['changeOthers', '他の担当者の日時も変更できる'], ['changeBeforeWindow', '期間前への変更ができる']] as const;
 const label = (value: V2DateRightsValue) => `${value.enabled ? '有効' : '無効'}\n${rights.map(([key, title]) => `${title}：${value.rights[key] ? 'ON' : 'OFF'}`).join('\n')}`;
+const keyOf = (userId: string, since: number) => JSON.stringify([userId, since]);
+function targetOf(key: string): { userId: string; expectedMembershipStart: number } {
+  const value = JSON.parse(key);
+  if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== 'string' || !Number.isSafeInteger(value[1]) || value[1] < 1) throw new Error('メンバーの参加状態を確認してください。');
+  return { userId: value[0], expectedMembershipStart: value[1] };
+}
 
 export function V2DateRightsEditor(props: { model: V2GroupScreenModel; choreId: string; controller: V2GroupController;
   onSaved: () => Promise<void>; onBack: () => void; onGroupPolicy?: () => void; header?: ReactNode }) {
@@ -33,9 +39,13 @@ function Editor({ model, source, choreId, controller, onSaved, onBack, onGroupPo
   const policy = model.groupPolicy; const delegation = model.plan.policy?.delegationEnabled === true;
   const displayedPolicy = useRef<readonly string[] | null>(null);
   const blocked = source.alive.kind !== 'value' || source.alive.value !== true || policy?.kind !== 'value';
-  const autosave = useV2FieldAutosave({ fields: source.fields, codecs: Object.fromEntries(Object.keys(source.fields).map(userId => [userId, codec])),
-    save: edits => controller.actions.editDateRights(choreId, edits.map(edit => ({ ...edit, userId: edit.field })), displayedPolicy.current ?? []), onSaved });
-  const targets = [...Object.keys(source.fields), ...Object.keys(autosave.fields).filter(userId => !Object.hasOwn(source.fields, userId) && autosave.isDirty(userId))];
+  const fields = Object.fromEntries(Object.entries(source.fields).map(([userId, field]) => [keyOf(userId, source.membershipStarts[userId]), field]));
+  const autosave = useV2FieldAutosave({ fields, codecs: Object.fromEntries(Object.keys(fields).map(key => [key, codec])),
+    save: async edits => {
+      const result = await controller.actions.editDateRights(choreId, edits.map(edit => ({ ...edit, ...targetOf(edit.field) })), displayedPolicy.current ?? []);
+      return { operations: result.operations, fields: Object.fromEntries(edits.map(edit => [edit.field, result.fields[targetOf(edit.field).userId]])) };
+    }, onSaved });
+  const targets = [...Object.keys(fields), ...Object.keys(autosave.fields).filter(key => !Object.hasOwn(fields, key) && autosave.isDirty(key))];
   const bindPolicy = () => { if (!autosave.hasDraft()) displayedPolicy.current = policy?.candidates.map(candidate => candidate.operationId) ?? []; };
   const change = (userId: string, patch: (value: V2DateRightsValue) => V2DateRightsValue) => {
     bindPolicy(); autosave.changeWith(userId, raw => patch(raw as unknown as V2DateRightsValue) as unknown as JsonValue);
@@ -48,12 +58,12 @@ function Editor({ model, source, choreId, controller, onSaved, onBack, onGroupPo
     {blocked ? <Text accessibilityRole="alert" style={styles.error}>家事またはグループのルールの確認が必要です。入力は保持しています。</Text> : null}
     {!delegation ? <Text style={styles.caption}>グループの委譲機能はOFFです。保存済みの権限は適用されません。個別の権限を解除することはできます。</Text> : null}
     {targets.length === 0 ? <Card><Text style={styles.body}>権限を設定するメンバーはいません。</Text></Card> : null}
-    {targets.map(userId => {
-      const field = autosave.fields[userId]; const active = Object.hasOwn(source.fields, userId); const disabled = blocked || autosave.leaving || !active;
-      if (!field) return <Card key={userId}><Text style={styles.caption}>{nameOf(userId)}の設定を読み込んでいます。</Text></Card>;
-      const value = autosave.raw[userId] as unknown as V2DateRightsValue;
-      return <AccordionSection key={userId} title={`${nameOf(userId)}の権限`} expanded={expanded[userId] === true}
-        onToggle={() => setExpanded(current => ({ ...current, [userId]: !current[userId] }))}>
+    {targets.map(key => {
+      const { userId } = targetOf(key); const field = autosave.fields[key]; const active = Object.hasOwn(fields, key); const disabled = blocked || autosave.leaving || !active;
+      if (!field) return <Card key={key}><Text style={styles.caption}>{nameOf(userId)}の設定を読み込んでいます。</Text></Card>;
+      const value = autosave.raw[key] as unknown as V2DateRightsValue;
+      return <AccordionSection key={key} title={`${nameOf(userId)}の権限${active ? '' : '（以前の参加）'}`} expanded={expanded[key] === true}
+        onToggle={() => setExpanded(current => ({ ...current, [key]: !current[key] }))}>
         {!active ? <Text style={styles.error}>参加状態が変わったため保存できません。入力は保持しています。</Text> : null}
         {field.kind === 'conflict' ? <View style={styles.group}><Text style={styles.error}>付与と取消の候補を確認してください。候補同士を自動で組み合わせません。</Text>
           {field.candidates.map((candidate, index) => {
@@ -62,20 +72,20 @@ function Editor({ model, source, choreId, controller, onSaved, onBack, onGroupPo
               onToggle={() => setExpanded(current => ({ ...current, [candidate.operationId]: !current[candidate.operationId] }))}>
               <Text style={styles.body}>{label(choice)}</Text>
               <AppButton title={`権限候補${index + 1}で解決する`} accessibilityLabel={`${nameOf(userId)}の権限候補${index + 1}で解決する`} variant="secondary"
-                disabled={disabled || !delegation && choice.enabled} onPress={() => resolve(userId, candidate.value)} />
+                disabled={disabled || !delegation && choice.enabled} onPress={() => resolve(key, candidate.value)} />
             </AccordionSection>;
           })}
           <AppButton title="権限を解除して解決する" accessibilityLabel={`${nameOf(userId)}の権限を解除して解決する`} variant="quiet" disabled={disabled}
-            onPress={() => resolve(userId, empty as unknown as JsonValue)} />
+            onPress={() => resolve(key, empty as unknown as JsonValue)} />
         </View> : <View style={styles.group}>
           <V2Flag label={`${nameOf(userId)}への権限を有効にする`} value={value.enabled} disabled={disabled || !delegation && !value.enabled}
-            onChange={enabled => change(userId, current => ({ ...current, enabled }))} />
-          {rights.map(([key, title]) => <V2Flag key={key} label={`${nameOf(userId)}：${title}`} value={value.rights[key]}
-            disabled={disabled || !delegation || !value.enabled || key !== 'changeDate' && !value.rights.changeDate}
-            onChange={checked => change(userId, current => ({ ...current, rights: { ...current.rights, [key]: checked } }))} />)}
+            onChange={enabled => change(key, current => ({ ...current, enabled }))} />
+          {rights.map(([right, title]) => <V2Flag key={right} label={`${nameOf(userId)}：${title}`} value={value.rights[right]}
+            disabled={disabled || !delegation || !value.enabled || right !== 'changeDate' && !value.rights.changeDate}
+            onChange={checked => change(key, current => ({ ...current, rights: { ...current.rights, [right]: checked } }))} />)}
           <Text style={styles.caption}>「日時を指定できる」がOFFの場合、他の2項目も適用されません。</Text>
         </View>}
-        {!active && autosave.isDirty(userId) ? <AppButton title="このメンバーの入力を戻す" variant="quiet" onPress={() => autosave.discard(userId)} /> : null}
+        {!active && autosave.isDirty(key) ? <AppButton title="このメンバーの入力を戻す" variant="quiet" onPress={() => autosave.discard(key)} /> : null}
       </AccordionSection>;
     })}
     <V2AutosaveFeedback status={autosave.status} refreshError={autosave.refreshError} hasDraft={autosave.hasDraft()} flush={autosave.flush}

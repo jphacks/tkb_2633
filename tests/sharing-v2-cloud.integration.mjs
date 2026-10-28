@@ -55,7 +55,7 @@ async function fixture(schemaVersion = 2) {
 }
 
 test('v2 workspace sessions restore real encrypted bootstrap and offline edits across approved user devices without private planner adapters', async () => {
-  const f = await fixture(); const ownerDb = createDatabase(); const memberDb = createDatabase();
+  const f = await fixture(); const ownerDb = createDatabase(); const memberDb = createDatabase(); let rejoinedDb;
   const memberIdentity = await createDeviceIdentity(crypto); const now = new Date(); const anchorDate = sharedLocalDate(now, 'Asia/Tokyo');
   let ownerArchive = [f.roster]; let memberArchive; let ownerActive = true; let ordinal = 0;
   let ownerRecord = { userId: 'owner', groupId, status: 'creating', displayName: 'セッション検査', anchor: f.roster, rosterArchive: ownerArchive,
@@ -122,23 +122,46 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     const rightsSource = async session => session.controller.readModel(range, { permissionsChoreId: chore.id });
     const beforeGrant = await rightsSource(owner); const policyIds = beforeGrant.groupPolicy.candidates.map(source => source.operationId);
     const grantedRights = { enabled: true, rights: { changeDate: true, changeOthers: false, changeBeforeWindow: true } };
-    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: grantedRights, basisOperationIds: [] }], policyIds);
+    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', expectedMembershipStart: beforeGrant.dateRights.membershipStarts.member, value: grantedRights, basisOperationIds: [] }], policyIds);
     await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
     const delivered = await rightsSource(restart); assert.deepEqual(delivered.dateRights.fields.member.value, grantedRights);
     const grantIds = delivered.dateRights.fields.member.candidates.map(source => source.operationId);
-    await assert.rejects(restart.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], policyIds), { code: 'sharing/v2-authority-denied' });
+    await assert.rejects(restart.controller.actions.editDateRights(chore.id, [{ userId: 'member', expectedMembershipStart: beforeGrant.dateRights.membershipStarts.member, value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], policyIds), { code: 'sharing/v2-authority-denied' });
     assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 0);
     const groupBefore = (await owner.controller.readModel(range, { groupPolicy: true })).groupPolicy;
     await owner.controller.actions.editGroupPolicy({ value: { ...updatedPolicy, delegationEnabled: false }, basisOperationIds: groupBefore.candidates.map(source => source.operationId) });
-    await assert.rejects(owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], policyIds), { code: 'sharing/v2-stale-settings' });
+    await assert.rejects(owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', expectedMembershipStart: beforeGrant.dateRights.membershipStarts.member, value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], policyIds), { code: 'sharing/v2-stale-settings' });
     const disabled = await rightsSource(owner);
-    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], disabled.groupPolicy.candidates.map(source => source.operationId));
+    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', expectedMembershipStart: beforeGrant.dateRights.membershipStarts.member, value: { ...grantedRights, enabled: false }, basisOperationIds: grantIds }], disabled.groupPolicy.candidates.map(source => source.operationId));
     await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
     for (const session of [owner, restart]) assert.equal((await rightsSource(session)).dateRights.fields.member.value.enabled, false);
+    const beforeRejoin = await rightsSource(owner);
+    await owner.controller.actions.editGroupPolicy({ value: updatedPolicy, basisOperationIds: beforeRejoin.groupPolicy.candidates.map(source => source.operationId) });
+    const enabled = await rightsSource(owner);
+    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: grantedRights,
+      expectedMembershipStart: enabled.dateRights.membershipStarts.member, basisOperationIds: enabled.dateRights.fields.member.candidates.map(source => source.operationId) }], enabled.groupPolicy.candidates.map(source => source.operationId));
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    await owner.manager.removeMembers(['member']); await assertFails(memberCloud.readGroup(groupId));
+    const rejoinInvite = await owner.manager.createInvitation(); const rejoinRequest = createSharedJoinRequest(rejoinInvite, 'member', memberIdentity, Date.now());
+    await memberCloud.submitJoinRequest(rejoinInvite.invitation, rejoinRequest); await owner.manager.approve(rejoinInvite.invitation, rejoinRequest);
+    const rejoinRecord = { userId: 'member', groupId, status: 'joining', anchor: rejoinInvite.invitation.body.pin, rosterArchive: [], join: { invitation: rejoinInvite.invitation, request: rejoinRequest } };
+    let rejoinArchive = await readCloudWorkspaceArchive(rejoinRecord, (await memberCloud.readGroup(groupId)).roster, memberCloud.readRoster);
+    rejoinedDb = createDatabase();
+    const rejoined = await createV2WorkspaceSession(dependencies(rejoinedDb, 'member', memberIdentity, memberCloud, new Map(),
+      async () => ({ ...rejoinRecord, rosterArchive: rejoinArchive }), async value => { rejoinArchive = value; }, () => rejoinArchive));
+    await rejoined.synchronizer.sync({ force: true });
+    const fresh = await rightsSource(rejoined); assert.equal(fresh.dateRights.membershipStarts.member, 4); assert.equal(fresh.dateRights.fields.member.kind, 'missing');
+    assert.ok((await rejoined.repository.readState()).assessment.view.ofType('datePermission').length > 0, 'historical grants stay in the authenticated snapshot');
+    const ownerFresh = await rightsSource(owner);
+    await assert.rejects(owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: grantedRights, expectedMembershipStart: 2, basisOperationIds: [] }], ownerFresh.groupPolicy.candidates.map(source => source.operationId)), { code: 'sharing/v2-stale-settings' });
+    await owner.controller.actions.editDateRights(chore.id, [{ userId: 'member', value: grantedRights,
+      expectedMembershipStart: ownerFresh.dateRights.membershipStarts.member, basisOperationIds: [] }], ownerFresh.groupPolicy.candidates.map(source => source.operationId));
+    await owner.synchronizer.sync({ force: true }); await rejoined.synchronizer.sync({ force: true });
+    assert.deepEqual((await rightsSource(rejoined)).dateRights.fields.member.value, grantedRights);
     ownerActive = false; await assert.rejects(owner.synchronizer.sync({ force: true }), /account changed/u);
     assert.equal(ownerDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.equal(memberDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
-  } finally { ownerDb.connection.close(); memberDb.connection.close(); }
+  } finally { ownerDb.connection.close(); memberDb.connection.close(); rejoinedDb?.connection.close(); }
 });
 
 test('normal v2 workspace creation uses the real gateway and Rules and a no-change sync cannot enqueue another local edit', async () => {

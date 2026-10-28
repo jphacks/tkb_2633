@@ -319,3 +319,17 @@ Androidはforce-stopと起動、iPhoneはdevicectlのterminate-existing指定と
 | Android復元 | `149540398ba18bc0cfbc3a535648a94a571b98f961002c88a415572ca1c76340` |
 
 全画像とQA要素情報を確認し、`phase4ai-native-and-code-evidence.json`へ範囲と結果を保存した。実Google/Firebaseアカウントの情報、本番Rules、元個人DB、共有Outboxはこの検査へ使わない。
+
+
+## 15. 生成端末の固定後の旧Native保存値互換性
+
+Phase 4akではメイン切替時の鍵生成担当を修正した。旧QA保存値を使い、両端末で署名・authority復元・鍵の再読込・Native AES-GCMの4項目を確認した。Androidは4.987秒、iPhoneは8.018秒で成功。両端末の端末ID・authority digest・合成鍵の照合値はPhase 4ahから変化していない。
+
+iPhoneの初回2回はXCTestがUI自動化の準備で停止した。ユーザーに確認画面がないことを確認し、Mac/iPhoneの接続を切り分けて検査用のtestmanagerdを再接続した後に成功した。初回失敗は成功へ数えず、端末やアプリの初期化・再インストール・端末再起動を行わない。この検査も実アカウントや端末間のメイン変更E2Eの成功とは扱わない。
+
+| 旧保存値の確認画像 | SHA-256 |
+| --- | --- |
+| iPhone | `413b2a983015556bae3ecb512f0ee8de9284c1bdf4ae46688db21ace297f5dce` |
+| Android | `1f0e9f94ba7d51f439b0ccf8c272b1bfcfb1d0c8b0772a078159ef4a7337225a` |
+
+範囲・失敗・照合結果は`phase4ak-native-and-code-evidence.json`へ記録した。

@@ -3583,5 +3583,42 @@
         "name": "feature contract validation rejects removal of a required Cloud test, command registration or CI emulator execution"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-key-generation-issuer-survives-main-switches",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar a new main missing the latest key cannot generate a different key for the same existing generation"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar the original key issuer can finish its pending generation after a main switch without changing the generation"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar a verified new rotation can appoint its issuer even when that approved device missed an older key generation"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar a newly approved issuer can create its explicitly rotated key without receiving a revoked generation"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar legacy checkpoints keep existing keys readable and recover missing issuer metadata only from the complete pinned signature chain"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar legacy missing-generation recovery never guesses a new key and authenticates its original issuer before generating once"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar protected issuer metadata rejects impossible fields rather than silently granting a different key generator"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar issuer-history recovery owns every signed input before its first asynchronous account check"
+      }
+    ]
   }
 ]

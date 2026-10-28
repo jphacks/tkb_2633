@@ -3,7 +3,8 @@ import type { DeviceSecretIdentity, SharingCryptoGateway } from '../crypto.ts';
 import { createDeviceIdentity, sharedDocumentDigest, validateDeviceSecretIdentity } from '../crypto.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
 import type { PrivateCalendarTrustAnchor, ProtectedPrivateCalendarCheckpoint, SignedPrivateCalendarAuthority, VerifiedPrivateCalendarAuthority } from './authority.ts';
-import { privateCalendarAuthorityFromProtectedCheckpoint, snapshotPrivateCalendarAuthority, verifyPrivateCalendarAuthorityUpdate } from './authority.ts';
+import { privateCalendarAuthorityFromProtectedCheckpoint, snapshotPrivateCalendarAuthority, verifyPrivateCalendarAuthorityUpdate, verifyPrivateCalendarRoot } from './authority.ts';
+import { canonicalJson } from '../operations.ts';
 import type { WrappedPrivateCalendarKey } from './key-envelope.ts';
 import { createPrivateCalendarAccountKey, snapshotPrivateCalendarWrappedKey, unwrapPrivateCalendarKey } from './key-envelope.ts';
 import { exactRecord, hexBytes, positiveInteger } from './validation.ts';
@@ -22,7 +23,7 @@ export interface PrivateCalendarSecretPort {
   exclusive<T>(userId: string, work: () => Promise<T>): Promise<T>;
 }
 const MAX_KEYS = 1024;
-const checkpoint = (value: VerifiedPrivateCalendarAuthority): ProtectedPrivateCalendarCheckpoint => ({ signed: value.signed, signer: value.signer });
+const checkpoint = (value: VerifiedPrivateCalendarAuthority): ProtectedPrivateCalendarCheckpoint => ({ signed: value.signed, signer: value.signer, keyIssuer: value.keyIssuer });
 
 function stateFromProtectedStorage(raw: string, userId: string): SecretState {
   if (raw.length > 128 * 1024) throw new Error('本人用の安全な保存領域が上限を超えています。');
@@ -113,6 +114,22 @@ export function createPrivateCalendarSecretStore(port: PrivateCalendarSecretPort
         return { value: next, write: { ...state, checkpoint: checkpoint(next) } };
       });
     },
+    async recoverKeyIssuerHistory(userId: string, history: readonly SignedPrivateCalendarAuthority[]) {
+      if (!Array.isArray(history) || !history.length || history.length > 4096) throw new Error('本人用の認証履歴の件数を確認してください。');
+      let size = 0;
+      const owned = history.map((value) => {
+        const copy = snapshotPrivateCalendarAuthority(value); size += canonicalJson(copy).length;
+        if (size > 4 * 1024 * 1024) throw new Error('本人用の認証履歴が上限を超えています。自動で鍵を生成せず復旧を確認してください。'); return copy;
+      });
+      return transact(userId, async (value) => {
+        const state = requiredState(value); const current = currentAuthority(state);
+        let restored = verifyPrivateCalendarRoot(owned[0], current.anchor);
+        for (const signed of owned.slice(1)) restored = verifyPrivateCalendarAuthorityUpdate(restored, signed);
+        if (restored.digest !== current.digest) throw new Error('現在の本人用設定までの署名履歴が揃っていません。');
+        return { value: restored, ...(canonicalJson(restored.keyIssuer) === canonicalJson(current.keyIssuer) ? {}
+          : { write: { ...state, checkpoint: checkpoint(restored) } }) };
+      });
+    },
     currentKey(userId: string, expected: VerifiedPrivateCalendarAuthority) { return transact(userId, async (value) => {
       const state = requiredState(value); const authority = approvedAuthority(state, expected);
       const saved = state.keys.find((key) => key.keyVersion === authority.signed.body.keyVersion);
@@ -121,8 +138,7 @@ export function createPrivateCalendarSecretStore(port: PrivateCalendarSecretPort
     createCurrentKey(userId: string, expected: VerifiedPrivateCalendarAuthority) { return transact(userId, async (value) => {
       const state = requiredState(value); const authority = approvedAuthority(state, expected); const body = authority.signed.body;
       const saved = state.keys.find((key) => key.keyVersion === body.keyVersion); if (saved) return { value: hexBytes(saved.value, 32) };
-      const last = state.keys.at(-1)?.keyVersion ?? 0;
-      if (body.mainDeviceId !== state.identity.deviceId || (last === 0 ? state.origin !== 'firstDeviceSetup' || body.keyVersion !== 1 : body.keyVersion !== last + 1)) throw new Error('承認済み端末から鍵を受け取るか、メイン端末で鍵更新を確認してください。');
+      if (authority.keyIssuer?.deviceId !== state.identity.deviceId) throw new Error('承認済みの鍵生成端末から受け取るか、署名履歴を確認してください。同じ世代に別の鍵は生成しません。');
       if (state.keys.length >= MAX_KEYS) throw new Error('鍵履歴の保存上限です。既存データの保持を確認してください。');
       const key = await createPrivateCalendarAccountKey(port.crypto);
       try {

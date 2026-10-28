@@ -4196,5 +4196,38 @@
         "name": "private Calendar actual Rules preserve a remote stop when a former main returns until it explicitly confirms the source again"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-real-google-read-audit-is-explicit-bounded-and-nonpublishing",
+    "tests": [
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "Google read-only audit starts no authentication or acquisition on construction and exports only bounded aggregate results"
+      },
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "Google read-only audit coalesces one hundred requests and refuses account changes without returning private intervals"
+      },
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "Google read-only audit keeps restore and scope consent explicit and blocks every operation in release"
+      },
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "Google read-only audit reuses capture interval validation and cannot report a malformed partial response as a successful empty Calendar"
+      },
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "${platform} real Google read audit UI requires explicit session check and read and shows no Google label subject token or busy interval"
+      },
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "${platform} real Google read audit shows only allowlisted failure codes and never requests scopes automatically"
+      },
+      {
+        "file": "tests/sharing-google-calendar-read-audit.test.mjs",
+        "name": "real Google Native read audit composes only the existing Google gateways and reports transport counts without Firebase or storage"
+      }
+    ]
   }
 ]

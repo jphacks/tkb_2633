@@ -33,7 +33,7 @@ function rangeSnapshot(range: CalendarQueryRange): CalendarQueryRange {
     || Date.parse(owned.timeMax) - Date.parse(owned.timeMin) > 367 * 86400000) throw new Error('本人用Calendarの取得範囲を確認してください。');
   return owned;
 }
-function intervalsSnapshot(raw: readonly { start: string; end: string }[], range: CalendarQueryRange) {
+export function snapshotPrivateCalendarIntervals(raw: readonly { start: string; end: string }[], range: CalendarQueryRange) {
   if (!Array.isArray(raw) || raw.length > 100_000) throw new Error('Calendarから返された区間の件数が上限を超えています。');
   const min = Date.parse(range.timeMin); const max = Date.parse(range.timeMax);
   const intervals = mergeInstantRanges(raw.map(part => {
@@ -91,7 +91,7 @@ export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
       return publish(pending.encrypted);
     }
     await head();
-    const raw = await port.queryGoogle(subject, { ...range }); const intervals = intervalsSnapshot(raw, range);
+    const raw = await port.queryGoogle(subject, { ...range }); const intervals = snapshotPrivateCalendarIntervals(raw, range);
     const acceptedHead = await head(); const local = await cache.status(authority);
     const sequence = Math.max(local?.cursor.sequence ?? 0, acceptedHead.cacheHead?.sequence ?? 0) + 1;
     let key = await secrets.currentKey(userId, authority);

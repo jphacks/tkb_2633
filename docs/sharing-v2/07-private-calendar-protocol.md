@@ -127,8 +127,13 @@ subject・取得停止・準備中の変更は本人UID専用の保護vaultへ�
 
 通常v2の推奨計算はlocal cacheを一回だけ読み、共通予定・共有hash・共有操作へ本文やbindingを渡さない。日時フォームと承認フォームは本人が担当する時だけ結果を参照する。画面の読込はOAuth・Google取得・Cloud送信を始めない。復号したimmutable cacheは本人UID／manifestごとにまとめ、logout・変更で参照を無効化する。鮮度判定には毎回の現在時刻を使い、古いcacheや範囲外を空き時間とみなさない。
 
-自動契機、取得前のHTTP失敗backoff、OS背景worker、実Googleの両物理端末での読取検査は残る。合成providerと実Native暗号・SQLite・ローカルRulesの検査を、実アカウントのCalendar取得・本番サービス転送の証拠とはしない。
+自動契機、取得前のHTTP失敗backoff、OS背景workerは残る。実Googleの両物理端末での独立した読取はPhase 4atで確認した。合成providerと実Native暗号・SQLite・ローカルRulesの検査を、実アカウントのCalendar取得・本番サービス転送の証拠とはしない。
 
 ### 履歴を読めない設定を送らない
 
 4096版／4MiBの既存読取上限は維持する。新しい設定や取得元を準備・送信する前にも、次の版で履歴全体が読めなくならないことを検査する。小さな履歴は既存の文書上限から安全性を確認し、容量に近付いた場合だけ全履歴を事前検証する。上限では送信を止め、現在の信頼・旧鍵・準備した候補を保持する。履歴を削除して容量を空けたり、自動で新しいrootへ作り替えたりしない。
+
+
+## 実Googleの独立したNative読取（Phase 4at）
+
+既存のFreeBusy clientとNative Google認証を使い、物理iPhoneとAndroid 10で181日・3通信の読取を確認した。開発routeはGoogle識別子・トークン・区間を出力せず、件数だけを返す。Googleの予定・Tasksを書き換えず、SQLite・Firebaseに保存しない。iPhoneの追加権限とOAuthテスト利用者の設定も実際に切り分けた。これは実Googleの暗号化cache転送や通常グループとの総合E2Eを意味しない。自動取得・取得前の失敗backoff・単一workerは引き続き残作業である。

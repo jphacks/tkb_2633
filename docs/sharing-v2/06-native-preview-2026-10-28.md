@@ -388,3 +388,15 @@ Androidの未認識routeは開発clientの新しいbundleへの再接続で切�
 実際のLiFlowプロセスを終了し、再接続した開発bundleから保存済みの合成データを読み、取得0回で重複判定を確認した。iPhone7.750秒・Android30.517秒。成功画像は4枚を目視した。初期の識別子・無効状態の先行tap・古いbundle／開発client起動の失敗ログも保持する。API成功やOS任せの長時間backgroundの成功へ拡大しない。
 
 充電後のAndroidから、4arで未回収だった最終画像も回収し、設定5・鍵2・同じ端末ID・手動同期完了を目視できた。今回の合成取得元検査と履歴・既存データの境界は `evidence/2026-10-28-private-calendar-source.json` に保存した。
+
+
+## Phase 4at：実アカウントのFreeBusyを両物理端末で取得
+
+2026-10-29更新、基点`9808f03`。開発用の独立した読取routeで、既存Native認証・Google mutex・実FreeBusy HTTP clientを使用した。181日分を90・90・1日に分ける。結果は日数・通信数・正規化区間数だけで、busy区間やGoogle識別子・OAuth値を画面と検査ログへ返さない。Firebase・SQLiteへの保存やTasks更新はしない。
+
+- Android 10：`phase4at-android-real-read-first.log`、code 0、**7.142秒**。**181日・3通信・76区間**。`phase4at-android-real-google-read.png`を実際に確認した。
+- iPhone：`phase4at-ios-real-read-after-consent.log`、XCTest 1件成功、**8.885秒**。**181日・3通信・0区間**。`phase4at-ios-real-read-after-consent-attachments/F1AF5421-77F0-49C2-8128-2CC5A1481FA1.png`の結果と要素情報を確認した。
+
+先行するiPhone読取は追加権限不足で失敗し、明示した認可はOAuthテスト利用者の未登録で403となった。管理アカウントで既存プロジェクトのAudienceへ本人を追加し、登録2件・テスト中のまま保存を確認してから再認可した。新しいOAuth資格情報や公開設定を作っていない。認可開始・状態観察のXCTestはAPI成功件数と分け、先行失敗を残す。
+
+両端末の選択アカウントは同じとは限らないため、76と0の差は同期不一致の判定に使わない。この検査は実読取だけであり、実Google cacheの端末間転送・通常グループの総合E2E・OS任せのBackgroundTaskを成功とする証拠ではない。既存データを保持した。Androidは検査後に消灯し、続行時にADB接続・残量74%を確認した。給電状態を充電済みという申告から推測しない。

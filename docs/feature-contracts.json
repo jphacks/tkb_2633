@@ -3284,5 +3284,68 @@
         "name": "android private Calendar Native audit has no action in release builds"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-protected-device-and-key-vault",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar key store persists independent device keys and an explicitly pinned root across process reconstruction"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar additional devices cannot create a replacement key and must receive the same key through explicit approval"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar protected authority resumes after the old signer revokes itself and only the remaining main can generate a new future key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar key results stay guarded while the external SQLite lock is committing after SecureStore completed"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store.test.mjs",
+        "name": "private Calendar exact authority retries remain idempotent when transport object keys arrive in a different order"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-sqlite-runtime-lock-and-account-paths",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-lock.test.mjs",
+        "name": "private Calendar two SQLite connections cannot overlap vault callbacks while the first awaits native I/O"
+      },
+      {
+        "file": "tests/sharing-private-calendar-lock.test.mjs",
+        "name": "private Calendar independent runtimes share the SQLite lock and cannot generate competing device identities or current keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-lock.test.mjs",
+        "name": "private Calendar retries contention before the vault callback but never replays a callback that already changed an external store"
+      },
+      {
+        "file": "tests/sharing-database-location.test.mjs",
+        "name": "private Calendar Native files remain account-scoped and backup-excluded on both mobile OSes"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-native-key-vault-and-development-proof-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native secret adapter stays lazy, uses its own Keychain service and only opens the authenticated owner database"
+      },
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar persisted Native audit recovers the same synthetic keys and public proof in a reconstructed runtime without touching an account"
+      },
+      {
+        "file": "tests/sharing-private-calendar-store-ui.test.mjs",
+        "name": "private Calendar persisted-key screen cannot open its Native store in a release build"
+      }
+    ]
   }
 ]

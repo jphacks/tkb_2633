@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { assertSharedIdentifier } from '../../features/sharing/operations.ts';
+import { privateCalendarDatabaseFilename } from '../../features/sharing/private-calendar/database-name.ts';
+import type { PrivateCalendarDatabaseConnection } from '../storage/private-calendar-store.ts';
 
 export function validateSharingDatabaseLocation(value: unknown, defaultDirectory: string, platform: string): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('共有用の安全な保存先が準備されていません。');
@@ -47,4 +49,11 @@ export async function openSharingDatabase(userId: string, groupId: string, local
 
 export async function openSharingV2Database(userId: string, groupId: string, localGeneration?: string) {
   return openDatabaseAsync(sharingV2DatabaseFilename(userId, groupId, localGeneration), { useNewConnection: true }, await sharingDatabaseDirectory());
+}
+
+export async function openPrivateCalendarDatabase(userId: string, development = false): Promise<PrivateCalendarDatabaseConnection> {
+  if (development && !__DEV__) throw new Error('検査用の本人DBは開発ビルドだけで使用できます。');
+  const filename = privateCalendarDatabaseFilename(userId, development);
+  const database = await openDatabaseAsync(filename, { useNewConnection: true }, await sharingDatabaseDirectory());
+  return Object.freeze({ kind: 'private-calendar', ownerUserId: userId, development, filename, database });
 }

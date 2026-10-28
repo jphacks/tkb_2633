@@ -39,7 +39,7 @@ cacheは承認済みメイン端末だけが署名する。公開manifestは所�
 
 ## 接続前に必要な残作業
 
-1. 本人用SecureStore namespaceへの鍵・pinの保存、本人用のバックアップ除外SQLiteと固定envelopeのOutbox。既存個人DBの内容を自動で特定UIDへ関連付けない。
+1. 本人用SecureStore namespaceとバックアップ除外SQLiteへの保護保存はPhase 4ahで独立検査済み。固定envelopeのOutboxと原子的なcache保存は残作業。既存個人DBの内容を自動で特定UIDへ関連付けない。
 2. UID限定のFirestore領域、root／mainの比較更新、承認端末の署名を受信側で検証する通信port、最大100書込み以内の原子的なcache公開。Rulesは暗号署名を検証できないため、UID一致だけで復号後の承認検証を省略しない。
 3. メイン指定、追加端末の照合、解除と鍵更新、接続Googleアカウントの明示設定、同時変更の確認UI。非メイン端末を自動昇格させない。
 4. 既存Google同期mutexとsilent token取得を使う取得処理、アカウント・メイン世代の取得前後の照合、失敗・範囲不足・鮮度切れを未確認にする表示。各カードで重複取得しない。

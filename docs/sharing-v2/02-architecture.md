@@ -126,3 +126,10 @@ Tasksの対応はユーザー／グループ／共通家事回／完了対象で
 既存の排他的SQLite transactionと操作キューを使い、移行失敗では元のファイル・世代参照・Outboxを保持する。Snapshotには未解決の日時・claim、申請、必要な元の署名・履歴・因果情報を残す。旧snapshot・遅延応答を新世代へ入れない。
 
 最初は純粋ドメインと実SQLiteの検査を進める。次にEmulatorのRules／暗号転送、UI、物理端末の順で、[必須検査](03-verification-plan.md)と既存契約を照合する。完了条件は件数だけでなく、実行した経路と結果・未実施の区別を記録する。
+
+
+## 10. 本人Calendarの端末内保護保存
+
+本人の秘密鍵・信頼pin・検証済みcheckpoint・鍵履歴は専用Keychain serviceの既存secure vaultへまとめて保存する。SQLiteはUIDをdomain-separated hashへ変換したファイル名で、既存のバックアップ除外領域へ配置する。開発QAはさらに別namespaceとする。既存個人データをUIDへ自動移行しない。
+
+前景・別workerのvault更新には、同じSQLiteファイルへの排他的な書込みロックを必要とする。callback実行前の一時的busyだけを待ち直し、vaultへ保存した可能性のあるcallbackを自動再実行しない。vaultとSQLのcommitの前後に認証UIDを照合し、変更後に旧UIDの鍵を返さない。安全な保存からのcheckpoint復元と、クラウドからの新規authority受信を別の入口にし、受信値による信頼pinの差替えを許可しない。

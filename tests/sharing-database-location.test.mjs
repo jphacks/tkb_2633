@@ -5,6 +5,7 @@ import { loadNativeModule } from './helpers/native-module.mjs';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import * as operations from '../src/features/sharing/operations.ts';
+import * as privateCalendarNames from '../src/features/sharing/private-calendar/database-name.ts';
 
 function fixture(platform = 'android') {
   const directory = platform === 'android' ? '/data/user/0/jp.test/files/SQLite' : 'file:///var/mobile/Containers/Data/Application/app/Documents/SQLite';
@@ -16,10 +17,30 @@ function fixture(platform = 'android') {
     'react-native': { Platform: { OS: platform } },
     '@noble/hashes/sha2.js': { sha256 }, '@noble/hashes/utils.js': { bytesToHex },
     '../../features/sharing/operations.ts': operations,
+    '../../features/sharing/private-calendar/database-name.ts': privateCalendarNames,
   });
   const path = platform === 'android' ? '/data/user/0/jp.test/no_backup/LiFlowSharedSQLite' : '/var/mobile/Containers/Data/Application/app/Documents/SQLite/shared';
   return { module, directory, path, opens, set: (value) => { marker = value; }, ready: () => { marker = { policyVersion: 1, platform, databaseDirectory: path }; } };
 }
+
+test('private Calendar Native files remain account-scoped and backup-excluded on both mobile OSes', async () => {
+  const before = globalThis.__DEV__;
+  try {
+    for (const platform of ['ios', 'android']) {
+      const h = fixture(platform);
+      await assert.rejects(() => h.module.openPrivateCalendarDatabase('private-owner'), /ビルド/u); assert.equal(h.opens.length, 0);
+      h.ready(); const own = await h.module.openPrivateCalendarDatabase('private-owner');
+      const other = await h.module.openPrivateCalendarDatabase('another-owner');
+      assert.equal(own.kind, 'private-calendar'); assert.equal(own.ownerUserId, 'private-owner'); assert.equal(own.filename, privateCalendarNames.privateCalendarDatabaseFilename('private-owner'));
+      assert.notEqual(own.filename, other.filename); assert.notEqual(own.filename, h.module.sharingV2DatabaseFilename('private-owner', 'a-group'));
+      assert.equal(h.opens[0][2], `file://${h.path}`); assert.deepEqual(h.opens[0][1], { useNewConnection: true });
+      globalThis.__DEV__ = false; const count = h.opens.length;
+      await assert.rejects(() => h.module.openPrivateCalendarDatabase('private-owner', true), /開発/u); assert.equal(h.opens.length, count);
+      globalThis.__DEV__ = true; const qa = await h.module.openPrivateCalendarDatabase('private-owner', true);
+      assert.notEqual(qa.filename, own.filename); assert.equal(qa.development, true);
+    }
+  } finally { globalThis.__DEV__ = before; }
+});
 
 test('shared databases require a confirmed native backup-excluded directory on both mobile OSes', async () => {
   for (const platform of ['ios', 'android']) {

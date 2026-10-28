@@ -18,6 +18,14 @@ export interface WrappedPrivateCalendarKey { body: KeyHeader & { encryptedKey: s
 const HEADER_FIELDS = ['schemaVersion', 'suite', 'ownerUserId', 'accountGeneration', 'authorityDigest', 'keyVersion', 'revision', 'senderDeviceId', 'recipientDeviceId', 'ephemeralPublicKey', 'salt', 'nonce'];
 const utf8 = (value: unknown) => new TextEncoder().encode(canonicalJson(value));
 
+/** Copy bounded transport metadata before a storage/authentication await. This is not an approval check. */
+export function snapshotPrivateCalendarWrappedKey(wrapped: WrappedPrivateCalendarKey): WrappedPrivateCalendarKey {
+  exactRecord(wrapped, ['body', 'signature']); exactRecord(wrapped.body, [...HEADER_FIELDS, 'encryptedKey']);
+  hexBytes(wrapped.signature, 64);
+  for (const value of Object.values(wrapped.body)) if (!(typeof value === 'string' && value.length <= 256 || Number.isSafeInteger(value))) throw new Error('本人用の鍵情報が大きすぎるか無効です。');
+  return { body: { ...wrapped.body }, signature: wrapped.signature };
+}
+
 export async function createPrivateCalendarAccountKey(crypto: SharingCryptoGateway): Promise<Uint8Array> {
   const key = await crypto.randomBytes(32); if (key.length !== 32) throw new Error('安全な本人用の鍵を生成できません。'); return key;
 }
@@ -46,7 +54,7 @@ export async function wrapPrivateCalendarKey(crypto: SharingCryptoGateway, accou
 }
 export async function unwrapPrivateCalendarKey(crypto: SharingCryptoGateway, wrapped: WrappedPrivateCalendarKey,
   authority: VerifiedPrivateCalendarAuthority, recipient: DeviceSecretIdentity): Promise<Uint8Array> {
-  validateDeviceSecretIdentity(recipient); exactRecord(wrapped, ['body', 'signature']); exactRecord(wrapped.body, [...HEADER_FIELDS, 'encryptedKey']);
+  validateDeviceSecretIdentity(recipient); wrapped = snapshotPrivateCalendarWrappedKey(wrapped);
   const { encryptedKey, ...header } = wrapped.body; const state = authority.signed.body;
   const sender = state.devices.find((device) => device.deviceId === header.senderDeviceId);
   if (header.schemaVersion !== 1 || header.suite !== SUITE || header.ownerUserId !== state.ownerUserId || header.accountGeneration !== state.accountGeneration

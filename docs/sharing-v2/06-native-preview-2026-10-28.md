@@ -277,3 +277,24 @@ AndroidのADB・実アクセシビリティ操作では、同じ日時指定か�
 | Android、PASS 12件・2万区間・22分割 | `cc8b365a4c4a6ba131afd034c2de1ee001cc2494ddff8420af6991e3d12343d9` |
 
 画素と要素情報を照合し、`phase4ag-native-and-code-evidence.json`へソースのdigest、環境・範囲・結果と合わせて記録した。本番Rules、実アカウントの時間帯、グループの移行、main、READMEは変更しない。
+
+
+## 13. 本人Calendarの保存鍵とプロセス再起動
+
+`development/private-calendar-store-preview`で、合成QA専用のUID・Keychain service・SQLiteだけを利用した。鍵そのものを画面やlogへ出さず、合成鍵のSHA-256照合値と公開の端末ID・authority digestを比較した。両端末で、秘密鍵を使う署名検証、保護したauthorityの復元、保存鍵の一致、Native AES-GCMの4項目が通過した。
+
+| 環境 | 初回保存 | プロセス終了後の再読込 | 再起動前後の比較 |
+| --- | --- | --- | --- |
+| 物理iPhone・XCTest | 8.160秒 | 9.144秒 | 端末ID・authority・合成鍵照合値が一致 |
+| 物理Android 10・ADB補助 | 6.022秒、code 0 | 5.567秒、code 0 | 同上、プロセスID変更も照合 |
+
+Androidはforce-stopと起動、iPhoneはdevicectlのterminate-existing指定と新しいプロセス起動を行った。これは**アプリの再起動**であり、OS再起動やOS任せのバックグラウンド動作の成功へ拡大解釈しない。実データの初期化、LiFlowの再インストール、実アカウントへの接続・クラウド保存は行わない。releaseではQAの操作とQA用保存先を拒否する。
+
+| 実画像 | SHA-256 |
+| --- | --- |
+| iPhone初回 | `18f57fce840f5b35f10dfaae953d650f62abef7b3497c7e5674cb96e117dd392` |
+| iPhone復元 | `45c1a241929279cfe5c3c3ad7195af8b35c4dd20f49e6e7507f5a86182102c67` |
+| Android初回 | `8f8ae7226a4a72973e5e737c56ac6a5471c42be574be42f475012334f25ccbf6` |
+| Android復元 | `e883a91ccd03297700cc4120e8f8dd5e308e075e57ba66bfbcd808ca27fc9903` |
+
+実行記録と比較は`phase4ah-native-and-code-evidence.json`へ保存した。本人用クラウド同期や異種OS間の共有E2Eは引き続き未完である。

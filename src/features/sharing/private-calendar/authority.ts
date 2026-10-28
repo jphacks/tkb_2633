@@ -17,9 +17,11 @@ export interface PrivateCalendarTrustAnchor { ownerUserId: string; accountGenera
 /** Keep this verified value in memory; re-verify a serialized chain against its local anchor. */
 export interface VerifiedPrivateCalendarAuthority {
   readonly signed: SignedPrivateCalendarAuthority; readonly digest: string; readonly anchor: PrivateCalendarTrustAnchor;
+  readonly signer: DevicePublicIdentity;
 }
 
-function validatedDocument(value: SignedPrivateCalendarAuthority): SignedPrivateCalendarAuthority {
+/** Bounds and copies transport input; this alone does not verify its authority. */
+export function snapshotPrivateCalendarAuthority(value: SignedPrivateCalendarAuthority): SignedPrivateCalendarAuthority {
   exactRecord(value, ['body', 'signature']);
   exactRecord(value.body, ['schemaVersion', 'suite', 'ownerUserId', 'accountGeneration', 'revision', 'keyVersion', 'mainDeviceId', 'devices', 'previousDigest', 'signerDeviceId']);
   const body = value.body;
@@ -37,22 +39,22 @@ function validatedDocument(value: SignedPrivateCalendarAuthority): SignedPrivate
     || !devices.some((device) => device.deviceId === body.mainDeviceId)) throw new Error('本人用端末の登録が無効です。');
   return { body: { ...body, devices }, signature: value.signature };
 }
-function verified(signed: SignedPrivateCalendarAuthority, anchor: PrivateCalendarTrustAnchor): VerifiedPrivateCalendarAuthority {
+function verified(signed: SignedPrivateCalendarAuthority, anchor: PrivateCalendarTrustAnchor, signer: DevicePublicIdentity): VerifiedPrivateCalendarAuthority {
   // Do not retain mutable objects supplied by a caller or transport.
   const copy = { body: { ...signed.body, devices: signed.body.devices.map((device) => ({ ...device })) }, signature: signed.signature };
   copy.body.devices.forEach(Object.freeze); Object.freeze(copy.body.devices); Object.freeze(copy.body); Object.freeze(copy);
-  return Object.freeze({ signed: copy, digest: sharedDocumentDigest(copy), anchor: Object.freeze({ ...anchor }) });
+  return Object.freeze({ signed: copy, digest: sharedDocumentDigest(copy), anchor: Object.freeze({ ...anchor }), signer: Object.freeze({ ...signer }) });
 }
 export function verifyPrivateCalendarRoot(value: SignedPrivateCalendarAuthority, anchor: PrivateCalendarTrustAnchor): VerifiedPrivateCalendarAuthority {
   exactRecord(anchor, ['ownerUserId', 'accountGeneration', 'rootDigest']);
   assertSharedIdentifier(anchor.ownerUserId); hexBytes(anchor.accountGeneration, 32); hexBytes(anchor.rootDigest, 32);
-  const signed = validatedDocument(value); const body = signed.body;
+  const signed = snapshotPrivateCalendarAuthority(value); const body = signed.body;
   if (body.ownerUserId !== anchor.ownerUserId || body.accountGeneration !== anchor.accountGeneration
     || body.revision !== 1 || body.keyVersion !== 1 || body.previousDigest !== null || body.devices.length !== 1
     || body.mainDeviceId !== body.signerDeviceId || body.devices[0].deviceId !== body.signerDeviceId
     || sharedDocumentDigest(signed) !== anchor.rootDigest) throw new Error('本人端末で確認した信頼情報と一致しません。');
   verifySharedDocument(body, signed.signature, body.devices[0]);
-  return verified(signed, anchor);
+  return verified(signed, anchor, body.devices[0]);
 }
 /** Call only for an explicit first-device setup, never as an automatic replacement for missing keys. */
 export async function createPrivateCalendarRoot(crypto: SharingCryptoGateway, ownerUserId: string, device: DeviceSecretIdentity): Promise<VerifiedPrivateCalendarAuthority> {
@@ -65,7 +67,7 @@ export async function createPrivateCalendarRoot(crypto: SharingCryptoGateway, ow
   return verifyPrivateCalendarRoot(signed, { ownerUserId, accountGeneration: body.accountGeneration, rootDigest: sharedDocumentDigest(signed) });
 }
 export function verifyPrivateCalendarAuthorityUpdate(previous: VerifiedPrivateCalendarAuthority, value: SignedPrivateCalendarAuthority): VerifiedPrivateCalendarAuthority {
-  const signed = validatedDocument(value); const before = previous.signed.body; const body = signed.body;
+  const signed = snapshotPrivateCalendarAuthority(value); const before = previous.signed.body; const body = signed.body;
   if (body.ownerUserId !== before.ownerUserId || body.accountGeneration !== before.accountGeneration
     || body.revision !== before.revision + 1 || body.previousDigest !== previous.digest) throw new Error('本人端末の設定が更新されています。再読込して確認してください。');
   const signer = before.devices.find((device) => device.deviceId === body.signerDeviceId);
@@ -74,7 +76,22 @@ export function verifyPrivateCalendarAuthorityUpdate(previous: VerifiedPrivateCa
   if (body.keyVersion !== before.keyVersion && body.keyVersion !== before.keyVersion + 1
     || (removed && body.keyVersion !== before.keyVersion + 1)) throw new Error('端末解除には本人用の新しい鍵が必要です。');
   verifySharedDocument(body, signed.signature, signer);
-  return verified(signed, previous.anchor);
+  return verified(signed, previous.anchor, signer);
+}
+
+export interface ProtectedPrivateCalendarCheckpoint { signed: SignedPrivateCalendarAuthority; signer: DevicePublicIdentity }
+/** Only for a previously verified checkpoint read from protected local storage. Never accept this object from Cloud. */
+export function privateCalendarAuthorityFromProtectedCheckpoint(checkpoint: ProtectedPrivateCalendarCheckpoint, anchor: PrivateCalendarTrustAnchor): VerifiedPrivateCalendarAuthority {
+  exactRecord(checkpoint, ['signed', 'signer']); exactRecord(checkpoint.signer, ['deviceId', 'signingPublicKey', 'agreementPublicKey']);
+  exactRecord(anchor, ['ownerUserId', 'accountGeneration', 'rootDigest']); assertSharedIdentifier(anchor.ownerUserId);
+  hexBytes(anchor.accountGeneration, 32); hexBytes(anchor.rootDigest, 32);
+  const signed = snapshotPrivateCalendarAuthority(checkpoint.signed); const signer = validateDevicePublicIdentity(checkpoint.signer);
+  if (signed.body.ownerUserId !== anchor.ownerUserId || signed.body.accountGeneration !== anchor.accountGeneration
+    || signed.body.signerDeviceId !== signer.deviceId || signed.body.keyVersion > signed.body.revision
+    || signed.body.revision > 1 && signed.body.previousDigest === null) throw new Error('本人用の保存済み認証情報が一致しません。');
+  if (signed.body.revision === 1) return verifyPrivateCalendarRoot(signed, anchor);
+  verifySharedDocument(signed.body, signed.signature, signer);
+  return verified(signed, anchor, signer);
 }
 /** The caller must obtain explicit pairing/main-device/revocation confirmation before signing. */
 export function advancePrivateCalendarAuthority(previous: VerifiedPrivateCalendarAuthority, change: {

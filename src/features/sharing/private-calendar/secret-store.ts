@@ -1,6 +1,6 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
-import type { DeviceSecretIdentity, SharingCryptoGateway } from '../crypto.ts';
-import { createDeviceIdentity, sharedDocumentDigest, validateDeviceSecretIdentity } from '../crypto.ts';
+import type { DevicePublicIdentity, DeviceSecretIdentity, SharingCryptoGateway } from '../crypto.ts';
+import { createDeviceIdentity, sharedDocumentDigest, validateDevicePublicIdentity, validateDeviceSecretIdentity } from '../crypto.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
 import type { PrivateCalendarTrustAnchor, ProtectedPrivateCalendarCheckpoint, SignedPrivateCalendarAuthority, VerifiedPrivateCalendarAuthority } from './authority.ts';
 import { privateCalendarAuthorityFromProtectedCheckpoint, snapshotPrivateCalendarAuthority, verifyPrivateCalendarAuthorityUpdate, verifyPrivateCalendarRoot } from './authority.ts';
@@ -59,6 +59,18 @@ function approvedAuthority(state: SecretState, expected: VerifiedPrivateCalendar
 }
 function requiredState(state: SecretState | null): SecretState {
   if (!state) throw new Error('本人端末を先に準備してください。既存の鍵は自動で置き換えません。'); return state;
+}
+
+export interface ProtectedPrivateCalendarDeviceState {
+  readonly identity: DevicePublicIdentity; readonly authority: VerifiedPrivateCalendarAuthority | null;
+  readonly hasCurrentKey: boolean; readonly hasStoredKeys: boolean;
+}
+/** Only a protected-vault reader holding this UID's SQL lock may call this; no private key material leaves it. */
+export function readPrivateCalendarProtectedDeviceState(raw: string | null, userId: string): ProtectedPrivateCalendarDeviceState {
+  assertSharedIdentifier(userId); const state = requiredState(raw === null ? null : stateFromProtectedStorage(raw, userId));
+  const authority = state.checkpoint ? currentAuthority(state) : null;
+  return Object.freeze({ identity: Object.freeze(validateDevicePublicIdentity(state.identity)), authority,
+    hasStoredKeys: state.keys.length > 0, hasCurrentKey: authority !== null && state.keys.some((key) => key.keyVersion === authority.signed.body.keyVersion) });
 }
 
 /** Read only the protected vault while its caller already holds the same UID's SQLite lock. */

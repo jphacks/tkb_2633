@@ -1,8 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 import { createSecureVault } from '../../features/sharing/secure-vault.ts';
-import { assertPrivateCalendarProtectedAuthority, createPrivateCalendarSecretStore } from '../../features/sharing/private-calendar/secret-store.ts';
+import { assertPrivateCalendarProtectedAuthority, createPrivateCalendarSecretStore, readPrivateCalendarProtectedDeviceState } from '../../features/sharing/private-calendar/secret-store.ts';
 import { createPrivateCalendarExclusiveStorage } from '../storage/private-calendar-store.ts';
 import { createPrivateCalendarCacheStorage } from '../storage/private-calendar-cache.ts';
+import { createPrivateCalendarRootSetupStorage } from '../storage/private-calendar-root-setup.ts';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getSharingServices } from './firebase-services.ts';
 import { openPrivateCalendarDatabase } from './database-location';
@@ -36,13 +37,22 @@ function nativeStore(development: boolean) {
         assertPrivateCalendarProtectedAuthority(raw, userId, authority, requireMain);
       } });
   }
-  return { secrets, cache };
+  function rootSetup(userId: string) {
+    assertOwner(userId);
+    return createPrivateCalendarRootSetupStorage({ ownerUserId: userId, crypto: nativePrivateCalendarCrypto, assertOwner, exclusive,
+      async readProtected() {
+        const raw = await vault.getItem(`private-calendar-state:${userId}`); assertOwner(userId);
+        return readPrivateCalendarProtectedDeviceState(raw, userId);
+      } });
+  }
+  return { secrets, cache, rootSetup };
 }
 
 /** Importing this module does not initialize Firebase or open any user's database. */
 const native = nativeStore(false);
 export const nativePrivateCalendarSecrets = native.secrets;
 export const nativePrivateCalendarCache = native.cache;
+export const nativePrivateCalendarRootSetup = native.rootSetup;
 let qaStore: ReturnType<typeof nativeStore> | undefined;
 export function developmentPrivateCalendarSecrets() {
   if (!__DEV__) throw new Error('検査用の鍵保存は開発ビルドだけで使用できます。');
@@ -51,4 +61,8 @@ export function developmentPrivateCalendarSecrets() {
 export function developmentPrivateCalendarCache(userId: string) {
   if (!__DEV__) throw new Error('検査用のCalendar保存は開発ビルドだけで使用できます。');
   return (qaStore ??= nativeStore(true)).cache(userId);
+}
+export function developmentPrivateCalendarRootSetup(userId: string) {
+  if (!__DEV__) throw new Error('検査用の初回設定は開発ビルドだけで使用できます。');
+  return (qaStore ??= nativeStore(true)).rootSetup(userId);
 }

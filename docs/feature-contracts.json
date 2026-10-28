@@ -3620,5 +3620,64 @@
         "name": "private Calendar issuer-history recovery owns every signed input before its first asynchronous account check"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-durable-first-device-intent-and-server-before-pin-order",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar first-device setup stores its exact public intent before server acceptance and commits one durable pin and key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar a lost server create reply survives process reconstruction with the exact root and no premature pin or data key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar parallel first-device setup runtimes share one SQL lock and cannot create competing roots or duplicate keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar first-device setup leaves trust and data-key generation pending until the actual server acceptance resolves"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar a failure after data-key storage retries only finalization and clears the unreturned temporary key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar committed root intents remain recoverable after an account switch and cannot leak their result to the new account"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar malformed saved root intents fail closed without generating a replacement or changing the original device identity"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar old ciphertext without its protected trust blocks automatic first-device reinitialization and preserves the old SQL row"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar a different or advanced server root cannot finalize a prepared first-device pin or generate its data key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-root-setup.test.mjs",
+        "name": "private Calendar first-device setup is explicit and a bare resume cannot generate an identity, trust pin or key"
+      },
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native first-device setup shares its own protected vault and SQL connection and requires the authenticated owner"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar prepared first-device setup resumes the same real server acceptance from SQLite after a lost reply"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar a losing first-device setup keeps its local candidate without pinning or generating a key for the winning account root"
+      }
+    ]
   }
 ]

@@ -78,3 +78,8 @@ RulesはEd25519の署名を検証できず、同一UIDを持つ不正なクラ�
 安全性確認と最終承認の前に実アカウントの時間帯をアップロードしない。本番Rules配備・既存グループ移行・mainマージは別の最終承認対象。
 
 参照：[FreeBusy API](https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query)、[Expo SDK58 Crypto](https://docs.expo.dev/versions/v58.0.0/sdk/crypto/)、[Expo SDK58 SecureStore](https://docs.expo.dev/versions/v58.0.0/sdk/securestore/)。
+
+
+### 初回端末の通信中断と準備済みroot
+
+初回設定の明示操作では、同じUIDの保護鍵と専用SQLiteロックの下で署名済みrootを`pending`として保存する。SQLに置くのは公開root・digest・進行状態のみ。通信の返答前に信頼pinやDEKを確定しない。`createRoot`の返答が準備済みrootと完全一致してから保護領域の信頼・鍵を保存し、最後に同じintentを`ready`へ進める。返答消失・アプリ終了・最後のSQL失敗は同じintentから回復する。再送で新しいrootや同じ世代の別鍵を作らない。別rootまたは進んだサーバーheadを受けた場合は自動信頼せず、準備内容を保持する。

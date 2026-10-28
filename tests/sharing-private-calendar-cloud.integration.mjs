@@ -1,7 +1,9 @@
 import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { collection, deleteDoc, doc, getDocFromServer, getDocsFromServer, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
@@ -12,6 +14,7 @@ import { advancePrivateCalendarAuthority, createPrivateCalendarRoot, verifyPriva
 import { createPrivateCalendarAccountKey, unwrapPrivateCalendarKey, wrapPrivateCalendarKey } from '../src/features/sharing/private-calendar/key-envelope.ts';
 import { createPrivateCalendarCloud } from '../src/platform/sharing/private-calendar-cloud.ts';
 import { openPrivateCalendarCache, sealPrivateCalendarCache } from '../src/features/sharing/private-calendar/cache-crypto.ts';
+import { privateCalendarSetupFixture } from './helpers/private-calendar-setup.mjs';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Use the local Firestore emulator only.');
 let env;
@@ -266,4 +269,25 @@ test('private Calendar Cloud account change during Native ciphertext verificatio
   } });
   await assert.rejects(() => interrupted.cloud.uploadCache(h.authority, encrypted), { code: 'private-calendar/access-denied' });
   assert.equal((await h.left.cloud.readHead()).cacheHead, null); assert.equal((await getDocsFromServer(collection(h.ref, 'caches'))).size, 0); h.key.fill(0);
+});
+
+test('private Calendar prepared first-device setup resumes the same real server acceptance from SQLite after a lost reply', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'liflow-root-cloud-')); t.after(() => rmSync(directory, { force: true, recursive: true }));
+  const path = join(directory, 'prepared.db'); const local = privateCalendarSetupFixture(t, { userId, path }); const remote = client(userId); let drop = true;
+  const cloud = { async createRoot(root) { const accepted = await remote.cloud.createRoot(root); if (drop) { drop = false; throw new Error('reply lost after server acceptance'); } return accepted; } };
+  await assert.rejects(() => local.controller(cloud).prepareAndResume(), /reply lost/u);
+  const prepared = await local.roots.read(); assert.equal((await local.readProtected()).authority, null); assert.equal((await local.readProtected()).hasStoredKeys, false);
+  assert.equal((await remote.cloud.readHead()).rootDigest, prepared.digest);
+  const restarted = privateCalendarSetupFixture(t, { userId, path, values: local.values, state: local.state });
+  assert.equal((await restarted.controller(remote.cloud).resume()).rootDigest, prepared.digest);
+  assert.equal((await restarted.roots.read()).status, 'ready'); assert.equal((await restarted.readProtected()).hasCurrentKey, true);
+  const generation = local.state.generations; await restarted.controller(remote.cloud).prepareAndResume(); assert.equal(local.state.generations, generation);
+});
+
+test('private Calendar a losing first-device setup keeps its local candidate without pinning or generating a key for the winning account root', async t => {
+  const winning = await fixture(); const losing = privateCalendarSetupFixture(t, { userId });
+  await assert.rejects(() => losing.controller(client(userId).cloud).prepareAndResume(), { code: 'private-calendar/conflict' });
+  const intent = await losing.roots.read(); assert.equal(intent.status, 'pending'); assert.notEqual(intent.digest, winning.root.digest);
+  assert.equal((await losing.readProtected()).authority, null); assert.equal((await losing.readProtected()).hasStoredKeys, false);
+  assert.equal((await winning.left.cloud.readHead()).rootDigest, winning.root.digest);
 });

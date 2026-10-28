@@ -8,6 +8,7 @@ import * as secrets from '../src/features/sharing/private-calendar/secret-store.
 import * as storage from '../src/platform/storage/private-calendar-store.ts';
 import * as cacheStorage from '../src/platform/storage/private-calendar-cache.ts';
 import * as rootSetupStorage from '../src/platform/storage/private-calendar-root-setup.ts';
+import * as authorityIntentStorage from '../src/platform/storage/private-calendar-authority-intents.ts';
 import { privateCalendarDatabaseFilename } from '../src/features/sharing/private-calendar/database-name.ts';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { createHash } from 'node:crypto';
@@ -32,6 +33,7 @@ function fixture(values = new Map([['jp.jphacks.tkb2633.sharing:original', 'pres
     '../storage/private-calendar-store.ts': storage,
     '../storage/private-calendar-cache.ts': cacheStorage,
     '../storage/private-calendar-root-setup.ts': rootSetupStorage,
+    '../storage/private-calendar-authority-intents.ts': authorityIntentStorage,
     './firebase-services.ts': { getSharingServices: () => { authReads++; return { auth: { currentUser } }; } },
     './native-private-calendar-crypto': { nativePrivateCalendarCrypto: crypto },
     './database-location': { openPrivateCalendarDatabase: async (ownerUserId, development) => {
@@ -59,6 +61,7 @@ test('private Calendar development key storage is release-blocked and uses a sep
     globalThis.__DEV__ = false; assert.throws(() => f.module.developmentPrivateCalendarSecrets(), /開発/u);
     assert.throws(() => f.module.developmentPrivateCalendarCache('development-calendar-private-store'), /開発/u);
     assert.throws(() => f.module.developmentPrivateCalendarRootSetup('development-calendar-private-store'), /開発/u);
+    assert.throws(() => f.module.developmentPrivateCalendarAuthorityIntents('development-calendar-private-store'), /開発/u);
     assert.equal(f.calls.length, 0); assert.equal(f.opens.length, 0); assert.equal(f.authReads(), 0);
     globalThis.__DEV__ = true; const qa = f.module.developmentPrivateCalendarSecrets();
     await assert.rejects(() => qa.identity('private-owner'), /アカウント/u); assert.equal(f.opens.length, 0);
@@ -142,5 +145,20 @@ test('private Calendar Native first-device setup shares its own protected vault 
   assert.equal(f.opens.length, 1); assert.equal(f.opens[0].development, false);
   assert.ok(f.calls.every(call => call.options.keychainService === 'jp.jphacks.tkb2633.private-calendar'));
   const count = f.calls.length; f.auth('another-owner'); await assert.rejects(() => setup.resume(), /アカウント/u); assert.equal(f.calls.length, count);
+  assert.equal(f.values.get('jp.jphacks.tkb2633.sharing:original'), 'preserved');
+});
+
+test('private Calendar Native authority intents reuse the protected owner lock without committing a draft or touching another user', async t => {
+  const f = fixture(); t.after(f.close); assert.throws(() => f.module.nativePrivateCalendarAuthorityIntents('private-owner'), /アカウント/u);
+  assert.equal(f.opens.length, 0); f.auth('private-owner'); const secrets = f.module.nativePrivateCalendarSecrets;
+  const roots = f.module.nativePrivateCalendarRootSetup('private-owner'); let accepted;
+  await createPrivateCalendarFirstDeviceSetup({ userId: 'private-owner', secrets, intents: roots,
+    cloud: { async createRoot(root) { accepted = root; return { head: privateCalendarCloudFields(root) }; } } }).prepareAndResume();
+  const identity = await secrets.identity('private-owner'); const { mainDeviceId, devices } = accepted.signed.body;
+  const changes = f.module.nativePrivateCalendarAuthorityIntents('private-owner');
+  const pending = await changes.prepare({ mainDeviceId, devices, keyVersion: 2 }, identity);
+  assert.equal((await secrets.authority('private-owner')).digest, accepted.digest); assert.equal((await changes.readPending()).digest, pending.digest);
+  assert.equal(f.opens.length, 1); assert.ok(f.calls.every(call => call.options.keychainService === 'jp.jphacks.tkb2633.private-calendar'));
+  const calls = f.calls.length; f.auth('another-owner'); await assert.rejects(() => changes.readPending(), /アカウント/u); assert.equal(f.calls.length, calls);
   assert.equal(f.values.get('jp.jphacks.tkb2633.sharing:original'), 'preserved');
 });

@@ -4,6 +4,7 @@ import { assertPrivateCalendarProtectedAuthority, createPrivateCalendarSecretSto
 import { createPrivateCalendarExclusiveStorage } from '../storage/private-calendar-store.ts';
 import { createPrivateCalendarCacheStorage } from '../storage/private-calendar-cache.ts';
 import { createPrivateCalendarRootSetupStorage } from '../storage/private-calendar-root-setup.ts';
+import { createPrivateCalendarAuthorityIntentStorage } from '../storage/private-calendar-authority-intents.ts';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getSharingServices } from './firebase-services.ts';
 import { openPrivateCalendarDatabase } from './database-location';
@@ -45,7 +46,14 @@ function nativeStore(development: boolean) {
         return readPrivateCalendarProtectedDeviceState(raw, userId);
       } });
   }
-  return { secrets, cache, rootSetup };
+  function authorityIntents(userId: string) {
+    assertOwner(userId);
+    return createPrivateCalendarAuthorityIntentStorage({ ownerUserId: userId, assertOwner, exclusive, async readProtected() {
+      const raw = await vault.getItem(`private-calendar-state:${userId}`); assertOwner(userId);
+      return readPrivateCalendarProtectedDeviceState(raw, userId);
+    } });
+  }
+  return { secrets, cache, rootSetup, authorityIntents };
 }
 
 /** Importing this module does not initialize Firebase or open any user's database. */
@@ -53,6 +61,7 @@ const native = nativeStore(false);
 export const nativePrivateCalendarSecrets = native.secrets;
 export const nativePrivateCalendarCache = native.cache;
 export const nativePrivateCalendarRootSetup = native.rootSetup;
+export const nativePrivateCalendarAuthorityIntents = native.authorityIntents;
 let qaStore: ReturnType<typeof nativeStore> | undefined;
 export function developmentPrivateCalendarSecrets() {
   if (!__DEV__) throw new Error('検査用の鍵保存は開発ビルドだけで使用できます。');
@@ -65,4 +74,8 @@ export function developmentPrivateCalendarCache(userId: string) {
 export function developmentPrivateCalendarRootSetup(userId: string) {
   if (!__DEV__) throw new Error('検査用の初回設定は開発ビルドだけで使用できます。');
   return (qaStore ??= nativeStore(true)).rootSetup(userId);
+}
+export function developmentPrivateCalendarAuthorityIntents(userId: string) {
+  if (!__DEV__) throw new Error('検査用の本人端末の変更は開発ビルドだけで使用できます。');
+  return (qaStore ??= nativeStore(true)).authorityIntents(userId);
 }

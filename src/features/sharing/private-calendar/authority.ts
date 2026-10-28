@@ -6,6 +6,12 @@ import { exactRecord, hexBytes, positiveInteger } from './validation.ts';
 
 export const PRIVATE_CALENDAR_AUTHORITY_SUITE = 'liflow-private-calendar-authority-v1';
 export const MAX_PRIVATE_CALENDAR_DEVICES = 16;
+export interface PrivateCalendarAuthorityChange { mainDeviceId: string; keyVersion: number; devices: DevicePublicIdentity[] }
+export function snapshotPrivateCalendarAuthorityChange(change: PrivateCalendarAuthorityChange): PrivateCalendarAuthorityChange {
+  exactRecord(change, ['mainDeviceId', 'keyVersion', 'devices']); assertSharedIdentifier(change.mainDeviceId); positiveInteger(change.keyVersion);
+  if (!Array.isArray(change.devices) || !change.devices.length || change.devices.length > MAX_PRIVATE_CALENDAR_DEVICES) throw new Error('本人端末の一覧を確認してください。');
+  return { ...change, devices: change.devices.map(validateDevicePublicIdentity) };
+}
 export interface PrivateCalendarAuthorityBody {
   schemaVersion: 1; suite: typeof PRIVATE_CALENDAR_AUTHORITY_SUITE;
   ownerUserId: string; accountGeneration: string; revision: number; keyVersion: number;

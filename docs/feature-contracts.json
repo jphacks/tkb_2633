@@ -3700,5 +3700,64 @@
         "name": "private Calendar initial-setup QA has explicit separate stages and no release side effects"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-durable-device-changes-and-pinned-history-recovery",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority changes persist one exact signed intent before transport and keep the formal pin unchanged until receipt"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar lost authority receipts resume the same SQL intent after process reconstruction without replacing keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority receipt recovery handles failure after protected update but before the SQL acknowledgement"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar competing device changes preserve the losing draft for explicit review and cannot dismiss a newer or accepted intent"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar two SQLite runtimes cannot prepare competing changes or overwrite the first draft"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority history paginates 103 signed revisions and validates every link from the protected root before applying"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar missing reordered forked and substituted authority history never advances a protected checkpoint"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority input is copied before authentication awaits and revocation must rotate its key generation"
+      },
+      {
+        "file": "tests/sharing-private-calendar-authority-sync.test.mjs",
+        "name": "private Calendar authority intents fail closed on corrupted SQL, owner switches and missing trust without replacing saved originals"
+      },
+      {
+        "file": "tests/sharing-private-calendar-native-store.test.mjs",
+        "name": "private Calendar Native authority intents reuse the protected owner lock without committing a draft or touching another user"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar prepared device changes recover their exact real server receipt after a lost reply and SQL reconstruction"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar real competing device changes retain the losing draft while verified history follows the server winner"
+      },
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar receiver rejects a tampered real authority archive before advancing protected state"
+      }
+    ]
   }
 ]

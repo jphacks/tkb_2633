@@ -15,6 +15,7 @@ import { createPrivateCalendarAccountKey, unwrapPrivateCalendarKey, wrapPrivateC
 import { createPrivateCalendarCloud } from '../src/platform/sharing/private-calendar-cloud.ts';
 import { openPrivateCalendarCache, sealPrivateCalendarCache } from '../src/features/sharing/private-calendar/cache-crypto.ts';
 import { privateCalendarSetupFixture } from './helpers/private-calendar-setup.mjs';
+import { createPrivateCalendarAuthoritySync } from '../src/features/sharing/private-calendar/authority-sync.ts';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Use the local Firestore emulator only.');
 let env;
@@ -290,4 +291,46 @@ test('private Calendar a losing first-device setup keeps its local candidate wit
   const intent = await losing.roots.read(); assert.equal(intent.status, 'pending'); assert.notEqual(intent.digest, winning.root.digest);
   assert.equal((await losing.readProtected()).authority, null); assert.equal((await losing.readProtected()).hasStoredKeys, false);
   assert.equal((await winning.left.cloud.readHead()).rootDigest, winning.root.digest);
+});
+
+test('private Calendar prepared device changes recover their exact real server receipt after a lost reply and SQL reconstruction', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'liflow-control-cloud-')); t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const path = join(directory, 'control.db'); const f = privateCalendarSetupFixture(t, { userId, path }); const native = client(userId);
+  await f.controller(native.cloud).prepareAndResume(); const root = await f.secrets.authority(userId); const other = await createDeviceIdentity(crypto); let lose = true;
+  const cloud = { ...native.cloud, async commitAuthority(...args) {
+    const receipt = await native.cloud.commitAuthority(...args); if (lose) { lose = false; throw new Error('connection lost after device approval'); } return receipt;
+  } };
+  const sync = h => createPrivateCalendarAuthoritySync({ userId, secrets: h.secrets, intents: h.changes, cloud });
+  const change = { mainDeviceId: root.signed.body.mainDeviceId, devices: [...root.signed.body.devices, other], keyVersion: 1 };
+  await assert.rejects(() => sync(f).change(change), /connection lost/u); const saved = await f.changes.readPending();
+  assert.equal((await f.secrets.authority(userId)).digest, root.digest); assert.equal((await native.cloud.readHead()).authorityDigest, saved.digest);
+  const restored = privateCalendarSetupFixture(t, { userId, path, values: f.values, state: f.state });
+  const accepted = await sync(restored).resume(); assert.equal(accepted.kind, 'accepted'); assert.equal(accepted.authority.digest, saved.digest);
+  assert.equal(await restored.changes.readPending(), null); assert.equal((await native.cloud.authorityPage(0)).authorities.length, 2);
+});
+
+test('private Calendar real competing device changes retain the losing draft while verified history follows the server winner', async t => {
+  const f = privateCalendarSetupFixture(t, { userId }); const left = client(userId); await f.controller(left.cloud).prepareAndResume();
+  const root = await f.secrets.authority(userId); const identity = await f.secrets.identity(userId); const other = await createDeviceIdentity(crypto);
+  const pending = await f.changes.prepare({ mainDeviceId: identity.deviceId, devices: [identity, other], keyVersion: 1 }, identity);
+  const winning = advancePrivateCalendarAuthority(root, { mainDeviceId: identity.deviceId, devices: [identity], keyVersion: 2 }, identity);
+  await client(userId).cloud.commitAuthority(root, winning);
+  const sync = createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud: left.cloud });
+  const review = await sync.resume(); assert.equal(review.kind, 'review'); assert.equal(review.intentDigest, pending.digest);
+  assert.equal((await f.secrets.authority(userId)).digest, winning.digest); assert.equal((await f.changes.readPending()).digest, pending.digest);
+  assert.equal((await f.readProtected()).hasCurrentKey, false); assert.equal((await f.readProtected()).hasStoredKeys, true);
+  assert.equal(await sync.dismissReviewed(pending.digest, review.observedCurrentDigest), true); assert.equal(await f.changes.readPending(), null);
+  assert.equal((await left.cloud.readHead()).authorityDigest, winning.digest);
+});
+
+test('private Calendar receiver rejects a tampered real authority archive before advancing protected state', async t => {
+  const f = privateCalendarSetupFixture(t, { userId }); const left = client(userId); await f.controller(left.cloud).prepareAndResume();
+  const root = await f.secrets.authority(userId); const identity = await f.secrets.identity(userId);
+  const next = advancePrivateCalendarAuthority(root, { mainDeviceId: identity.deviceId, devices: [identity], keyVersion: 2 }, identity);
+  await left.cloud.commitAuthority(root, next); const bad = { ...next.signed, signature: '0'.repeat(128) };
+  await env.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), 'privateCalendars', userId, 'authorities', '2'), { authorityJson: canonicalJson(bad), authorityDigest: sharedDocumentDigest(bad) });
+  });
+  await assert.rejects(() => createPrivateCalendarAuthoritySync({ userId, secrets: f.secrets, intents: f.changes, cloud: left.cloud }).refresh());
+  assert.equal((await f.secrets.authority(userId)).digest, root.digest); assert.equal((await f.readProtected()).hasCurrentKey, true);
 });

@@ -257,3 +257,23 @@ AndroidのADB・実アクセシビリティ操作では、同じ日時指定か�
 | 新規入力欄の06:00・America/New_York | `7cdba7bf78ae1335c8d936e371a3eaa01db367f0d69d4cc798966259ec566f64` |
 
 一覧は`phase4af-native-ios-evidence.json`と`phase4af-native-android-evidence.json`。両端末のローカル操作の確認であり、異種OS間のv2実サービス同期やバックグラウンド実行の保証とは扱わない。共有検査用のOutboxは未送信で保持し、サーバー受付を捏造しない。
+
+## 12. 本人Calendarの独立したNative暗号検査
+
+`development/private-calendar-preview`のメモリ内の合成データだけを使った。アカウント、個人DB、SecureStore、本番Firestore、既存の共有Outboxへ接続しない検査関数であり、両端末それぞれで実行した。端末間の実通信ではない。SHA-256の既知値と非空AADのAES-GCM／OpenSSLのwire一致、独立した本人鍵の受渡し、20,000区間・22片の逆順復号、重複・改ざん・別鍵・旧メイン・解除端末の拒否など、12項目が完了してから成功表示を出す。
+
+| 環境 | 最終の自動操作 | 関数内の合計 | 準備／暗号化／復号／拒否検査 |
+| --- | --- | --- | --- |
+| 物理iPhone・XCTest | 8.003秒、成功1件 | 2,338ms | 256／417／826／839ms |
+| 物理Android 10・ADB補助 | 11.593秒、code 0 | 9,952ms | 1,094／2,355／3,183／3,320ms |
+
+初期実装の合計はiPhone10,211ms・Android41,957msだった。大きい16進暗号文の再JSON化を避け、同じSHA-256をNativeで処理する。portable実装との形式の一致も自動検査した。拒否検査では同じ大きいcacheの再確認も行うため、上記をそのまま通常の同期時間とは扱わない。日常画面で毎回再復号しない通信・保存層への接続は、引き続き必要である。
+
+最初のAndroidの待ち切れは、検査関数がその後に成功していても自動操作の成功に数えなかった。iPhoneの最初のAccessibility未準備も失敗として保存し、起動経路を切り分けた。最終の操作は以前のPASS表示を拾わず、新しい検査の開始または新しい実測表示を確認している。LiFlowを再インストール・初期化せず、更新したAPKはAndroidの検査補助だけである。
+
+| 最終実画像 | SHA-256 |
+| --- | --- |
+| iPhone、PASS 12件・2万区間・22分割 | `a80e94db1d41542783834fbeca02a8aeb31558fb2f8903d424fd82ec50a0c8de` |
+| Android、PASS 12件・2万区間・22分割 | `cc8b365a4c4a6ba131afd034c2de1ee001cc2494ddff8420af6991e3d12343d9` |
+
+画素と要素情報を照合し、`phase4ag-native-and-code-evidence.json`へソースのdigest、環境・範囲・結果と合わせて記録した。本番Rules、実アカウントの時間帯、グループの移行、main、READMEは変更しない。

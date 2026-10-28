@@ -1,0 +1,50 @@
+# 本人用Calendar：独立した端末承認と暗号契約
+
+状態：開発中の独立契約。共有グループの業務schema2、実アカウントのCalendar、本番Firestoreへはまだ接続していない。以下の暗号・検証関数と開発専用のNative検査を先に検査する。これは共有画面でCalendarを利用できるという完成報告ではない。
+
+## 信頼の起点
+
+本人のFirebase UIDごとに、グループと異なる端末鍵・256bit暗号鍵・乱数のaccountGeneration・信頼pinを持つ。グループ鍵、グループのroster、所有者の権限を本人用端末の承認に流用しない。
+
+最初の端末は本人の明示設定でrootを作り、その署名済みrootのdigestを端末へpinする。クラウドから取得した任意のrootを初回という理由だけで信用しない。追加端末は同じUIDで認証した上で、既存本人端末での番号／QR照合によってpinと自分の公開鍵を確認する。クラウドだけを根拠に既存pinを差し替える復旧は提供しない。
+
+`liflow-private-calendar-authority-v1`は、UID、accountGeneration、承認端末の公開鍵、メイン端末、鍵の版、revision、直前の署名済み文書のdigestを結ぶ。初回は1端末、revision/keyVersionは1。更新は直前の承認済み端末による署名、連続するrevision、直前digestが必要。最大16端末。同じ変更のローカル再試行はrevisionを増やさない。
+
+メインの変更・端末追加もrevisionを更新し、古いメインのcacheを無効にする。同じrevisionを基にした同時変更を後着順で統合しない。Cloud実装では比較更新と履歴保存を行い、競合時は再読込と明示確認を求める。端末の解除には新しいkeyVersionと実際に新規生成した鍵が必要。数字だけ増やして元の鍵を使い続けない。
+
+## 本人端末への鍵の受渡し
+
+`liflow-private-calendar-key-x25519-hkdfsha256-aes256gcm-ed25519-v1`を用いる。承認済みの送信・受信端末だけを受け付ける。UID、accountGeneration、authority digest、revision、keyVersion、両端末、使い捨てX25519公開鍵、salt、nonceをAADと署名に結び付ける。鍵の受信側も自身の秘密鍵と公開鍵の対応を検証する。
+
+鍵は32byte、AES-GCM tagは16byte。X25519/HKDF/AES/Ed25519は既存の実績あるライブラリとExpoのNative AESを使う。自作の暗号primitiveは追加しない。グループ用のsuiteとは異なるドメインを使い、グループの鍵envelopeへ変換しない。派生した鍵と一時的な秘密値は使用後に消去する。
+
+## busy区間の暗号化
+
+時間帯・取得日時・取得範囲・元地域・Googleとの私的な接続識別子は暗号文の内側に置く。予定名、場所、OAuth token、仕事の推測を受け付けない。Google認証主体とFirebase UIDが同じという推測もしない。接続先の変更には本人の設定と新しい私的な識別子を必要とする。
+
+cacheは承認済みメイン端末だけが署名する。公開manifestは所有UID、accountGeneration、authority digest、鍵・メイン世代、cache ID、連番、分割数と暗号文digestを持つ。本文・取得範囲・接続識別子の平文digestを公開しない。各片のAES-GCMは独立したsalt/nonceと、manifestの共通情報・片のindexを含むAADを使う。片のdigestは、専用のsuite・index・salt・nonce・暗号byte数をcanonical化した短い前置きと、暗号のバイト列を順にSHA-256へ入力する。巨大な16進文字列をもう一度JSON化・UTF-8化しない。Node/OpenSSLによる独立した照合を維持する。
+
+- 最大20,000区間、取得範囲は最大367日、本文は最大2MiB。
+- 64KiB単位、最大32片。1片を無制限な引数展開で処理しない。
+- 送信時に区間をclip・mergeし、RFC3339の絶対時刻へ正規化する。
+- 全片の数・index・サイズ・署名・digestを確認してから復号し、全片の復号・本文検証が終わるまで既存cacheを置き換えない。
+- 送信再試行は同じ保存済みenvelopeを使う。同一世代・連番で異なるmanifestは競合として拒否する。遅れた低い連番で上書きしない。端末に保持するcursorには最高のauthority revisionも保存し、古い署名済みrootや別のaccountGenerationへ戻すことで連番検査を迂回できないようにする。
+- 共通Schedulerの入力・ハッシュと共有Outboxには含めない。
+
+共有イベントの`canonicalJson`には4,096件の配列上限がある。この制限を緩めない。本人用本文は専用の厳密なallowlistと上限を検証したJSONを暗号化する。公開manifest・AAD・署名には既存のcanonical形式を利用する。
+
+モバイルでは大きな暗号文のSHA-256をExpo SDK58のNative digestで計算する。Nodeなどのportable実装と出力・署名・wire形式が同じことを検査する。Native hashの失敗時に不完全なmanifestを作らない。開発用の端末検査にはSHA-256の既知値と、非空のAADを持つAES-GCMの独立したOpenSSLベクターの照合も含む。
+
+鍵・連番・署名済みdigest列・受信片は最初の非同期処理の前に関数内へ保持する。呼び出し元がNative処理の待ち時間に配列や引数を書き換えても、検証途中の内容が入れ替わらない。生成した派生鍵と関数が所有する鍵のコピーは、失敗時も完了時も消去する。呼び出し元が所有する鍵は関数から消去しない。アカウント・メインの最新性を保存直前に照合する処理は、この入力の固定とは別に通信／保存portで実装する。
+
+## 接続前に必要な残作業
+
+1. 本人用SecureStore namespaceへの鍵・pinの保存、本人用のバックアップ除外SQLiteと固定envelopeのOutbox。既存個人DBの内容を自動で特定UIDへ関連付けない。
+2. UID限定のFirestore領域、root／mainの比較更新、承認端末の署名を受信側で検証する通信port、最大100書込み以内の原子的なcache公開。Rulesは暗号署名を検証できないため、UID一致だけで復号後の承認検証を省略しない。
+3. メイン指定、追加端末の照合、解除と鍵更新、接続Googleアカウントの明示設定、同時変更の確認UI。非メイン端末を自動昇格させない。
+4. 既存Google同期mutexとsilent token取得を使う取得処理、アカウント・メイン世代の取得前後の照合、失敗・範囲不足・鮮度切れを未確認にする表示。各カードで重複取得しない。
+5. 同一UIDのiOS／Android間の実通信、異なるUIDのRules拒否、オフライン・中断・再起動・鍵更新・長期復帰の検査。
+
+安全性確認と最終承認の前に実アカウントの時間帯をアップロードしない。本番Rules配備・既存グループ移行・mainマージは別の最終承認対象。
+
+参照：[FreeBusy API](https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query)、[Expo SDK58 Crypto](https://docs.expo.dev/versions/v58.0.0/sdk/crypto/)、[Expo SDK58 SecureStore](https://docs.expo.dev/versions/v58.0.0/sdk/securestore/)。

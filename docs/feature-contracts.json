@@ -3205,5 +3205,84 @@
         "name": "group name and region settings remain administrator-only and a caller cannot smuggle non-settings fields into the editor command"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-approved-device-authority",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar trust starts from an independently pinned root and cannot be replaced by another authenticated cloud key"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar device approval requires a previous approved signer and concurrent main changes cannot silently replace one another"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar device revocation forces a new key version and revoked device signatures cannot regain access"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-bounded-encrypted-cache",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar twenty thousand busy intervals are encrypted in bounded parts and reversed delivery reconstructs the same exact conflict data"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar missing, duplicate, swapped, oversized or tampered parts are rejected before any plaintext is decrypted"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar sequence cursors reject delayed overwrites and same-sequence forks while exact saved envelopes remain idempotent"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar cursor retains the highest authority revision and rejects a server rollback, authority fork or unapproved new account generation"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar ciphertext part digests match independent Node SHA256 over bounded metadata and actual ciphertext bytes"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar accelerated SHA256 preserves the portable wire format and either implementation opens the other ciphertext"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar encryption snapshots its account key and requested sequence before native asynchronous work"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar decryption snapshots the authenticated manifest, pieces and key across native hash awaits"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar key wrapping snapshots the private key before requesting native randomness"
+      },
+      {
+        "file": "tests/sharing-private-calendar.test.mjs",
+        "name": "private Calendar revocation rotates actual key material so the removed device and old group keys cannot decrypt future cache data"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-native-audit-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-ui.test.mjs",
+        "name": "private Calendar development audit exercises the same encryption contracts without accessing accounts and release mode rejects before generating keys"
+      },
+      {
+        "file": "tests/sharing-private-calendar-ui.test.mjs",
+        "name": "ios private Calendar Native audit has no action in release builds"
+      },
+      {
+        "file": "tests/sharing-private-calendar-ui.test.mjs",
+        "name": "android private Calendar Native audit has no action in release builds"
+      }
+    ]
   }
 ]

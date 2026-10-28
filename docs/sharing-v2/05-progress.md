@@ -823,3 +823,15 @@ iOS条件**1,805/1,805**、Android条件**1,805/1,805**、Firestore Emulator **6
 CIのうち既存`5b44013`の3検査は成功したが、Native configurationは新たに公開されたExpo SDK 58互換patch13件との差を検出して19/20となった。これは現行コードの全件回帰とは別の未解決項目として残し、次に公式の互換更新・Native再ビルドと端末再検査を行う。Doctorや全CI成功とは報告しない。
 
 Phase 6は未完。SDK整合に続き、本人の休日・許可時刻帯と実際の個人家事移動、v2 Tasks、通知／Widget、明示コピー・非破壊移行、実サービスと30ケースの総合E2Eを進める。OS任せの長時間の背景実行、実Google cacheの通常経路での異種OS転送は未実施。本番Rules・実グループ移行・main・README・製品UI調整は保持している。
+
+### Phase 4aw：SDK 58互換更新と両実機への非破壊更新
+
+基点`3e08bf0`。`expo install --fix`で新たに推奨された13件のSDK互換patchと付随依存を更新し、`expo-image`のconfig pluginを共通設定へ追加した。AVIFを無効化せず、既存のNative補正と署名・アプリIDを保つ。更新したCLIはprebuildの標準動作が再生成になっているため、Macの生成Nativeフォルダーを再作成した。React NativeはCLIの互換性照合とDoctorが認める0.88.0を維持し、テンプレート側の0.88.1警告は証拠へ残した。
+
+両Nativeビルドを通過し、Androidは既存証明書、iPhoneは同じ開発チーム・有効なprofileを照合して置換インストールした。起動前の全ファイル照合はAndroid **104ファイル／40 DB**、iPhone **93ファイル／36 DB**で完全一致。退避した全76 DBの`quick_check`も成功した。アンインストール・初期化はしていない。使っていない生成済みAndroid／iOS Release成果物だけ約2 GiB整理し、ソース・署名鍵・SDK・使用中のDebug成果物は残した。
+
+最終回帰はiOS条件**1,843/1,843**、Android条件**1,843/1,843**、Firestore Emulator **62/62**、失敗・スキップ0。271機能契約／Cloud必須35件、lint・型・両Scheduler版照合を通過。Expo Doctorは**20/20**へ回復し、依存監査はhigh・critical・moderate **0件**、low 7件を保持する。
+
+更新後の物理Android 10とiPhoneで、実Googleの181日を各3通信で再読取し、76区間／0区間を確認した。件数だけの読取であり、私的時間帯の保存・クラウド転送はしない。Native暗号・保護SQL・ローカルRulesと合成providerの自動同期も再確認し、両端末とも100要求で追加取得0回。Android **67.856秒**、iPhone **12.271秒**はUI操作込みの値である。最初のAndroid cold起動ではMetro読込中の検査リンクが届かず、QA画面のassertionが失敗した。そのログを残して読込後に再実行し、実際のinstrumentation結果も検査するよう外部runnerを強化した。
+
+証拠は`evidence/2026-10-29-sdk58-maintenance.json`。旧checkpointのSDK警告を解消したが、Phase 6は未完である。次は本人の許可帯と移動、v2 Tasks／通知／Widget、明示コピー・非破壊移行と総合E2Eを続ける。本番Rules・実グループ・main・READMEと製品UI調整は変更していない。

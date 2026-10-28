@@ -420,3 +420,16 @@ Androidの未認識routeは開発clientの新しいbundleへの再接続で切�
 - Android 10：`phase4av-android-final-auto.log`、**64.594秒**・code 0。最初の画像は結果が画面外のため、その画像だけで実表示を認めず、スクロールして`phase4av-android-final-auto-proof-visible.png`の結果を実際に確認した。検査後に消灯した。
 
 最初の実行もiPhone13.092秒・Android69.741秒で成功したが、取消・停止時の中止制御を追加した後の最終実行を上記の証拠とする。これらは実Nativeと合成時間帯・ローカルEmulatorの検査であり、OSに選ばれたBackgroundTaskの長時間放置検査、実アカウントのcache転送、通常グループの総合E2Eは含まない。Native本体はExpo58.0.20の開発buildを継続使用しており、別途検出した互換patchの更新後に再ビルド・再検査する。
+
+## Phase 4aw：SDK互換patch後の両実機再検査
+
+2026-10-29、基点`3e08bf0`。Expo 58.0.21と推奨互換patchでNativeを再生成・ビルドし、署名とアプリIDを照合して両端末を置換更新した。アンインストールせず、起動前にAndroid104ファイル／40 DB、iPhone93ファイル／36 DBの完全一致を確認。退避した76 DBの整合性検査も成功した。
+
+| 端末 | 実Google読取（保存・転送なし） | Native暗号・SQL・ローカルRulesと合成provider |
+| --- | --- | --- |
+| Android 10 | 181日・3通信・76区間、7.492秒 | 100要求・追加取得0回、67.856秒 |
+| iPhone | 181日・3通信・0区間、12.186秒 | 100要求・追加取得0回、12.271秒 |
+
+両読取で接続先が同じという仮定は置かない。時間はUI操作を含む。更新前の本人用QA設定と保護鍵を使い、結果の画像を実際に確認した。Androidの最初のcold起動はMetro読込中でQA画面のassertionが失敗し、読込後の再実行で成功した。失敗ログも保持する。補助runnerはADBの終了値だけでなくinstrumentationの成功codeと検査結果を要求する。
+
+証拠：`evidence/2026-10-29-sdk58-maintenance.json`。Expo Doctor20/20、全自動回帰・アクセス制御は通過した。OS任せの長時間背景実行、実Google時間帯の通常経路での異種OS転送、共有v2全体のE2Eは引き続き未完である。

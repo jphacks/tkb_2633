@@ -2929,5 +2929,28 @@
       { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 an oversized individual detail rolls back every field and outbox entry without consuming the next device sequence" },
       { "file": "tests/sharing-v2-field-edit.test.mjs", "name": "v2 large-batch retries revalidate displayed sources after a concurrent save instead of overwriting it" }
     ]
+  },
+  {
+    "feature": "v2-common-configuration-conflicts-have-reviewed-mobile-resolution",
+    "tests": [
+      { "file": "tests/sharing-v2-configuration-conflict-ui.test.mjs", "name": "shared configuration conflicts show explicit candidates and resolve the current selection without rewriting completed history" },
+      { "file": "tests/sharing-v2-configuration-conflict-ui.test.mjs", "name": "an old configuration-resolution button cannot replace a newer resolution received before repaint" },
+      { "file": "tests/sharing-v2-configuration-conflict-ui.test.mjs", "name": "ordinary members can return from conflicting common settings without receiving resolution controls" }
+    ]
+  },
+  {
+    "feature": "v2-group-policy-autosave-preserves-customizations-and-requires-current-admin-sources",
+    "tests": [
+      { "file": "tests/sharing-v2-group-policy-ui.test.mjs", "name": "group kind and rule changes autosave together without resetting customized flags or granting anyone rights" },
+      { "file": "tests/sharing-v2-group-policy-ui.test.mjs", "name": "group rule edits reject an unseen concurrent change and retain the draft until it is discarded" },
+      { "file": "tests/sharing-v2-group-policy-ui.test.mjs", "name": "group rule conflicts retain authenticated candidates and need an explicit current resolution" },
+      { "file": "tests/sharing-v2-group-policy-ui.test.mjs", "name": "ordinary members can read group rules but cannot mutate them through UI or the command API" }
+    ]
+  },
+  {
+    "feature": "v2-completion-display-preference-also-controls-history",
+    "tests": [
+      { "file": "tests/sharing-v2-completion-visibility-ui.test.mjs", "name": "disabling completion status also hides unrelated history while preserving the administrator and original records" }
+    ]
   }
 ]

@@ -5,11 +5,13 @@ import { AppButton, Card, SectionHeading } from '../../../components/planner-ui'
 import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
 import type { V2CompletionRecord } from '../v2/completion-history';
 import { v2FormStyles as styles } from './form-controls';
+import { v2CanShowCompletion } from './round-visibility';
 
 export function V2CompletionHistoryCard({ model, record, actions, busy, run }: {
   model: V2GroupScreenModel; record: V2CompletionRecord; actions: V2GroupController['actions']; busy: boolean;
   run: (work: () => Promise<unknown>) => Promise<void>;
 }) {
+  if (!v2CanShowCompletion(model, record)) return null;
   const admin = model.viewerUserId === model.adminUserId;
   const nameOf = v2MemberLabels(model.plan.members);
   const date = (at: string) => moment(at).tz(model.plan.timeZone).format('YYYY年M月D日 HH:mm');

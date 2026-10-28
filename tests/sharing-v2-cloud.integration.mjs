@@ -106,6 +106,19 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     await restart.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
     assert.equal((await field(owner)).value, '両方を確認した名前'); assert.deepEqual(await field(owner), await field(restart));
     assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 0);
+    const policy = (await owner.controller.readModel(range, { groupPolicy: true })).groupPolicy;
+    const basisOperationIds = policy.candidates.map(source => source.operationId);
+    const headBeforePolicy = (await f.cloud.readGroup(groupId)).group.headSequence;
+    await assert.rejects(restart.controller.actions.editGroupPolicy({ value: { ...policy.value, delegationEnabled: true }, basisOperationIds }), { code: 'sharing/v2-authority-denied' });
+    assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 0); assert.equal((await f.cloud.readGroup(groupId)).group.headSequence, headBeforePolicy);
+    const updatedPolicy = { ...policy.value, kind: 'family', delegationEnabled: true };
+    await owner.controller.actions.editGroupPolicy({ value: updatedPolicy, basisOperationIds });
+    await owner.synchronizer.sync({ force: true }); await restart.synchronizer.sync({ force: true });
+    for (const session of [owner, restart]) {
+      const model = await session.controller.readModel(range, { groupPolicy: true });
+      assert.deepEqual(model.groupPolicy.value, updatedPolicy); assert.deepEqual(model.plan.policy, updatedPolicy);
+      assert.equal((await session.repository.readState()).assessment.view.ofType('datePermission').length, 0);
+    }
     ownerActive = false; await assert.rejects(owner.synchronizer.sync({ force: true }), /account changed/u);
     assert.equal(ownerDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.equal(memberDb.connection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');

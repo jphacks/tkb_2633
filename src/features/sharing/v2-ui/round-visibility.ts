@@ -1,5 +1,14 @@
 import type { V2GroupScreenModel } from '../v2/controller.ts';
 import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan.ts';
+import type { V2CompletionRecord } from '../v2/completion-history';
+
+/** This is a display preference. Keep one's own work and the administrator's audit view available. */
+export function v2CanShowCompletion(model: V2GroupScreenModel, record: V2CompletionRecord) {
+  const viewer = model.viewerUserId;
+  return viewer === model.adminUserId || model.plan.policy?.showCompletionStatus === true
+    || record.recorderUserId === viewer || record.performerUserId === viewer || record.subjectUserId === viewer
+    || record.subjectUserId === null && (record.originalAssigneeIds.length === 0 || record.originalAssigneeIds.includes(viewer));
+}
 
 /** Local presentation only; signed command permissions are still checked by the receiver. */
 export function createV2RoundVisibility(model: V2GroupScreenModel) {
@@ -10,6 +19,6 @@ export function createV2RoundVisibility(model: V2GroupScreenModel) {
     const ids = new Set([...subject.completionOperationIds, ...subject.pendingCompletionIds]);
     const relatedWork = [...ids].flatMap((id) => { const record = work.get(id); return record ? [record] : []; }).sort((a, b) => a.index - b.index).map((entry) => entry.record);
     return { admin, owns, relatedWork, showStatus: owns || admin || model.plan.policy?.showCompletionStatus === true
-      || relatedWork.some((record) => record.recorderUserId === viewer || record.performerUserId === viewer) };
+      || relatedWork.some((record) => v2CanShowCompletion(model, record)) };
   };
 }

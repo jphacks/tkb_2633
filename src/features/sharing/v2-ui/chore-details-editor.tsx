@@ -11,6 +11,7 @@ import { useV2FieldAutosave } from './use-field-autosave';
 import { v2ChoreDetailCodecs, v2DetailValueLabel } from './chore-detail-fields';
 import type { V2SectionDraft } from './chore-detail-fields';
 import { v2MemberLabels } from './member-labels';
+import { V2AutosaveFeedback } from './autosave-feedback';
 
 export function V2ChoreDetailsEditor(props: { model: V2GroupScreenModel; choreId: string; controller: V2GroupController;
   onSaved: () => Promise<void>; onBack: () => void; onConfiguration?: () => void; header?: ReactNode }) {
@@ -75,12 +76,8 @@ function Details({ model, choreId, controller, source, onSaved, onBack, onConfig
     </View>)}
     {panel('tools', '使う道具', field('tools', '道具（1行に1項目）', true))}
     {panel('cautions', '注意点', field('cautions', '注意点（1行に1項目）', true))}
-    <Text accessibilityLiveRegion="polite" style={autosave.status.phase === 'error' ? styles.error : styles.caption}>
-      {autosave.status.error ?? (['pending', 'saving'].includes(autosave.status.phase) ? '端末へ保存中…' : autosave.status.phase === 'saved' ? '端末に保存しました。共有状況は同期表示で確認できます。' : '変更は自動で保存されます。')}
-    </Text>
-    {autosave.refreshError ? <Text accessibilityRole="alert" style={styles.error}>{autosave.refreshError}</Text> : null}
-    {autosave.status.phase === 'error' ? <AppButton title="保存を再試行" variant="secondary" onPress={() => void autosave.flush()} /> : null}
-    {autosave.hasDraft() ? <AppButton title="入力を最新の内容に戻す" variant="quiet" onPress={() => autosave.discard()} /> : null}
+    <V2AutosaveFeedback status={autosave.status} refreshError={autosave.refreshError} hasDraft={autosave.hasDraft()} flush={autosave.flush}
+      discard={autosave.discard} discardTitle="入力を最新の内容に戻す" disabled={autosave.leaving} />
     {onConfiguration && model.viewerUserId === model.adminUserId ? <AppButton title="周期・担当の設定へ" variant="secondary" disabled={disabled}
       onPress={() => void autosave.navigateAfterSave(onConfiguration)} /> : null}
   </V2FormScrollView>;

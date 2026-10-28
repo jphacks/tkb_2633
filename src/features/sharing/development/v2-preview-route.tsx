@@ -2,8 +2,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { V2DevelopmentPreviewScreen } from './v2-preview-screen';
 import { developmentV2Preview } from '@/platform/sharing/development-v2-preview';
 import { useCallback } from 'react';
+import type { V2GroupScreenProps } from '../v2-ui/group-screen';
 
-export type V2PreviewView = 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore';
+export type V2PreviewView = V2GroupScreenProps['view'];
 
 /** Separate Native stack screens retain their own inputs, scroll position and route parameters. */
 export function V2PreviewRoute({ view }: { view: V2PreviewView }) {
@@ -25,6 +26,7 @@ export function V2PreviewRoute({ view }: { view: V2PreviewView }) {
     onChoreCreated={(choreId) => router.replace({ pathname: '/development/sharing-v2-preview/details', params: { choreId, ...privateContext } })}
     onManageChores={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/chores', params: privateContext } : '/development/sharing-v2-preview/chores')}
     onAddChore={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/add-chore', params: privateContext } : '/development/sharing-v2-preview/add-chore')}
+    onGroupPolicy={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/group-rules', params: privateContext } : '/development/sharing-v2-preview/group-rules')}
     onHistory={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/history', params: privateContext } : '/development/sharing-v2-preview/history')}
     onCalendar={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/calendar', params: privateContext } : '/development/sharing-v2-preview/calendar')}
     onAssignmentRequests={() => router.push(personal ? { pathname: '/development/sharing-v2-preview/assignment-requests', params: privateContext } : '/development/sharing-v2-preview/assignment-requests')}

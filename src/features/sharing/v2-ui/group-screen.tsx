@@ -26,25 +26,29 @@ import { V2ChoreDetailsEditor } from './chore-details-editor';
 import { V2ChoreList } from './chore-list';
 import { V2AddChore } from './add-chore';
 import { V2ChoreProcedures } from './chore-procedures';
+import { V2GroupPolicyEditor } from './group-policy-editor';
+import { v2CanShowCompletion } from './round-visibility';
 
 export interface V2GroupScreenProps {
   purpose: 'development' | 'workspace'; workspaceName?: string; workspaceError?: string; onManage?: () => void;
   subscribe?: (changed: () => void) => () => void;
-  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore'; choreId?: string;
+  loadSession: () => Promise<V2GroupUiSession>; view: 'home' | 'configuration' | 'history' | 'round' | 'date' | 'requests' | 'assignment' | 'assignmentRequests' | 'calendar' | 'chores' | 'details' | 'addChore' | 'groupPolicy'; choreId?: string;
   occurrenceId?: string; subjectId?: string; anchorDate?: string; onRound?: (occurrenceId: string, subjectId: string, anchorDate?: string) => void; onDate?: (occurrenceId: string, subjectId: string) => void;
   onBack: () => void; onConfiguration: (choreId: string) => void; onHistory: () => void; onRequests?: () => void;
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
   onCalendar?: () => void;
   onManageChores?: () => void; onDetails?: (choreId: string) => void; onAddChore?: () => void; onChoreCreated?: (choreId: string) => void;
+  onGroupPolicy?: () => void;
 }
 
 function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: string, choreId?: string): Parameters<V2GroupUiSession['readModel']>[0] {
+  if (view === 'groupPolicy') return { management: true, groupPolicy: true };
   if (view === 'details') return { management: true, detailChoreId: choreId };
   if (view === 'chores' || view === 'addChore') return { management: true };
   return anchorDate ? { focusDate: anchorDate } : view === 'calendar' ? { calendarMonth: 'current' } : undefined;
 }
 
-export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated }: V2GroupScreenProps) {
+export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy }: V2GroupScreenProps) {
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
@@ -90,6 +94,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{workspaceName ?? '共有グループ'}</Text> : null}
     <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、クラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
     {purpose === 'workspace' && onManage ? <AppButton title="グループの管理・切り替え" variant="quiet" compact onPress={onManage} /> : null}
+    {view === 'home' && onGroupPolicy ? <AppButton title="グループのルール" variant="quiet" compact onPress={onGroupPolicy} /> : null}
     {workspaceError ? <Text accessibilityRole="alert" style={styles.error}>{workspaceError}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </View>;
@@ -99,6 +104,10 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const { personal, privateOverlay: privateValue, ...model } = screenModel;
   const privateOverlay = privateOverlayForViewer(privateValue, model.viewerUserId);
   const controller = session.controller;
+  if (view === 'groupPolicy') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    <V2GroupPolicyEditor model={model} controller={controller} onBack={onBack} header={notice}
+      onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} />
+  </V2ScreenFrame>;
   if (view === 'chores') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <V2ChoreList model={model} busy={busy} onDetails={onDetails ?? onConfiguration} onConfiguration={onConfiguration} onAdd={onAddChore}
       header={<View style={{ gap: 14 }}>{notice}<BackButton onPress={onBack} /><ScreenHeading title="共有家事の一覧" /></View>} />
@@ -171,9 +180,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     recommendation={recommendations.get(subject.id)}
     onOpen={() => onRound ? onRound(round.id, subject.id) : onConfiguration(round.choreId)} />;
   if (view === 'history') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
-    <FlatList data={[...model.plan.history].reverse()} keyExtractor={(record) => record.operationId} contentContainerStyle={styles.page} initialNumToRender={8}
+    <FlatList data={model.plan.history.filter(record => v2CanShowCompletion(model, record)).reverse()} keyExtractor={(record) => record.operationId} contentContainerStyle={styles.page} initialNumToRender={8}
       ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="実施履歴" /></>}
-      ListEmptyComponent={<Card><Text style={styles.body}>実施記録はありません。</Text></Card>}
+      ListEmptyComponent={<Card><Text style={styles.body}>表示する実施記録はありません。</Text></Card>}
       renderItem={({ item }) => <V2CompletionHistoryCard model={model} record={item} actions={controller.actions} busy={busy} run={run} />} />
   </V2ScreenFrame>;
   const entries = model.plan.occurrences.flatMap((round) => round.subjects.filter((subject) => subject.required && (subject.subjectUserId === null || subject.subjectUserId === model.viewerUserId)).map((subject) => ({ round, subject })));

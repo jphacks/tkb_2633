@@ -31,6 +31,7 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const formal = subject.formalDate;
   const schedules = relatedWork.filter((record) => record.active && record.schedule).map((record) => record.schedule!);
   const recordedWindow = subject.completed && schedules.length && schedules.every((schedule) => schedule.windowStart === schedules[0].windowStart && schedule.windowEnd === schedules[0].windowEnd) ? schedules[0] : null;
+  const displayCompleted = showStatus && subject.completed;
   const assignmentPending = model.assignmentRequests.some((request) => !request.cancelled && request.proposal.occurrenceId === round.id && request.proposal.requesterUserId === viewer
     && ['pendingDelivery', 'awaiting'].includes(request.kind));
   return <View style={styles.card}>
@@ -38,15 +39,15 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
     <View style={styles.details}>
       <Text style={styles.date}>{formal.kind === 'manual' ? `${formal.mode === 'fixed' ? '固定日時' : formal.mode === 'deadline' ? '期限' : '実施日'}：${v2TargetLabel(formal.target, model.plan.timeZone)}`
         : `${recommendation ? '推奨日' : '基準日'}：${formatJapaneseDate(recommendation?.date ?? subject.suggestedDate, { weekday: true })}`}</Text>
-      {showActions && (!subject.completed || recordedWindow) ? <Text style={styles.caption}>{subject.completed ? '実施時点の期間' : '実施できる期間'}：
-        {formatJapaneseDate(recordedWindow?.windowStart ?? subject.executionWindowStart)}〜{formatJapaneseDate(recordedWindow?.windowEnd ?? subject.executionWindowEnd)}</Text> : null}
+      {showActions && (!displayCompleted || recordedWindow) ? <Text style={styles.caption}>{displayCompleted ? '実施時点の期間' : '実施できる期間'}：
+        {formatJapaneseDate(displayCompleted && recordedWindow ? recordedWindow.windowStart : subject.executionWindowStart)}〜{formatJapaneseDate(displayCompleted && recordedWindow ? recordedWindow.windowEnd : subject.executionWindowEnd)}</Text> : null}
       {round.claimState === 'provisional' ? <Text style={styles.notice}>引き受けが重なっています。暫定担当のまま実施でき、管理者が正式な担当を決めます。</Text> : null}
       {round.assignmentConflictIds.length ? <Text style={styles.notice}>{round.assignmentMappingReviewIds.length
         ? '周期の変更に合わせて、以前の担当指定をどう適用するか確認してください。' : '担当が競合しています。管理者による確認が必要です。'}</Text> : null}
       {formal.kind === 'conflict' || formal.kind === 'review' || subject.requestReviewIds.length ? <Text style={styles.notice}>日時の確認が必要です。実施した記録は保持されます。</Text> : null}
       {subject.dependencyAwaitingCompletion ? <Text style={styles.notice}>先に必要な家事の完了を待っています。</Text> : null}
-      {subject.cooldownSuppressed ? <Text style={styles.caption}>最近実施済み · {subject.minimumNextExecutionDay ? formatJapaneseDate(subject.minimumNextExecutionDay) : ''}以降に再実施できます。</Text> : null}
-      {subject.virtuallyConsumed && !subject.completed ? <Text style={styles.caption}>この回は未完了のまま残り、次の周期へ進みます。</Text> : null}
+      {showStatus && subject.cooldownSuppressed ? <Text style={styles.caption}>最近実施済み · {subject.minimumNextExecutionDay ? formatJapaneseDate(subject.minimumNextExecutionDay) : ''}以降に再実施できます。</Text> : null}
+      {showStatus && subject.virtuallyConsumed && !subject.completed ? <Text style={styles.caption}>この回は未完了のまま残り、次の周期へ進みます。</Text> : null}
       {showStatus && subject.pendingCompletionIds.length ? <Text style={styles.notice}>実施記録の確認・承認待ち</Text> : null}
       {showStatus && subject.strictInstructionUnfulfilled ? <Text style={styles.notice}>実施済み · 指定日時の条件は未達成です。</Text> : null}
       {showStatus && subject.completed ? <Text style={styles.caption}>実施者：{[...new Set(relatedWork.filter((record) => record.active).map((record) => nameOf(record.performerUserId)))].join('・')}</Text> : null}

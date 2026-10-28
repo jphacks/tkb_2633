@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { AppButton, BackButton, Card, palette, SectionHeading, typography } from '../../../components/planner-ui';
+import { BackButton, Card, palette, SectionHeading, typography } from '../../../components/planner-ui';
 import { NumberInputField } from '../../../components/number-input-field';
 import type { LocalDate } from '../../../domain/shared/types';
 import { parseLocalDate } from '../../../domain/scheduling/local-date';
@@ -10,6 +10,8 @@ import { useV2ConfigurationAutosave } from './use-configuration-autosave';
 import { canonicalJson } from '../operations';
 import { V2StaleSettingsError } from '../v2/configuration-edit';
 import { V2InitialConfiguration } from './initial-configuration';
+import { V2ConfigurationConflict } from './configuration-conflict';
+import { V2AutosaveFeedback } from './autosave-feedback';
 
 /** Only an authenticated administrator receives the editor; receiver authority remains the final check. */
 export function V2ConfigurationEditor(props: { model: V2GroupScreenModel; choreId: string;
@@ -26,12 +28,14 @@ function RetainedEditor({ model, choreId, controller, onSaved, onBack }: Paramet
   // Retain the editor (and its draft store) when a remote conflict temporarily removes the resolved value.
   if (row?.configuration && (!retained || row.configuration.ruleVersion >= retained.ruleVersion && canonicalJson(row.configuration) !== canonicalJson(retained))) setRetained(row.configuration);
   const configuration = row?.configuration && (!retained || row.configuration.ruleVersion >= retained.ruleVersion) ? row.configuration : retained;
-  if (!configuration) return row?.candidates.length ? <Text style={styles.caption}>設定が競合しています。候補を確認して解決してください。</Text>
-    : <V2InitialConfiguration model={model} choreId={choreId} controller={controller} onSaved={onSaved} onBack={onBack} />;
+  const conflict = !row?.configuration && row?.candidates.length ? <V2ConfigurationConflict model={model} row={row} controller={controller}
+    onSaved={onSaved} onBack={!configuration ? onBack : undefined} /> : null;
+  if (!configuration) return conflict
+    ?? <V2InitialConfiguration model={model} choreId={choreId} controller={controller} onSaved={onSaved} onBack={onBack} />;
   const boundary = configuration.effectiveFrom ?? configuration.anchorDate;
   const earliestFrom = row?.earliestEffectiveFrom && row.earliestEffectiveFrom > boundary ? row.earliestEffectiveFrom : boundary;
-  return <Editor configuration={configuration} earliestFrom={earliestFrom}
-    today={model.plan.range.asOfDate} choreId={choreId} controller={controller} onSaved={onSaved} onBack={onBack} blocked={!row?.configuration} />;
+  return <View style={styles.container}>{conflict}<Editor configuration={configuration} earliestFrom={earliestFrom}
+    today={model.plan.range.asOfDate} choreId={choreId} controller={controller} onSaved={onSaved} onBack={onBack} blocked={!row?.configuration} /></View>;
 }
 
 function Editor({ configuration, earliestFrom, today, choreId, controller, onSaved, onBack, blocked }: { configuration: SharedChoreConfiguration;
@@ -72,11 +76,8 @@ function Editor({ configuration, earliestFrom, today, choreId, controller, onSav
           onChangeText={(text) => autosave.changeNumber(field, text)} onEndEditing={() => void autosave.flush()} /></View>
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}</View>;
     })}
-    <Text accessibilityLiveRegion="polite" style={autosave.status.phase === 'error' ? styles.error : styles.caption}>
-      {autosave.status.error ?? (saving ? '端末へ保存中…' : autosave.status.phase === 'saved' ? '端末に保存しました。共有状況は同期表示で確認できます。' : '変更は自動で保存されます。')}</Text>
-    {autosave.refreshError ? <Text accessibilityRole="alert" style={styles.error}>{autosave.refreshError}</Text> : null}
-    {autosave.status.phase === 'error' ? <AppButton title="保存を再試行" variant="secondary" onPress={() => void autosave.flush()} /> : null}
-    {autosave.hasDraft() ? <AppButton title="入力を最新の設定に戻す" variant="quiet" onPress={autosave.discard} /> : null}
+    <V2AutosaveFeedback status={autosave.status} refreshError={autosave.refreshError} hasDraft={autosave.hasDraft()} flush={autosave.flush}
+      discard={autosave.discard} discardTitle="入力を最新の設定に戻す" disabled={autosave.leaving} />
     </Card>
   </View>;
 }

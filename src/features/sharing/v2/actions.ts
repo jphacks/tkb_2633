@@ -192,6 +192,16 @@ export function createV2PlannerActions(repository: ReturnType<typeof createV2Eve
       if (!current) throw new Error('グループ設定を同期してください。');
       return [draft('groupPolicy', 'policy', { configuration: { ...current.value as object, ...patch } })];
     }),
+    editGroupPolicy: async (edit: Omit<V2FieldEdit, 'field'>): Promise<V2FieldSaveResult> => {
+      let prepared: ReturnType<typeof prepareV2FieldEdits> | undefined;
+      const operations = await repository.commitCurrent(async (state) => {
+        prepared = prepareV2FieldEdits({ view: state.assessment.view, at: point(state), type: 'groupPolicy', entityId: 'policy',
+          allowed: ['configuration'], edits: [{ ...edit, field: 'configuration' }] });
+        return Object.keys(prepared.patch).length ? [draft('groupPolicy', 'policy', prepared.patch)] : [];
+      });
+      if (!prepared) throw new V2StaleSettingsError();
+      return { operations, fields: { configuration: operations.length ? editableFieldFromOperations(operations, 'configuration') : prepared.fields.configuration } };
+    },
     complete: (ref: V2RoundReference, input: { performedAt?: string; performerUserId?: string; additionalWork?: boolean; expectedAssigneeIds?: readonly string[] } = {}) => {
       const performedAt = input.performedAt ?? options.now().toISOString();
       return repository.commitCurrent(async (state) => {

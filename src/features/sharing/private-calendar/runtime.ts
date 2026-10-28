@@ -9,10 +9,15 @@ import type { DateTarget } from '../v2/model.ts';
 import { sharedLocalDate } from '../group-clock.ts';
 import { addDays } from '../../../domain/scheduling/local-date.ts';
 import { createCalendarQueryRange } from '../../google-sync/calendar-availability.ts';
+import { assertPrivateCalendarCloudAuthority } from './cloud-contract.ts';
+import { assertPrivateCalendarDeadline, privateCalendarDeadline, privateCalendarDeadlineError, withinPrivateCalendarDeadline,
+  PRIVATE_CALENDAR_AUTOMATIC_BUDGET_MS, PRIVATE_CALENDAR_MANUAL_BUDGET_MS } from './sync-deadline.ts';
+import { observePrivateCalendarForeground } from './foreground-observer.ts';
 
 export interface PrivateCalendarRuntimePort extends PrivateCalendarCapturePort {
   devices: PrivateCalendarDeviceSession; sourceController: ReturnType<typeof createPrivateCalendarSourceController>;
-  cloud: PrivateCalendarCapturePort['cloud'] & { readCache: (authority: NonNullable<Awaited<ReturnType<PrivateCalendarCapturePort['secrets']['authority']>>>) => Promise<import('./cache-crypto').EncryptedPrivateCalendarCache | null> };
+  cloud: PrivateCalendarCapturePort['cloud'] & { readCache: (authority: NonNullable<Awaited<ReturnType<PrivateCalendarCapturePort['secrets']['authority']>>>) => Promise<import('./cache-crypto').EncryptedPrivateCalendarCache | null>;
+    watch?: (changed: () => void, failed: () => void) => () => void };
   timeZone(): string;
   currentGoogleAccount(): Promise<{ subject: string; label: string } | null>;
   restoreGoogleAccount?: () => Promise<{ subject: string; label: string }>;
@@ -23,7 +28,12 @@ export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
   const capture = createPrivateCalendarCapture(port); const listeners = new Set<() => void>();
   let memo: { id: string; promise: Promise<PrivateBusyCache | null> } | null = null;
   let requiresSourceReview = false;
+  let stopDeviceChanges: (() => void) | null = null;
   function invalidate() { memo = null; for (const listener of listeners) try { listener(); } catch { /* A view cannot invalidate a committed setting. */ } }
+  function subscribe(listener: () => void) {
+    listeners.add(listener); stopDeviceChanges ??= devices.subscribe(invalidate);
+    return () => { listeners.delete(listener); if (!listeners.size) { stopDeviceChanges?.(); stopDeviceChanges = null; } };
+  }
   async function readSettings() {
     await port.assertOwner(); const device = await devices.read();
     const profile = device.authorityDigest ? await source.read() : null; await port.assertOwner();
@@ -68,48 +78,86 @@ export function createPrivateCalendarRuntime(port: PrivateCalendarRuntimePort) {
         mainDeviceId: authority.signed.body.mainDeviceId, mainRevision: authority.signed.body.revision, calendarBinding } };
     } catch { if (memo === current) memo = null; await port.assertOwner(); return null; }
   }
-  let refresh: ReturnType<typeof update> | null = null;
-  function refreshData() {
-    if (refresh) return refresh;
-    const pending = mutate(update); refresh = pending; void pending.finally(() => { if (refresh === pending) refresh = null; }).catch(() => {}); return pending;
+  type RefreshResult = Awaited<ReturnType<typeof update>> | { kind: 'busy' };
+  let refresh: { force: boolean; promise: Promise<RefreshResult>; operation: Promise<RefreshResult>; cancel(): void } | null = null;
+  function configure<T>(work: () => Promise<T>): Promise<T> {
+    const current = refresh;
+    if (current && !current.force) {
+      current.cancel(); return current.operation.catch(() => undefined).then(() => mutate(work));
+    }
+    return mutate(work);
   }
-  async function update() {
-    const device = await devices.synchronizeDevices();
+  function requestRefresh(force: boolean, budgetMs: number): Promise<RefreshResult> {
+    const deadline = privateCalendarDeadline(now(), budgetMs);
+    if (refresh) {
+      const current = refresh;
+      return force && !current.force ? current.promise.then(result => result.kind === 'waiting' || result.kind === 'fresh' || result.kind === 'unchanged'
+        ? requestRefresh(true, budgetMs) : result) : current.promise;
+    }
+    if (!force && action) return Promise.resolve({ kind: 'busy' as const });
+    let expired = false; const controller = new AbortController();
+    const cancel = () => { expired = true; controller.abort(); };
+    const ensure = () => { if (expired) throw privateCalendarDeadlineError(); assertPrivateCalendarDeadline(deadline, now()); };
+    const operation = mutate(() => update(force, deadline, ensure, controller.signal)); const pending = withinPrivateCalendarDeadline(operation, budgetMs, cancel);
+    refresh = { force, promise: pending, operation, cancel };
+    void operation.finally(() => { if (refresh?.promise === pending) refresh = null; }).catch(() => {}); return pending;
+  }
+  const refreshData = () => requestRefresh(true, PRIVATE_CALENDAR_MANUAL_BUDGET_MS);
+  const synchronizeAutomatically = (options: { budgetMs?: number } = {}) => requestRefresh(false, options.budgetMs ?? PRIVATE_CALENDAR_AUTOMATIC_BUDGET_MS);
+  async function update(force: boolean, deadline: number, ensure: () => void, signal: AbortSignal) {
+    ensure();
+    const device = await devices.synchronizeDevices({ force }); ensure();
     if (device.phase !== 'approved') return { kind: 'unavailable' as const };
     if ((await source.read())?.pending) {
       const resumed = await sourceController.resume(); if (resumed.kind === 'review') return resumed;
+      ensure();
     }
     const state = await secrets.publicState(userId); const authority = state?.authority;
+    ensure();
     if (!authority || !authority.signed.body.devices.some(value => value.deviceId === state.identity.deviceId)) return { kind: 'unavailable' as const };
     if (authority.signed.body.mainDeviceId === state.identity.deviceId) {
       const profile = await source.read();
       if (profile?.active && !await sourceController.isCurrentSelection()) { requiresSourceReview = true; return { kind: 'sourceReview' as const }; }
+      ensure();
       requiresSourceReview = false;
       const zone = port.timeZone(); const today = sharedLocalDate(new Date(now()), zone);
-      return capture.capture({ range: createCalendarQueryRange(today, addDays(today, 180), zone), force: true });
+      return capture.capture({ range: createCalendarQueryRange(today, addDays(today, 180), zone), force, automatic: !force, deadline, assertBudget: ensure, signal });
     }
+    const head = await cloud.readHead(); ensure();
+    if (!head) throw new Error('本人用Calendarのサーバー設定がありません。'); assertPrivateCalendarCloudAuthority(head, authority);
+    if (!head.cacheHead || head.cacheHead.authorityDigest !== authority.digest) return { kind: 'missing' as const };
+    const local = await cache.status(authority); ensure();
+    if (!force && local?.authorityCurrent && !local.pending && local.cursor.manifestDigest === head.cacheHead.manifestDigest) return { kind: 'unchanged' as const };
     const key = await secrets.currentKey(userId, authority);
     try {
+      ensure();
       if (!key) return { kind: 'awaitingKey' as const };
       const encrypted = await cloud.readCache(authority); if (!encrypted) return { kind: 'missing' as const };
+      ensure();
       await cache.save(encrypted, { authority, accountKey: key, calendarBinding: privateCalendarSourceBinding(authority), origin: 'remote' }); await port.assertOwner();
       return { kind: 'received' as const, sequence: encrypted.manifest.body.sequence };
     } finally { key?.fill(0); }
   }
-  return { readSettings, readForPlan, refreshData, invalidatePlaintext: invalidate,
-    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  return { readSettings, readForPlan, refreshData, synchronizeAutomatically,
+    invalidatePlaintext() { refresh?.cancel(); invalidate(); }, subscribe,
+    observeRemote(onReady?: () => void | Promise<void>) {
+      return observePrivateCalendarForeground({ assertOwner: port.assertOwner, subscribeLocal: subscribe, subscribeConfiguration: devices.subscribe, now,
+        configured: async () => { const view = await devices.read(); return view.phase === 'approved' || view.phase === 'firstPending'; },
+        watchRemote: (changed, failed) => { if (!cloud.watch) throw new Error('本人用Calendarの変更監視を確認してください。'); return cloud.watch(changed, failed); },
+        synchronize: synchronizeAutomatically, onReady });
+    },
     async checkGoogleAccount() { await assertMain(); const account = await port.currentGoogleAccount(); await port.assertOwner(); return account; },
     async restoreCurrentGoogleAccount() {
       await assertMain(); if (!port.restoreGoogleAccount) throw new Error('この端末でGoogleログインを確認してください。');
       const account = await port.restoreGoogleAccount(); await port.assertOwner(); return account;
     },
     connectCurrentSource(subject: string, expectedAuthorityDigest: string) {
-      return mutate(async () => { await assertMain(expectedAuthorityDigest); await port.authorizeGoogleSource(subject); await port.assertOwner();
+      return configure(async () => { await assertMain(expectedAuthorityDigest); await port.authorizeGoogleSource(subject); await port.assertOwner();
         const result = await sourceController.change({ googleSubject: subject }, expectedAuthorityDigest); if (result.kind === 'ready') requiresSourceReview = false; return result; });
     },
-    disableSource(expectedAuthorityDigest: string) { return mutate(async () => { await assertMain(expectedAuthorityDigest); return sourceController.change({ googleSubject: null }, expectedAuthorityDigest); }); },
-    resumeSource: () => mutate(() => sourceController.resume()),
-    dismissSource: (targetDigest: string, observedHeadDigest: string) => mutate(() => sourceController.dismissReviewed(targetDigest, observedHeadDigest)),
+    disableSource(expectedAuthorityDigest: string) { return configure(async () => { await assertMain(expectedAuthorityDigest); return sourceController.change({ googleSubject: null }, expectedAuthorityDigest); }); },
+    resumeSource: () => configure(() => sourceController.resume()),
+    dismissSource: (targetDigest: string, observedHeadDigest: string) => configure(() => sourceController.dismissReviewed(targetDigest, observedHeadDigest)),
     async readOwnCalendar(target: DateTarget) {
       const calendar = await readForPlan(); await port.assertOwner();
       return calendar ? createPrivateCalendarReader(calendar.cache, calendar.binding, now())(target) : { kind: 'unknown' as const, reason: 'missing' as const };

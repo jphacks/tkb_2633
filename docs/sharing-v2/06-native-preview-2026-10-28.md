@@ -410,3 +410,13 @@ Androidの未認識routeは開発clientの新しいbundleへの再接続で切�
 - Android 10：`phase4as-android-acquisition-fence.log`、**92.265秒**・code 0。設定2・合成取得1回を要素情報と画像で確認した。結果全体をスクロールで表示した`phase4au-android-acquisition-proof-full.png`も実際に確認し、検査後に消灯した。
 
 実行ファイルの接頭辞`phase4as`は既存のsource検査runnerを再利用した名前で、検査対象はPhase 4au差分である。このNative検査は正常な取得・保存の互換性であり、2実行経路の競合、期限切れやSQL中断の再現は別の実SQLite9ケースで検査した。合成取得を実Google取得へ拡大せず、OS任せの背景実行も未確認とする。
+
+
+## Phase 4av：100要求の集約と自動経路の再取得制限
+
+2026-10-29、基点`5b44013`の差分。既存source QA領域で明示更新を1回行ってから、通常runtimeの自動同期へ100要求を同時に渡す。全要求の同一Promise、全結果の同じ最新cache、追加の合成Google取得0回を検査した。既存の設定版2・保護鍵を使い、データの初期化やLiFlowの置換は行わない。更新した補助APK／XCTestは検査用アプリだけである。
+
+- iPhone：`phase4av-ios-final-auto.log`、XCTest **12.221秒**・1件成功。画像`phase4av-ios-final-auto-attachments/44F2299E-E7B9-4047-9DA0-1AE13B861719.png`で「100要求・再取得0回」を確認した。
+- Android 10：`phase4av-android-final-auto.log`、**64.594秒**・code 0。最初の画像は結果が画面外のため、その画像だけで実表示を認めず、スクロールして`phase4av-android-final-auto-proof-visible.png`の結果を実際に確認した。検査後に消灯した。
+
+最初の実行もiPhone13.092秒・Android69.741秒で成功したが、取消・停止時の中止制御を追加した後の最終実行を上記の証拠とする。これらは実Nativeと合成時間帯・ローカルEmulatorの検査であり、OSに選ばれたBackgroundTaskの長時間放置検査、実アカウントのcache転送、通常グループの総合E2Eは含まない。Native本体はExpo58.0.20の開発buildを継続使用しており、別途検出した互換patchの更新後に再ビルド・再検査する。

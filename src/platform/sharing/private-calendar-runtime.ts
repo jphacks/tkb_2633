@@ -15,6 +15,7 @@ import { createCalendarFreeBusyClient } from '../google-tasks/google-calendar-fr
 import { authorizePrivateGoogleCalendarSource, getCurrentGoogleCalendarAccount, getCurrentGoogleSubject, getGoogleCalendarAccessToken, restorePrivateGoogleCalendarAccount } from '../google-tasks/google-sign-in-gateway';
 import { GoogleAccountMismatchError } from '../../features/google-sync/account-binding';
 import { assertSharedIdentifier } from '../../features/sharing/identifier';
+import { privateCalendarDeadlineError } from '../../features/sharing/private-calendar/sync-deadline';
 
 const runtimes = new Map<string, PrivateCalendarRuntime>(); let observedAuth: Auth | null = null; let stopObserving: (() => void) | undefined;
 /** Importing this module does not initialize Firebase, Google, a DB, or any periodic worker. */
@@ -36,8 +37,12 @@ export function openPrivateCalendarRuntime(userId: string): PrivateCalendarRunti
     currentGoogleAccount: () => withGoogleSyncOperation(async () => { assertOwner(); const account = await getCurrentGoogleCalendarAccount(); assertOwner(); return account; }),
     restoreGoogleAccount: () => withGoogleSyncOperation(async () => { assertOwner(); const account = await restorePrivateGoogleCalendarAccount(); assertOwner(); return account; }),
     authorizeGoogleSource: expected => withGoogleSyncOperation(async () => { assertOwner(); await authorizePrivateGoogleCalendarSource(expected); assertOwner(); }),
-    queryGoogle: (expected, range) => withGoogleSyncOperation(async () => {
-      assertOwner(); const token = await getGoogleCalendarAccessToken(expected); assertOwner(); const busy = await client.query(token, range); assertOwner();
+    queryGoogle: (expected, range, options = {}) => withGoogleSyncOperation(async () => {
+      const remaining = () => { const value = Math.min(60_000, options.deadline === undefined ? 60_000 : options.deadline - Date.now());
+        options.assertBudget?.(); if (options.signal?.aborted || value < 1) throw privateCalendarDeadlineError(); return value; };
+      assertOwner(); remaining(); const token = await getGoogleCalendarAccessToken(expected); assertOwner();
+      const busy = await client.query(token, range, { timeoutMs: remaining(), maxIntervals: 100_000, ...(options.signal ? { signal: options.signal } : {}) }); assertOwner();
+      remaining();
       if (await getCurrentGoogleSubject() !== expected) throw new GoogleAccountMismatchError(); assertOwner(); return busy;
     }) });
   runtimes.set(userId, runtime); return runtime;

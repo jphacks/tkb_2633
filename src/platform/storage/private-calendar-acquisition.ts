@@ -4,9 +4,10 @@ import type { PrivateCalendarCryptoGateway } from '../../features/sharing/privat
 import { exactRecord, hexBytes } from '../../features/sharing/private-calendar/validation.ts';
 import { assertPrivateCalendarDeliveryFailure, privateCalendarDeliveryRetry } from '../../features/sharing/private-calendar/delivery-retry.ts';
 import type { PrivateCalendarDeliveryFailure } from '../../features/sharing/private-calendar/delivery-retry.ts';
+import { PRIVATE_CALENDAR_REFRESH_MS } from '../../features/sharing/private-calendar/sync-deadline.ts';
 
 export const PRIVATE_CALENDAR_ACQUISITION_LEASE_MS = 120_000;
-export const PRIVATE_CALENDAR_REFRESH_MS = 10 * 60_000;
+export { PRIVATE_CALENDAR_REFRESH_MS } from '../../features/sharing/private-calendar/sync-deadline.ts';
 export interface PrivateCalendarAcquisitionLease {
   token: string; authorityDigest: string; rangeDigest: string; startedAt: number; expiresAt: number;
 }

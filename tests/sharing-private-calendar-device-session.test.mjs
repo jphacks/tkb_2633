@@ -58,8 +58,16 @@ test('private Calendar settings retain prepared approval after a lost reply and 
   f.flags.controlReplyLost = true; await assert.rejects(() => f.a.approveConfirmedRequest(request.request), /lost approval/u);
   assert.ok((await f.a.read()).pendingChange); const historyLength = f.history.length; f.flags.keyReplyLost = true;
   const queued = await f.a.synchronizeDevices(); assert.equal(queued.phase, 'approved'); assert.equal(queued.pendingKeys, 1); assert.ok(queued.keyRetryAt);
+  const generations = f.owner.state.generations; const waiting = await f.a.synchronizeDevices({ force: false });
+  assert.equal(waiting.pendingKeys, 1); assert.equal(waiting.keyRetryAt, queued.keyRetryAt); assert.equal(f.owner.state.generations, generations);
   assert.equal((await f.a.synchronizeDevices()).pendingKeys, 0); assert.equal(f.history.length, historyLength);
   assert.equal((await f.b.acceptApproval()).keyReady, true); assert.equal(f.packets.size, 1);
+});
+
+test('private Calendar automatic device refresh does not emit an explicit-configuration feedback loop but manual changes still notify', async t => {
+  const f = await paired(t); let changes = 0; const stop = f.a.subscribe(() => { changes++; });
+  await f.a.synchronizeDevices({ force: false }); assert.equal(changes, 0);
+  await f.a.synchronizeDevices(); assert.equal(changes, 1); stop(); await f.a.synchronizeDevices(); assert.equal(changes, 1);
 });
 
 test('private Calendar settings coalesce concurrent manual sync and reject another mutation until the current action ends', async t => {

@@ -28,6 +28,12 @@ export async function createPrivateCalendarSourcePreview(platform: string, host:
         const start = Date.parse(range.timeMin) + 9 * 3600000; return [{ start: new Date(start).toISOString(), end: new Date(start + 3600000).toISOString() }];
       } });
     return { runtime, async initialize() { const view = await devices.read(); return view.phase === 'unconfigured' ? devices.initializeFirstDevice() : view; },
+      async verifyAutomatic() {
+        if ((await runtime.refreshData()).kind !== 'published') throw new Error('検査用取得元の接続を先に確認してください。');
+        const before = queries; const calls = Array.from({ length: 100 }, () => runtime.synchronizeAutomatically());
+        if (new Set(calls).size !== 1 || !(await Promise.all(calls)).every(result => result.kind === 'fresh') || queries !== before) throw new Error('自動同期の再取得制限が一致しません。');
+        return { requests: calls.length, queries: queries - before };
+      },
       async verify() {
         const data = await runtime.readForPlan(); if (!data || data.ownerUserId !== userId || data.cache.intervals.length !== 1) throw new Error('検査用の保存データがありません。');
         const part = data.cache.intervals[0]; const busy = await runtime.readOwnCalendar({ precision: 'interval', ...part }); const end = Date.parse(part.end);

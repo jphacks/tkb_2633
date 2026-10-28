@@ -19,7 +19,7 @@ import * as registry from '../../src/platform/storage/sharing-registry.ts';
 import * as ledger from '../../src/platform/storage/sharing-ledger.ts';
 
 /** Real signatures, event repository and SQLite; only native handles/account storage/cloud I/O are injected. */
-export async function workspaceHarness({ pending = false, version = 2, cloud: overrides = {}, deferWorkspaceTimers = false } = {}) {
+export async function workspaceHarness({ pending = false, version = 2, cloud: overrides = {}, deferWorkspaceTimers = false, privateCalendarNeeded = false } = {}) {
   const handles = []; const calls = []; let ordinal = 0;
   const create = () => { const h = createDatabase(); let closed = false;
     h.database.closeAsync = async () => { if (!closed) { closed = true; h.connection.close(); } }; handles.push(h); return h; };
@@ -64,6 +64,7 @@ export async function workspaceHarness({ pending = false, version = 2, cloud: ov
     '../storage/repository.ts': { LOCAL_HOUSEHOLD_ID: 'local', withPlannerDatabaseOperation: async (_db, work) => work(), drainPlannerDatabaseOperations: async () => {},
       loadGoogleSyncState: async () => { throw new Error('legacy Google state queried'); } },
     '../../features/google-sync/background-task': { registerGoogleSyncBackgroundTask: async () => {} },
+    './private-calendar-sync': { isPrivateCalendarWorkerNeeded: async () => privateCalendarNeeded },
   }, deferWorkspaceTimers ? { setTimeout: () => 1, clearTimeout: () => {} } : {});
   return { api, handles, index, calls, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
     close: async () => { for (const h of handles) await h.database.closeAsync(); } };

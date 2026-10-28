@@ -14,7 +14,7 @@ export function openGoogleCalendarReadAudit() {
     authorize: subject => withGoogleSyncOperation(() => authorizePrivateGoogleCalendarSource(subject)),
     query: (subject, range) => withGoogleSyncOperation(async () => {
       const token = await getGoogleCalendarAccessToken(subject); let requests = 0;
-      const client = createCalendarFreeBusyClient(fetch, () => { requests++; }); const intervals = await client.query(token, range);
+      const client = createCalendarFreeBusyClient(fetch, () => { requests++; }); const intervals = await client.query(token, range, { timeoutMs: 20_000, maxIntervals: 100_000 });
       if (await getCurrentGoogleSubject() !== subject) throw new GoogleAccountMismatchError(); return { intervals, requests };
     }) });
 }

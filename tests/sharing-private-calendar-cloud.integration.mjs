@@ -48,6 +48,20 @@ async function joined() {
   await h.left.cloud.commitAuthority(h.root, authority); return { ...h, authority };
 }
 
+test('private Calendar foreground watch emits the server-confirmed initial head and later changes and detaches cleanly', async () => {
+  const h = await fixture(); let changes = 0; let failure = false;
+  const stop = h.left.cloud.watch(() => { changes++; }, () => { failure = true; });
+  async function observed(count) { const end = Date.now() + 5000; while (changes < count && !failure && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 10)); assert.equal(failure, false); assert.ok(changes >= count, 'Expected a server-confirmed snapshot'); }
+  try {
+    await observed(1);
+    const next = advancePrivateCalendarAuthority(h.root, { mainDeviceId: h.main.deviceId, devices: [h.main], keyVersion: 1 }, h.main, { purpose: 'calendarSourceChange' });
+    const prior = changes; await h.left.cloud.commitAuthority(h.root, next); await observed(prior + 1);
+    stop(); const stoppedCount = changes;
+    const last = advancePrivateCalendarAuthority(next, { mainDeviceId: h.main.deviceId, devices: [h.main], keyVersion: 1 }, h.main, { purpose: 'calendarSourceChange' });
+    await h.left.cloud.commitAuthority(next, last); await new Promise(resolve => setTimeout(resolve, 50)); assert.equal(changes, stoppedCount);
+  } finally { stop(); }
+});
+
 test('private Calendar Cloud root creation is fixed and idempotent while other users cannot read any private path or enumerate owners', async () => {
   const h = await fixture(); assert.equal((await h.left.cloud.createRoot(h.root)).created, false);
   const head = await h.right.cloud.readHead(); assert.equal(head.rootDigest, h.root.digest); assert.equal(head.cacheHead, null);

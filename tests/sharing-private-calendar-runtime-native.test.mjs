@@ -5,6 +5,7 @@ import { loadNativeModule } from './helpers/native-module.mjs';
 import { assertSharedIdentifier } from '../src/features/sharing/identifier.ts';
 import { GoogleAccountMismatchError } from '../src/features/google-sync/account-binding.ts';
 import { withGoogleSyncOperation } from '../src/features/google-sync/operation-lock.ts';
+import { privateCalendarDeadlineError } from '../src/features/sharing/private-calendar/sync-deadline.ts';
 
 function fixture() {
   const state = { uid: null, subject: 'selected-google-subject', cloud: [], ports: [], callbacks: [], tokens: [], queries: [], consents: [], restores: 0, invalidations: [], authReads: 0 };
@@ -29,8 +30,9 @@ function fixture() {
     '../../features/sharing/private-calendar/runtime': { createPrivateCalendarRuntime: port => { state.ports.push(port); return { port, invalidatePlaintext: () => state.invalidations.push(port.userId) }; } },
     '../../features/google-sync/calendar-availability': { getDeviceTimeZone: () => 'Asia/Tokyo' },
     '../../features/google-sync/operation-lock': { withGoogleSyncOperation },
-    '../google-tasks/google-calendar-freebusy-client': { createCalendarFreeBusyClient: () => ({ query: async (token, range) => { state.queries.push({ token, range }); return state.busy ?? []; } }) },
+    '../google-tasks/google-calendar-freebusy-client': { createCalendarFreeBusyClient: () => ({ query: async (token, range, options) => { state.queries.push({ token, range, options }); return state.busy ?? []; } }) },
     '../google-tasks/google-sign-in-gateway': gateway, '../../features/google-sync/account-binding': { GoogleAccountMismatchError }, '../../features/sharing/identifier': { assertSharedIdentifier },
+    '../../features/sharing/private-calendar/sync-deadline': { privateCalendarDeadlineError },
   });
   return { module, state, gateway, services, auth };
 }
@@ -43,6 +45,27 @@ test('private Calendar Native runtime is lazy one per authenticated UID and inva
   assert.throws(() => first.port.assertOwner(), /アカウント/u); const other = f.module.openPrivateCalendarRuntime('owner-b'); assert.notEqual(other, first);
   f.state.uid = null; f.state.callbacks[0](null); assert.ok(f.state.invalidations.includes('owner-b')); assert.equal(f.state.ports.length, 2);
   assert.deepEqual(f.state.cloud, ['owner-a', 'owner-b']); assert.deepEqual(f.state.tokens, []); assert.equal(f.state.restores, 0);
+});
+
+test('private Calendar Native acquisition refuses an expired Google mutex wait before requesting a token', async t => {
+  let now = 1_000; t.mock.method(Date, 'now', () => now); const f = fixture(); f.state.uid = 'owner-a'; const { port } = f.module.openPrivateCalendarRuntime(f.state.uid);
+  let release; let enter; const gate = new Promise(done => { release = done; }); const entered = new Promise(done => { enter = done; });
+  const held = withGoogleSyncOperation(async () => { enter(); await gate; }); await entered;
+  const request = port.queryGoogle(f.state.subject, {}, { deadline: 1_100 }); const failed = assert.rejects(() => request, error => error.code === 'deadline-exceeded');
+  now = 1_100; release(); await held; await failed; assert.deepEqual(f.state.tokens, []); assert.deepEqual(f.state.queries, []);
+});
+
+test('private Calendar Native acquisition passes only its remaining total budget and bounded intervals after token refresh', async t => {
+  let now = 1_000; t.mock.method(Date, 'now', () => now); const f = fixture(); f.state.uid = 'owner-a'; const { port } = f.module.openPrivateCalendarRuntime(f.state.uid);
+  f.gateway.getGoogleCalendarAccessToken = async () => { now += 2_000; return 'synthetic-token'; };
+  await port.queryGoogle(f.state.subject, { synthetic: true }, { deadline: 6_000 });
+  assert.deepEqual(f.state.queries[0].options, { timeoutMs: 3_000, maxIntervals: 100_000 }); assert.equal(f.state.uid, 'owner-a');
+});
+
+test('private Calendar Native acquisition refuses an already cancelled operation before retrieving any Google token', async () => {
+  const f = fixture(); f.state.uid = 'owner-a'; const { port } = f.module.openPrivateCalendarRuntime(f.state.uid); const controller = new AbortController(); controller.abort();
+  await assert.rejects(() => port.queryGoogle(f.state.subject, {}, { signal: controller.signal }), error => error.code === 'deadline-exceeded');
+  assert.deepEqual(f.state.tokens, []); assert.deepEqual(f.state.queries, []);
 });
 
 test('private Calendar Native acquisition serializes with the existing Google worker and rechecks Google and Firebase identities after transport', async () => {

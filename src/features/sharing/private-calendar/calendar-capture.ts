@@ -16,6 +16,7 @@ import { mergeInstantRanges } from '../v2/private-availability.ts';
 import { assertSharedIdentifier } from '../identifier.ts';
 import { canonicalJson } from '../operations.ts';
 import { sharedDocumentDigest } from '../crypto.ts';
+import { assertPrivateCalendarDeadline, privateCalendarDeadlineError } from './sync-deadline.ts';
 
 export interface PrivateCalendarCapturePort {
   userId: string; assertOwner(): void | Promise<void>;
@@ -23,7 +24,7 @@ export interface PrivateCalendarCapturePort {
   cache: ReturnType<typeof createPrivateCalendarCacheStorage>; crypto: PrivateCalendarCryptoGateway;
   cloud: Pick<ReturnType<typeof createPrivateCalendarCloud>, 'readHead' | 'uploadCache'>;
   /** Noninteractive, bound to this explicit Google subject before and after acquisition. No Firebase-UID inference. */
-  queryGoogle(subject: string, range: CalendarQueryRange): Promise<readonly { start: string; end: string }[]>;
+  queryGoogle(subject: string, range: CalendarQueryRange, options?: { deadline?: number; assertBudget?: () => void; signal?: AbortSignal }): Promise<readonly { start: string; end: string }[]>;
   now?: () => number; randomFraction?: () => number;
 }
 function rangeSnapshot(range: CalendarQueryRange): CalendarQueryRange {
@@ -50,8 +51,9 @@ export function snapshotPrivateCalendarIntervals(raw: readonly { start: string; 
 /** One bounded acquisition/publication action. Scheduling, permissions and retry UI belong to its caller. */
 export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
   const { userId, secrets, source, cache, cloud, crypto, now = Date.now, randomFraction = Math.random } = port; assertSharedIdentifier(userId);
-  async function run(range: CalendarQueryRange, force: boolean, automatic: boolean) {
-    await port.assertOwner(); const state = await secrets.publicState(userId); const authority = state?.authority;
+  async function run(range: CalendarQueryRange, force: boolean, automatic: boolean, deadline?: number, assertBudget?: () => void, signal?: AbortSignal) {
+    const withinBudget = () => { if (signal?.aborted) throw privateCalendarDeadlineError(); assertBudget?.(); assertPrivateCalendarDeadline(deadline, now()); }; withinBudget();
+    await port.assertOwner(); const state = await secrets.publicState(userId); const authority = state?.authority; withinBudget();
     if (!authority) return { kind: 'unconfigured' as const };
     if (!authority.signed.body.devices.some(device => device.deviceId === state.identity.deviceId)) return { kind: 'revoked' as const };
     if (authority.signed.body.mainDeviceId !== state.identity.deviceId) return { kind: 'notMain' as const };
@@ -63,7 +65,9 @@ export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
     if (!Number.isSafeInteger(start) || start < 0 || !Number.isFinite(new Date(start).getTime())) throw new Error('Calendarの取得時刻を確認してください。');
     instantMilliseconds(new Date(start).toISOString());
     async function assertContext() {
+      withinBudget();
       await port.assertOwner(); const current = await secrets.publicState(userId); const selected = await source.read(); await port.assertOwner();
+      withinBudget();
       if (current?.authority?.digest !== authority!.digest || current.identity.deviceId !== state!.identity.deviceId
         || !current.hasCurrentKey || selected?.pending || selected?.active?.googleSubject !== subject) throw new Error('本人用Calendarの取得中に端末・取得元が変わりました。');
     }
@@ -94,7 +98,8 @@ export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
     if (acquisition.kind !== 'acquired') return acquisition;
     try {
       await head();
-      const raw = await port.queryGoogle(subject, { ...range }); const intervals = snapshotPrivateCalendarIntervals(raw, range);
+      withinBudget(); const raw = await port.queryGoogle(subject, { ...range }, { deadline, assertBudget: withinBudget, signal }); withinBudget();
+      const intervals = snapshotPrivateCalendarIntervals(raw, range);
       const acceptedHead = await head(); const local = await cache.status(authority);
       const sequence = Math.max(local?.cursor.sequence ?? 0, acceptedHead.cacheHead?.sequence ?? 0) + 1;
       let key = await secrets.currentKey(userId, authority);
@@ -104,7 +109,8 @@ export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
           mainRevision: authority.signed.body.revision, calendarBinding: binding, timeZone: range.timeZone, fetchedAt: new Date(start).toISOString(),
           coverage: { start: range.timeMin, end: range.timeMax }, intervals };
         const encrypted = await sealPrivateCalendarCache(crypto, { authority, accountKey: key, calendarBinding: binding, cache: body, mainDevice: await secrets.identity(userId), sequence });
-        await assertContext(); await cache.save(encrypted, { authority, accountKey: key, calendarBinding: binding, origin: 'local', acquisition: { lease: acquisition.lease, now } });
+        await assertContext(); await cache.save(encrypted, { authority, accountKey: key, calendarBinding: binding, origin: 'local',
+          acquisition: { lease: acquisition.lease, now: () => { withinBudget(); return now(); } } });
         return await publish(encrypted);
       } finally { key?.fill(0); key = null; }
     } catch (error) {
@@ -114,14 +120,15 @@ export function createPrivateCalendarCapture(port: PrivateCalendarCapturePort) {
     }
   }
   let flight: { scope: string; force: boolean; promise: ReturnType<typeof run> } | null = null;
-  function capture(options: { range: CalendarQueryRange; force?: boolean; automatic?: boolean }): ReturnType<typeof run> {
+  function capture(options: { range: CalendarQueryRange; force?: boolean; automatic?: boolean; deadline?: number; assertBudget?: () => void; signal?: AbortSignal }): ReturnType<typeof run> {
     const range = rangeSnapshot(options.range); const force = options.force === true; const scope = canonicalJson(range);
+    const { deadline, assertBudget, signal } = options;
     if (flight) {
       const current = flight;
       if (current.scope !== scope) return Promise.reject(new Error('別の範囲のCalendarを更新中です。完了後に再試行してください。'));
-      return force && !current.force ? current.promise.then(result => result.kind === 'waiting' || result.kind === 'fresh' ? capture({ range, force }) : result) : current.promise;
+      return force && !current.force ? current.promise.then(result => result.kind === 'waiting' || result.kind === 'fresh' ? capture({ range, force, deadline, assertBudget, signal }) : result) : current.promise;
     }
-    const pending = run(range, force, options.automatic === true); flight = { scope, force, promise: pending };
+    const pending = run(range, force, options.automatic === true, deadline, assertBudget, signal); flight = { scope, force, promise: pending };
     void pending.finally(() => { if (flight?.promise === pending) flight = null; }).catch(() => {}); return pending;
   }
   return { capture };

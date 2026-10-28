@@ -21,17 +21,22 @@ function Preview({ host, port }: { host: unknown; port: unknown }) {
     catch (error) { pending.current = null; throw error; }
   }, [host, port]);
   const loadRuntime = useCallback(async () => (await context()).runtime, [context]);
-  async function run(verify: boolean) {
+  async function run(mode: 'initialize' | 'verify' | 'automatic') {
     if (!alive.current || running.current) return; running.current = true; setBusy(true); setResult(null);
-    try { const value = await context(); const next = verify ? await value.verify() : await value.initialize();
-      if (alive.current) setResult(verify ? `本人日時判定 PASS：設定 ${next.revision}・合成取得 ${'queries' in next ? next.queries : 0}回` : '検査端末の準備完了・取得元の設定を再読込してください。');
+    try {
+      const value = await context(); let message: string;
+      if (mode === 'automatic') { const proof = await value.verifyAutomatic(); message = `自動同期検査 PASS：${proof.requests}要求・再取得${proof.queries}回`; }
+      else if (mode === 'verify') { const proof = await value.verify(); message = `本人日時判定 PASS：設定 ${proof.revision}・合成取得 ${proof.queries}回`; }
+      else { await value.initialize(); message = '検査端末の準備完了・取得元の設定を再読込してください。'; }
+      if (alive.current) setResult(message);
     } catch { if (alive.current) setResult('検査は未完了です。保存済みの検査データを保持しています。'); }
     finally { running.current = false; if (alive.current) setBusy(false); }
   }
   return <PrivateCalendarSourceScreen loadRuntime={loadRuntime} onBack={() => router.back()} onDevices={() => {}}
     footer={<Card><SectionHeading title="開発用・取得元の検査" /><Text style={typography.caption}>合成した時間帯だけを使用します。Google API・実アカウント・個人家事には接続しません。</Text>
-      <AppButton title="検査専用の初回端末を準備" disabled={busy} onPress={() => run(false)} />
-      <AppButton title="保存済みの本人日時判定を照合" disabled={busy} onPress={() => run(true)} />
+      <AppButton title="検査専用の初回端末を準備" disabled={busy} onPress={() => run('initialize')} />
+      <AppButton title="保存済みの本人日時判定を照合" disabled={busy} onPress={() => run('verify')} />
+      <AppButton title="自動同期・再取得制限を照合" disabled={busy} onPress={() => run('automatic')} />
       {result ? <Text testID="private-source-proof" style={typography.label}>{result}</Text> : null}
     </Card>} />;
 }

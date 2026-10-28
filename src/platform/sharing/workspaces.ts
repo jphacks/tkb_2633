@@ -533,5 +533,8 @@ export async function hasOtherGoogleWorkspaceConnections(except: SQLiteDatabase)
 }
 
 export async function isSharedWorkerNeeded(): Promise<boolean> {
-  return await hasSharingSessionEnabled() && (await knownSharingWorkspaces()).some((record) => !['left', 'removed'].includes(record.status));
+  if (!await hasSharingSessionEnabled()) return false;
+  if ((await knownSharingWorkspaces()).some((record) => !['left', 'removed'].includes(record.status))) return true;
+  const { isPrivateCalendarWorkerNeeded } = await import('./private-calendar-sync');
+  return isPrivateCalendarWorkerNeeded();
 }

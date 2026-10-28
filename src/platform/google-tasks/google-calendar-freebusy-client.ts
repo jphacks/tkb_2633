@@ -15,7 +15,7 @@ export class CalendarFreeBusyError extends Error {
 }
 
 export interface CalendarFreeBusyClient {
-  query(accessToken: string, range: CalendarQueryRange): Promise<{ start: string; end: string }[]>;
+  query(accessToken: string, range: CalendarQueryRange, options?: { timeoutMs?: number; maxIntervals?: number; signal?: AbortSignal }): Promise<{ start: string; end: string }[]>;
 }
 
 // The live API rejected the planner's 181-day coverage as timeRangeTooLong.
@@ -23,9 +23,11 @@ export interface CalendarFreeBusyClient {
 export const FREEBUSY_QUERY_CHUNK_MS = 90 * 24 * 60 * 60 * 1000;
 
 export function createCalendarFreeBusyClient(fetcher: typeof fetch = fetch, onRequest?: () => void): CalendarFreeBusyClient {
-  const queryWindow = async (accessToken: string, range: CalendarQueryRange): Promise<{ start: string; end: string }[]> => {
+  const queryWindow = async (accessToken: string, range: CalendarQueryRange, deadline: number | undefined, remainingIntervals: number, signal?: AbortSignal): Promise<{ start: string; end: string }[]> => {
+    if (signal?.aborted || deadline !== undefined && Date.now() >= deadline) throw new CalendarFreeBusyError(503, 'calendar_timeout');
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const abort = () => controller.abort(); signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => controller.abort(), Math.min(20_000, deadline === undefined ? 20_000 : Math.max(1, deadline - Date.now())));
     try {
       onRequest?.();
       const response = await fetcher('https://www.googleapis.com/calendar/v3/freeBusy', {
@@ -34,6 +36,7 @@ export function createCalendarFreeBusyClient(fetcher: typeof fetch = fetch, onRe
         body: JSON.stringify({ timeMin: range.timeMin, timeMax: range.timeMax, timeZone: range.timeZone, items: [{ id: 'primary' }] }),
       });
       const payload = await response.json().catch(() => null);
+      if (controller.signal.aborted || deadline !== undefined && Date.now() >= deadline) throw new CalendarFreeBusyError(503, 'calendar_timeout');
       if (!response.ok) {
         const errors = payload?.error?.errors;
         const reasons: string[] = Array.isArray(errors) ? errors.map((item: { reason?: string }) => item?.reason ?? '') : [];
@@ -66,28 +69,43 @@ export function createCalendarFreeBusyClient(fetcher: typeof fetch = fetch, onRe
         throw new CalendarFreeBusyError(400, 'calendar_item_error');
       }
       if (!calendar || !Array.isArray(calendar.busy)) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
+      if (calendar.busy.length > remainingIntervals) throw new CalendarFreeBusyError(502, 'calendar_response_too_large');
       return calendar.busy.map((item: { start?: unknown; end?: unknown }) => {
         if (typeof item?.start !== 'string' || typeof item?.end !== 'string'
           || !parseGoogleCompletedAt(item.start) || !parseGoogleCompletedAt(item.end)
           || Date.parse(item.end) <= Date.parse(item.start)) throw new CalendarFreeBusyError(502, 'calendar_invalid_response');
         return { start: item.start, end: item.end };
       });
-    } finally { clearTimeout(timer); }
+    } catch (error) {
+      if (controller.signal.aborted) throw new CalendarFreeBusyError(503, 'calendar_timeout'); throw error;
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   };
   return {
-    async query(accessToken, range) {
+    async query(accessToken, range, options = {}) {
+      const { timeoutMs, maxIntervals = Number.MAX_SAFE_INTEGER } = options;
+      if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000)
+        || options.maxIntervals !== undefined && (!Number.isSafeInteger(maxIntervals) || maxIntervals < 1 || maxIntervals > 1_000_000)) throw new CalendarFreeBusyError(400, 'calendar_invalid_query_options');
+      const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
       const min = Date.parse(range.timeMin);
       const max = Date.parse(range.timeMax);
       if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new CalendarFreeBusyError(400, 'calendar_time_range_empty');
-      const intervals: { start: string; end: string }[] = [];
-      for (let start = min; start < max; start += FREEBUSY_QUERY_CHUNK_MS) {
-        const chunk = await queryWindow(accessToken, { ...range,
-          timeMin: new Date(start).toISOString(), timeMax: new Date(Math.min(max, start + FREEBUSY_QUERY_CHUNK_MS)).toISOString() });
-        // Function argument limits differ between JS engines. Do not spread an
-        // unbounded API response into push(...), including on Hermes devices.
-        for (const interval of chunk) intervals.push(interval);
-      }
-      return intervals;
+      if (options.signal?.aborted) throw new CalendarFreeBusyError(503, 'calendar_timeout');
+      const controller = timeoutMs === undefined && !options.signal ? undefined : new AbortController();
+      const abort = () => controller?.abort(); options.signal?.addEventListener('abort', abort, { once: true });
+      const timer = timeoutMs === undefined ? undefined : setTimeout(() => controller!.abort(), timeoutMs);
+      try {
+        const intervals: { start: string; end: string }[] = [];
+        for (let start = min; start < max; start += FREEBUSY_QUERY_CHUNK_MS) {
+          const chunk = await queryWindow(accessToken, { ...range,
+            timeMin: new Date(start).toISOString(), timeMax: new Date(Math.min(max, start + FREEBUSY_QUERY_CHUNK_MS)).toISOString() }, deadline, maxIntervals - intervals.length, controller?.signal);
+          if (controller?.signal.aborted || deadline !== undefined && Date.now() >= deadline) throw new CalendarFreeBusyError(503, 'calendar_timeout');
+          // Function argument limits differ between JS engines. Do not spread an
+          // unbounded API response into push(...), including on Hermes devices.
+          for (const interval of chunk) intervals.push(interval);
+        }
+        if (controller?.signal.aborted || deadline !== undefined && Date.now() >= deadline) throw new CalendarFreeBusyError(503, 'calendar_timeout');
+        return intervals;
+      } finally { clearTimeout(timer); options.signal?.removeEventListener('abort', abort); }
     },
   };
 }

@@ -82,7 +82,7 @@ test('real Google Native read audit composes only the existing Google gateways a
   const module = loadNativeModule('src/platform/sharing/google-calendar-read-audit.ts', {
     '../../features/sharing/development/google-calendar-read-audit': { createGoogleCalendarReadAudit: value => { port = value; return value; } },
     '../../features/google-sync/calendar-availability': { getDeviceTimeZone: () => 'Asia/Tokyo' }, '../../features/google-sync/operation-lock': { withGoogleSyncOperation: work => work() },
-    '../google-tasks/google-calendar-freebusy-client': { createCalendarFreeBusyClient: (_fetch, counted) => ({ query: async token => { assert.equal(token, 'synthetic-token'); counted(); counted(); counted(); queries++; return []; } }) },
+    '../google-tasks/google-calendar-freebusy-client': { createCalendarFreeBusyClient: (_fetch, counted) => ({ query: async (token, _range, options) => { assert.equal(token, 'synthetic-token'); assert.deepEqual(options, { timeoutMs: 20000, maxIntervals: 100000 }); counted(); counted(); counted(); queries++; return []; } }) },
     '../google-tasks/google-sign-in-gateway': { getCurrentGoogleCalendarAccount: async () => ({ subject: 'own', label: 'private-label' }), restorePrivateGoogleCalendarAccount: async () => ({}),
       authorizePrivateGoogleCalendarSource: async () => {}, getGoogleCalendarAccessToken: async subject => { assert.equal(subject, 'own'); tokenRequests++; return 'synthetic-token'; }, getCurrentGoogleSubject: async () => 'own' },
     '../../features/google-sync/account-binding': { GoogleAccountMismatchError: class extends Error {} },

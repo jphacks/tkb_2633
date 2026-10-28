@@ -11,6 +11,7 @@ import { observeSharingUser } from '@/platform/sharing/auth';
 import { drainPlannerDatabaseOperations } from '@/platform/storage/repository';
 import { WorkspaceContext } from '@/contexts/workspace-context';
 import type { WorkspaceContextValue } from '@/contexts/workspace-context';
+import { startPrivateCalendarForeground, syncKnownPrivateCalendar } from '@/platform/sharing/private-calendar-sync';
 
 /** The personal provider remains mounted for its widget and reminders; only the screen scope switches. */
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
@@ -22,14 +23,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [ready, setReady] = useState(false); const [error, setError] = useState<string | null>(null);
   const alive = useRef(true); const revision = useRef(0); const switchTail = useRef<Promise<unknown>>(Promise.resolve());
-  const refreshSharing = useCallback(async () => {
+  const groupsOwner = useRef<string | null>(null); const registryError = useRef(false);
+  const refreshSharing = useCallback(async function refresh(): Promise<void> {
     const current = ++revision.current; const user = await sharingSessionUser();
-    const next = user ? await knownSharingWorkspaces() : [];
+    const next = user ? await knownSharingWorkspaces().catch(() => null) : [];
+    const latestUser = await sharingSessionUser();
     if (!alive.current || revision.current !== current) return;
+    if (latestUser?.uid !== user?.uid) return refresh();
     setSessionStarted(true);
-    setUserId(user?.uid ?? null); setGroups(next);
+    setUserId(user?.uid ?? null);
+    if (next) { setGroups(next); if (registryError.current) setError(null); registryError.current = false; }
+    else {
+      if (groupsOwner.current !== user?.uid) setGroups([]);
+      registryError.current = true; setError('共有グループ一覧を読み込めませんでした。保存内容を保持しています。本人用Calendarの同期は個別に確認できます。');
+    }
+    groupsOwner.current = user?.uid ?? null;
     if (activeRef.current && (!user || activeRef.current.userId !== user.uid
-      || next.some((group) => group.groupId === activeRef.current!.groupId && ['left', 'removed'].includes(group.status)))) {
+      || next?.some((group) => group.groupId === activeRef.current!.groupId && ['left', 'removed'].includes(group.status)))) {
       activeRef.current = null; setActive(null);
     }
   }, []);
@@ -78,7 +88,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const stop = () => { generation++; subscriptions.forEach((unsubscribe) => unsubscribe()); subscriptions = []; clearInterval(interval); };
     const start = async () => {
       stop(); const current = generation;
-      const records = await knownSharingWorkspaces(); if (stopped || current !== generation || AppState.currentState !== 'active') return;
+      try { subscriptions.push(startPrivateCalendarForeground(userId)); } catch { /* Shared groups remain usable when private settings cannot be opened. */ }
+      const records = await knownSharingWorkspaces().catch(() => []); if (stopped || current !== generation || AppState.currentState !== 'active') return;
       for (const record of records.filter((group) => !['left', 'removed'].includes(group.status))) {
         if (stopped || current !== generation || AppState.currentState !== 'active') return;
         try {
@@ -90,8 +101,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         } catch { /* Keep other groups observable; the coordinator records/retries failures. */ }
       }
       if (stopped || current !== generation || AppState.currentState !== 'active') return;
-      void syncKnownSharingWorkspaces().catch(() => undefined);
-      interval = setInterval(() => { void syncKnownSharingWorkspaces().catch(() => undefined); }, 10 * 60_000);
+      const synchronize = () => {
+        if (stopped || current !== generation || AppState.currentState !== 'active') return;
+        void syncKnownSharingWorkspaces().catch(() => undefined);
+        void syncKnownPrivateCalendar().catch(() => undefined);
+      };
+      synchronize(); interval = setInterval(synchronize, 10 * 60_000);
     };
     if (AppState.currentState === 'active') void start().catch(() => undefined);
     const subscription = AppState.addEventListener('change', (state) => {

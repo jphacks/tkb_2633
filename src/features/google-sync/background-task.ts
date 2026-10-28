@@ -24,6 +24,10 @@ TaskManager.defineTask(GOOGLE_SYNC_BACKGROUND_TASK, async ({ error }) => {
     await database?.closeAsync().catch(() => undefined);
   }
   try {
+    const { syncKnownPrivateCalendar } = await import('@/platform/sharing/private-calendar-sync');
+    await syncKnownPrivateCalendar(15_000);
+  } catch { failed = true; }
+  try {
     const { syncKnownSharingWorkspaces } = await import('@/platform/sharing/workspaces');
     await syncKnownSharingWorkspaces(30_000);
   } catch { failed = true; }

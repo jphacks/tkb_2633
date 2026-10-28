@@ -240,7 +240,7 @@ export function createPrivateCalendarCloud(firestore: Firestore, userId: string,
       return verified;
     },
     watch(onChange: () => void, onError: () => void) {
-      checkAccount(); return onSnapshot(reference, (snapshot) => {
+      checkAccount(); return onSnapshot(reference, { includeMetadataChanges: true }, (snapshot) => {
         if (currentUserId() !== userId || snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return; onChange();
       }, () => { if (currentUserId() === userId) onError(); });
     },

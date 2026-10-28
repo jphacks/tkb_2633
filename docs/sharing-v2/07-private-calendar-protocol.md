@@ -144,3 +144,14 @@ subject・取得停止・準備中の変更は本人UID専用の保護vaultへ�
 取得前の失敗を、本人用SQLの小さな取得記録へ残す。同じwriter transactionで2分の実行leaseを取得し、手動forceでも有効な別leaseを奪わない。期限切れ後の再開では新しいtokenを使い、遅れた旧queryのcache・失敗は採用しない。cache本体・cursor・送信待ちと取得成功は同じSQL transactionで確定する。送信待ちの固定envelopeがあれば、引き続きGoogleの再取得やnonceの再生成をせず再送する。
 
 自動経路の同一取得範囲は10分間再利用できるが、現行authority・実際に保存されているmanifestが一致する場合だけとする。取得範囲変更、期限切れ、取得中断、cache欠落を「最新で空き」とみなさない。Google subject・busy区間・生messageを取得記録へ保存しない。起動／前景／OS workerの自動契機はこの段階では未接続である。
+
+
+## 自動契機と呼出枠（Phase 4av）
+
+既存WorkspaceProviderの起動・復帰と1つの10分タイマーに接続する。前景では本人UIDのheadだけを1つ監視し、背景・ログアウトでは解除する。正式なserver snapshotと後続の変更を確認し、同じ状態の再通知・自己更新で取得し続けない。読込中のUID切替と共有一覧の障害を本人用同期から分離する。未設定では信頼・鍵・Googleの同意を開始しない。
+
+個人Google、本人Calendar、共有は既存の単一workerで各々の失敗を記録・再試行する。最小60分の指定は実行時刻の保証ではない。[Expo SDK 58 BackgroundTask](https://docs.expo.dev/versions/v58.0.0/sdk/background-task/)のOS制限を維持する。自動の鍵配布はbackoffを越えず、現在の完全cacheと同じserver headでは再downloadしない。この「変化なし」からCalendarの鮮度を推測しない。
+
+通常自動25秒・worker15秒・手動100秒の全体枠を設ける。Google mutex・token更新後の残り時間を全chunk共通のHTTP枠へ渡し、失敗・期限切れ・10万区間超過では全体を未完了とする。経過時間のtimeoutとabortを併用し、壁時計の巻戻しで処理が再開しない。停止・取得元変更は自動取得を中止してから確認済みの変更を進める。logout時も旧結果を保存しない。Firestoreの開始済みの不変writeは取消とみなさず、固定内容で回復する。
+
+これらの条件はコード・実SQLite・Emulatorと、合成providerを使う両実機の自動取得再利用で検査済み。実Googleの本人用cacheの総合転送・OS任せの背景実行・本人の許可帯／移動・v2 Tasks等の検査は残る。

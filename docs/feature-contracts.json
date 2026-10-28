@@ -4270,5 +4270,160 @@
         "name": "private Calendar acquisition rejects corrupt retained retry metadata without erasing the current encrypted cache"
       }
     ]
+  },
+  {
+    "feature": "private-calendar-automatic-bounded-synchronization-without-interactive-consent",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar automatic synchronization does not initialize trust restore login or request scopes on an unconfigured device"
+      },
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar automatic synchronization coalesces one hundred triggers and reuses fresh data while keeping manual updates explicit"
+      },
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar automatic synchronization retains saved envelope backoff on restart and retries without a new Google acquisition"
+      },
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar automatic follower receives one complete snapshot and skips another download when the head is unchanged"
+      },
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar automatic synchronization preserves key-delivery retry policy rather than using a manual forced device refresh"
+      },
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar automatic synchronization returns within its budget and never queries Google when a delayed control read resumes later"
+      },
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar an expired automatic attempt stays expired after the wall clock moves backwards"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-foreground-one-listener-one-timer-and-owned-account",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-observer.test.mjs",
+        "name": "private Calendar foreground observer installs one owner listener without timers and ignores its own local invalidations"
+      },
+      {
+        "file": "tests/sharing-private-calendar-observer.test.mjs",
+        "name": "private Calendar foreground observer waits for explicit local trust and retains a configuration notification received during the first read"
+      },
+      {
+        "file": "tests/sharing-private-calendar-observer.test.mjs",
+        "name": "private Calendar foreground observer coalesces remote bursts and performs one trailing recovery without overlapping synchronizations"
+      },
+      {
+        "file": "tests/sharing-private-calendar-observer.test.mjs",
+        "name": "private Calendar foreground observer detaches failed listeners and retries from periodic local activity only after the cooldown"
+      },
+      {
+        "file": "tests/sharing-private-calendar-observer.test.mjs",
+        "name": "private Calendar foreground observer cannot attach a late listener or register work after disposal or an owner switch"
+      },
+      {
+        "file": "tests/sharing-private-calendar-observer.test.mjs",
+        "name": "private Calendar foreground observer does not spin or retain an orphan subscription when a watcher reports failure synchronously"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "${platform} foreground uses one timer for shared and private Calendar work and stops both after backgrounding even with registry failure=${registryBroken}"
+      },
+      {
+        "file": "tests/sharing-workspace-provider.test.mjs",
+        "name": "${platform} workspace bootstrap rechecks the account after registry I/O before exposing groups or starting private work"
+      },
+      {
+        "file": "tests/sharing-private-calendar-device-session.test.mjs",
+        "name": "private Calendar automatic device refresh does not emit an explicit-configuration feedback loop but manual changes still notify"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-private-calendar-cloud.integration.mjs",
+        "name": "private Calendar foreground watch emits the server-confirmed initial head and later changes and detaches cleanly"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-native-worker-retention-and-domain-failure-isolation",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-sync-native.test.mjs",
+        "name": "private Calendar Native automatic entry remains lazy and never initializes sharing for personal users or requests an account"
+      },
+      {
+        "file": "tests/sharing-private-calendar-sync-native.test.mjs",
+        "name": "private Calendar Native worker retention is based on explicit approved or prepared trust and foreground registration reuses the existing task"
+      },
+      {
+        "file": "tests/sharing-private-calendar-sync-native.test.mjs",
+        "name": "private Calendar keeps the shared OS worker needed after every group has left without creating or altering a group"
+      },
+      {
+        "file": "tests/sharing-private-calendar-sync-native.test.mjs",
+        "name": "single OS worker isolates ${broken} failure and still runs all three independent domains with one definition"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-total-http-budget-and-bounded-private-response",
+    "tests": [
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy optional total budget spans chunk boundaries and rejects a late partial result without starting a third request"
+      },
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy optional total budget aborts the actual active transport and never proceeds with incomplete coverage"
+      },
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy optional interval bound covers all chunks together and rejects an oversized response instead of returning partial data"
+      },
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy refuses invalid optional budgets and bounds before any HTTP request"
+      },
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy total timeout still aborts the active request after the wall clock moves backwards"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime-native.test.mjs",
+        "name": "private Calendar Native acquisition refuses an expired Google mutex wait before requesting a token"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime-native.test.mjs",
+        "name": "private Calendar Native acquisition passes only its remaining total budget and bounded intervals after token refresh"
+      }
+    ]
+  },
+  {
+    "feature": "private-calendar-source-actions-preempt-automatic-work-and-abort-on-logout",
+    "tests": [
+      {
+        "file": "tests/sharing-private-calendar-auto.test.mjs",
+        "name": "private Calendar ${reason} aborts an active automatic Google acquisition and never commits its obsolete result"
+      },
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy external cancellation aborts the actual active request and prevents later chunks"
+      },
+      {
+        "file": "tests/google-calendar-budget.test.mjs",
+        "name": "FreeBusy already cancelled external requests never start an HTTP request"
+      },
+      {
+        "file": "tests/sharing-private-calendar-runtime-native.test.mjs",
+        "name": "private Calendar Native acquisition refuses an already cancelled operation before retrieving any Google token"
+      }
+    ]
   }
 ]

@@ -10,12 +10,59 @@ test('active workspace scope injects the legacy provider only for v1 and keeps v
     const screen = screenHarness('src/hooks/use-workspace.tsx', { platform, exportName: 'ActiveWorkspaceScope', props: { children: 'workspace-child' }, mocks: {
       '@/contexts/workspace-context': { WorkspaceContext: { _currentValue: { ready: true, active } } },
       './use-planner-data': { PlannerDataProvider: ({ databaseOverride, children }) => { mounted.push(databaseOverride); return children; } },
+      '@/platform/sharing/private-calendar-sync': {},
       '@/platform/sharing/auth': {}, '@/platform/storage/repository': {},
     } });
     assert.deepEqual(mounted, active?.protocol === 1 ? [active.database] : []);
     assert.ok(screen.text().includes('workspace-child'));
   }
 });
+
+for (const platform of ['ios', 'android']) for (const registryBroken of [false, true]) {
+  test(`${platform} foreground uses one timer for shared and private Calendar work and stops both after backgrounding even with registry failure=${registryBroken}`, async t => {
+    const effects = []; const ticks = []; let stateListener; let privateStarts = 0; let privateStops = 0; let privateSyncs = 0; let sharedSyncs = 0;
+    t.mock.method(globalThis, 'setInterval', (work, interval) => { assert.equal(interval, 600000); ticks.push(work); return ticks.length; });
+    t.mock.method(globalThis, 'clearInterval', () => {});
+    const appState = { currentState: 'active', addEventListener: (_event, listener) => { stateListener = listener; return { remove() {} }; } };
+    const screen = screenHarness('src/hooks/use-workspace.tsx', { platform, exportName: 'WorkspaceProvider', effect: callback => effects.push(callback), mocks: {
+      '@/components/planner-ui': {}, '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
+      './use-planner-data': { usePlannerData: () => ({ database: {} }) }, '@/platform/storage/repository': { drainPlannerDatabaseOperations: async () => {} },
+      '@/platform/sharing/auth': { observeSharingUser: () => () => {} }, 'react-native': { AppState: appState },
+      '@/platform/sharing/private-calendar-sync': { startPrivateCalendarForeground: userId => { assert.equal(userId, 'owner'); privateStarts++; return () => { privateStops++; }; }, syncKnownPrivateCalendar: async () => { privateSyncs++; } },
+      '@/platform/sharing/workspaces': { readSharingSelection: async () => null, hasSharingSessionEnabled: async () => true, sharingSessionUser: async () => ({ uid: 'owner' }),
+        knownSharingWorkspaces: async () => { if (registryBroken) throw new Error('synthetic registry failure'); return []; },
+        subscribeSharingChanges: () => () => {}, syncKnownSharingWorkspaces: async () => { sharedSyncs++; } },
+    } });
+    const disposeBoot = effects[0](); let disposeForeground;
+    try {
+      await screen.flush(); disposeForeground = effects.at(-1)(); await screen.flush();
+      assert.equal(privateStarts, 1); assert.equal(privateSyncs, 1); assert.equal(sharedSyncs, 1); assert.equal(ticks.length, 1);
+      ticks[0](); await screen.flush(); assert.equal(privateSyncs, 2); assert.equal(sharedSyncs, 2);
+      appState.currentState = 'background'; stateListener('background'); ticks[0](); await screen.flush();
+      assert.equal(privateStops, 1); assert.equal(privateSyncs, 2); assert.equal(sharedSyncs, 2);
+      appState.currentState = 'active'; stateListener('active'); await screen.flush();
+      assert.equal(privateStarts, 2); assert.equal(privateSyncs, 3); assert.equal(sharedSyncs, 3); assert.equal(ticks.length, 2);
+    } finally { disposeForeground?.(); disposeBoot?.(); }
+    assert.equal(privateStops, 2);
+  });
+}
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} workspace bootstrap rechecks the account after registry I/O before exposing groups or starting private work`, async () => {
+    let currentUser = 'old-owner'; const effects = [];
+    const group = { userId: 'new-owner', groupId: 'new-account-group', status: 'active' };
+    const screen = screenHarness('src/hooks/use-workspace.tsx', { platform, exportName: 'WorkspaceProvider', effect: callback => effects.push(callback), mocks: {
+      '@/components/planner-ui': {}, '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
+      './use-planner-data': { usePlannerData: () => ({ database: {} }) }, '@/platform/storage/repository': {},
+      '@/platform/sharing/auth': { observeSharingUser: () => () => {} }, '@/platform/sharing/private-calendar-sync': {},
+      '@/platform/sharing/workspaces': { readSharingSelection: async () => null, hasSharingSessionEnabled: async () => true,
+        sharingSessionUser: async () => ({ uid: currentUser }), knownSharingWorkspaces: async () => { currentUser = 'new-owner'; return [group]; }, subscribeSharingChanges: () => () => {} },
+    } });
+    const dispose = effects[0](); try { await screen.flush(); const value = screen.nodes().find(node => node.props.value?.ready === true)?.props.value;
+      assert.ok(value); assert.equal(value.userId, 'new-owner'); assert.deepEqual(value.groups, [group]);
+    } finally { dispose?.(); }
+  });
+}
 
 for (const [platform, name] of [
   ['ios', 'ios foreground sharing listener errors recheck membership instead of leaving revoked groups actionable until the next interval'],
@@ -33,6 +80,7 @@ for (const [platform, name] of [
       '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
       './use-planner-data': { usePlannerData: () => ({ database: {} }) },
       '@/platform/storage/repository': { drainPlannerDatabaseOperations: async () => {} },
+      '@/platform/sharing/private-calendar-sync': { startPrivateCalendarForeground: () => () => {}, syncKnownPrivateCalendar: async () => {} },
       '@/platform/sharing/auth': { observeSharingUser: () => () => {} },
       'react-native': { AppState: appState },
       '@/platform/sharing/workspaces': {
@@ -72,6 +120,7 @@ for (const [platform, groupIds, name] of [
       '@/components/planner-ui': {}, '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
       './use-planner-data': { usePlannerData: () => ({ database: {} }) },
       '@/platform/storage/repository': { drainPlannerDatabaseOperations: async () => {} },
+      '@/platform/sharing/private-calendar-sync': { startPrivateCalendarForeground: () => () => {}, syncKnownPrivateCalendar: async () => {} },
       '@/platform/sharing/auth': { observeSharingUser: () => () => {} }, 'react-native': { AppState: appState },
       '@/platform/sharing/workspaces': {
         readSharingSelection: async () => null, hasSharingSessionEnabled: async () => true,
@@ -104,6 +153,7 @@ for (const [platform, name] of [
       '@/components/planner-ui': {}, '@/contexts/workspace-context': { WorkspaceContext: { Provider: 'WorkspaceContextProvider' } },
       './use-planner-data': { usePlannerData: () => ({ database: {} }) },
       '@/platform/storage/repository': { drainPlannerDatabaseOperations: async () => {} },
+      '@/platform/sharing/private-calendar-sync': { startPrivateCalendarForeground: () => () => {}, syncKnownPrivateCalendar: async () => {} },
       '@/platform/sharing/auth': { observeSharingUser: () => () => {} },
       'react-native': { AppState: appState },
       '@/platform/sharing/workspaces': {

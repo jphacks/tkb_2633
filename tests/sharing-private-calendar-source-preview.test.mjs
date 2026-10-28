@@ -31,6 +31,7 @@ for (const platform of ['ios', 'android']) {
     assert.equal((await preview.runtime.refreshData()).kind, 'published'); assert.deepEqual(await preview.verify(), { revision: 2, queries: 1 });
     const keys = f.state.generations; const reopened = await module.createPrivateCalendarSourcePreview(platform, '127.0.0.1', '8185');
     assert.deepEqual(await reopened.verify(), { revision: 2, queries: 0 }); assert.equal(f.state.generations, keys); assert.equal(h.history.length, 2);
+    assert.deepEqual(await reopened.verifyAutomatic(), { requests: 100, queries: 0 }); assert.equal(h.history.length, 2);
     await preview.close(); await reopened.close(); assert.equal(closed, 2); globalThis.__DEV__ = false; await assert.rejects(() => reopened.runtime.readSettings(), /変わりました/u);
   });
 }

@@ -64,11 +64,15 @@ export function createPrivateCalendarDeviceSession(port: PrivateCalendarDeviceSe
       pendingKeys: keys?.pending ?? 0, keyRetryAt: keys?.retryAt ?? null,
       cache: cached ? { sequence: cached.cursor.sequence, authorityCurrent: cached.authorityCurrent, pending: cached.pending } : null };
   }
+  const listeners = new Set<() => void>();
   let mutation: Promise<unknown> | null = null;
-  function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  function exclusive<T>(work: () => Promise<T>, notify = true): Promise<T> {
     if (mutation) return Promise.reject(new Error('本人端末の操作が終わってから再試行してください。'));
     const pending = (async () => { await port.assertOwner(); const result = await work(); await port.assertOwner(); return result; })();
-    mutation = pending; void pending.finally(() => { if (mutation === pending) mutation = null; }).catch(() => {}); return pending;
+    mutation = pending; void pending.finally(() => {
+      if (mutation === pending) mutation = null;
+      if (notify) for (const listener of listeners) try { listener(); } catch { /* A view cannot roll back a committed device setting. */ }
+    }).catch(() => {}); return pending;
   }
   async function deliver(force: boolean) {
     const state = await secrets.publicState(userId); const authority = state?.authority;
@@ -79,9 +83,13 @@ export function createPrivateCalendarDeviceSession(port: PrivateCalendarDeviceSe
     }
     await delivery.queueApprovedDevices(); await delivery.flush({ force });
   }
-  let sync: Promise<PrivateCalendarDeviceView> | null = null;
-  const synchronizeDevices = (): Promise<PrivateCalendarDeviceView> => {
-    if (sync) return sync;
+  let sync: { force: boolean; promise: Promise<PrivateCalendarDeviceView> } | null = null;
+  const synchronizeDevices = (options: { force?: boolean } = {}): Promise<PrivateCalendarDeviceView> => {
+    const force = options.force !== false;
+    if (sync) {
+      const current = sync;
+      return force && !current.force ? current.promise.then(() => synchronizeDevices({ force: true })) : current.promise;
+    }
     const pending = exclusive(async () => {
       const before = await read();
       // Merely opening/retrying an unconfigured or unapproved device cannot create trust.
@@ -90,9 +98,9 @@ export function createPrivateCalendarDeviceSession(port: PrivateCalendarDeviceSe
       const resumed = await authoritySync.resume();
       if (resumed.kind === 'review') return read();
       if (resumed.kind === 'idle') await authoritySync.refresh();
-      await deliver(true); return read();
-    });
-    sync = pending; void pending.finally(() => { if (sync === pending) sync = null; }).catch(() => {}); return pending;
+      await deliver(force); return read();
+    }, force);
+    sync = { force, promise: pending }; void pending.finally(() => { if (sync?.promise === pending) sync = null; }).catch(() => {}); return pending;
   };
   async function change(targetDeviceId: string, expectedDigest: string, remove: boolean) {
     const { authority } = await authoritySync.refresh(); const state = await secrets.publicState(userId);
@@ -106,7 +114,7 @@ export function createPrivateCalendarDeviceSession(port: PrivateCalendarDeviceSe
       keyVersion: authority.signed.body.keyVersion + (remove ? 1 : 0) });
     if (result.kind !== 'review') await deliver(true); return read();
   }
-  return { read, synchronizeDevices,
+  return { read, synchronizeDevices, subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     initializeFirstDevice: () => exclusive(async () => {
       const before = await read();
       if (before.authorityDigest || before.request) throw new Error('本人端末の設定が既にあります。既存の設定を確認してください。');

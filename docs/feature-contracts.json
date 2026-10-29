@@ -5495,5 +5495,26 @@
         "name": "shared category toggles stage one atomic set of field patches and reject foreign chores without changing the replica"
       }
     ]
+  },
+  {
+    "feature": "calendar-today-includes-overdue-work-in-priority-order",
+    "tests": [
+      { "file": "tests/mobile-ui-recovery.test.mjs", "name": "${platform} todays calendar puts all overdue tiers first and keeps a just-checked overdue card below pending work" }
+    ]
+  },
+  {
+    "feature": "calendar-immediate-counts-retain-occurrence-and-chore-identity",
+    "tests": [
+      { "file": "tests/mobile-ui-recovery.test.mjs", "name": "calendar pending markers follow an in-flight completion and undo without changing entries or completion history" },
+      { "file": "tests/mobile-ui-recovery.test.mjs", "name": "calendar feedback keeps deduplicated chore counts and restores a recorded occurrence whose schedule row was regenerated" }
+    ]
+  },
+  {
+    "feature": "saved-completion-read-only-recovery-keeps-its-only-recovery-path",
+    "tests": [
+      { "file": "tests/mobile-ui-recovery.test.mjs", "name": "saved completion read failure keeps its warning and blocks another mutation until a successful read-only recovery" },
+      { "file": "tests/mobile-ui-recovery.test.mjs", "name": "a late failed write cannot hide another saved completion and one hundred recovery taps share one read" },
+      { "file": "tests/mobile-ui-recovery.test.mjs", "name": "${platform} calendar supplies a read-only recovery button and disables stale completion actions after a saved read failure" }
+    ]
   }
 ]

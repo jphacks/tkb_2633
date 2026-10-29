@@ -9,12 +9,11 @@ import { PlannerLoadState } from '@/components/planner-load-state';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { WasteOccurrenceCard } from '@/components/waste-occurrence-card';
 import { completionPeriod } from '@/domain/scheduling/completion-matching';
-import { orderDateTasks, recommendedChoreCounts, selectDateTasks } from '@/domain/scheduling/date-tasks';
+import { orderDateTasks, selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { useTaskCompletion } from '@/hooks/use-task-completion';
-import { dateTaskKey } from '@/features/planner/task-mutations';
 import { isTaskUrgent } from '@/domain/scheduling/task-priority';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { wasteCalendarLabels } from '@/features/waste/calendar-labels';
@@ -50,10 +49,10 @@ export default function CalendarScreen() {
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
   const { weeklyByColumn, byDate: wasteByDate, hiddenWeeklyByDate } = wasteCalendarLabels(snapshot.wasteSchedules, gridStart, cells[cells.length - 1], snapshot.hiddenWasteOccurrenceKeys);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const recommendedCountsByDate = recommendedChoreCounts(snapshot.scheduleEntries, snapshot.completions);
-  const selectedTasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate, 0, snapshot.chores)), selectedDate, snapshot.chores, today);
+  const recommendedCountsByDate = completion.calendarCounts(snapshot.scheduleEntries, snapshot.completions);
+  const selectedTasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate, selectedDate === today ? 3 : 0, snapshot.chores), snapshot.completions), selectedDate, snapshot.chores, today);
   const selectedChoreIds = new Set(selectedTasks.map((task) => task.choreId));
-  const overdueTasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores))
+  const overdueTasks = selectedDate === today ? [] : orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores), snapshot.completions)
     .filter((task) => task.entry?.status === 'overdue' && !task.completed && !selectedChoreIds.has(task.choreId)), today, snapshot.chores);
   const completedCount = selectedTasks.filter((task) => task.completed).length;
   // Include checked occurrences here so hiding from home can always be undone on its date.
@@ -64,6 +63,7 @@ export default function CalendarScreen() {
     const period = task.entry
       ? { start: task.entry.windowStart, end: task.entry.windowEnd }
       : completionPeriod(task.completion!);
+    if (period.start > selectedDate || period.end < selectedDate) return [];
     return chore ? [{
       id: task.id,
       name: chore.name,
@@ -86,7 +86,9 @@ export default function CalendarScreen() {
   return (
     <Page contentStyle={styles.calendarPage}>
       <ScreenHeading title="カレンダー" />
-      {error || actionError || wasteVisibility.error ? <Card><Text style={styles.error}>{wasteVisibility.error ?? actionError ?? error}</Text></Card> : null}
+      {error || actionError || wasteVisibility.error ? <Card><Text style={styles.error}>{wasteVisibility.error ?? actionError ?? error}</Text>
+        {error || actionError ? <AppButton title="表示を再読込" variant="quiet" compact disabled={completion.pending.size > 0 || completion.reading}
+          onPress={() => void completion.retryRead()} /> : null}</Card> : null}
       <Pressable accessible={false} onPress={() => setPeriodsExpanded((expanded) => !expanded)}>
       <Card style={styles.calendarCard}>
         <View style={styles.monthHeader}>
@@ -206,7 +208,7 @@ export default function CalendarScreen() {
             source={snapshot.sharing ? 'shared' : 'personal'} early={selectedDate < task.suggestedDate}
             urgent={isTaskUrgent({ completed: task.completed, load: chore.load, recommendedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today)}
             onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
-            onToggle={!completion.pending.has(dateTaskKey(task)) ? () => void completion.toggle(task) : undefined}
+            onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined}
           /></Animated.View>
         );
       })}
@@ -223,7 +225,7 @@ export default function CalendarScreen() {
                 key={`overdue-${entry.choreId}`}
                 chore={chore}
                 source={snapshot.sharing ? 'shared' : 'personal'} urgent
-                onToggle={!completion.pending.has(dateTaskKey(task)) ? () => void completion.toggle(task) : undefined}
+                onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined}
                 onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
               />
             );

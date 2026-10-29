@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { ActionLabel, AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { NumberInputField } from '@/components/number-input-field';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse, ProductVerifiedResponse } from '@/features/appliance-care/api-contracts';
 import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-client';
@@ -220,7 +220,7 @@ export default function ApplianceCareScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="保存した家電のお手入れ詳細を開く" disabled={!analysisSaved}
             onPress={openSavedAppliance} style={styles.resultNavigation}>
             <Text style={styles.resultTitle}>{applianceDisplayName(verified.product)}</Text>
-            <Text style={styles.link}>{analysisSaved ? '保存したお手入れ内容を見る ›' : '解析結果は未保存です。下の保存ボタンから再試行できます。'}</Text>
+            {analysisSaved ? <ActionLabel label="保存したお手入れ内容を見る" style={styles.link} /> : <Text style={styles.link}>解析結果は未保存です。下の保存ボタンから再試行できます。</Text>}
           </Pressable>
           <Card style={styles.verifiedCard}>
             <Text style={styles.verifiedLabel}>メーカー公式情報で確認済み</Text>

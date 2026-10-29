@@ -2,6 +2,7 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import { useContext } from 'react';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { StyleProp, TextStyle } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { typography } from './planner-typography';
 import { WorkspaceContext } from '../contexts/workspace-context';
@@ -24,12 +25,12 @@ export function Page({ children, contentStyle, keyboardAware = false, footer, fo
       <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={keyboardAware}
         keyboardDismissMode={keyboardAware ? 'on-drag' : 'none'} contentContainerStyle={[styles.page, contentStyle]}>
         {workspace?.active ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
-          style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><Text style={styles.workspaceSwitch}>切り替え ›</Text></Pressable> : null}
+          style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><ActionLabel label="切り替え" style={styles.workspaceSwitch} color={palette.muted} /></Pressable> : null}
         {workspace?.error ? <Text accessibilityRole="alert" style={styles.workspaceError}>{workspace.error}</Text> : null}
         {issueCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="共有データを確認する"
           onPress={() => router.push('/sharing')} style={styles.planningNotice}>
           <Text style={styles.planningNoticeText}>共有データに確認が必要な項目があります（{issueCount}件）。</Text>
-          <Text style={styles.planningNoticeLink}>内容を確認 ›</Text>
+          <ActionLabel label="内容を確認" style={styles.planningNoticeLink} color={palette.gold} />
         </Pressable> : null}
         {children}
       </ScrollView>
@@ -82,6 +83,11 @@ export function BackButton({
       <Text style={styles.backText}>戻る</Text>
     </Pressable>
   );
+}
+
+/** Link text uses the same arrow geometry as Back, disclosures and calendar navigation. */
+export function ActionLabel({ label, style, color = palette.accent }: { label: string; style?: StyleProp<TextStyle>; color?: string }) {
+  return <View style={styles.actionLabel}><Text style={[style, styles.actionLabelText, { color }]}>{label}</Text><Chevron color={color} /></View>;
 }
 
 export function AppButton({
@@ -163,6 +169,8 @@ export function MutedText({ children }: PropsWithChildren) {
 }
 
 const styles = StyleSheet.create({
+  actionLabel: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  actionLabelText: { flexShrink: 1 },
   workspaceBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: palette.accentSoft },
   workspaceName: { ...typography.label, color: palette.ink, fontWeight: '700', flex: 1 },
   workspaceSwitch: { ...typography.caption, color: palette.muted },

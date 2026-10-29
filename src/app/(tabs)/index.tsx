@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, Page, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { ActionLabel, AppButton, Card, Page, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { plannerTabBarLayout } from '@/components/planner-tab-bar';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { WasteOccurrenceCard } from '@/components/waste-occurrence-card';
@@ -19,7 +19,6 @@ import { WeatherAttribution } from '@/components/data-credits';
 import { useTaskCompletion } from '@/hooks/use-task-completion';
 import { useHomeClock } from '@/hooks/use-home-clock';
 import { homeSummary } from '@/features/planner/home-summary';
-import { dateTaskKey } from '@/features/planner/task-mutations';
 import { isTaskUrgent } from '@/domain/scheduling/task-priority';
 
 type WeekScope = 'current' | 'next';
@@ -43,7 +42,7 @@ export default function HomeScreen() {
     if (!snapshot) return groups;
     const firstVisibleDate = periodStart > today ? periodStart : addDays(today, 1);
     for (let date = firstVisibleDate; date <= periodEnd; date = addDays(date, 1)) {
-      const tasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date, 0, snapshot.chores)), date, snapshot.chores, today);
+      const tasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date, 0, snapshot.chores), snapshot.completions), date, snapshot.chores, today);
       if (tasks.length) groups.push([date, tasks]);
     }
     return groups;
@@ -63,7 +62,7 @@ export default function HomeScreen() {
   }
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const orderedDueToday = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores)), today, snapshot.chores);
+  const orderedDueToday = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores), snapshot.completions), today, snapshot.chores);
   const todayTotal = orderedDueToday.length;
   const todayDone = orderedDueToday.filter((task) => task.completed).length;
   const summary = homeSummary(todayTotal, todayDone, clock, snapshot.timeZone);
@@ -74,7 +73,8 @@ export default function HomeScreen() {
     <>
       <Tabs.Screen options={{ tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
       <Page contentStyle={styles.homePage}>
-        {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text>{actionError ? <Pressable accessibilityRole="button" onPress={() => void completion.retryRead()}><Text style={styles.textLink}>表示を再読込</Text></Pressable> : null}</Card> : null}
+        {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text><AppButton title="表示を再読込" variant="quiet" compact
+          disabled={completion.pending.size > 0 || completion.reading} onPress={() => void completion.retryRead()} /></Card> : null}
 
       <View style={styles.todayHeading}>
         <View style={styles.todayCopy}>
@@ -138,7 +138,7 @@ export default function HomeScreen() {
               early={today < task.suggestedDate}
               urgent={isTaskUrgent({ completed, load: chore.load, recommendedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today)}
               onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-              onToggle={!completion.pending.has(dateTaskKey(task)) ? () => void completion.toggle(task) : undefined}
+              onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined}
             />
           </Animated.View>
         );
@@ -147,7 +147,7 @@ export default function HomeScreen() {
         <Card style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>今日の予定はありません</Text>
           <Text style={styles.emptyBody}>家事一覧から予定や頻度を調整できます。</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.push('/chores')}><Text style={styles.textLink}>家事一覧を見る ›</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="家事一覧を見る" onPress={() => router.push('/chores')}><ActionLabel label="家事一覧を見る" style={styles.textLink} /></Pressable>
         </Card>
       ) : null}
 
@@ -173,7 +173,7 @@ export default function HomeScreen() {
                   completed={row.completed}
                   source={snapshot.sharing ? 'shared' : 'personal'} early={date < row.suggestedDate}
                   onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-                  onToggle={!completion.pending.has(dateTaskKey(row)) ? () => void completion.toggle(row) : undefined}
+                  onToggle={completion.canToggle(row) ? () => void completion.toggle(row) : undefined}
                 />
               </Animated.View>
             );
@@ -186,8 +186,8 @@ export default function HomeScreen() {
       )}
 
       <View style={styles.quickLinks}>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/history')}><Text style={styles.textLink}>実施履歴を見る ›</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/waste')}><Text style={styles.textLink}>ゴミ曜日を管理 ›</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="実施履歴を見る" onPress={() => router.push('/history')}><ActionLabel label="実施履歴を見る" style={styles.textLink} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="ゴミ曜日を管理" onPress={() => router.push('/waste')}><ActionLabel label="ゴミ曜日を管理" style={styles.textLink} /></Pressable>
       </View>
       </Page>
     </>

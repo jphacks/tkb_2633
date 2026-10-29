@@ -208,11 +208,15 @@ for (const platform of ['ios', 'android']) {
     try {
       await repository.initializeLocalDatabase(h.database);
       await repository.completeFirstSetup(h.database, { frequencyMode: 'balanced', restDays: [], enabledChoreIds: [], previousDates: {}, weatherLocation: null });
-      const snapshot = await repository.loadPlannerSnapshot(h.database, today);
-      const screen = screenHarness('src/app/(tabs)/index.tsx', { platform, database: h.database, snapshot: () => snapshot,
-        mocks: { '@/hooks/use-home-clock': { useHomeClock: () => new Date('2026-10-29T19:00:00+09:00') } } });
-      assert.ok(screen.text().includes('今日も1日お疲れ様でした'));
-      assert.equal(screen.text().includes('0件中'), false); assert.equal(screen.text().includes('0%'), false);
+      const stored = await repository.loadPlannerSnapshot(h.database, today);
+      // The household timezone is an input; the runner's UTC/Tokyo timezone is not the fixture's region.
+      for (const [timeZone, instant] of Object.entries({ 'Asia/Tokyo': '2026-10-29T10:00:00Z', UTC: '2026-10-29T19:00:00Z', 'America/Los_Angeles': '2026-10-30T02:00:00Z' })) {
+        const snapshot = { ...stored, timeZone };
+        const screen = screenHarness('src/app/(tabs)/index.tsx', { platform, database: h.database, snapshot: () => snapshot,
+          mocks: { '@/hooks/use-home-clock': { useHomeClock: () => new Date(instant) } } });
+        assert.ok(screen.text().includes('今日も1日お疲れ様でした'), timeZone);
+        assert.equal(screen.text().includes('0件中'), false); assert.equal(screen.text().includes('0%'), false);
+      }
     } finally { h.connection.close(); }
   });
 }

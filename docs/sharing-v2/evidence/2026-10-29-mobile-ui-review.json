@@ -9,16 +9,18 @@
       "failed": 0,
       "skipped": 0,
       "exitCode": 0,
-      "file": "ui-final-regression-ios.log",
-      "sha256": "9cd6c9c62aa639a8065d1389f7f827a6fbdd763c900c25d91bc379a9d506c7bc"
+      "runnerTimeZone": "UTC",
+      "file": "ui-final-utc-ios.log",
+      "sha256": "eebe2ceeef58de6fe906bad9c9e55cbf9ff096480b73e7fc35b32db9eddaf6df"
     },
     "android": {
       "passed": 2198,
       "failed": 0,
       "skipped": 0,
       "exitCode": 0,
-      "file": "ui-final-regression-android.log",
-      "sha256": "6b1233bb0dd8892122c876c0bc7270e6068ea3eb198735c0f58e6e4a42ce540a"
+      "runnerTimeZone": "UTC",
+      "file": "ui-final-utc-android.log",
+      "sha256": "e89fbc1b840d34639ce435b35c4a05458af373e2bcba0829aab355cf30f3b4ba"
     }
   },
   "cloud": {
@@ -428,7 +430,7 @@
     },
     {
       "file": "tests/post-phase6-mobile-ui.test.mjs",
-      "sha256": "467f0431dabe8c38f7d014c997d6700107fdb484f2a2f38da3a463896f1ba6c3"
+      "sha256": "135cfca4f7ace97e74178f222eedb8a7d01c98ead3f21a62ffa8a7d9d7568daf"
     },
     {
       "file": "tests/sharing-planning.test.mjs",
@@ -442,5 +444,48 @@
       "file": "tests/sharing-v2-development-preview.test.mjs",
       "sha256": "56a5283a3872c948e83e6b8e5112f9d1a697e8783906704a3fa181c64c49de17"
     }
-  ]
+  ],
+  "previousLocalUnitBeforeTimezoneFixtureCorrection": {
+    "ios": {
+      "passed": 2198,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "runnerTimeZone": "UTC",
+      "file": "ui-final-utc-ios.log",
+      "sha256": "eebe2ceeef58de6fe906bad9c9e55cbf9ff096480b73e7fc35b32db9eddaf6df"
+    },
+    "android": {
+      "passed": 2198,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "runnerTimeZone": "UTC",
+      "file": "ui-final-utc-android.log",
+      "sha256": "e89fbc1b840d34639ce435b35c4a05458af373e2bcba0829aab355cf30f3b4ba"
+    }
+  },
+  "ciTimezoneFixtureCorrection": {
+    "initialHead": "46c997dac5d8b4521f227401979d5f0ae353dfdf",
+    "initialIosFailures": 2,
+    "initialAndroidCancelledByFailFast": true,
+    "cause": "The empty-home fixture supplied Tokyo 19:00 but inherited the runner household region; the UTC runner correctly showed its morning greeting.",
+    "reproducedUnderUTC": true,
+    "correction": "Explicit Asia/Tokyo, UTC and America/Los_Angeles household timezone and corresponding 19:00 instant. Assertions and application code unchanged.",
+    "targetedTests": 15,
+    "targetedFailed": 0,
+    "reproLog": {
+      "file": "ui-ci-timezone-repro.log",
+      "sha256": "87646c3aeef3d6201eab8d51b423d02169c2e800364aa07bb5c44128d14e0cf9"
+    },
+    "targetedLog": {
+      "file": "ui-ci-timezone-fixed.log",
+      "sha256": "3583593dc800f28c03401ca69bc46f5dca50a324c8c66bd350b2873ed24ffe8d"
+    },
+    "failedCiLog": {
+      "file": "ui-github-ci-failed.log",
+      "sha256": "25a01cbcf0c1012cdffb1f9cdf8e862c6f4fc021dd04117b52a5692547798c57"
+    },
+    "applicationAndNativeChangesSincePhysicalChecks": false
+  }
 }

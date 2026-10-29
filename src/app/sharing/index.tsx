@@ -1,11 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { AccordionSection } from '@/components/accordion-section';
 import { useWorkspace } from '@/hooks/use-workspace';
-import { enableSharingSession, createSharingWorkspace, openSharedWorkspace, requestSharingWorkspace, sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
+import { enableSharingSession, createSharingWorkspace, createV2SharingWorkspace, openSharedWorkspace, requestSharingWorkspace, sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
+import { GroupCreationForm } from '@/features/sharing/group-creation-form';
+import { sharingCreationProtocol } from '@/features/sharing/rollout';
 import type { SharedWorkspace } from '@/platform/sharing/workspaces';
 import type { SharedWorkspaceOverview } from '@/platform/sharing/workspace-types';
 import { isSharingConfigured } from '@/platform/sharing/firebase-services';
@@ -18,18 +20,22 @@ import type { SharedEntity } from '@/features/sharing/replica';
 
 export default function SharingScreen() {
   const context = useWorkspace(); const params = useLocalSearchParams<{ groupId?: string }>();
-  const [name, setName] = useState(''); const [link, setLink] = useState('');
+  const [link, setLink] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(typeof params.groupId === 'string' ? params.groupId : context.active?.groupId ?? null);
   const [selected, setSelected] = useState<SharedWorkspace | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false); const [busy, setBusy] = useState(false);
   const inFlight = useRef(false); const alive = useRef(true); const [message, setMessage] = useState<string | null>(null);
+  const currentUserId = useRef(context.userId);
+  useLayoutEffect(() => { currentUserId.current = context.userId; }, [context.userId]);
+  const creationProtocol = sharingCreationProtocol();
   const selectedRecord = context.groups.find((group) => group.groupId === selectedId);
   const selectedRevision = JSON.stringify([selectedRecord?.status, selectedRecord?.localGeneration, selectedRecord?.rosterArchive?.at(-1)?.body.revision]);
   const run = async (work: () => Promise<void>) => {
-    if (inFlight.current) return; inFlight.current = true; setBusy(true); setMessage(null);
-    try { await work(); await context.refreshSharing(); }
-    catch (cause) { if (alive.current) setMessage(userMessage(cause)); }
+    if (inFlight.current) return false; inFlight.current = true; setBusy(true); setMessage(null);
+    let workFinished = false;
+    try { await work(); workFinished = true; await context.refreshSharing(); return true; }
+    catch (cause) { if (alive.current) setMessage(userMessage(cause)); return workFinished; }
     finally { inFlight.current = false; if (alive.current) setBusy(false); }
   };
   useEffect(() => {
@@ -70,9 +76,11 @@ export default function SharingScreen() {
       </Card>)}
       {context.groups.every((group) => ['left', 'removed'].includes(group.status)) ? <Card><Text style={styles.body}>参加中のグループはありません。</Text></Card> : null}
       <AccordionSection title="グループを作る" expanded={expanded === 'create'} onToggle={() => setExpanded(expanded === 'create' ? null : 'create')}>
-        <TextInput style={styles.input} value={name} maxLength={100} onChangeText={setName} placeholder="グループ名（例：わが家）" accessibilityLabel="グループ名" editable={!busy} />
-        <Text style={styles.caption}>共有する家事はすべて無効の状態から選べます。個人データは取り込みません。</Text>
-        <AppButton title="グループを作成" disabled={busy || !name.trim()} onPress={() => void run(async () => { const workspace = await createSharingWorkspace(name); setSelectedId(workspace.groupId); setName(''); setExpanded(null); })} />
+        <GroupCreationForm key={context.userId} protocol={creationProtocol} busy={busy} onCreate={(name, kind) => run(async () => {
+          const owner = context.userId;
+          const workspace = creationProtocol === 2 ? await createV2SharingWorkspace(name, kind!) : await createSharingWorkspace(name);
+          if (alive.current && currentUserId.current === owner) { setSelectedId(workspace.groupId); setExpanded(null); }
+        })} />
       </AccordionSection>
       <AccordionSection title="招待から参加する" expanded={expanded === 'join'} onToggle={() => setExpanded(expanded === 'join' ? null : 'join')}>
         <TextInput style={[styles.input, styles.multiline]} multiline value={link} onChangeText={setLink} autoCapitalize="none" autoCorrect={false}
@@ -96,7 +104,7 @@ export default function SharingScreen() {
   </Page>;
 }
 
-function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run: (work: () => Promise<void>) => Promise<void>; busy: boolean }) {
+function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run: (work: () => Promise<void>) => Promise<boolean>; busy: boolean }) {
   const context = useWorkspace();
   const [detail, setDetail] = useState<{ record: Awaited<ReturnType<SharedWorkspace['record']>>; pending: number;
     snapshot: SharedWorkspaceOverview | null; conflicts: SharedEntity[]; openError: string | null } | null>(null);

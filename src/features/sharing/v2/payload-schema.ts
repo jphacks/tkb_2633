@@ -11,7 +11,7 @@ export const V2_ENTITY_TYPES = ['groupPolicy', 'chorePolicy', 'datePermission', 
   'claimResolution', 'assignmentRequest', 'assignmentDecision', 'assignmentCancel', 'designation', 'designationCancel', 'changeRequest', 'requestDecision', 'completionApproval', 'migration'] as const;
 export type V2EntityType = typeof V2_ENTITY_TYPES[number];
 export const V2_SCHEMA_VERSION = 2;
-export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-35';
+export const V2_SCHEDULER_VERSION = 'liflow-shared-2-draft-36';
 type RecordValue = Record<string, JsonValue>;
 
 function record(value: unknown, allowed: readonly string[], required: readonly string[] = allowed): RecordValue {

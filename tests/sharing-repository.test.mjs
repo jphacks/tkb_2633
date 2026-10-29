@@ -155,6 +155,40 @@ test('an authorization change during a shared cache read cannot return the previ
   } finally { h.close(); }
 });
 
+for (const [stage, name] of [
+  [1, 'an asynchronous shared authorization rejection at write boundary 1 rolls back both projection and outbox'],
+  [2, 'an asynchronous shared authorization rejection at write boundary 2 rolls back both projection and outbox'],
+  [3, 'an asynchronous shared authorization rejection at write boundary 3 rolls back both projection and outbox'],
+  [4, 'an asynchronous shared authorization rejection at write boundary 4 rolls back both projection and outbox'],
+]) test(name, async () => {
+  const h = await fixture(); let checks = 0; let committed = 0; let ordinal = 0;
+  try {
+    const before = await loadSharedReplica(h.database, h.scope.groupId);
+    const pending = await listSharingOutbox(h.database, h.scope.groupId);
+    const adapter = createSharedPlannerRepository(h.database, { ...h.scope, identity: h.identity, roster: () => h.roster,
+      makeId: () => `asynchronous-edit-${++ordinal}`, now: () => now, afterCommit: () => committed++, authorize: async () => {
+        await new Promise(setImmediate); if (++checks === stage) throw new Error('asynchronous registry revocation');
+      } });
+    await assert.rejects(adapter.mutate('setChoreEnabled', [choreId, true]), /asynchronous registry revocation/u);
+    assert.deepEqual(await loadSharedReplica(h.database, h.scope.groupId), before);
+    assert.deepEqual(await listSharingOutbox(h.database, h.scope.groupId), pending);
+    assert.equal((await h.snapshot()).chores.find(chore => chore.id === choreId).enabled, false);
+    assert.equal(committed, 0);
+  } finally { h.close(); }
+});
+
+test('a shared cached snapshot awaits asynchronous registry authorization before returning private group content', async () => {
+  const h = await fixture(); let deny = false;
+  try {
+    const adapter = createSharedPlannerRepository(h.database, { ...h.scope, identity: h.identity, roster: () => h.roster,
+      makeId: () => 'unused-authorized-read', now: () => now, authorize: async () => {
+        await new Promise(setImmediate); if (deny) throw new Error('asynchronous read revoked');
+      } });
+    const before = await adapter.readSnapshot(now); assert.ok(before.chores.length);
+    deny = true; await assert.rejects(adapter.readSnapshot(now), /asynchronous read revoked/u);
+  } finally { h.close(); }
+});
+
 test('a local shared edit waiting for SQLite cannot commit after account or membership authorization is revoked', async () => {
   const h = await fixture(); let release, entered; let denied = false, sequence = 0;
   const barrier = new Promise((resolve) => { release = resolve; });

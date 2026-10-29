@@ -2,6 +2,8 @@ import { canonicalJson, causallyPrecedes, compareOperationIds, validateSharedOpe
 import type { JsonValue, SharedEntityType, SharedOperation, VersionVector } from './operations.ts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { validateLegacyMigrationWitness } from './v2/legacy-migration-witness.ts';
+import type { SignedLegacyMigrationWitness } from './v2/legacy-migration-witness.ts';
 
 export interface SharedOperationReceipt { operationId: string; deviceId: string; sequence: number; digest: string }
 export interface SharedSnapshotBase {
@@ -11,6 +13,8 @@ export interface SharedSnapshotBase {
   /** Compact receipts retain ID/dot collision detection after discarded edits are removed. */
   operationIndex: SharedOperationReceipt[];
   operations: SharedOperation[];
+  /** Original owner statement carried only by a schema2 encrypted snapshot. */
+  legacyMigrationWitness?: SignedLegacyMigrationWitness;
 }
 
 export interface FieldCandidate { operationId: string; value: JsonValue }
@@ -38,6 +42,7 @@ export interface SharedReplica {
   logicalClock: number;
   pendingOperationIds: string[];
   operationIndex: SharedOperationReceipt[];
+  legacyMigrationWitness?: SignedLegacyMigrationWitness;
 }
 
 export function sharedOperationDigest(operation: SharedOperation): string {
@@ -50,6 +55,7 @@ function receipt(operation: SharedOperation): SharedOperationReceipt {
 }
 
 export function validateSharedSnapshotBase(groupId: string, base: SharedSnapshotBase): SharedSnapshotBase {
+  if (base.legacyMigrationWitness !== undefined && validateLegacyMigrationWitness(base.legacyMigrationWitness).body.groupId !== groupId) throw new Error('Foreign migration witness');
   if (base.groupId !== groupId || !Number.isSafeInteger(base.logicalClock) || base.logicalClock < 0
     || !Array.isArray(base.operationIndex) || !Array.isArray(base.operations)) throw new Error('Invalid shared snapshot base');
   const ids = new Set<string>(); const dots = new Set<string>();
@@ -202,6 +208,7 @@ export function buildSharedReplica(groupId: string, input: readonly SharedOperat
   }
   effective.sort((a, b) => compareOperationIds(a.occurrenceId, b.occurrenceId));
   return { groupId, operations, entities, completions: effective, frontier,
+    ...(base?.legacyMigrationWitness ? { legacyMigrationWitness: JSON.parse(canonicalJson(base.legacyMigrationWitness)) as SignedLegacyMigrationWitness } : {}),
     logicalClock: operations.reduce((max, op) => Math.max(max, op.logicalClock), base?.logicalClock ?? 0),
     pendingOperationIds: operations.filter((op) => !readyIds.has(op.operationId)).map((op) => op.operationId),
     operationIndex: [...index.values()].sort((a, b) => compareOperationIds(a.operationId, b.operationId)) };
@@ -211,7 +218,7 @@ export function buildSharedReplica(groupId: string, input: readonly SharedOperat
 export function compactSharedReplica(replica: SharedReplica): SharedSnapshotBase {
   if (replica.pendingOperationIds.length) throw new Error('Cannot compact a causally incomplete shared history');
   const retained = new Set(replica.entities.flatMap((entity) => Object.values(entity.revisions).flat()));
-  const preserveCausalHistory = replica.operations.some((op) => op.schemaVersion === 2);
+  const preserveCausalHistory = Boolean(replica.legacyMigrationWitness) || replica.operations.some((op) => op.schemaVersion === 2);
   const last = new Map<string, SharedOperation>();
   for (const op of replica.operations) {
     // V2 authority is evaluated at each operation's causal cut. Earlier grants and
@@ -222,5 +229,6 @@ export function compactSharedReplica(replica: SharedReplica): SharedSnapshotBase
   for (const op of last.values()) retained.add(op.operationId);
   return validateSharedSnapshotBase(replica.groupId, { groupId: replica.groupId, frontier: { ...replica.frontier },
     logicalClock: replica.logicalClock, operationIndex: replica.operationIndex.map((item) => ({ ...item })),
-    operations: replica.operations.filter((op) => retained.has(op.operationId)) });
+    operations: replica.operations.filter((op) => retained.has(op.operationId)),
+    ...(replica.legacyMigrationWitness ? { legacyMigrationWitness: JSON.parse(canonicalJson(replica.legacyMigrationWitness)) as SignedLegacyMigrationWitness } : {}) });
 }

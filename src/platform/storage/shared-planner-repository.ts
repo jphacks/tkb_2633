@@ -19,7 +19,7 @@ import { SharingSchedulerVersionError } from '../../features/sharing/cloud-contr
 /** Every DB handle is permanently bound to its Firebase account and group. */
 export function createSharedPlannerRepository(database: SQLiteDatabase, options: {
   groupId: string; userId: string; householdId: string; identity: DeviceSecretIdentity;
-  roster: () => VerifiedSharedRoster; makeId: () => string; now?: () => Date; afterCommit?: () => void; authorize?: () => void;
+  roster: () => VerifiedSharedRoster; makeId: () => string; now?: () => Date; afterCommit?: () => void; authorize?: () => void | Promise<void>;
 }): SharedRepositoryAdapter & { project: (transaction: SQLiteDatabase, replica: SharedReplica) => Promise<void> } {
   const clock = options.now ?? (() => new Date());
   let cached: { token: string; privateSettings: string; rosterDigest: string; snapshot: PlannerSnapshot } | undefined;
@@ -35,26 +35,26 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
   return {
     groupId: options.groupId, userId: options.userId, project,
     async readSnapshot(now: Date): Promise<PlannerSnapshot> {
-      options.authorize?.();
+      await options.authorize?.();
       const meta = await database.getFirstAsync<{ projection_token: string }>('SELECT projection_token FROM sharing_workspace_metadata WHERE singleton=1');
       const privateSettings = await readSharedPrivateSettings(database, options.householdId);
-      options.authorize?.();
+      await options.authorize?.();
       const privateSignature = JSON.stringify(privateSettings); const rosterDigest = sharedRosterDigest(options.roster());
       if (cached && cached.token === meta?.projection_token && cached.privateSettings === privateSignature && cached.rosterDigest === rosterDigest
         && cached.snapshot.today === sharedLocalDate(now, cached.snapshot.timeZone!)) return cached.snapshot;
       for (let attempt = 0; attempt < 4; attempt++) {
         const replica = await loadSharedReplica(database, options.groupId);
-        options.authorize?.();
+        await options.authorize?.();
         const snapshot = build(replica, now, privateSettings); const token = sharedProjectionToken(replica, snapshot);
         if (await cacheSharedScheduleIfCurrent(database, token, snapshot)) {
-          options.authorize?.();
+          await options.authorize?.();
           cached = { token, privateSettings: privateSignature, rosterDigest, snapshot }; return snapshot;
         }
       }
       throw new Error('共有データが更新されています。もう一度開いてください。');
     },
     async mutate(kind, args) {
-      options.authorize?.();
+      await options.authorize?.();
       const roster = options.roster(); const identity = options.identity;
       sharedAuthorIdentity(roster, options.userId, identity.deviceId, roster.body.keyVersion);
       let result: unknown; const googleOrigins = new Set<string>();
@@ -62,7 +62,7 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
         deviceId: identity.deviceId, keyVersion: roster.body.keyVersion }, async (transaction, replica) => {
         // Waiting for another SQLite writer may outlive the account/membership
         // that authorized this call. Check again inside the actual transaction.
-        options.authorize?.();
+        await options.authorize?.();
         const now = clock(); const snapshot = build(replica, now);
         const context: SharedMutationContext = { replica, snapshot, userId: options.userId, now, makeId: options.makeId };
         if (kind !== 'importGoogleTaskChanges' && kind !== 'importGoogleTaskCompletions') {
@@ -91,9 +91,9 @@ export function createSharedPlannerRepository(database: SQLiteDatabase, options:
         }
         result = count; return drafts;
       }, async (transaction, replica) => {
-        options.authorize?.();
+        await options.authorize?.();
         await persistSharedProjection(transaction, replica, build(replica, clock()), { userId: options.userId, importedGoogleOccurrenceIds: googleOrigins });
-        options.authorize?.();
+        await options.authorize?.();
       }, (op) => signSharedOperation(op, identity).authorSignature);
       // Network errors belong to the delivery status, never to an already committed local edit.
       if (operations.length) options.afterCommit?.();

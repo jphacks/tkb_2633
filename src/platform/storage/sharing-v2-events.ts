@@ -27,8 +27,19 @@ function digestPages(values: readonly unknown[]): string[] {
   return result;
 }
 
+const initializations = new WeakMap<SQLiteDatabase, Promise<void>>();
+/** Coalesce startup on one handle; subsequent callers still verify the permanent account/group binding. */
+export function initializeV2EventStore(database: SQLiteDatabase, scope: V2StoreScope): Promise<void> {
+  const captured = { userId: scope.userId, groupId: scope.groupId, householdId: scope.householdId };
+  const existing = initializations.get(database);
+  if (existing) return existing.then(() => assertV2Binding(database, captured));
+  const pending = initializeV2EventStoreImpl(database, captured); initializations.set(database, pending);
+  void pending.catch(() => { if (initializations.get(database) === pending) initializations.delete(database); });
+  return pending;
+}
+
 /** A fresh, explicitly selected DB only. Existing private and v1 workspaces are never converted in place. */
-export async function initializeV2EventStore(database: SQLiteDatabase, scope: V2StoreScope): Promise<void> {
+async function initializeV2EventStoreImpl(database: SQLiteDatabase, scope: V2StoreScope): Promise<void> {
   const tables = new Set((await database.getAllAsync<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table'")).map((row) => row.name));
   if (tables.has('sharing_workspace_metadata') && !tables.has('sharing_v2_binding')) throw new Error('Prepare a separate v2 database before migrating a v1 workspace');
   if (!tables.has('sharing_v2_binding') && ['households', 'household_settings', 'chore_definitions', 'chore_completions'].some((name) => tables.has(name))) {

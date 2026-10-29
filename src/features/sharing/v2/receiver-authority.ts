@@ -1,5 +1,5 @@
 import { canonicalJson, causallyPrecedes, compareOperationIds } from '../operations.ts';
-import type { SharedOperation, VersionVector } from '../operations.ts';
+import type { SharedOperation } from '../operations.ts';
 import type { SharedReplica } from '../replica.ts';
 import { sharedAuthorIdentity } from '../roster.ts';
 import type { VerifiedSharedRoster } from '../roster.ts';
@@ -36,7 +36,7 @@ import { createV2AssignmentHistory, v2AssignmentRequestReference } from './assig
 import { v2ReadPoint } from './view-point.ts';
 import { v2ConfirmedReceiptContext, v2ObservedReceipts } from './receipt-context.ts';
 import { v2AssignmentLineage } from './assignment-lineage.ts';
-import { assertVerifiedLegacyMigration } from './legacy-migration-source.ts';
+import { assertVerifiedLegacyMigration, verifiedLegacyMigrationKind } from './legacy-migration-source.ts';
 import type { VerifiedLegacyMigration } from './legacy-migration-source.ts';
 export type { VerifiedLegacyMigration } from './legacy-migration-source.ts';
 type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
@@ -248,7 +248,8 @@ function authorizeV2Operation(view: V2HistoryView, archive: readonly VerifiedSha
   if (['waste', 'wasteVisibility', 'appliance'].includes(op.entityType)) return;
   if (op.entityType === 'migration') {
     adminOnly(); requireAuthority(migration && canonicalJson(op.payload.legacyFrontier) === canonicalJson(migration.frontier)
-      && op.payload.sourceSnapshotDigest === migration.sourceSnapshotDigest, 'Migration must bind the verified source checkpoint'); return;
+      && op.payload.sourceSnapshotDigest === migration.sourceSnapshotDigest
+      && (verifiedLegacyMigrationKind(migration) === undefined || verifiedLegacyMigrationKind(migration) === op.payload.groupKind), 'Migration must bind the verified source checkpoint'); return;
   }
   if (op.entityType === 'chorePolicy') {
     adminOnly(); requireAuthority(view.field('chore', op.entityId, '$alive', op)?.value === true, 'Configure an existing shared chore');

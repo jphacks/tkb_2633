@@ -8,6 +8,8 @@ import type { AuthenticatedSharedOperation, DevicePublicIdentity, DeviceSecretId
 import { sharedRosterDigest } from './roster.ts';
 import type { VerifiedSharedRoster } from './roster.ts';
 import { V2_SCHEDULER_VERSION } from './v2/payload-schema.ts';
+import type { SignedLegacyMigrationWitness } from './v2/legacy-migration-witness.ts';
+import { validateLegacyMigrationWitness } from './v2/legacy-migration-witness.ts';
 
 export type SharedAuthorResolver = (userId: string, deviceId: string, keyVersion: number) => DevicePublicIdentity;
 interface SharedSnapshotManifestBody {
@@ -19,7 +21,8 @@ interface SharedSnapshotManifestBody {
 export interface SignedSharedSnapshotManifest { body: SharedSnapshotManifestBody; signature: string }
 export interface EncryptedSharedSnapshot { manifest: SignedSharedSnapshotManifest; chunks: EncryptedSharedSnapshotChunk[] }
 export interface VerifiedSharedSnapshot { base: SharedSnapshotBase; facts: AuthenticatedSharedOperation[]; snapshotId: string; throughSequence: number }
-type SnapshotRecord = { kind: 'receipt'; value: SharedOperationReceipt } | { kind: 'fact'; value: AuthenticatedSharedOperation };
+type SnapshotRecord = { kind: 'receipt'; value: SharedOperationReceipt } | { kind: 'fact'; value: AuthenticatedSharedOperation }
+  | { kind: 'legacyMigrationWitness'; value: SignedLegacyMigrationWitness };
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
@@ -47,13 +50,15 @@ export async function createEncryptedSharedSnapshot(crypto: SharingCryptoGateway
   if (canonicalJson(snapshotSigner(roster, owner.deviceId)) !== canonicalJson({ deviceId: owner.deviceId, signingPublicKey: owner.signingPublicKey,
     agreementPublicKey: owner.agreementPublicKey })) throw new Error('Invalid snapshot signing identity');
   const base = compactSharedReplica(replica); const facts = new Map(availableFacts.map((fact) => [fact.operation.operationId, fact]));
+  if (base.legacyMigrationWitness && roster.body.schemaVersion !== 2) throw new Error('A v1 snapshot cannot carry a migration statement');
   const retained = base.operations.map((operation) => {
     const fact = facts.get(operation.operationId);
     if (!fact || canonicalJson(fact.operation) !== canonicalJson(operation)) throw new Error('Snapshot is missing an original author proof');
     return authenticate(fact, replica.groupId, roster.body.keyVersion, author);
   });
   const records: SnapshotRecord[] = [...base.operationIndex.map((value): SnapshotRecord => ({ kind: 'receipt', value })),
-    ...retained.map((value): SnapshotRecord => ({ kind: 'fact', value }))];
+    ...retained.map((value): SnapshotRecord => ({ kind: 'fact', value })),
+    ...(base.legacyMigrationWitness ? [{ kind: 'legacyMigrationWitness' as const, value: base.legacyMigrationWitness }] : [])];
   const chunks: EncryptedSharedSnapshotChunk[] = []; let page: SnapshotRecord[] = []; let bytes = 2;
   const flush = async () => {
     if (!page.length) return;
@@ -108,6 +113,7 @@ export async function openEncryptedSharedSnapshot(crypto: SharingCryptoGateway, 
   if (input.chunks.length !== body.chunks.length) throw new Error('Snapshot is missing encrypted chunks');
   const owner = snapshotSigner(roster, body.ownerDeviceId);
   const operationIndex: SharedOperationReceipt[] = []; const facts: AuthenticatedSharedOperation[] = [];
+  let legacyMigrationWitness: SignedLegacyMigrationWitness | undefined;
   for (const [index, chunk] of input.chunks.entries()) {
     if (sharedDocumentDigest(chunk) !== body.chunks[index].digest || encoder.encode(canonicalJson(chunk)).length !== body.chunks[index].bytes) throw new Error('Snapshot chunk hash mismatch');
     const plaintext = await openSharedSnapshotChunk(crypto, chunk, { groupId: body.groupId, snapshotId: body.snapshotId,
@@ -119,11 +125,13 @@ export async function openEncryptedSharedSnapshot(crypto: SharingCryptoGateway, 
       if (Object.keys(record).sort().join(',') !== 'kind,value') throw new Error('Unknown snapshot record field');
       if (record.kind === 'receipt') operationIndex.push(record.value);
       else if (record.kind === 'fact') facts.push(authenticate(record.value, body.groupId, body.keyVersion, author));
+      else if (record.kind === 'legacyMigrationWitness' && body.schemaVersion === 2 && legacyMigrationWitness === undefined) legacyMigrationWitness = validateLegacyMigrationWitness(record.value);
       else throw new Error('Unknown snapshot record');
     }
   }
   if (operationIndex.length !== body.receiptCount || facts.length !== body.factCount) throw new Error('Snapshot count mismatch');
   const base = validateSharedSnapshotBase(body.groupId, { groupId: body.groupId, frontier: body.frontier,
-    logicalClock: body.logicalClock, operationIndex, operations: facts.map((fact) => fact.operation) });
+    logicalClock: body.logicalClock, operationIndex, operations: facts.map((fact) => fact.operation),
+    ...(legacyMigrationWitness ? { legacyMigrationWitness } : {}) });
   return { base, facts, snapshotId: body.snapshotId, throughSequence: body.throughSequence };
 }

@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-35",
+  "version": "liflow-shared-2-draft-36",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -72,7 +72,10 @@
     "src/features/appliance-care/categories.ts",
     "src/domain/scheduling/local-date.ts",
     "src/features/sharing/private-planner/preferences.ts",
-    "src/features/sharing/private-planner/relocation.ts"
+    "src/features/sharing/private-planner/relocation.ts",
+    "src/features/sharing/v2/legacy-migration-witness.ts",
+    "src/features/sharing/v2/legacy-migration-plan.ts",
+    "src/features/sharing/snapshots.ts"
   ],
-  "sourceSha256": "2b12c7869d2ccab6ac68cf7647f4095c1175a65c55926ff5336a1c54a74f5ffa"
+  "sourceSha256": "88e863988924c8b6ba4aee14f4150bb9a3122b6ea5cc5f0bed67f4a286dd235b"
 }

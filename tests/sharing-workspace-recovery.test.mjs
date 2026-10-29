@@ -104,6 +104,28 @@ test('conflict resolution rechecks sharing access after its projection before th
   assert.ok(h.events.includes('resolve-project'));
 });
 
+for (const [status, name] of [
+  ['left', 'a cached legacy workspace cannot resolve a conflict after its registry becomes left'],
+  ['removed', 'a cached legacy workspace cannot resolve a conflict after its registry becomes removed'],
+  ['joining', 'a cached legacy workspace cannot resolve a conflict after its registry becomes joining'],
+]) test(name, async () => {
+  const h = fixture({ groups: ['healthy'] });
+  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
+  h.records[0] = { ...h.records[0], status };
+  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /現在編集できません/u);
+  assert.equal(h.events.includes('resolve-plan'), false);
+  assert.equal(h.events.includes('resolve-project'), false);
+});
+
+test('a queued legacy conflict cannot write to an archived generation after rejoining while it waits for the writer', async () => {
+  const options = { groups: ['healthy'] }; const h = fixture(options);
+  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
+  options.beforeQueuedWork = () => { h.records[0] = { ...h.records[0], status: 'active', localGeneration: 'approved-new-generation' }; };
+  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /再参加前/u);
+  assert.equal(h.events.includes('resolve-plan'), false);
+  assert.equal(h.events.includes('resolve-project'), false);
+});
+
 test('one unavailable shared database does not prevent later groups or the selected group reminders from syncing', async () => {
   const h = fixture({ failOpen: 'broken', selection: { userId: 'member', groupId: 'healthy' } });
   await assert.rejects(h.api.syncKnownSharingWorkspaces(), /open failed:broken/);
@@ -184,6 +206,15 @@ test('a delayed roster result from an archived workspace cannot update a newly r
   await assert.rejects(h.synchronizers[0].saveArchive([{ body: { groupId: 'healthy', revision: 2 } }]), /再参加前/);
   assert.equal(h.records[0], rejoining);
   assert.equal(h.records[0].rosterArchive.length, 0);
+});
+
+test('a cached legacy workspace cannot read or save membership after its Firebase account changes', async () => {
+  const h = fixture({ groups: ['healthy'] });
+  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
+  const before = structuredClone(h.records[0]); h.session.userId = 'another-account';
+  await assert.rejects(workspace.record(), /現在編集できません/u);
+  await assert.rejects(h.synchronizers[0].saveArchive([{ body: { groupId: 'healthy', revision: 2 } }]), /現在編集できません/u);
+  assert.deepEqual(h.records[0], before);
 });
 
 test('a legacy workspace account switch during native database opening closes the new handle before schema initialization', async () => {

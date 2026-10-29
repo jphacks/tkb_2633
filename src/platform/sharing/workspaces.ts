@@ -137,12 +137,19 @@ async function buildLegacyWorkspace(context: WorkspaceOpenContext): Promise<Lega
     if (getSharingServices().auth.currentUser?.uid !== userId) throw new SharingAccessError('共有アカウントが切り替わりました。');
     await initializeSharedProjection(database, { ...selection, householdId: LOCAL_HOUSEHOLD_ID }); await initializeSharingLedger(database);
     const assertGeneration = (current: SharingWorkspaceRecord) => { if (current.localGeneration !== generation) throw new SharingAccessError('再参加前のデータは読み取り専用で保持されています。'); };
-    const readRecord = async () => { const latest = await readSharingWorkspace(registry, userId, groupId); if (!latest) throw new Error('共有グループが見つかりません。'); assertGeneration(latest); record = latest; return latest; };
-    const update = async (change: (prior: SharingWorkspaceRecord) => SharingWorkspaceRecord) => { record = await updateSharingWorkspace(registry, userId, groupId, (prior) => { assertGeneration(prior); return change(prior); }); changed(selection); return record; };
+    const assertAccount = () => { if (getSharingServices().auth.currentUser?.uid !== userId) throw new SharingAccessError('この共有グループは現在編集できません。'); };
+    const readRecord = async () => {
+      assertAccount(); const latest = await readSharingWorkspace(registry, userId, groupId); assertAccount();
+      if (!latest) throw new Error('共有グループが見つかりません。'); assertGeneration(latest); record = latest; return latest;
+    };
+    const update = async (change: (prior: SharingWorkspaceRecord) => SharingWorkspaceRecord) => {
+      assertAccount(); record = await updateSharingWorkspace(registry, userId, groupId, (prior) => { assertAccount(); assertGeneration(prior); return change(prior); });
+      assertAccount(); changed(selection); return record;
+    };
     let sync: (options?: { force?: boolean; budgetMs?: number }) => Promise<SharingSyncResult>;
     let debounce: ReturnType<typeof setTimeout> | undefined;
-    const authorize = () => {
-      if (record) assertGeneration(record);
+    const authorize = async () => {
+      await readRecord();
       if (record?.lastErrorCode === 'sharing/scheduler-version-mismatch') throw new SharingSchedulerVersionError();
       if (record && ['sharing/access-denied', 'permission-denied'].includes(record.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
       if (getSharingServices().auth.currentUser?.uid !== userId || !record || !['active', 'creating'].includes(record.status)) throw new SharingAccessError('この共有グループは現在編集できません。');
@@ -161,12 +168,13 @@ async function buildLegacyWorkspace(context: WorkspaceOpenContext): Promise<Lega
     unregister = registerSharedRepositoryAdapter(database, adapter);
     const deps: SharedSyncDependencies = { ...selection, database, identity, crypto: nativeSharingCrypto, cloud, readRecord,
       saveArchive: async (archive) => {
+        assertAccount();
         const next = archive.at(-1)!;
         record = await updateSharingWorkspace(registry, userId, groupId, (previous) => {
-          assertGeneration(previous);
+          assertAccount(); assertGeneration(previous);
           if ((previous.rosterArchive.at(-1)?.body.revision ?? 0) > next.body.revision) throw new Error('Membership changed concurrently');
           return { ...previous, rosterArchive: archive };
-        }); roster = next;
+        }); assertAccount(); roster = next;
       },
       readKey: (version) => loadSharingGroupKey(userId, groupId, version), saveKey: (version, bytes) => saveSharingGroupKey(userId, groupId, version, bytes),
       project: adapter.project, serialized: (work) => withPlannerDatabaseOperation(database, work), changed: () => changed(selection) };
@@ -240,13 +248,13 @@ async function buildLegacyWorkspace(context: WorkspaceOpenContext): Promise<Lega
         await cloud.compactHistory(groupId);
       },
       async resolveConflict(entityType: SharedEntityType, entityId: string, field: string, candidateId: string) {
-        authorize(); const current = roster!;
+        await authorize(); const current = roster!;
         await withPlannerDatabaseOperation(database, () => createLocalSharedOperations(database,
           { groupId, userId, deviceId: identity.deviceId, keyVersion: current.body.keyVersion }, async (_transaction, replica) => {
-            authorize();
+            await authorize();
             return [planSharedConflictResolution(replica, entityType, entityId, field, candidateId, randomUUID())];
           }, async (transaction, replica) => {
-            authorize(); await adapter.project(transaction, replica); authorize();
+            await authorize(); await adapter.project(transaction, replica); await authorize();
           }, (operation) => signSharedOperation(operation, identity).authorSignature));
         changed(selection); void sync({ force: true }).catch(() => undefined);
       } };

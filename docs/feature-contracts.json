@@ -5111,5 +5111,110 @@
         "name": "v2 legacy source authenticates former member facts at their original membership epoch after key rotation"
       }
     ]
+  },
+  {
+    "feature": "v2-legacy-migration-statement-and-new-key-restore",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-legacy-witness.test.mjs",
+        "name": "v2 encrypted migration snapshots restore an exact legacy source using only the new key and original owner statement"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-witness.test.mjs",
+        "name": "v2 an original migration statement survives ownership transfer removal of its signer and a later key rotation"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-witness.test.mjs",
+        "name": "v2 a signed migration witness cannot replace an original member completion signature with an invented work fact"
+      }
+    ]
+  },
+  {
+    "feature": "v2-explicit-private-migration-staging-and-resume",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-legacy-conversion.test.mjs",
+        "name": "v2 legacy conversion requires one explicit choice for every current chore and authors no replacement history or personal data"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-conversion.test.mjs",
+        "name": "v2 legacy staging commits at most one hundred operations at once and resumes next day from the last durable page"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-conversion.test.mjs",
+        "name": "v2 legacy conversion refuses personal existing v1 and nonempty unrelated v2 databases without replacing their rows"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-conversion.test.mjs",
+        "name": "v2 interrupted migration rejects a different reviewed plan and refuses a progress counter without the actual expected operations"
+      }
+    ]
+  },
+  {
+    "feature": "v2-store-initialization-concurrency-and-binding",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-legacy-conversion.test.mjs",
+        "name": "v2 simultaneous store initialization captures its original scope coalesces setup and rejects a competing account"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-conversion.test.mjs",
+        "name": "v2 a failed initialization releases its pending state and retries without leaving a foreign binding"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-explicit-versioned-group-creation",
+    "tests": [
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "sharing v2 creation rollout remains opt-in and never treats truthy strings as release approval"
+      },
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "v2 group creation requires an explicit family choice and does not imply a delegated chore grant"
+      },
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "group creation keeps the same inputs across false results and thrown failures and submits once per pending commit"
+      },
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "ios normal sharing screen forwards explicit v2 kind and ignores a previous account's late creation"
+      },
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "android normal sharing screen forwards explicit v2 kind and ignores a previous account's late creation"
+      },
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "a saved group creation remains successful when refreshing the group list fails afterward"
+      }
+    ]
+  },
+  {
+    "feature": "sharing-legacy-live-registry-authorization",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a cached legacy workspace cannot resolve a conflict after its registry becomes removed"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a queued legacy conflict cannot write to an archived generation after rejoining while it waits for the writer"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a cached legacy workspace cannot read or save membership after its Firebase account changes"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "an asynchronous shared authorization rejection at write boundary 4 rolls back both projection and outbox"
+      },
+      {
+        "file": "tests/sharing-repository.test.mjs",
+        "name": "a shared cached snapshot awaits asynchronous registry authorization before returning private group content"
+      }
+    ]
   }
 ]

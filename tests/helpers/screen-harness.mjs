@@ -31,7 +31,7 @@ export function screenHarness(filename, options = {}) {
       const [memo] = hook(() => ({ deps, value: fn() }));
       if (!deps || !memo.deps || deps.length !== memo.deps.length || deps.some((value, i) => !Object.is(value, memo.deps[i]))) { memo.deps = deps; memo.value = fn(); }
       return memo.value;
-    }, useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
+    }, useCallback: (fn, deps) => react.useMemo(() => fn, deps), useEffect: (callback) => options.effect?.(callback),
     useLayoutEffect: (callback) => options.layoutEffect?.(callback),
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     useContext: (context) => context._currentValue ?? null,
@@ -46,7 +46,7 @@ export function screenHarness(filename, options = {}) {
       FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
         ...((props.data ?? []).length ? props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })) : [props.ListEmptyComponent]),
         props.ListFooterComponent] }),
-      Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
+      Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1, absoluteFill: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 } },
       AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
     },
@@ -66,13 +66,15 @@ export function screenHarness(filename, options = {}) {
       usePreventRemove: (prevent, callback) => { options.preventRemove?.(prevent, callback); return () => options.disablePrevention?.(); },
     },
     'expo-sqlite': { useSQLiteContext: () => options.database },
+    'expo-sqlite/kv-store': { __esModule: true, default: { getItemSync: () => null, setItemSync: () => {} } },
+    'expo-symbols': { SymbolView: 'SymbolView' },
     'expo-linking': { openURL: async (url) => options.openURL?.(url) },
     // Native FlatList jumps are tested directly in chore-book tests. Other screen tests
     // inspect the requested virtual chapter instead of pretending all chapters are mounted.
     '@/components/chore-book': { ChoreBook: (props) => jsx('ChoreBook', { ...props, children: [props.header,
       props.renderChore(props.chores.find(row => row.id === props.selectedId) ?? props.chores[0]),
       jsx(load(resolve(root, 'src/components/planner-ui.tsx')).BackButton, { onPress: props.onBack })] }) },
-    '@/hooks/use-planner-data': { usePlannerData: () => ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.() }) },
+    '@/hooks/use-planner-data': { usePlannerData: (scope) => scope?.personal && options.personalData ? options.personalData() : ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.(), readSnapshot: options.snapshot ?? (() => null) }) },
     '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
     '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },
     '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: () => {} },

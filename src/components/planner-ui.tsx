@@ -15,7 +15,7 @@ export { typography } from './planner-typography';
 export { palette } from './planner-colors';
 
 
-export function Page({ children, contentStyle, keyboardAware = false, footer, footerHasTabBar = false }: PropsWithChildren<{ contentStyle?: object; keyboardAware?: boolean; footer?: ReactNode; footerHasTabBar?: boolean }>) {
+export function Page({ children, contentStyle, keyboardAware = false, footer, footerHasTabBar = false, compactWorkspace = false, floatingFooter = false }: PropsWithChildren<{ contentStyle?: object; keyboardAware?: boolean; footer?: ReactNode; footerHasTabBar?: boolean; compactWorkspace?: boolean; floatingFooter?: boolean }>) {
   const insets = useSafeAreaInsets();
   const workspace = useContext(WorkspaceContext);
   const issues = useContext(PlannerIssuesContext);
@@ -24,7 +24,7 @@ export function Page({ children, contentStyle, keyboardAware = false, footer, fo
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={keyboardAware}
         keyboardDismissMode={keyboardAware ? 'on-drag' : 'none'} contentContainerStyle={[styles.page, contentStyle]}>
-        {workspace?.active ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
+        {workspace?.active && !compactWorkspace ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
           style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><ActionLabel label="切り替え" style={styles.workspaceSwitch} color={palette.muted} /></Pressable> : null}
         {workspace?.error ? <Text accessibilityRole="alert" style={styles.workspaceError}>{workspace.error}</Text> : null}
         {issueCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="共有データを確認する"
@@ -34,7 +34,7 @@ export function Page({ children, contentStyle, keyboardAware = false, footer, fo
         </Pressable> : null}
         {children}
       </ScrollView>
-      {footer ? <View style={[styles.footer, { paddingBottom: footerHasTabBar ? 8 : Math.max(insets.bottom, 8) }]}>{footer}</View> : null}
+      {footer ? <View pointerEvents="box-none" style={floatingFooter ? { position: 'absolute', left: 0, right: 0, bottom: footerHasTabBar ? 0 : insets.bottom } : [styles.footer, { paddingBottom: footerHasTabBar ? 8 : Math.max(insets.bottom, 8) }]}>{footer}</View> : null}
     </SafeAreaView>
   );
 }

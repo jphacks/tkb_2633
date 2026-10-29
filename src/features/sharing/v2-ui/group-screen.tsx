@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton, BackButton, Card, palette, ScreenHeading, SectionHeading, typography } from '../../../components/planner-ui';
 import { AccordionSection } from '../../../components/accordion-section';
 import { V2RoundCard } from './round-card';
@@ -38,6 +38,8 @@ import { orderTaskRows } from './task-order';
 import type { CompletionFeedback } from './completion-feedback';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useHomeClock } from '../../../hooks/use-home-clock';
+import { HomeHeader, HomeProgress, LoadSortButton, CompletionToast } from '../../../components/home-ui';
+import { useHomeDisplay } from '../../../hooks/use-home-display';
 import { homeSummary } from '../../planner/home-summary';
 
 export interface V2GroupScreenProps {
@@ -72,6 +74,10 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const [proceduresOpen, setProceduresOpen] = useState(true);
   const [completionValues, setCompletionValues] = useState(new Map<string, boolean>());
   const feedbackEpoch = useRef(0);
+  const display = useHomeDisplay();
+  const insets = useSafeAreaInsets();
+  const [lastUndo, setLastUndo] = useState<{ undo: () => Promise<unknown> } | null>(null);
+  useEffect(() => { if (!lastUndo) return; const timer = setTimeout(() => setLastUndo(null), 6500); return () => clearTimeout(timer); }, [lastUndo]);
   const clock = useHomeClock(screenModel?.plan.timeZone);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
   const notificationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -99,7 +105,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       if (running.current) { if (mutationRead.current) refreshQueued.current = true; return; }
       notificationTimer.current = setTimeout(() => { notificationTimer.current = undefined; if (alive.current) void refresh(); }, 80);
     });
-    void refresh(); return () => { alive.current = false; feedbackEpoch.current++; setCompletionValues(new Map()); generation.current++; clearTimeout(notificationTimer.current); refreshQueued.current = false; unsubscribe?.(); };
+    void refresh(); return () => { alive.current = false; setLastUndo(null); feedbackEpoch.current++; setCompletionValues(new Map()); generation.current++; clearTimeout(notificationTimer.current); refreshQueued.current = false; unsubscribe?.(); };
   }, [refresh, anchorDate, subscribe, view, choreId, applianceId]));
   useEffect(() => {
     if (!screenModel) return;
@@ -129,8 +135,11 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const feedback: CompletionFeedback = { values: completionValues, run: async (key, completed, work) => {
     if (running.current || !alive.current) return;
     const epoch = feedbackEpoch.current;
+    setLastUndo(null);
+    let undo: (() => Promise<unknown>) | undefined;
     setCompletionValues(values => new Map(values).set(key, completed));
-    const result = await perform(work);
+    const result = await perform(async () => { const value = await work(); if (value && typeof value === 'object' && 'undo' in value && typeof value.undo === 'function') undo = value.undo as () => Promise<unknown>; });
+    if (alive.current && epoch === feedbackEpoch.current && result.committed && result.refreshed && undo && view === 'home') setLastUndo({ undo });
     if (alive.current && epoch === feedbackEpoch.current && (!result.committed || result.refreshed)) {
       setCompletionValues(values => { const next = new Map(values); next.delete(key); return next; });
     }
@@ -242,7 +251,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     </V2FormScrollView></V2ScreenFrame>;
   }
   const recommendations = new Map(personal.recommendations.map((entry) => [entry.subjectOccurrenceId, entry]));
-  const card = (round: V2PlannedOccurrence, subject: V2SubjectPlan) => <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} feedback={feedback}
+  const card = (round: V2PlannedOccurrence, subject: V2SubjectPlan) => <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} feedback={feedback} home={view === 'home'}
     recommendation={recommendations.get(subject.id)}
     onOpen={() => onRound ? onRound(round.id, subject.id) : onConfiguration(round.choreId)} />;
   if (view === 'history') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
@@ -259,10 +268,10 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     .map(entry => ({ source: 'waste' as const, key: `waste:${entry.key}`, entry })),
     ...today.map((entry) => ({ source: 'shared' as const, key: `shared:${entry.subject.id}`, ...entry })),
     ...(privateOverlay?.status === 'ready' ? privateOverlay.home : []).map((row) => ({ source: 'personal' as const, key: row.key, row }))], model.plan.range.asOfDate, item => item.source === 'personal'
-      ? { completed: completionValues.get(item.key) ?? item.row.completed, load: item.row.chore.load, recommendedDate: item.row.suggestedDate, windowEnd: item.row.windowEnd, asOfDate: privateOverlay?.status === 'ready' ? privateOverlay.today : undefined }
+      ? { completed: completionValues.get(item.key) ?? item.row.completed, load: item.row.chore.load, estimatedMinutes: item.row.chore.estimatedMinutes, recommendedDate: item.row.suggestedDate, windowEnd: item.row.windowEnd, asOfDate: privateOverlay?.status === 'ready' ? privateOverlay.today : undefined }
       : item.source === 'shared' ? { completed: visibility(item.round, item.subject).showStatus && (completionValues.get(item.key) ?? item.subject.completed),
-        load: choreById.get(item.round.choreId)?.load ?? 'light', recommendedDate: recommendations.get(item.subject.id)?.date ?? item.subject.suggestedDate, windowEnd: item.subject.executionWindowEnd }
-        : { completed: false, load: 'light', recommendedDate: model.plan.range.asOfDate });
+        load: choreById.get(item.round.choreId)?.load ?? 'light', estimatedMinutes: choreById.get(item.round.choreId)?.estimatedMinutes, recommendedDate: recommendations.get(item.subject.id)?.date ?? item.subject.suggestedDate, windowEnd: item.subject.executionWindowEnd }
+        : { completed: false, load: 'light', recommendedDate: model.plan.range.asOfDate }, display.order);
   const total = homeRows.filter(item => item.source !== 'waste').length;
   const done = homeRows.filter(item => item.source === 'personal' ? completionValues.get(item.key) ?? item.row.completed
     : item.source === 'shared' && visibility(item.round, item.subject).showStatus && (completionValues.get(item.key) ?? item.subject.completed)).length;
@@ -270,8 +279,11 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const expired = entries.filter(({ subject }) => subject.showExpiredOnHome);
   return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <Animated.FlatList data={homeRows} itemLayoutAnimation={LinearTransition.duration(240)} keyExtractor={(entry) => entry.key} contentContainerStyle={styles.page} initialNumToRender={8}
-      ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title={session.privateTasks ? '今日の家事' : '今日の共有家事'} />
-        <Card><Text style={styles.noticeTitle}>{summary.greeting}</Text>{summary.showProgress ? <Text style={styles.caption}>{total}件中{done}件が完了しました　{summary.percent}%</Text> : null}</Card>
+      ListHeaderComponent={<>
+        <HomeHeader today={model.plan.range.asOfDate} workspaceName={typeof model.plan.commonSettings.name === 'string' ? model.plan.commonSettings.name : workspaceName ?? '共有グループ'} onGroup={onManage ?? onBack} />
+        <HomeProgress summary={summary} total={total} done={done} />
+        {workspaceError || error || display.error ? <Text accessibilityRole="alert" style={styles.error}>{workspaceError ?? error ?? display.error}</Text> : null}
+        <SectionHeading title="今日の家事" trailing={<LoadSortButton order={display.order} onPress={display.toggle} />} />
         <V2PrivateTaskNotice overlay={privateOverlay} sharedTimeZone={model.plan.timeZone} />
         <V2DailyLoadNotice assessment={dailyLoad} />
         {privateOverlay?.status === 'ready' && privateOverlay.today !== model.plan.range.asOfDate ? <Text style={styles.caption}>個人の今日：{privateOverlay.today} · 共有の今日：{model.plan.range.asOfDate}</Text> : null}
@@ -280,8 +292,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         {purpose === 'workspace' ? <AppButton title="今すぐ同期" variant="quiet" disabled={busy} onPress={() => void run(() => session.controller.sync())} /> : null}</>}
       ListEmptyComponent={<Card><Text style={styles.body}>{privateOverlay?.status === 'unavailable' ? '今日の共有家事はありません。個人家事は未取得です。' : '今日の家事はありません。'}</Text></Card>}
       renderItem={({ item }) => item.source === 'waste' ? <V2WasteOccurrence entry={item.entry} actions={controller.actions} busy={busy} run={run} />
-        : item.source === 'personal' ? <V2PrivateTaskCard row={item.row} source={session.privateTasks} busy={busy} run={run} feedback={feedback} /> : card(item.round, item.subject)}
+        : item.source === 'personal' ? <V2PrivateTaskCard row={item.row} source={session.privateTasks} busy={busy} run={run} feedback={feedback} home mixedSources={homeRows.some(entry => entry.source === 'shared')} /> : card(item.round, item.subject)}
       ListFooterComponent={<View style={styles.footer}>
+        {notice}<BackButton onPress={onBack} disabled={busy} />
         {expired.length ? <AccordionSection title={`期限を過ぎた家事（${expired.length}件）`} expanded={expiredOpen} onToggle={() => setExpiredOpen((value) => !value)}>
           {expired.map(({ round, subject }) => <View key={subject.id}>{card(round, subject)}</View>)}
         </AccordionSection> : null}
@@ -295,6 +308,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         {purpose === 'development' ? <Card><SectionHeading title="設定を検査" />{model.configurations.map((entry) =>
           <AppButton key={entry.choreId} title={`「${model.plan.chores.find((chore) => chore.id === entry.choreId)?.name ?? '家事'}」の設定`} variant="quiet" disabled={busy} onPress={() => onConfiguration(entry.choreId)} />)}</Card> : null}
       </View>} />
+    {lastUndo ? <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, 8) }}><CompletionToast busy={busy} onUndo={() => {
+      if (running.current || !alive.current) return; const receipt = lastUndo; setLastUndo(null); void perform(receipt.undo);
+    }} /></View> : null}
   </V2ScreenFrame>;
 }
 /** A visible, fixed QA banner also lets native automation fail closed after scrolling long instructions. */

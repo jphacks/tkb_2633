@@ -1,4 +1,4 @@
-import type { ChoreDefinition, ChoreScheduleEntry, HouseholdPlannerSettings } from '../../domain/chores/types.ts';
+import type { ChoreCompletion, ChoreDefinition, ChoreScheduleEntry, HouseholdPlannerSettings } from '../../domain/chores/types.ts';
 import type { ChoreSettingsPatch } from '../../domain/chores/settings-patch.ts';
 import { applyChoreSettingsPatch } from '../../domain/chores/settings-patch.ts';
 import { validateChoreToggle } from '../../domain/chores/chore-groups.ts';
@@ -147,14 +147,24 @@ export function planSharedMutation(context: SharedMutationContext, kind: SharedR
     }
     return { drafts, result: kind === 'updateChoreSettings' ? Boolean(drafts.length) : undefined };
   }
-  if (kind === 'completeChore' || kind === 'recordIncompleteChore') {
+  if (kind === 'completeChore' || kind === 'completeChoreWithReceipt' || kind === 'recordIncompleteChore') {
     const entry = args[0] as ChoreScheduleEntry; const chore = snapshot.chores.find((item) => item.id === entry.choreId);
     const existing = snapshot.completions.find((item) => item.scheduleEntryId === entry.id);
     const target = snapshot.scheduleEntries.find((item) => item.id === entry.id && item.choreId === entry.choreId);
-    if (entry.householdId !== snapshot.household.id || !chore?.enabled || !target || existing?.outcome === 'completed') return { drafts: [], result: false };
+    if (entry.householdId !== snapshot.household.id || !chore?.enabled || !target || existing?.outcome === 'completed') return { drafts: [], result: kind === 'completeChoreWithReceipt' ? undefined : false };
     const member = args[1] as string | undefined;
     if (member && !snapshot.members.some((item) => item.id === member)) throw new Error('担当者が見つかりません。');
-    return { drafts: [sharedCompletionDraft(context, target, kind === 'completeChore' ? 'completed' : 'incomplete', undefined, member)], result: true };
+    const fact = sharedCompletionDraft(context, target, kind === 'recordIncompleteChore' ? 'incomplete' : 'completed', undefined, member);
+    return { drafts: [fact], result: kind === 'completeChoreWithReceipt'
+      ? { ...fact.payload, id: fact.operationId, householdId: snapshot.household.id, scheduleEntryId: target.id, source: 'inApp' } : true };
+  }
+  if (kind === 'undoCompletionReceipt') {
+    const receipt = args[0] as ChoreCompletion;
+    const fact = replica.operations.find(op => op.operationId === receipt.id && op.entityType === 'completion' && op.operationType === 'complete');
+    const active = replica.completions.find(item => item.occurrenceId === receipt.scheduleEntryId);
+    if (receipt.householdId !== snapshot.household.id || !fact || fact.authorUserId !== context.userId
+      || fact.entityId !== receipt.scheduleEntryId || !active?.activeOperationIds.includes(fact.operationId)) return { drafts: [], result: false };
+    return { drafts: [sharedDraft(context, 'completion', fact.entityId, { targetOperationId: fact.operationId }, 'undo')], result: true };
   }
   if (kind === 'undoCompletedChore') {
     const completion = snapshot.completions.find((item) => item.id === args[0]);

@@ -6,7 +6,7 @@ const repository = await import('../../src/platform/storage/repository.ts');
 
 export const privateToday = localDateFromDate(new Date());
 export const privateRange = { from: addDays(privateToday, -14), through: addDays(privateToday, 14) };
-export async function privateFixture() {
+export async function privateFixture({ commonHistory = false } = {}) {
   const f = createDatabase(); await repository.initializeLocalDatabase(f.database);
   const first = await repository.loadPlannerSnapshot(f.database); let chore = first.chores.find((item) => item.name === 'フローリングを掃除する');
   chore = { ...chore, name: '本人だけの床掃除', description: '非公開の手順です。', load: 'heavy', recommendedCycleDays: 7,
@@ -18,6 +18,7 @@ export async function privateFixture() {
   let access = true; let changed = 0;
   const assertAccess = () => { if (!access) throw new Error('account changed'); };
   const source = createV2PrivateTaskSource({ ownerUserId: 'owner', assertAccess,
+    ...(commonHistory ? { mirrorShared: (value, guard) => repository.mirrorSharedChoreCompletions(f.database, value, guard) } : {}),
     readSnapshot: async (instant) => ({ ownerUserId: 'owner', ...await repository.readPersonalPlannerOverlaySnapshot(f.database, instant) }),
     save: (command, guard) => repository.setPersonalDateTaskCompleted(f.database, command, guard), afterChange: () => { changed++; } });
   return { ...f, chore, source, changed: () => changed, stopAccess: () => { access = false; },

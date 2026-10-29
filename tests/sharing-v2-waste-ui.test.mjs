@@ -28,7 +28,7 @@ async function setup() {
     let focus; const screen = screenHarness('src/features/sharing/v2-ui/group-screen.tsx', { exportName: 'V2GroupScreen', platform,
       props: { purpose: 'workspace', view, loadSession: async () => session, onBack() {}, onConfiguration() {}, onHistory() {} }, focusEffect: callback => { focus = callback; } });
     const leave = focus(); mounted.push(leave);
-    await settle(screen, () => screen.text().includes(view === 'waste' ? '登録した収集日' : view === 'calendar' ? '共有カレンダー' : '今日の共有家事'));
+    await settle(screen, () => screen.text().includes(view === 'waste' ? '登録した収集日' : view === 'calendar' ? '共有カレンダー' : '今日の家事'));
     return screen;
   }
   return { base, owner, c, mount, failAfterNextAdd: () => { failAfterAdd = true; }, preferences: () => preferences,

@@ -22,7 +22,9 @@ import { subscribeSharingChanges } from '@/platform/sharing/workspaces';
 import { PlannerIssuesContext } from '@/contexts/planner-issues-context';
 
 type PlannerController = ReturnType<typeof createPlannerRefreshController<PlannerSnapshot>>;
-const PlannerContext = createContext<{ database: SQLiteDatabase; controller: PlannerController } | null>(null);
+type PlannerBinding = { database: SQLiteDatabase; controller: PlannerController };
+const PlannerContext = createContext<PlannerBinding | null>(null);
+const PersonalPlannerContext = createContext<PlannerBinding | null>(null);
 
 function SharedPlannerIssuesProvider({ children, controller, groupId }: {
   children?: ReactNode; controller: PlannerController; groupId: string;
@@ -122,14 +124,19 @@ export function PlannerDataProvider({ children, databaseOverride }: { children: 
   }, [controller, database, shared]);
 
   const value = useMemo(() => ({ database, controller }), [database, controller]);
-  return createElement(PlannerContext.Provider, { value }, shared
+  const scoped = createElement(PlannerContext.Provider, { value }, shared
     ? createElement(SharedPlannerIssuesProvider, { controller, groupId: shared.groupId }, children) : children);
+  // Reuse the root provider's reads and lifecycle work. A shared provider cannot replace this binding.
+  return shared ? scoped : createElement(PersonalPlannerContext.Provider, { value }, scoped);
 }
 
-export function usePlannerData() {
-  const context = useContext(PlannerContext);
+export function usePlannerData(options?: { personal?: boolean }) {
+  const scoped = useContext(PlannerContext);
+  const personal = useContext(PersonalPlannerContext);
+  const context = options?.personal ? personal : scoped;
   if (!context) throw new Error('usePlannerData must be used within PlannerDataProvider');
   const readError = useCallback(() => context.controller.getSnapshot().error, [context.controller]);
+  const readSnapshot = useCallback(() => context.controller.getSnapshot().snapshot, [context.controller]);
   const state = useSyncExternalStore(context.controller.subscribe, context.controller.getSnapshot, context.controller.getSnapshot);
-  return { ...state, database: context.database, refresh: context.controller.refresh, readError };
+  return { ...state, database: context.database, refresh: context.controller.refresh, readError, readSnapshot };
 }

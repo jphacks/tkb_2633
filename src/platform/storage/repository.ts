@@ -44,6 +44,8 @@ import { CALENDAR_AVAILABILITY_MAX_AGE_MS, calendarAvailabilitySignature, freshC
 import { sharedRepositoryAdapter } from './shared-repository-adapter';
 import type { SharedRepositoryMutation } from './shared-repository-adapter';
 import { stagePendingGoogleTaskStatus } from './google-task-link-state';
+import { commonChoreLinks, sharedMirrorEntryId, parseSharedMirrorEntryId } from '../../features/planner/common-chore-links.ts';
+import type { CommonCompletionSource } from '../../features/planner/common-chore-links';
 
 export const LOCAL_HOUSEHOLD_ID = 'local-household';
 export const LOCAL_MEMBER_ID = 'local-member';
@@ -1092,6 +1094,36 @@ async function completeChoreImpl(
   return inserted;
 }
 
+/** Capture the exact saved fact in the same transaction, for the short-lived Undo action. */
+async function completeChoreWithReceiptImpl(database: SQLiteDatabase, entry: ChoreScheduleEntry, assertAccess?: () => void | Promise<void>): Promise<ChoreCompletion | undefined> {
+  await assertAccess?.();
+  let receipt: ChoreCompletion | undefined;
+  await database.withTransactionAsync(async () => {
+    await assertAccess?.();
+    if (!await isActiveChoreEntry(database, entry)) return;
+    if (!await persistChoreCompletion(database, entry, new Date().toISOString(), 'inApp')) return;
+    const row = await database.getFirstAsync<CompletionRow>('SELECT * FROM chore_completions WHERE schedule_entry_id = ?', entry.id);
+    if (row) receipt = completionFromRow(row);
+    await assertAccess?.();
+  });
+  return receipt;
+}
+
+async function undoCompletionReceiptImpl(database: SQLiteDatabase, receipt: ChoreCompletion, assertAccess?: () => void | Promise<void>): Promise<boolean> {
+  await assertAccess?.();
+  let changed = false;
+  await database.withTransactionAsync(async () => {
+    await assertAccess?.();
+    const row = await database.getFirstAsync<CompletionRow>('SELECT * FROM chore_completions WHERE id = ?', receipt.id);
+    if (!row || row.household_id !== LOCAL_HOUSEHOLD_ID || row.household_id !== receipt.householdId
+      || row.chore_id !== receipt.choreId || row.schedule_entry_id !== receipt.scheduleEntryId
+      || row.completed_at !== receipt.completedAt || row.source !== receipt.source || row.outcome !== 'completed') return;
+    changed = await undoCompletionInTransaction(database, receipt.id, 'inApp', localDateFromDate(new Date()));
+    await assertAccess?.();
+  });
+  return changed;
+}
+
 /** Overlay access must never initialize or mutate a v1/v2 group connection. */
 async function assertPersonalPlannerDatabase(database: SQLiteDatabase): Promise<void> {
   if (sharedRepositoryAdapter(database) || await database.getFirstAsync(
@@ -1099,6 +1131,46 @@ async function assertPersonalPlannerDatabase(database: SQLiteDatabase): Promise<
   )) throw new Error('個人の保存先を確認できません。個人モードを開き直してください。');
   const household = await database.getFirstAsync<{ id: string }>('SELECT id FROM households WHERE id = ?', LOCAL_HOUSEHOLD_ID);
   if (!household) throw new Error('個人の家事を読み込んでから再試行してください。');
+}
+
+/** Replayed canonical group facts converge locally without copying private definitions into shared events. */
+async function mirrorSharedChoreCompletionsImpl(database: SQLiteDatabase, input: CommonCompletionSource,
+  assertAccess: () => void | Promise<void>): Promise<number> {
+  await assertAccess(); await assertPersonalPlannerDatabase(database);
+  let changed = 0;
+  await database.withTransactionAsync(async () => {
+    await assertAccess();
+    const rows = await database.getAllAsync<DefinitionRow>('SELECT id,enabled,definition_json FROM chore_definitions WHERE household_id=?', LOCAL_HOUSEHOLD_ID);
+    const personal = rows.map(row => ({ ...JSON.parse(row.definition_json) as ChoreDefinition, enabled: Boolean(row.enabled) }));
+    const ids = new Set(personal.map(chore => chore.id));
+    const links = commonChoreLinks(personal, input.chores);
+    const existing = await database.getAllAsync<{ id: string; chore_id: string; schedule_entry_id: string; outcome: ChoreCompletion['outcome'] }>(
+      "SELECT id,chore_id,schedule_entry_id,outcome FROM chore_completions WHERE household_id=? AND schedule_entry_id LIKE 'shared-home:%'", LOCAL_HOUSEHOLD_ID);
+    // Existing mirrors remain addressable for explicit undo even after a rename or disable.
+    for (const row of existing) {
+      const key = parseSharedMirrorEntryId(row.schedule_entry_id);
+      if (key?.groupId === input.groupId && key.personalChoreId === row.chore_id && ids.has(row.chore_id)
+        && !links.some(link => link.personalChoreId === row.chore_id && link.sharedChoreId === key.sharedChoreId)) links.push(key);
+    }
+    const known = new Map(existing.map(row => [row.schedule_entry_id, row]));
+    for (const fact of [...input.completions].sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt) || a.id.localeCompare(b.id))) {
+      if (!fact.scheduleEntryId) continue;
+      if (!Number.isFinite(Date.parse(fact.completedAt))) throw new Error('共有家事の実施日時を確認してください。');
+      for (const date of [fact.scheduledDate, fact.scheduledWindowStart, fact.scheduledWindowEnd]) if (date) parseLocalDate(date);
+      for (const link of links.filter(link => link.sharedChoreId === fact.choreId)) {
+        const entryId = sharedMirrorEntryId(input.groupId, fact.choreId, fact.scheduleEntryId, link.personalChoreId);
+        const stored = known.get(entryId);
+        await assertAccess();
+        if (fact.outcome === 'completed') {
+          if (await persistChoreCompletion(database, { id: entryId, householdId: LOCAL_HOUSEHOLD_ID, choreId: link.personalChoreId,
+            suggestedDate: fact.scheduledDate, windowStart: fact.scheduledWindowStart, windowEnd: fact.scheduledWindowEnd }, fact.completedAt, 'inApp')) changed++;
+        } else if (stored?.outcome === 'completed' && await undoCompletionInTransaction(database, stored.id, 'inApp', localDateFromDate(new Date()))) changed++;
+      }
+    }
+    await assertAccess();
+  });
+  if (changed) plannerVersions.set(database, (plannerVersions.get(database) ?? 0) + 1);
+  return changed;
 }
 
 async function readPersonalPlannerOverlaySnapshotImpl(database: SQLiteDatabase, now = new Date()) {
@@ -1322,10 +1394,13 @@ async function hasPendingGoogleTaskChangesImpl(
   return Boolean(row?.pending);
 }
 
-async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: EntityId): Promise<boolean> {
+async function undoCompletedChoreImpl(database: SQLiteDatabase, completionId: EntityId, assertAccess?: () => void | Promise<void>): Promise<boolean> {
+  await assertAccess?.();
   let undone = false;
   await database.withTransactionAsync(async () => {
+    await assertAccess?.();
     undone = await undoCompletionInTransaction(database, completionId, 'inApp', localDateFromDate(new Date()));
+    await assertAccess?.();
   });
   return undone;
 }
@@ -2091,6 +2166,9 @@ export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedA
 export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl, 'setChoreEnabled');
 export const setChoresEnabled = serializePlannerOperation(setChoresEnabledImpl, 'setChoresEnabled');
 export const completeChore = serializePlannerOperation(completeChoreImpl, 'completeChore');
+export const completeChoreWithReceipt = serializePlannerOperation(completeChoreWithReceiptImpl, 'completeChoreWithReceipt');
+export const undoCompletionReceipt = serializePlannerOperation(undoCompletionReceiptImpl, 'undoCompletionReceipt');
+export const mirrorSharedChoreCompletions = serializeDatabaseOperation(mirrorSharedChoreCompletionsImpl);
 export const readPersonalPlannerOverlaySnapshot = serializeDatabaseOperation(readPersonalPlannerOverlaySnapshotImpl);
 export const readPersonalChoreCopySource = serializeDatabaseOperation(readPersonalChoreCopySourceImpl);
 export const setPersonalDateTaskCompleted = serializePlannerOperation(setPersonalDateTaskCompletedImpl);

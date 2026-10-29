@@ -5,11 +5,12 @@ import { formatJapaneseDate, localDateFromDate, localDateFromISODateTime, monthK
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { router, useLocalSearchParams } from 'expo-router';
+import { parseSharedMirrorEntryId } from '@/features/planner/common-chore-links';
 
 export default function HistoryScreen() {
-  const params = useLocalSearchParams<{ choreId?: string }>();
+  const params = useLocalSearchParams<{ choreId?: string; source?: string }>();
   const requestedChoreId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
-  const { snapshot, loading, error, refresh } = usePlannerData();
+  const { snapshot, loading, error, refresh } = usePlannerData({ personal: params.source === 'personal' });
   if (loading || !snapshot) return <PlannerLoadState title="実施履歴" message="履歴を読み込んでいます。" error={error} retry={refresh} />;
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
@@ -54,7 +55,7 @@ export default function HistoryScreen() {
                 {isCompleted ? '完了' : '未完了'} · {formatJapaneseDate(date, { year: true, weekday: true })}
               </Text>
             </View>
-            <Text style={styles.source}>{completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : completion.source === 'googleTasks' ? 'Google Tasks' : 'アプリ'}</Text>
+            <Text style={styles.source}>{parseSharedMirrorEntryId(completion.scheduleEntryId) ? '共有' : completion.source === 'notification' ? '通知' : completion.source === 'widget' ? 'ウィジェット' : completion.source === 'googleTasks' ? 'Google Tasks' : 'アプリ'}</Text>
           </Card>
         );
       })}

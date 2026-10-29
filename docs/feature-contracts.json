@@ -5516,5 +5516,121 @@
       { "file": "tests/mobile-ui-recovery.test.mjs", "name": "a late failed write cannot hide another saved completion and one hundred recovery taps share one read" },
       { "file": "tests/mobile-ui-recovery.test.mjs", "name": "${platform} calendar supplies a read-only recovery button and disables stale completion actions after a saved read failure" }
     ]
+  },
+{
+  "feature": "home-device-only-one-tap-load-order",
+  "tests": [
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "home load preference survives a cold store and never writes a household setting"
+    },
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "home load reversal retains urgent and completed tiers for personal and mixed shared rows"
+    },
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "home duration ties follow the chosen direction without treating unknown times as quick work"
+    }
+  ]
+},
+{
+  "feature": "home-upcoming-one-card-per-occurrence",
+  "tests": [
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "upcoming home shows each occurrence once on its recommendation and preserves distinct cycles and recorded completion"
+    }
+  ]
+},
+{
+  "feature": "home-compact-heading-group-entry-and-time",
+  "tests": [
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "${platform} home has one heading a group icon duration and a persistent one-tap load control"
+    }
+  ]
+},
+{
+  "feature": "home-quiet-targeted-completion-undo",
+  "tests": [
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "home Undo receipt is atomic idempotent and cannot undo a later replacement record"
+    },
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "shared home Undo targets only its own captured fact after another member completes the same occurrence"
+    },
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "completion Undo is one-shot and an old closure cannot run after a workspace deactivates"
+    },
+    {
+      "file": "tests/home-ux.test.mjs",
+      "name": "${platform} home exposes the saved completion Undo without finding the moved card"
+    }
+  ]
+},
+{
+    "feature": "home-leading-check-full-row-opener-and-source-icons",
+    "tests": [
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "${platform} home list has a leading independent check a full row opener blue disclosure and legible person icons"
+      }
+    ]
+  },
+  {
+    "feature": "home-common-chores-preserve-original-personal-settings",
+    "tests": [
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "common home chores use the active group definition while preserving disabled personal defaults and safe name matching"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "${platform} common home uses one group row and completes undoes and recovers personal history without sending private settings"
+      }
+    ]
+  },
+  {
+    "feature": "home-common-history-converges-with-targeted-retry",
+    "tests": [
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "shared completion mirrors replay once restore the original personal settings and accept remote undo without touching unrelated history"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "remote undo still addresses its original local mirror after a group chore is disabled or renamed"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "common history mirror transactions roll back on access loss and never initialize or mutate a shared database"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "common history bridge coalesces one hundred syncs and retries a committed mirror read without another completion"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "a changing group snapshot rolls back the old mirror before replaying the latest canonical outcome"
+      }
+    ]
+  },
+  {
+    "feature": "v2-common-chore-history-and-single-load",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-private-ui.test.mjs",
+        "name": "${platform} v2 common chores share one row and mirror completion undo and load counts while preserving original private settings"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "v2 common history reflects other members and explicit undo but excludes another persons individual subject and unapproved work"
+      }
+    ]
   }
 ]

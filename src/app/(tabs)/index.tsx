@@ -1,5 +1,5 @@
 import { Tabs, router } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useContext, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,39 +10,75 @@ import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { WasteOccurrenceCard } from '@/components/waste-occurrence-card';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { FirstRunSetup } from '@/features/onboarding/first-run-setup';
-import { orderDateTasks, selectDateTasks, type DateTask } from '@/domain/scheduling/date-tasks';
+import { selectDateTasks, type DateTask } from '@/domain/scheduling/date-tasks';
 import { addDays, formatJapaneseDate, localDateFromDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
+import type { ChoreCompletion } from '@/domain/chores/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { useWasteOccurrenceToggle } from '@/features/waste/use-waste-occurrence-toggle';
 import { WeatherAttribution } from '@/components/data-credits';
 import { useTaskCompletion } from '@/hooks/use-task-completion';
 import { useHomeClock } from '@/hooks/use-home-clock';
 import { homeSummary } from '@/features/planner/home-summary';
+import { HomeHeader, HomeProgress, LoadSortButton, CompletionToast } from '@/components/home-ui';
+import { useHomeDisplay } from '@/hooks/use-home-display';
+import { WorkspaceContext } from '@/contexts/workspace-context';
+import { homeUpcomingTasks, homeTaskRows, orderHomeTaskRows, type HomeTaskRow } from '@/features/planner/home-presentation';
 import { isTaskUrgent } from '@/domain/scheduling/task-priority';
+import { commonChoreLinks } from '@/features/planner/common-chore-links';
+import { useCommonChoreHistory } from '@/hooks/use-common-chore-history';
 
 type WeekScope = 'current' | 'next';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { snapshot, loading, error, refresh, database, readError } = usePlannerData();
-  const completion = useTaskCompletion(database, refresh, readError);
+  const workspace = useContext(WorkspaceContext);
+  const display = useHomeDisplay();
+  const scoped = usePlannerData();
+  const { snapshot, loading, error, refresh, database, readError } = scoped;
+  const personal = usePlannerData({ personal: true });
+  const combined = Boolean(snapshot?.sharing && personal.database !== database);
+  const commonHistory = useCommonChoreHistory({ workspace: combined ? workspace?.active ?? null : null, userId: workspace?.userId ?? null, shared: scoped, personal });
+  const syncCommonHistory = commonHistory.sync;
+  const authorizeCommon = commonHistory.assertAccess;
+  const readPersonalSnapshot = personal.readSnapshot; const readSharedSnapshot = scoped.readSnapshot; const personalReadError = personal.readError;
+  const assertUncommonPersonalAccess = useCallback(async (task?: DateTask) => {
+    await authorizeCommon(); const failure = personalReadError?.(); if (failure) throw new Error(failure);
+    if (task && commonChoreLinks(readPersonalSnapshot()?.chores ?? [], readSharedSnapshot()?.chores ?? []).some(link => link.personalChoreId === task.choreId)) {
+      throw new Error('この家事は共有の設定に変わりました。表示を更新して共通の行から操作してください。');
+    }
+  }, [authorizeCommon, readPersonalSnapshot, readSharedSnapshot, personalReadError]);
+  const refreshHome = useCallback(async () => { await refresh(); const failure = readError?.(); if (failure) throw new Error(failure); await syncCommonHistory(); }, [refresh, readError, syncCommonHistory]);
+  const completion = useTaskCompletion(database, refreshHome, readError, combined ? { ...personal, isCurrent: commonHistory.isCurrent, assertAccess: assertUncommonPersonalAccess } : undefined);
   const clock = useHomeClock(snapshot?.timeZone);
   const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
+  const personalWasteVisibility = useWasteOccurrenceToggle(personal.database, personal.refresh);
   const actionError = completion.error;
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
   const today = snapshot?.today ?? localDateFromDate(new Date());
+  const personalToday = personal.snapshot?.today ?? localDateFromDate(clock);
+  const commonIds = new Set(combined ? commonChoreLinks(personal.snapshot?.chores ?? [], snapshot?.chores ?? []).map(link => link.personalChoreId) : []);
+  const sources = snapshot ? [{ snapshot, source: snapshot.sharing ? 'shared' as const : 'personal' as const, today },
+    ...(combined && personal.snapshot?.settings.setupCompleted ? [{ snapshot: { ...personal.snapshot, chores: personal.snapshot.chores.filter(chore => !commonIds.has(chore.id)) }, source: 'personal' as const, today: personalToday }] : [])] : [];
+  const projectRows = (rows: HomeTaskRow[], records: ChoreCompletion[]) => {
+    const tasks = completion.project(rows.map(row => row.task), records);
+    return rows.map((row, index) => ({ ...row, task: tasks[index] }));
+  };
   const thisWeekEnd = addDays(today, 7 - weekdayOf(today));
   const nextWeekStart = addDays(thisWeekEnd, 1);
   const nextWeekEnd = addDays(nextWeekStart, 6);
   const periodStart = weekScope === 'current' ? today : nextWeekStart;
   const periodEnd = weekScope === 'current' ? thisWeekEnd : nextWeekEnd;
   const upcomingByDate = (() => {
-    const groups: [LocalDate, DateTask[]][] = [];
+    const groups: [LocalDate, HomeTaskRow[]][] = [];
     if (!snapshot) return groups;
     const firstVisibleDate = periodStart > today ? periodStart : addDays(today, 1);
+    const upcoming = sources.flatMap(scope => {
+      const from = firstVisibleDate > scope.today ? firstVisibleDate : addDays(scope.today, 1);
+      return projectRows(homeTaskRows(homeUpcomingTasks(scope.snapshot.scheduleEntries, scope.snapshot.completions, from, periodEnd, scope.snapshot.chores), scope.snapshot.chores, scope.source, scope.today), scope.snapshot.completions);
+    });
     for (let date = firstVisibleDate; date <= periodEnd; date = addDays(date, 1)) {
-      const tasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date, 0, snapshot.chores), snapshot.completions), date, snapshot.chores, today);
+      const tasks = orderHomeTaskRows(upcoming.filter(row => row.task.suggestedDate === date), today, display.order);
       if (tasks.length) groups.push([date, tasks]);
     }
     return groups;
@@ -61,46 +97,44 @@ export default function HomeScreen() {
     );
   }
 
-  const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const orderedDueToday = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores), snapshot.completions), today, snapshot.chores);
+  const orderedDueToday = orderHomeTaskRows(sources.flatMap(scope => projectRows(homeTaskRows(
+    selectDateTasks(scope.snapshot.scheduleEntries, scope.snapshot.completions, scope.today, 3, scope.snapshot.chores), scope.snapshot.chores, scope.source, scope.today), scope.snapshot.completions)), today, display.order);
   const todayTotal = orderedDueToday.length;
-  const todayDone = orderedDueToday.filter((task) => task.completed).length;
+  const todayDone = orderedDueToday.filter(row => row.task.completed).length;
   const summary = homeSummary(todayTotal, todayDone, clock, snapshot.timeZone);
-  const progress = summary.percent;
-  const todayWaste = snapshot.upcomingWasteDates.filter((occurrence) => occurrence.date === today);
+  const todayWaste = sources.flatMap(scope => scope.snapshot.upcomingWasteDates.filter(occurrence => occurrence.date === scope.today)
+    .map(occurrence => ({ occurrence, source: scope.source, key: `${scope.snapshot.household.id}:${occurrence.scheduleId}:${occurrence.date}`,
+      visibility: combined && scope.source === 'personal' ? personalWasteVisibility : wasteVisibility })));
+  const groupName = workspace?.active ? workspace.groups.find(group => group.groupId === workspace.active!.groupId)?.displayName ?? snapshot.household.name : snapshot.household.name;
+  const renderTask = (row: HomeTaskRow, last: boolean, upcoming = false) => {
+    const { task, chore, source } = row;
+    const range = upcoming && task.entry && task.entry.windowStart !== task.entry.windowEnd
+      ? `実施期間：${formatJapaneseDate(task.entry.windowStart)}〜${formatJapaneseDate(task.entry.windowEnd)}` : undefined;
+    const region = combined && source === 'personal' && personal.snapshot?.timeZone !== snapshot.timeZone ? personal.snapshot?.timeZone : undefined;
+    return <Animated.View key={row.key} layout={LinearTransition.duration(240)}>
+      <TaskCheckboxRow chore={chore} home lastInList={last} completed={task.completed} source={source} mixedSources={combined}
+        contextLabel={combined ? source === 'personal' ? '個人' : groupName : undefined} detail={[range, region].filter(Boolean).join(' · ')}
+        early={!upcoming && row.today < task.suggestedDate}
+        urgent={isTaskUrgent({ completed: task.completed, load: chore.load, recommendedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, row.today)}
+        onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home', ...(combined ? { source: source === 'personal' ? 'personal' : undefined } : {}) } })}
+        onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined} />
+    </Animated.View>;
+  };
 
   return (
     <>
       <Tabs.Screen options={{ tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
-      <Page contentStyle={styles.homePage}>
+      <Page contentStyle={styles.homePage} compactWorkspace floatingFooter footerHasTabBar footer={completion.undoAvailable ? <CompletionToast onUndo={() => void completion.undoLast()} busy={completion.pending.size > 0 || completion.reading} /> : undefined}>
         {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text><AppButton title="表示を再読込" variant="quiet" compact
           disabled={completion.pending.size > 0 || completion.reading} onPress={() => void completion.retryRead()} /></Card> : null}
 
-      <View style={styles.todayHeading}>
-        <View style={styles.todayCopy}>
-          <Text style={styles.date}>{formatJapaneseDate(today, { year: true, weekday: true })}</Text>
-          <Text style={styles.title}>今日のタスク</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <Pressable accessibilityRole="button" accessibilityLabel="ヘルプを開く" onPress={() => router.push('/help')} style={({ pressed }) => [styles.headerActionButton, pressed && styles.actionPressed]}>
-            <Text style={styles.helpSymbol}>?</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="設定を開く" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.headerActionButton, pressed && styles.actionPressed]}>
-            <Text style={styles.settingsSymbol}>⚙︎</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <Card style={styles.progressCard}>
-        <View style={styles.progressHeader}>
-          <View style={styles.progressCopy}>
-            <Text style={styles.progressTitle}>{summary.greeting}</Text>
-            {summary.showProgress ? <Text style={styles.progressCaption}>{todayTotal}件中{todayDone}件が完了しました</Text> : null}
-          </View>
-          {summary.showProgress ? <Text style={styles.progressValue}>{progress}%</Text> : null}
-        </View>
-        {summary.showProgress ? <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View> : null}
-      </Card>
+      <HomeHeader today={today} workspaceName={snapshot.sharing ? `個人 ＋ ${groupName}` : '個人'} />
+      <HomeProgress summary={summary} total={todayTotal} done={todayDone} />
+      {combined && personalToday !== today ? <Text style={styles.noticeBody}>個人の今日：{formatJapaneseDate(personalToday, { weekday: true })} · {personal.snapshot?.timeZone}</Text> : null}
+      {combined && (personal.loading || personal.error || !personal.snapshot) ? <Card><Text style={styles.noticeBody}>{personal.error ? '個人の家事を読み込めませんでした。保存したデータは保持しています。' : '個人の家事を読み込んでいます。'}</Text>
+        {personal.error ? <AppButton title="個人の家事を再読込" variant="quiet" compact onPress={() => void personal.refresh()} /> : null}</Card> : null}
+      {display.error ? <Text accessibilityRole="alert" style={styles.error}>{display.error}</Text> : null}
+      {commonHistory.error ? <Card><Text accessibilityRole="alert" style={styles.error}>{commonHistory.error}</Text><AppButton title="個人側への反映を再試行" variant="quiet" compact onPress={() => void commonHistory.sync().catch(() => {})} /></Card> : null}
 
       {snapshot.weatherOutcome === 'adjusted' ? (
         <Card style={styles.weatherNotice}>
@@ -115,34 +149,16 @@ export default function HomeScreen() {
         </Card>
       ) : null}
 
-      {todayWaste.map((item) => (
-        <WasteOccurrenceCard key={`${item.scheduleId}:${item.date}`} occurrence={item}
-          busy={wasteVisibility.busyKeys.has(`${item.scheduleId}:${item.date}`)}
-          onToggle={() => void wasteVisibility.toggle(item, false)} />
+      {todayWaste.map(({ occurrence, visibility, key, source }) => (
+        <WasteOccurrenceCard key={key} occurrence={occurrence} home source={combined ? source : undefined}
+          busy={visibility.busyKeys.has(`${occurrence.scheduleId}:${occurrence.date}`)}
+          onToggle={() => void visibility.toggle(occurrence, false)} />
       ))}
       {wasteVisibility.error ? <Text style={styles.error}>{wasteVisibility.error}</Text> : null}
+      {combined && personalWasteVisibility.error ? <Text style={styles.error}>{personalWasteVisibility.error}</Text> : null}
 
-      <SectionHeading title="今日の家事" trailing={<Text style={styles.smallCount}>{todayTotal}件・{todayDone}件完了</Text>} />
-      {orderedDueToday.map((task) => {
-        const chore = choresById.get(task.choreId);
-        if (!chore) return null;
-        const { completed } = task;
-        return (
-          <Animated.View
-            key={chore.id}
-            layout={LinearTransition.duration(240)}>
-            <TaskCheckboxRow
-              chore={chore}
-              completed={completed}
-              source={snapshot.sharing ? 'shared' : 'personal'}
-              early={today < task.suggestedDate}
-              urgent={isTaskUrgent({ completed, load: chore.load, recommendedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today)}
-              onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-              onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined}
-            />
-          </Animated.View>
-        );
-      })}
+      <SectionHeading title="今日の家事" trailing={<LoadSortButton order={display.order} onPress={display.toggle} />} />
+      {todayTotal > 0 ? <View style={styles.taskList}>{orderedDueToday.map((row, index) => renderTask(row, index === orderedDueToday.length - 1))}</View> : null}
       {todayTotal === 0 ? (
         <Card style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>今日の予定はありません</Text>
@@ -162,22 +178,8 @@ export default function HomeScreen() {
 
       {upcomingByDate.length ? upcomingByDate.map(([date, entries]) => (
         <View key={date} style={styles.dayGroup}>
-          <Text style={styles.dayGroupTitle}>{formatJapaneseDate(date, { weekday: true }).replace(/^\d+月/, '')}のタスク</Text>
-          {entries.map((row) => {
-            const chore = choresById.get(row.choreId);
-            if (!chore) return null;
-            return (
-              <Animated.View key={`${row.choreId}:${date}`} layout={LinearTransition.duration(240)}>
-                <TaskCheckboxRow
-                  chore={chore}
-                  completed={row.completed}
-                  source={snapshot.sharing ? 'shared' : 'personal'} early={date < row.suggestedDate}
-                  onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-                  onToggle={completion.canToggle(row) ? () => void completion.toggle(row) : undefined}
-                />
-              </Animated.View>
-            );
-          })}
+          <Text style={styles.dayGroupTitle}>{formatJapaneseDate(date, { weekday: true }).replace(/^\d+月/, '')}のおすすめ</Text>
+          <View style={styles.taskList}>{entries.map((row, index) => renderTask(row, index === entries.length - 1, true))}</View>
         </View>
       )) : (
         <Card style={styles.emptyCard}>
@@ -195,28 +197,11 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  homePage: { gap: 12, paddingTop: 8, paddingBottom: 24 },
-  todayHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 0 },
-  todayCopy: { flex: 1, gap: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerActionButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
-  helpSymbol: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', lineHeight: 29 },
-  settingsSymbol: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, textAlign: 'center', top: -2 },
-  actionPressed: { opacity: 0.72 },
-  date: { ...typography.caption, color: palette.muted, fontWeight: '500' },
-  title: { ...typography.title, color: palette.ink, fontWeight: '800' },
-  progressCard: { backgroundColor: '#ECFAFD', borderColor: '#ECFAFD', padding: 17, gap: 10 },
-  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  progressCopy: { flex: 1, gap: 2 },
-  progressTitle: { ...typography.label, color: palette.accent, fontWeight: '800' },
-  progressCaption: { ...typography.caption, color: palette.muted, fontWeight: '600' },
-  progressValue: { ...typography.title, color: palette.accent, fontWeight: '800' },
-  progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 3, backgroundColor: palette.accent },
+  taskList: { borderWidth: 1, borderColor: palette.border, borderRadius: 14, overflow: 'hidden' },
+  homePage: { gap: 12, paddingTop: 8, paddingBottom: 80 },
   weatherNotice: { backgroundColor: palette.accentSoft, borderColor: palette.accentSoft, gap: 4 },
   noticeTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   noticeBody: { ...typography.body, color: palette.muted },
-  smallCount: { ...typography.caption, color: palette.muted },
   emptyCard: { paddingVertical: 18 },
   emptyTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   emptyBody: { ...typography.body, color: palette.muted },
@@ -229,6 +214,5 @@ const styles = StyleSheet.create({
   dayGroup: { gap: 9, marginTop: 2 },
   dayGroupTitle: { ...typography.caption, color: palette.muted, fontWeight: '600' },
   quickLinks: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 16, paddingTop: 4 },
-  loading: { ...typography.label, color: palette.muted, paddingTop: 8 },
   error: { ...typography.label, color: palette.warning },
 });

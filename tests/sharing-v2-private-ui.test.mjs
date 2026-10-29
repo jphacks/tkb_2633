@@ -9,10 +9,11 @@ import { createV2ScreenSession } from '../src/features/sharing/v2-ui/screen-sess
 import { listSharingOutbox } from '../src/platform/storage/sharing-ledger.ts';
 const repository = await import('../src/platform/storage/repository.ts');
 
-async function setup() {
-  const personal = await privateFixture(); const shared = await fixture(); const d = await shared.device(); let id = 0;
+async function setup({ common = false } = {}) {
+  const personal = await privateFixture({ commonHistory: common }); const shared = await fixture(common ? { clock: () => new Date() } : undefined); const d = await shared.device(); let id = 0;
   const initial = seeds(); initial[1].payload.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   initial[1].payload.anchorDate = privateToday; initial[3].payload.configuration.anchorDate = privateToday;
+  if (common) initial[2].payload.name = personal.chore.name;
   await d.repository.commit(initial);
   const controller = createV2GroupController(d.repository, { now: () => new Date(), makeId: () => `private-ui-${++id}`, sync: async () => {} });
   const session = createV2ScreenSession({ controller, groupId, userId: 'owner', now: () => new Date(), privateTasks: personal.source,
@@ -29,6 +30,28 @@ function checkbox(screen, name, completed = false) {
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 common chores share one row and mirror completion undo and load counts while preserving original private settings`, async () => {
+    const f = await setup({ common: true }); let focus;
+    try {
+      const definition = f.personal.connection.prepare('SELECT definition_json FROM chore_definitions WHERE id=?').get(f.personal.chore.id);
+      const screen = screenHarness('src/features/sharing/v2-ui/group-screen.tsx', { exportName: 'V2GroupScreen', platform,
+        props: { purpose: 'workspace', view: 'home', loadSession: async () => f.session, onBack: () => {}, onConfiguration: () => {}, onHistory: () => {} },
+        focusEffect: fn => { focus = fn; } });
+      const leave = focus(); await ready(screen, f.personal.chore.name);
+      assert.equal(screen.nodes().filter(node => node.props.accessibilityRole === 'checkbox').length, 1);
+      const before = await listSharingOutbox(f.d.database, groupId);
+      await checkbox(screen, f.personal.chore.name).props.onPress(); await screen.flush();
+      const mirrored = f.personal.connection.prepare('SELECT outcome FROM chore_completions').get();
+      assert.ok(mirrored, screen.text()); assert.equal(mirrored.outcome, 'completed');
+      let model = await f.session.readModel(); assert.equal(model.privateOverlay.home.length, 0); assert.deepEqual(model.privateOverlay.dailyLoad, {});
+      assert.equal((await listSharingOutbox(f.d.database, groupId)).length, before.length + 1);
+      await screen.press('直前の完了を元に戻す'); await screen.flush();
+      assert.equal(f.personal.connection.prepare('SELECT outcome FROM chore_completions').get().outcome, 'incomplete');
+      assert.deepEqual(f.personal.connection.prepare('SELECT definition_json FROM chore_definitions WHERE id=?').get(f.personal.chore.id), definition);
+      assert.equal(JSON.stringify(await listSharingOutbox(f.d.database, groupId)).includes('非公開の手順'), false);
+      leave();
+    } finally { f.close(); }
+  });
   test(`${platform} shared home overlays private chores and routes completion and undo to their original personal source`, async () => {
     const f = await setup(); let focus; let sharedOpened = 0;
     try {
@@ -37,14 +60,19 @@ for (const platform of ['ios', 'android']) {
         onBack: () => {}, onConfiguration: () => {}, onHistory: () => {} };
       const screen = screenHarness('src/features/sharing/v2-ui/group-screen.tsx', { exportName: 'V2GroupScreen', platform, props, focusEffect: (fn) => { focus = fn; } });
       const leave = focus(); await ready(screen, f.personal.chore.name);
-      assert.match(screen.text(), /個人 · 本人のみ/u);
-      await screen.press(`${f.personal.chore.name}個人 · 本人のみ · ${f.personal.chore.category}`);
+      assert.match(screen.text(), /個人家事：本人のみ/u);
+      assert.ok(screen.text().includes(`約${f.personal.chore.estimatedMinutes}分`));
+      assert.match(screen.button(`${f.personal.chore.name}の説明を開く`).props.accessibilityHint, /個人の家事/u);
+      await screen.press(`${f.personal.chore.name}の説明を開く`);
       assert.match(screen.text(), /非公開の手順/u); assert.equal(sharedOpened, 0);
       await checkbox(screen, f.personal.chore.name).props.onPress(); await screen.flush();
       assert.equal(checkbox(screen, f.personal.chore.name, true).props.accessibilityState.checked, true);
       assert.equal(f.personal.connection.prepare('SELECT outcome FROM chore_completions').get().outcome, 'completed');
       await checkbox(screen, f.personal.chore.name, true).props.onPress(); await screen.flush();
       assert.equal(checkbox(screen, f.personal.chore.name).props.accessibilityState.checked, false);
+      assert.equal(f.personal.connection.prepare('SELECT outcome FROM chore_completions').get().outcome, 'incomplete');
+      await checkbox(screen, f.personal.chore.name).props.onPress(); await screen.flush();
+      await screen.press('直前の完了を元に戻す'); await screen.flush();
       assert.equal(f.personal.connection.prepare('SELECT outcome FROM chore_completions').get().outcome, 'incomplete');
       assert.deepEqual(await listSharingOutbox(f.d.database, groupId), before); leave();
     } finally { f.close(); }

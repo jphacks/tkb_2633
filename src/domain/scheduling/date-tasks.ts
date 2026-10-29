@@ -3,9 +3,12 @@ import type { LocalDate } from '@/domain/shared/types';
 import { calendarPendingCountsByDate } from '../calendar/day-entries.ts';
 import { completionCycleDate, completionIncludesDate, completionMatchesEntry } from './completion-matching.ts';
 import { addDays, daysBetween, localDateFromISODateTime } from './local-date.ts';
-import { compareTaskKeys, taskPriority } from './task-priority.ts';
+import { compareTaskKeys, compareTaskMinutes, taskPriority } from './task-priority.ts';
+import type { LoadOrder } from './task-priority.ts';
 
 export interface DateTask {
+  /** Transient command routing for a composite home; never persisted in shared data. */
+  completionScope?: 'personal' | 'shared';
   id: string;
   choreId: string;
   suggestedDate: LocalDate;
@@ -71,14 +74,17 @@ function compareOccurrence(left: DateTask, right: DateTask, date: LocalDate): nu
 export function orderDateTasks(
   tasks: readonly DateTask[],
   date: LocalDate,
-  chores: readonly Pick<ChoreDefinition, 'id' | 'load'>[],
+  chores: readonly (Pick<ChoreDefinition, 'id' | 'load'> & Partial<Pick<ChoreDefinition, 'estimatedMinutes'>>)[],
   today: LocalDate = date,
+  order?: LoadOrder,
 ): DateTask[] {
   const loadById = new Map(chores.map((chore) => [chore.id, chore.load]));
+  const minutes = new Map(chores.map(chore => [chore.id, chore.estimatedMinutes]));
   const priority = (task: DateTask) => taskPriority({ completed: task.completed,
     load: loadById.get(task.choreId) ?? 'light', recommendedDate: task.suggestedDate,
-    windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today);
+    windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today, order);
   return [...tasks].sort((left, right) => priority(left) - priority(right)
+    || (order ? compareTaskMinutes(minutes.get(left.choreId), minutes.get(right.choreId), order) : 0)
     || compareTaskKeys(left.choreId, right.choreId));
 }
 

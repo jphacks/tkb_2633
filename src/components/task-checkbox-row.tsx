@@ -1,57 +1,60 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { palette, typography } from '@/components/planner-ui';
+import { GroupIcon, PersonIcon } from './group-icon';
+import { Chevron } from './chevron';
 
-export function TaskCheckboxRow({ chore, completed = false, deemphasized = false, source, early = false, urgent = false, onToggle, onOpen }: {
-  chore: ChoreDefinition;
-  completed?: boolean;
-  deemphasized?: boolean;
-  source?: 'personal' | 'shared' | 'instructed';
-  early?: boolean;
-  urgent?: boolean;
-  onToggle?: () => void;
-  onOpen: () => void;
+export function TaskCheckboxRow({ chore, completed = false, deemphasized = false, source, early = false, urgent = false,
+  onToggle, onOpen, home = false, mixedSources = false, detail, detailsExpanded, lastInList = false, contextLabel }: {
+  chore: ChoreDefinition; completed?: boolean; deemphasized?: boolean; source?: 'personal' | 'shared' | 'instructed';
+  early?: boolean; urgent?: boolean; onToggle?: () => void; onOpen: () => void; home?: boolean; mixedSources?: boolean;
+  detail?: string; detailsExpanded?: boolean; lastInList?: boolean; contextLabel?: string;
 }) {
-  return (
-    <View style={[styles.row, source && source !== 'personal' && styles.sharedRow, source === 'instructed' && styles.instructedRow,
-      (deemphasized || early) && !completed && styles.deemphasizedRow, urgent && !completed && styles.urgentRow, completed && styles.completedRow]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${chore.name}の説明を開く`} onPress={onOpen} style={styles.copy}>
-        <Text style={[styles.name, deemphasized && !completed && styles.deemphasizedText, completed && styles.completedText]}>{chore.name}</Text>
-        {source || early || urgent || chore.category ? <Text style={[styles.category, completed && styles.completedCategory]}>
-          {[source === 'instructed' ? '共有・日時指定' : source === 'shared' ? '共有' : source === 'personal' ? '個人' : '',
-            early && !completed ? '推奨日前' : urgent && !completed ? '期限間近' : '', chore.category].filter(Boolean).join(' · ')}
-        </Text> : null}
-      </Pressable>
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityLabel={`${chore.name}を${completed ? '未完了に戻す' : '完了'}`}
-        accessibilityState={{ checked: completed, disabled: !onToggle }}
-        disabled={!onToggle}
-        onPress={onToggle}
-        hitSlop={8}
-        style={[styles.checkbox, completed && styles.checkboxCompleted]}>
-        {completed ? <Text style={styles.checkmark}>✓</Text> : null}
-      </Pressable>
+  const actionName = `${chore.name}${contextLabel ? `（${contextLabel}）` : ''}`;
+  const minutes = Number.isFinite(chore.estimatedMinutes) && chore.estimatedMinutes! > 0 ? `約${chore.estimatedMinutes}分` : '';
+  const checkbox = <Pressable accessibilityRole="checkbox" accessibilityLabel={`${actionName}を${completed ? '未完了に戻す' : '完了'}`}
+    accessibilityState={{ checked: completed, disabled: !onToggle }} disabled={!onToggle} onPress={onToggle} hitSlop={8}
+    style={[styles.checkbox, completed && styles.checkboxCompleted]}>
+    {completed ? <Text style={styles.checkmark}>✓</Text> : null}
+  </Pressable>;
+  return <View style={[styles.row, source && source !== 'personal' && styles.sharedRow, source === 'instructed' && styles.instructedRow,
+    (deemphasized || early) && !completed && styles.deemphasizedRow, urgent && !completed && styles.urgentRow,
+    completed && styles.completedRow, home && styles.listRow, home && lastInList && styles.lastRow]}>
+    {/* Siblings keep the full row opener and checkbox as independent accessible actions. */}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${actionName}の説明を開く`}
+      accessibilityHint={[source === 'shared' || source === 'instructed' ? '共有の家事です' : source === 'personal' ? '個人の家事です' : '', minutes, '手順や道具を確認します'].filter(Boolean).join('。')}
+      accessibilityState={detailsExpanded === undefined ? undefined : { expanded: detailsExpanded }} onPress={onOpen}
+      style={({ pressed }) => [StyleSheet.absoluteFill, styles.openArea, home && styles.listOpenArea, pressed && styles.pressed]} />
+    {home ? checkbox : null}
+    <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.copy}>
+      <Text style={[styles.name, deemphasized && !completed && styles.deemphasizedText, completed && styles.completedText]}>{chore.name}</Text>
+      {home ? <View style={styles.metadata}>
+        {source === 'shared' || source === 'instructed' ? <View style={styles.sourceIcon}><GroupIcon size={22} /></View> : null}
+        {source === 'personal' && mixedSources ? <View style={styles.sourceIcon}><PersonIcon size={15} /></View> : null}
+        <Text style={[styles.category, urgent && !completed && styles.urgentText, completed && styles.completedCategory]}>{[
+          source === 'instructed' ? '日時指定' : '', minutes,
+          early && !completed ? '推奨日前' : urgent && !completed ? '期限間近' : '', detail,
+        ].filter(Boolean).join(' · ')}</Text>
+      </View> : source || early || urgent || chore.category ? <Text style={[styles.category, completed && styles.completedCategory]}>{[
+        source === 'instructed' ? '共有・日時指定' : source === 'shared' ? '共有' : source === 'personal' ? '個人' : '',
+        early && !completed ? '推奨日前' : urgent && !completed ? '期限間近' : '', chore.category,
+      ].filter(Boolean).join(' · ')}</Text> : null}
     </View>
-  );
+    <View pointerEvents="none"><Chevron direction={detailsExpanded === undefined ? 'right' : detailsExpanded ? 'up' : 'down'} /></View>
+    {!home ? checkbox : null}
+  </View>;
 }
-
 const styles = StyleSheet.create({
   row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, paddingHorizontal: 15, paddingVertical: 9 },
-  sharedRow: { borderLeftWidth: 3, borderLeftColor: '#7C8EC6' },
-  instructedRow: { borderLeftColor: '#71629A', backgroundColor: '#FAF8FD' },
-  urgentRow: { borderLeftWidth: 3, borderLeftColor: palette.gold },
-  deemphasizedRow: { backgroundColor: '#FAFBFD', borderColor: '#E8ECF3' },
-  completedRow: { backgroundColor: '#F0F1F5', borderColor: '#F0F1F5' },
-  copy: { flex: 1, gap: 2, minHeight: 44, justifyContent: 'center' },
-  name: { ...typography.subheading, color: palette.ink, fontWeight: '600' },
-  category: { ...typography.caption, color: palette.muted },
-  deemphasizedText: { color: '#727B91' },
-  deemphasizedCategory: { color: '#949CAF' },
-  completedText: { color: '#858B9E', textDecorationLine: 'line-through' },
-  completedCategory: { color: '#858B9E' },
+  listRow: { borderRadius: 0, borderWidth: 0, borderLeftWidth: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, gap: 12 }, lastRow: { borderBottomWidth: 0 },
+  openArea: { borderRadius: 13, margin: 1 }, listOpenArea: { borderRadius: 0 }, pressed: { backgroundColor: palette.accentSoft },
+  sharedRow: { borderLeftWidth: 3, borderLeftColor: '#7C8EC6' }, instructedRow: { borderLeftColor: '#71629A', backgroundColor: '#FAF8FD' },
+  urgentRow: { borderLeftWidth: 3, borderLeftColor: palette.gold }, urgentText: { color: '#8A631F' },
+  deemphasizedRow: { backgroundColor: '#FAFBFD', borderColor: '#E8ECF3' }, completedRow: { backgroundColor: '#F0F1F5', borderColor: '#F0F1F5' },
+  copy: { flex: 1, gap: 2, minHeight: 44, justifyContent: 'center' }, metadata: { flexDirection: 'row', alignItems: 'flex-start', gap: 5 },
+  sourceIcon: { height: typography.caption.lineHeight, justifyContent: 'center' },
+  name: { ...typography.subheading, color: palette.ink, fontWeight: '600' }, category: { ...typography.caption, color: palette.muted, flexShrink: 1 },
+  deemphasizedText: { color: '#727B91' }, completedText: { color: '#858B9E', textDecorationLine: 'line-through' }, completedCategory: { color: '#858B9E' },
   checkbox: { width: 28, height: 28, borderRadius: 8, borderWidth: 1.5, borderColor: '#C7D0E1', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
-  checkboxCompleted: { borderColor: palette.accent, backgroundColor: palette.accent },
-  checkmark: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', lineHeight: 20 },
+  checkboxCompleted: { borderColor: palette.accent, backgroundColor: palette.accent }, checkmark: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', lineHeight: 20 },
 });

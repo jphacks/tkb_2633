@@ -10,6 +10,7 @@ import type { V2PrivateOverlayState, V2PrivateTaskSource } from './private-overl
 import type { PrivateCalendarRuntime } from '../private-calendar/runtime';
 import { assessV2UntimedDailyLoad } from '../v2/daily-load.ts';
 import type { V2DailyLoadAssessment } from '../v2/daily-load';
+import { v2CommonCompletionSource } from './common-chore-history.ts';
 
 export interface V2GroupUiSession {
   controller: V2GroupController; groupId: string; userId: string;
@@ -48,7 +49,8 @@ export function createV2ScreenSession(input: { controller: V2GroupController; gr
       if (calendar && (calendar.ownerUserId !== input.userId || calendar.binding.ownerUserId !== input.userId || calendar.cache.ownerUserId !== input.userId)) throw new Error('本人のCalendar情報を確認してください。');
       let privateOverlay: V2PrivateOverlayState | undefined;
       if (input.privateTasks && !options?.management) try {
-        privateOverlay = await input.privateTasks.read(model.plan.range, instant);
+        await input.privateTasks.mirrorShared?.(v2CommonCompletionSource(model));
+        privateOverlay = await input.privateTasks.read(model.plan.range, instant, model.plan.chores);
         if (privateOverlay.ownerUserId !== input.userId) throw new Error('本人の個人家事を確認してください。');
       } catch { privateOverlay = { status: 'unavailable', message: '個人家事を取得できませんでした。個人モードの状態を確認し、再読込してください。' }; }
       const privateLoad = privateOverlay?.status === 'ready' && privateOverlay.timeZone === model.plan.timeZone

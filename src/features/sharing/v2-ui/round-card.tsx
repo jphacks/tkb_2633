@@ -13,12 +13,13 @@ import type { LocalDate } from '../../../domain/shared/types';
 import { isTaskUrgent } from '../../../domain/scheduling/task-priority';
 import type { CompletionFeedback } from './completion-feedback';
 
-export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false, recommendation, displayDate, feedback }: {
+export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false, recommendation, displayDate, feedback, home = false }: {
   model: V2GroupScreenModel; round: V2PlannedOccurrence; subject: V2SubjectPlan; actions: V2GroupController['actions']; busy: boolean;
   run: (work: () => Promise<unknown>) => Promise<void>; onOpen: () => void; onDate?: () => void; onAssignment?: () => void;
   onPast?: () => void; onAssignmentRequest?: () => void; showActions?: boolean;
   recommendation?: V2Recommendation;
   displayDate?: LocalDate; feedback?: CompletionFeedback;
+  home?: boolean;
 }) {
   const chore = model.plan.chores.find((entry) => entry.id === round.choreId); if (!chore) return null;
   const viewer = model.viewerUserId;
@@ -30,7 +31,11 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const canComplete = owns && round.activeInPeriod && !subject.pendingCompletionIds.length && !subject.dependencyBlocked && !subject.dependencyAwaitingCompletion && !round.assignmentConflictIds.length;
   const key = `shared:${subject.id}`;
   const work = subject.completed ? undo.length ? () => actions.undoMany(undo) : undefined
-    : canComplete ? () => actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] }) : undefined;
+    : canComplete ? async () => {
+      const created = await actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] });
+      const own = (created ?? []).filter(op => op.entityType === 'completion' && op.operationType === 'complete' && op.authorUserId === viewer);
+      return own.length ? { undo: () => actions.undoMany(own.map(op => op.operationId)) } : undefined;
+    } : undefined;
   const onToggle = busy || feedback?.values.has(key) || !work ? undefined : () => feedback
     ? feedback.run(key, subject.completed ? undo.length < subject.completionOperationIds.length : true, work) : run(work);
   const category = subject.subjectUserId ? `各人が実施 · ${nameOf(subject.subjectUserId)}` : round.assigneeIds.length
@@ -43,7 +48,7 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const assignmentPending = model.assignmentRequests.some((request) => !request.cancelled && request.proposal.occurrenceId === round.id && request.proposal.requesterUserId === viewer
     && ['pendingDelivery', 'awaiting'].includes(request.kind));
   return <View style={styles.card}>
-    <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={displayCompleted}
+    <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={displayCompleted} home={home} detail={home ? category : undefined}
       source={formal.kind === 'manual' ? 'instructed' : 'shared'} early={formal.kind === 'automatic' && (displayDate ?? model.plan.range.asOfDate) < recommendedDate}
       urgent={isTaskUrgent({ completed: displayCompleted, load: chore.load, recommendedDate, windowEnd: subject.executionWindowEnd }, model.plan.range.asOfDate)}
       deemphasized={subject.cooldownSuppressed || subject.virtuallyConsumed} onOpen={onOpen} onToggle={onToggle} />

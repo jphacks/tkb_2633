@@ -9,8 +9,8 @@ import { localDateFromDate } from '@/domain/scheduling/local-date';
 import { AppButton, palette, typography } from '@/components/planner-ui';
 
 /** Every chapter retains its own history and incomplete action, including after a rail jump. */
-export function GuideChapterActions({ choreId, snapshot, database, refresh }: {
-  choreId: string; snapshot: PlannerSnapshot; database: SQLiteDatabase; refresh(): Promise<void>;
+export function GuideChapterActions({ choreId, snapshot, database, refresh, personalSource = false }: {
+  choreId: string; snapshot: PlannerSnapshot; database: SQLiteDatabase; refresh(): Promise<void>; personalSource?: boolean;
 }) {
   const [busy, setBusy] = useState(false); const running = useRef(false); const [message, setMessage] = useState<string | null>(null);
   const today = snapshot.today ?? localDateFromDate(new Date());
@@ -28,7 +28,7 @@ export function GuideChapterActions({ choreId, snapshot, database, refresh }: {
     finally { running.current = false; setBusy(false); }
   };
   return <View style={{ gap: 8 }}>
-    <AppButton title="この家事の実施履歴を見る" onPress={() => router.push({ pathname: '/history', params: { choreId } })} variant="secondary" />
+    <AppButton title="この家事の実施履歴を見る" onPress={() => router.push({ pathname: '/history', params: { choreId, ...(personalSource ? { source: 'personal' } : {}) } })} variant="secondary" />
     {entry ? <><AppButton title={busy ? '記録中…' : '未完了を記録'} onPress={() => void record()} disabled={!canRecord || busy} variant="quiet" />
       {!canRecord ? <Text style={{ ...typography.body, color: palette.muted }}>実施期間が始まると未完了を記録できます。</Text> : null}</> : null}
     {message ? <Text accessibilityLiveRegion="polite" style={{ ...typography.body, color: palette.muted }}>{message}</Text> : null}

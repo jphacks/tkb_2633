@@ -16,28 +16,29 @@ import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
 
 export default function ChoreGuideScreen() {
-  const params = useLocalSearchParams<{ choreId?: string; returnTo?: 'home' | 'calendar' }>();
+  const params = useLocalSearchParams<{ choreId?: string; returnTo?: 'home' | 'calendar'; source?: string }>();
+  const personalSource = params.source === 'personal';
   const requestedId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
   const requestedReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const returnTo = requestedReturnTo === 'home' || requestedReturnTo === 'calendar' ? requestedReturnTo : undefined;
   const navigation = useNavigation('/(tabs)') as {
     addListener(event: 'tabPress', callback: () => void): () => void;
-    setParams(params: { choreId?: string | undefined; returnTo?: 'home' | 'calendar' | undefined }): void;
+    setParams(params: { choreId?: string | undefined; returnTo?: 'home' | 'calendar' | undefined; source?: string | undefined }): void;
   };
-  const { snapshot, loading, error, refresh, database } = usePlannerData();
+  const { snapshot, loading, error, refresh, database } = usePlannerData({ personal: personalSource });
   const [searchText, setSearchText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isTriviaCollectionOpen, setIsTriviaCollectionOpen] = useState(false);
   const [selectedTriviaId, setSelectedTriviaId] = useState<string | null>(null);
   useEffect(() => navigation.addListener('tabPress', () => {
-    navigation.setParams({ choreId: undefined, returnTo: undefined });
+    navigation.setParams({ choreId: undefined, returnTo: undefined, ...(personalSource ? { source: undefined } : {}) });
     setSelectedCategory(null);
     setIsTriviaCollectionOpen(false);
     setSelectedTriviaId(null);
     setSearchText('');
-  }), [navigation]);
+  }), [navigation, personalSource]);
   const returnFromDetail = () => {
-    navigation.setParams({ choreId: undefined, returnTo: undefined });
+    navigation.setParams({ choreId: undefined, returnTo: undefined, ...(personalSource ? { source: undefined } : {}) });
     if (returnTo === 'home') router.navigate('/');
     else if (returnTo === 'calendar') router.navigate('/(tabs)/explore');
   };
@@ -222,7 +223,7 @@ export default function ChoreGuideScreen() {
     header={error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : undefined}
     renderChore={chore => <View style={{ gap: 12 }}>
       <ChoreGuide chore={chore} mode={snapshot.settings.frequencyMode} />
-      <GuideChapterActions choreId={chore.id} snapshot={snapshot} database={database} refresh={refresh} />
+      <GuideChapterActions choreId={chore.id} snapshot={snapshot} database={database} refresh={refresh} personalSource={personalSource} />
     </View>} />;
 
 }

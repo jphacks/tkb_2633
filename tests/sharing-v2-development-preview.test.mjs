@@ -138,7 +138,7 @@ for (const platform of ['ios', 'android']) {
   test(`${platform} v2 isolated native preview connects home, collapsed expired rounds, configuration navigation and targeted history undo to actual SQLite`, async () => {
     const f = await screenFixture(platform);
     try {
-      assert.ok(f.screen.text().includes('今日の共有家事')); assert.ok(f.screen.text().includes('フローリングを掃除する'));
+      assert.ok(f.screen.text().includes('今日の家事')); assert.ok(f.screen.text().includes('フローリングを掃除する'));
       assert.ok(f.screen.nodes().find((node) => node.type === 'FlatList').props.itemLayoutAnimation, 'shared Home must animate the virtualized cells');
       assert.equal(f.screen.nodes().filter((node) => node.props.accessibilityRole === 'checkbox').length, 2);
       await f.screen.press('期限を過ぎた家事（1件）を開く'); assert.equal(f.screen.nodes().filter((node) => node.props.accessibilityRole === 'checkbox').length, 3);
@@ -151,6 +151,11 @@ for (const platform of ['ios', 'android']) {
       await checkbox.props.onPress(); await f.screen.flush(); model = await f.preview.readModel();
       assert.equal(model.plan.history.length, 1); assert.equal(model.plan.history[0].active, true);
       assert.equal(model.plan.occurrences.find((entry) => entry.id === round.id).completed, true);
+      await f.screen.press('直前の完了を元に戻す'); model = await f.preview.readModel();
+      assert.equal(model.plan.history.filter(entry => entry.active).length, 0);
+      const again = f.screen.nodes().find(node => node.props.accessibilityRole === 'checkbox' && node.props.accessibilityLabel === 'フローリングを掃除するを完了');
+      await again.props.onPress(); await f.screen.flush(); model = await f.preview.readModel();
+      assert.equal(model.plan.history.filter(entry => entry.active).length, 1);
       await f.screen.press('「フローリングを掃除する」の設定'); assert.deepEqual(f.navigation.pop(), ['configuration', round.choreId]);
       await f.screen.press('実施履歴'); assert.deepEqual(f.navigation.pop(), ['history']);
       f.props.view = 'history'; f.screen.render(); assert.ok(f.screen.text().includes('実施済み')); await f.screen.press('この完了を取り消す');
@@ -210,7 +215,7 @@ for (const platform of ['ios', 'android']) {
       assert.ok(control); control.props.onValueChange(true); await screen.flush(); assert.equal((await f.preview.readModel()).pendingChanges, before.pendingChanges);
       await screen.press('担当変更を保存'); assert.ok(screen.text().includes('担当変更を端末に保存しました'));
       assert.deepEqual((await f.preview.readModel()).plan.occurrences.find((entry) => entry.id === round.id).assigneeIds, [model.viewerUserId]);
-      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'index', {}, navigation, '今日の共有家事')); cleanup = leave;
+      cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'index', {}, navigation, '今日の家事')); cleanup = leave;
       await screen.press('担当の変更申請'); assert.deepEqual(navigation.at(-1), ['push', '/development/sharing-v2-preview/assignment-requests']);
       cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'assignment-requests', {}, navigation, '担当の変更申請はありません')); cleanup = leave;
       assert.equal((await f.preview.readModel()).assignmentRequests.length, 0);
@@ -220,7 +225,7 @@ for (const platform of ['ios', 'android']) {
     const f = await screenFixture(platform); let cleanup;
     try {
       const params = {}; const navigation = [];
-      let { screen, leave } = await openRoute(f.preview, platform, 'index', params, navigation, '今日の共有家事'); cleanup = leave;
+      let { screen, leave } = await openRoute(f.preview, platform, 'index', params, navigation, '今日の家事'); cleanup = leave;
       const before = await f.preview.readModel(); await screen.press('日時の変更申請');
       assert.deepEqual(navigation[0], ['push', '/development/sharing-v2-preview/requests']);
       cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'requests', {}, navigation, '日時の変更申請はありません')); cleanup = leave;

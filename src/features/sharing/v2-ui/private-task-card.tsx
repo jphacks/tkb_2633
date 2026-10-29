@@ -9,6 +9,7 @@ import { V2ChoreProcedures } from './chore-procedures';
 import type { CompletionFeedback } from './completion-feedback';
 import { isTaskUrgent } from '../../../domain/scheduling/task-priority';
 import type { LocalDate } from '../../../domain/shared/types';
+import { sameOccurrenceAfterCompletion } from '../../../domain/scheduling/date-task-reference';
 
 export function V2PrivateTaskNotice({ overlay, sharedTimeZone, date }: { overlay?: V2PrivateOverlayState; sharedTimeZone: string; date?: string }) {
   if (!overlay) return null;
@@ -23,16 +24,25 @@ export function V2PrivateTaskNotice({ overlay, sharedTimeZone, date }: { overlay
 }
 
 /** The shared actions object is deliberately absent. Only the captured personal source accepts this checkbox. */
-export function V2PrivateTaskCard({ row, source, busy, run, feedback, today = row.date }: { row: V2PrivateTaskRow; source?: V2PrivateTaskSource; busy: boolean; feedback?: CompletionFeedback; today?: LocalDate;
+export function V2PrivateTaskCard({ row, source, busy, run, feedback, today = row.date, home = false, mixedSources = false }: { row: V2PrivateTaskRow; source?: V2PrivateTaskSource; busy: boolean; feedback?: CompletionFeedback; today?: LocalDate; home?: boolean; mixedSources?: boolean;
   run: (work: () => Promise<unknown>) => Promise<void> }) {
   const [open, setOpen] = useState(false); const chore = row.chore;
   const completed = feedback?.values.get(row.key) ?? row.completed;
   return <View style={{ gap: 6 }}>
-    <TaskCheckboxRow chore={{ ...chore, category: `本人のみ${chore.category ? ` · ${chore.category}` : ''}` }} completed={completed} source="personal"
+    <TaskCheckboxRow chore={{ ...chore, category: `本人のみ${chore.category ? ` · ${chore.category}` : ''}` }} completed={completed} source="personal" home={home} mixedSources={mixedSources} detailsExpanded={open}
       early={row.date < row.suggestedDate} urgent={isTaskUrgent({ completed, load: chore.load, recommendedDate: row.suggestedDate, windowEnd: row.windowEnd }, today)}
       onOpen={() => setOpen((value) => !value)}
       onToggle={!busy && source && !feedback?.values.has(row.key) ? () => feedback
-        ? feedback.run(row.key, !row.completed, () => source.setCompleted(row.key, row.revision, !row.completed))
+        ? feedback.run(row.key, !row.completed, async () => {
+          const changed = await source.setCompleted(row.key, row.revision, !row.completed);
+          if (!changed || row.completed || !home) return;
+          try {
+            const next = await source.read({ from: row.date, through: row.date }, new Date());
+            const saved = [...next.home, ...(next.byDate.get(row.date) ?? [])].find(item => item.key === row.key && item.completed
+              && sameOccurrenceAfterCompletion(row.revision, item.revision));
+            return saved ? { undo: () => source.setCompleted(saved.key, saved.revision, false) } : undefined;
+          } catch { /* A missing Undo receipt must not turn a stored completion into a failed write. */ }
+        })
         : run(() => source.setCompleted(row.key, row.revision, !row.completed)) : undefined} />
     <Text style={styles.caption}>個人の推奨日：{formatJapaneseDate(row.suggestedDate, { weekday: true })}</Text>
     {open ? <Card><V2ChoreProcedures chore={chore} />

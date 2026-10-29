@@ -8,6 +8,8 @@ import { dateTaskRevision } from '../../../domain/scheduling/date-task-reference
 import type { PersonalDateTaskCommand } from '../../../domain/scheduling/date-task-reference';
 import type { PlannerSnapshot } from '../../../platform/storage/repository';
 import type { V2PersonalDayLoad } from '../v2/personal-plan';
+import { commonChoreLinks } from '../../planner/common-chore-links.ts';
+import type { CommonCompletionSource } from '../../planner/common-chore-links';
 
 export interface V2PrivateTaskRow {
   source: 'personal'; key: string; revision: string; ownerUserId: string; householdId: string;
@@ -21,8 +23,9 @@ export interface V2PrivateOverlay {
 }
 export type V2PrivateOverlayState = V2PrivateOverlay | { status: 'unavailable'; message: string };
 export interface V2PrivateTaskSource {
-  read(range: { from: LocalDate; through: LocalDate }, instant: Date): Promise<V2PrivateOverlay>;
+  read(range: { from: LocalDate; through: LocalDate }, instant: Date, commonChores?: CommonCompletionSource['chores']): Promise<V2PrivateOverlay>;
   setCompleted(key: string, revision: string, completed: boolean): Promise<boolean>;
+  mirrorShared?(source: CommonCompletionSource): Promise<void>;
 }
 export interface PrivatePlannerInput { ownerUserId: string; today: LocalDate; timeZone: string; snapshot: PlannerSnapshot }
 
@@ -111,12 +114,20 @@ export function createV2PrivateTaskSource(input: { ownerUserId: string; assertAc
   readSnapshot: (instant: Date) => Promise<PrivatePlannerInput>;
   save: (command: PersonalDateTaskCommand, assertAccess: () => void | Promise<void>) => Promise<boolean>;
   afterChange?: () => void | Promise<void>;
+  mirrorShared?: (source: CommonCompletionSource, assertAccess: () => void | Promise<void>) => Promise<number>;
 }): V2PrivateTaskSource {
   let reading = 0; let selected = new Map<string, PersonalDateTaskCommand>(); const pending = new Set<string>();
   return {
-    async read(range, instant) {
+    async mirrorShared(source) {
+      if (!input.mirrorShared) return;
+      await input.assertAccess();
+      if (await input.mirrorShared(source, input.assertAccess)) await input.afterChange?.();
+    },
+    async read(range, instant, commonChores) {
       const generation = ++reading; await input.assertAccess();
-      const value = projectV2PrivateTasks(await input.readSnapshot(instant), input.ownerUserId, range);
+      const data = await input.readSnapshot(instant);
+      const common = new Set(commonChoreLinks(data.snapshot.chores, commonChores ?? []).map(link => link.personalChoreId));
+      const value = projectV2PrivateTasks({ ...data, snapshot: { ...data.snapshot, chores: data.snapshot.chores.filter(chore => !common.has(chore.id)) } }, input.ownerUserId, range);
       await input.assertAccess();
       if (generation === reading) selected = new Map([...value.home, ...[...value.byDate.values()].flat()].map((row) => [row.key,
         { date: row.date, graceDays: row.graceDays, choreId: row.chore.id, revision: row.revision, completed: row.completed }]));

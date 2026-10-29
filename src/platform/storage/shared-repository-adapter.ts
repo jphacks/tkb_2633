@@ -4,6 +4,7 @@ import type { PlannerSnapshot } from './repository.ts';
 export type SharedRepositoryMutation = 'completeFirstSetup' | 'updatePlannerSettings' | 'updateChoreDefinition'
   | 'updateChoreSettings' | 'saveReviewedApplianceCare' | 'setChoreEnabled' | 'setChoresEnabled' | 'completeChore'
   | 'importGoogleTaskCompletions' | 'importGoogleTaskChanges' | 'undoCompletedChore' | 'recordIncompleteChore'
+  | 'completeChoreWithReceipt' | 'undoCompletionReceipt'
   | 'setChoreAssignments' | 'addHouseholdMember' | 'replaceChoreDependencies' | 'saveWeeklyWasteSchedule'
   | 'setWasteOccurrenceHidden' | 'deleteWeeklyWasteSchedule' | 'setCalendarAvailabilityEnabled';
 export interface SharedRepositoryAdapter {

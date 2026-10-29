@@ -30,6 +30,9 @@ import { workspaceHarness } from './helpers/sharing-workspaces-harness.mjs';
 import { applianceResult } from './helpers/sharing-v2-appliance.mjs';
 import { v2ReadPoint } from '../src/features/sharing/v2/view-point.ts';
 import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts';
+import { createV2PersonalCopyStore } from '../src/platform/storage/sharing-v2-personal-copy.ts';
+import { privateFixture } from './helpers/sharing-v2-private-fixture.mjs';
+const { readPersonalPlannerOverlaySnapshot } = await import('../src/platform/storage/repository.ts');
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -86,6 +89,30 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     const range = { from: anchorDate, through: addLocalDays(anchorDate, 14), asOfDate: anchorDate };
     const initial = await member.controller.readModel(range); assert.equal(initial.plan.policy.kind, 'roommates');
     assert.equal(initial.plan.chores.length, 20); assert.equal(initial.plan.occurrences.length, 0);
+    const privateData = await privateFixture();
+    try {
+      const snapshot = (await readPersonalPlannerOverlaySnapshot(privateData.database)).snapshot;
+      const source = { scope: 'personal', ownerUserId: 'owner', householdId: snapshot.household.id, frequencyMode: snapshot.settings.frequencyMode, chores: snapshot.chores };
+      const privateRows = () => privateData.connection.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
+        .map(({ name }) => [name, privateData.connection.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()]);
+      const beforePrivate = privateRows();
+      const copy = createV2PersonalCopyStore({ repository: owner.repository, userId: 'owner', groupId, assertAccess: () => {},
+        makeId: () => `session-copy-${++ordinal}`, now: () => new Date() });
+      const beforeCopyHead = (await f.cloud.readGroup(groupId)).group.headSequence;
+      const prepared = await copy.prepare(0, source, [privateData.chore.id], 'eachMember');
+      await owner.synchronizer.sync({ force: true }); assert.equal((await f.cloud.readGroup(groupId)).group.headSequence, beforeCopyHead);
+      await copy.confirm(prepared.review, source); await owner.synchronizer.sync({ force: true }); await member.synchronizer.sync({ force: true });
+      const sharedCopy = prepared.review.records[0]; const deliveredCopy = (await member.controller.readModel(range)).plan;
+      assert.equal(deliveredCopy.chores.find(row => row.id === sharedCopy.sharedChoreId).name, privateData.chore.name);
+      const copiedRound = deliveredCopy.occurrences.find(row => row.choreId === sharedCopy.sharedChoreId);
+      assert.equal(copiedRound.subjects.length, 2); assert.ok(copiedRound.subjects.every(row => !row.completed));
+      assert.equal(deliveredCopy.history.length, 0); assert.deepEqual(privateRows(), beforePrivate);
+      const encryptedCopy = JSON.stringify((await getDocFromServer(doc(f.root, 'events', sharedCopy.choreOperationId))).data());
+      for (const privateValue of [privateData.chore.id, privateData.chore.name, privateData.chore.description]) assert.equal(encryptedCopy.includes(privateValue), false);
+      const sent = await copy.read(); assert.equal(sent.synchronization, 'sent');
+      await copy.confirm(prepared.review); await owner.synchronizer.sync({ force: true });
+      assert.equal((await f.cloud.readGroup(groupId)).group.headSequence, beforeCopyHead + 2);
+    } finally { privateData.connection.close(); }
     const chore = initial.plan.chores[0];
     await member.repository.commit([{ operationId: 'session-offline-edit', entityType: 'chore', entityId: chore.id, operationType: 'patch', payload: { name: '再起動後も残る変更' } }]);
     assert.equal((await listSharingOutbox(memberDb.database, groupId)).length, 1);

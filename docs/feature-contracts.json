@@ -4879,5 +4879,78 @@
         "name": "v2 Tasks uses the shared region day for its fourteen-day window when the device day differs"
       }
     ]
+  },
+  {
+    "feature": "v2-personal-copy-private-preview-and-explicit-sharing",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-copy.test.mjs",
+        "name": "personal copy emits new shared definitions and future configuration without any private history or mappings"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-ui.test.mjs",
+        "name": "${platform} personal copy starts unchecked and stages a fully readable review before explicit sharing"
+      }
+    ]
+  },
+  {
+    "feature": "v2-personal-copy-atomicity-idempotence-and-private-source",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-copy.test.mjs",
+        "name": "personal copy preparation persists only a private review and confirmation atomically commits it with signed events"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+        "name": "personal copy chooser exposes only owned names and flags, and opening a saved review never rereads personal history"
+      }
+    ]
+  },
+  {
+    "feature": "v2-personal-copy-stale-source-and-permission-fences",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-copy.test.mjs",
+        "name": "personal copy confirmation rejects changed settings audience region or date while retaining an unchanged completion-only source"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+        "name": "personal copy source edits and revoked screen access cannot publish a reviewed draft"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-ui.test.mjs",
+        "name": "${platform} personal copy route fences old handlers after a selection switch or leaving the screen"
+      }
+    ]
+  },
+  {
+    "feature": "v2-personal-copy-legacy-database-and-qa-boundaries",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+        "name": "Native personal copy reads only the validated personal database, filters selection and closes every connection"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+        "name": "Native copy QA uses the signed SQLite path for review commit idempotence and restart without a cloud account"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-ui.test.mjs",
+        "name": "${platform} personal copy QA route refuses release before loading synthetic identity or data"
+      }
+    ]
+  },
+  {
+    "feature": "v2-personal-copy-local-versus-shared-status",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-copy.test.mjs",
+        "name": "personal copy retains a locally saved receipt after permission revocation and exposes its unpublished facts for review"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-ui.test.mjs",
+        "name": "${platform} personal copy distinguishes an accepted send from a revoked unpublished copy without adding again"
+      }
+    ]
   }
 ]

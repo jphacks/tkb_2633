@@ -43,7 +43,7 @@ export interface V2GroupScreenProps {
   onAssignment?: (occurrenceId: string, subjectId: string) => void; onAssignmentRequests?: () => void;
   onCalendar?: () => void;
   onManageChores?: () => void; onDetails?: (choreId: string) => void; onAddChore?: () => void; onChoreCreated?: (choreId: string) => void;
-  onGroupPolicy?: () => void; onNotifications?: () => void; onGoogleTasks?: () => void;
+  onGroupPolicy?: () => void; onNotifications?: () => void; onGoogleTasks?: () => void; onPersonalCopy?: () => void;
   onDateRights?: (choreId: string) => void;
   onWaste?: () => void;
   onAppliances?: () => void; onAppliance?: (id: string) => void; onApplianceReview?: (id?: string) => void;
@@ -60,7 +60,7 @@ function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: strin
   return view === 'calendar' ? { calendarMonth: 'current', waste: true } : view === 'home' ? { waste: true } : undefined;
 }
 
-export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, applianceId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onNotifications, onGoogleTasks, onDateRights, onWaste, onAppliances, onAppliance, onApplianceReview }: V2GroupScreenProps) {
+export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage, subscribe, loadSession, view, choreId, applianceId, onBack, onConfiguration, onHistory, onRequests, occurrenceId, subjectId, onRound, onDate, onAssignment, onAssignmentRequests, onCalendar, anchorDate, onManageChores, onDetails, onAddChore, onChoreCreated, onGroupPolicy, onNotifications, onGoogleTasks, onPersonalCopy, onDateRights, onWaste, onAppliances, onAppliance, onApplianceReview }: V2GroupScreenProps) {
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
@@ -126,6 +126,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     {view === 'home' && onGroupPolicy ? <AppButton title="グループのルール" variant="quiet" compact onPress={onGroupPolicy} /> : null}
     {view === 'home' && onNotifications ? <AppButton title="この端末の共有通知" variant="quiet" compact onPress={onNotifications} /> : null}
     {view === 'home' && onGoogleTasks ? <AppButton title="共有家事とGoogle Tasks" variant="quiet" compact onPress={onGoogleTasks} /> : null}
+    {view === 'home' && onPersonalCopy ? <AppButton title="個人設定から共有家事を追加" variant="quiet" compact onPress={onPersonalCopy} /> : null}
     {workspaceError ? <Text accessibilityRole="alert" style={styles.error}>{workspaceError}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </View>;

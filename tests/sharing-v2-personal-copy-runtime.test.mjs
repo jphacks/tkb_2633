@@ -89,8 +89,8 @@ test('Native personal copy reads only the validated personal database, filters s
       'expo-sqlite': { openDatabaseAsync: async (name, options) => { calls.push(['open', name, options]); return { closeAsync: async () => { calls.push('close'); } }; } },
       'expo-crypto': { randomUUID: h.input.makeId }, '../storage/sharing-v2-personal-copy': storeModule,
       '../../features/sharing/v2/personal-copy-runtime': runtimeModule,
-      '../storage/repository': { readPersonalPlannerOverlaySnapshot: async () => { calls.push('read'); if (revoke) h.stop(); return { snapshot: {
-        sharing: shared ? {} : undefined, household: { id: 'local-household' }, settings: { frequencyMode: 'balanced' }, chores: h.source.chores } }; } },
+      '../storage/repository': { readPersonalChoreCopySource: async (_database, ids) => { calls.push('read'); if (revoke) h.stop(); return {
+        householdId: shared ? 'shared-household' : 'local-household', frequencyMode: 'balanced', chores: h.source.chores.filter(chore => !ids || ids.includes(chore.id)) }; } },
     });
     const runtime = module.createNativeV2PersonalCopy(h.input); const initial = await runtime.load(); assert.ok(initial.choices.length > 1);
     assert.deepEqual(calls, [['open', 'housework.db', { useNewConnection: true }], 'read', 'close']);

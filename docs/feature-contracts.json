@@ -5029,5 +5029,53 @@
         "name": "v2 seven-to3650-day recurrences retain the same future anchors after different members complete early or late"
       }
     ]
+  },
+  {
+    "feature": "v2-completion-notice-shared-native-queue",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} immediate completion presentation waits for the existing notification queue and snapshots its input"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} a revoked queued completion cannot reach native delivery after waiting for another notification operation"
+      }
+    ]
+  },
+  {
+    "feature": "v2-completion-notice-capacity-and-pending-cleanup",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "iOS immediate completion delivery preserves a full app-wide reservation without evicting another scope"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} completion cleanup cancels an immediate request still pending before dismissing every obsolete displayed notice"
+      }
+    ]
+  },
+  {
+    "feature": "v2-personal-copy-narrow-readonly-source",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-personal-copy-reader.test.mjs",
+        "name": "personal copy source selects only current definitions and frequency without reading history or generating any schedules"
+      },
+      {
+        "file": "tests/sharing-v2-personal-copy-reader.test.mjs",
+        "name": "personal copy source refuses a group database or an uninitialized database without creating personal tables"
+      }
+    ]
+  },
+  {
+    "feature": "v2-os-notice-audit-isolated-from-normal-workspace-cleanup",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} development OS audit notices have their own guarded namespace without weakening cleanup of an unregistered normal workspace"
+      }
+    ]
   }
 ]

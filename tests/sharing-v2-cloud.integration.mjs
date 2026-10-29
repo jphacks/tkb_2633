@@ -33,7 +33,7 @@ import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts'
 import { createV2PersonalCopyStore } from '../src/platform/storage/sharing-v2-personal-copy.ts';
 import { createV2CompletionNoticeStore } from '../src/platform/storage/sharing-v2-completion-notices.ts';
 import { privateFixture } from './helpers/sharing-v2-private-fixture.mjs';
-const { readPersonalPlannerOverlaySnapshot } = await import('../src/platform/storage/repository.ts');
+const { readPersonalChoreCopySource } = await import('../src/platform/storage/repository.ts');
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Run v2 cloud tests only against the local emulator.');
 let environment;
@@ -92,8 +92,7 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
     assert.equal(initial.plan.chores.length, 20); assert.equal(initial.plan.occurrences.length, 0);
     const privateData = await privateFixture();
     try {
-      const snapshot = (await readPersonalPlannerOverlaySnapshot(privateData.database)).snapshot;
-      const source = { scope: 'personal', ownerUserId: 'owner', householdId: snapshot.household.id, frequencyMode: snapshot.settings.frequencyMode, chores: snapshot.chores };
+      const source = { ...await readPersonalChoreCopySource(privateData.database), scope: 'personal', ownerUserId: 'owner' };
       const privateRows = () => privateData.connection.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
         .map(({ name }) => [name, privateData.connection.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()]);
       const beforePrivate = privateRows();

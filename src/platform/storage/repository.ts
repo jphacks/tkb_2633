@@ -1085,6 +1085,28 @@ async function readPersonalPlannerOverlaySnapshotImpl(database: SQLiteDatabase, 
   return { snapshot, today, timeZone };
 }
 
+/** Copy selection needs definitions and the selected frequency only; never load history or generate schedules here. */
+async function readPersonalChoreCopySourceImpl(database: SQLiteDatabase, ids?: readonly string[]) {
+  const selected = ids ? [...ids] : undefined;
+  if (selected && (!selected.length || selected.length > 20 || new Set(selected).size !== selected.length
+    || selected.some(id => typeof id !== 'string' || !id.length || id.length > 512 || id.includes('\0')))) throw new Error('コピーする個人家事を選び直してください。');
+  let result!: { householdId: string; frequencyMode: FrequencyMode; chores: ChoreDefinition[] };
+  await database.withTransactionAsync(async () => {
+    await assertPersonalPlannerDatabase(database);
+    const settings = await database.getFirstAsync<{ frequency_mode: FrequencyMode }>('SELECT frequency_mode FROM household_settings WHERE household_id = ?', LOCAL_HOUSEHOLD_ID);
+    if (!settings || !['frequent', 'balanced', 'relaxed'].includes(settings.frequency_mode)) throw new Error('個人家事の頻度設定を確認してください。');
+    const rows = await database.getAllAsync<DefinitionRow>(`SELECT id,enabled,definition_json FROM chore_definitions WHERE household_id = ?${selected ? ` AND id IN (${selected.map(() => '?').join(',')})` : ''} ORDER BY name`, LOCAL_HOUSEHOLD_ID, ...(selected ?? []));
+    const chores = rows.map(row => {
+      const chore = JSON.parse(row.definition_json) as ChoreDefinition;
+      if (!chore || chore.id !== row.id || chore.householdId !== LOCAL_HOUSEHOLD_ID || ![0, 1].includes(row.enabled)
+        || typeof chore.name !== 'string') throw new Error('個人家事の保存形式を確認してください。');
+      return { ...chore, enabled: Boolean(row.enabled) };
+    });
+    result = { householdId: LOCAL_HOUSEHOLD_ID, frequencyMode: settings.frequency_mode, chores };
+  });
+  return result;
+}
+
 /** Re-select inside the personal queue and transaction; a stale UI can never target a new occurrence. */
 async function setPersonalDateTaskCompletedImpl(database: SQLiteDatabase, command: PersonalDateTaskCommand,
   assertAccess: () => void | Promise<void>): Promise<boolean> {
@@ -2046,6 +2068,7 @@ export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedA
 export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl, 'setChoreEnabled');
 export const completeChore = serializePlannerOperation(completeChoreImpl, 'completeChore');
 export const readPersonalPlannerOverlaySnapshot = serializeDatabaseOperation(readPersonalPlannerOverlaySnapshotImpl);
+export const readPersonalChoreCopySource = serializeDatabaseOperation(readPersonalChoreCopySourceImpl);
 export const setPersonalDateTaskCompleted = serializePlannerOperation(setPersonalDateTaskCompletedImpl);
 export const importGoogleTaskCompletions = serializePlannerOperation(importGoogleTaskCompletionsImpl, 'importGoogleTaskCompletions');
 export const importGoogleTaskChanges = serializePlannerOperation(importGoogleTaskChangesImpl, 'importGoogleTaskChanges');

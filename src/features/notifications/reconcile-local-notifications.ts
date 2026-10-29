@@ -2,6 +2,14 @@ import type { LocalNotificationGateway, LocalNotificationRequest } from './contr
 
 const queues = new WeakMap<LocalNotificationGateway, Promise<void>>();
 
+/** Immediate delivery and cancellation share the same queue as future planner reminders. */
+export function withLocalNotificationOperation<T>(gateway: LocalNotificationGateway, execute: () => Promise<T>): Promise<T> {
+  const operation = (queues.get(gateway) ?? Promise.resolve()).then(execute, execute);
+  const tail = operation.then(() => undefined, () => undefined); queues.set(gateway, tail);
+  void tail.then(() => { if (queues.get(gateway) === tail) queues.delete(gateway); });
+  return operation;
+}
+
 /** All planner domains share the native queue. A scope can replace/cancel only its own keys. */
 export function reconcileLocalNotifications(gateway: LocalNotificationGateway, input: {
   prefix: string; desired: readonly LocalNotificationRequest[]; enabled: boolean;
@@ -48,10 +56,7 @@ export function reconcileLocalNotifications(gateway: LocalNotificationGateway, i
     await assertCurrent?.();
     if (failures.length) throw failures[0];
   };
-  const operation = (queues.get(gateway) ?? Promise.resolve()).then(execute, execute);
-  const tail = operation.catch(() => undefined); queues.set(gateway, tail);
-  void tail.then(() => { if (queues.get(gateway) === tail) queues.delete(gateway); });
-  return operation;
+  return withLocalNotificationOperation(gateway, execute);
 }
 function signature(request: LocalNotificationRequest) {
   return JSON.stringify([request.title, request.subtitle ?? '', request.body, request.fireAt,

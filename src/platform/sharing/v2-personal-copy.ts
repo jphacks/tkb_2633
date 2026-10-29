@@ -1,7 +1,7 @@
 import { openDatabaseAsync } from 'expo-sqlite';
 import { randomUUID } from 'expo-crypto';
 import type { createV2EventRepository } from '../storage/sharing-v2-events';
-import { readPersonalPlannerOverlaySnapshot } from '../storage/repository';
+import { readPersonalChoreCopySource } from '../storage/repository';
 import { createV2PersonalCopyStore } from '../storage/sharing-v2-personal-copy';
 import { createV2PersonalCopyRuntime } from '../../features/sharing/v2/personal-copy-runtime';
 
@@ -13,11 +13,9 @@ export function createNativeV2PersonalCopy(input: { repository: ReturnType<typeo
     async readSource(ids) {
       await input.assertAccess(); const database = await openDatabaseAsync('housework.db', { useNewConnection: true });
       try {
-        await input.assertAccess(); const { snapshot } = await readPersonalPlannerOverlaySnapshot(database, new Date()); await input.assertAccess();
-        if (snapshot.sharing || snapshot.household.id !== 'local-household') throw new Error('本人の個人設定の保存先を確認してください。');
-        const selected = ids ? new Set(ids) : null;
-        return { scope: 'personal' as const, ownerUserId: input.userId, householdId: snapshot.household.id,
-          frequencyMode: snapshot.settings.frequencyMode, chores: snapshot.chores.filter(chore => !selected || selected.has(chore.id)) };
+        await input.assertAccess(); const source = await readPersonalChoreCopySource(database, ids); await input.assertAccess();
+        if (source.householdId !== 'local-household') throw new Error('本人の個人設定の保存先を確認してください。');
+        return { ...source, scope: 'personal' as const, ownerUserId: input.userId };
       } finally { await database.closeAsync(); }
     },
   });

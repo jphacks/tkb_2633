@@ -49,7 +49,7 @@ function Editor({ model, source, controller, onSaved, onBack, header }: Paramete
         : <Text key={key} style={styles.caption}>{label}：{value[key] ? 'ON' : 'OFF'}</Text>)}
       {section.key === 'assignment' ? <Text style={styles.caption}>委譲機能をONにしても、個別の権限は付与されません。家事ごとに管理者が設定します。</Text> : null}
       {section.key === 'assignment' ? <Text style={styles.caption}>完了状況の表示がOFFでも、自分の担当・実施・登録分と管理者の確認用の情報は表示します。</Text> : null}
-      {section.key === 'assignment' ? <Text style={styles.caption}>完了通知は初期OFFです。ONにすると、同期で受信した完了を通知が許可された端末に表示します。過去分はまとめて通知せず、同じ家事回は1回だけ通知します。即時の受信やOSによる配信は保証されません。</Text> : null}
+      {section.key === 'assignment' ? <Text style={styles.caption}>完了通知は初期OFFです。ONにすると、同期で受信した完了を通知が許可された端末に表示します。過去分はまとめて通知せず、同じ家事回は1回だけ通知します。即時の受信や配信は保証されず、端末の通知上限で省略される場合もあります。完了履歴は残ります。</Text> : null}
     </AccordionSection>)}
   </View>;
   return <V2FormScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>{header}

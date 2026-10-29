@@ -12,6 +12,7 @@ import * as identities from '../src/features/sharing/v2/native-identity.ts';
 import { notificationWorkspace, isPlannerNotification } from '../src/features/notifications/workspace-response.ts';
 import { readFileSync } from 'node:fs';
 import { screenHarness } from './helpers/screen-harness.mjs';
+import * as notificationQueue from '../src/features/notifications/reconcile-local-notifications.ts';
 
 async function receive(d, facts) { const checkpoint = await readSharingCheckpoint(d.database, groupId);
   await applyReceivedSharedFacts(d.database, groupId, facts, String(facts.length), d.repository.project, checkpoint.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts))); }
@@ -20,21 +21,26 @@ async function setup(platform) {
   let number = 0;
   const a = createV2GroupController(d.repository, { now, makeId: () => `notice-enable-${++number}`, sync: async () => {} });
   const b = createV2GroupController(member.repository, { now, makeId: () => 'native-notice-completion', sync: async () => {} });
-  const calls = []; let active = true; let channelHook; const presented = [];
+  const calls = []; let active = true; let channelHook; const presented = []; const pending = [];
+  const gateway = { maximumScheduledRequests: platform === 'ios' ? 60 : undefined,
+    getScheduledRequests: async () => { calls.push('pending-read'); return [...pending]; } };
   const assertAccess = () => { if (!active) throw new Error('account changed'); };
   const module = loadNativeModule('src/platform/sharing/v2-completion-notices.ts', {
     'react-native': { Platform: { OS: platform } }, '../storage/sharing-v2-completion-notices': stores,
     '../../features/sharing/v2/completion-notice-runtime': runtimes, '../../features/sharing/v2/completion-notices': projection,
     '../../features/sharing/v2/native-identity': identities,
+    '../../features/notifications/reconcile-local-notifications': notificationQueue,
+    '../notifications/expo-local-notification-gateway': { expoLocalNotificationGateway: gateway },
     'expo-notifications': { AndroidImportance: { DEFAULT: 3 }, getPermissionsAsync: async () => { calls.push('permission'); return { granted: true }; },
       setNotificationChannelAsync: async (name, config) => { calls.push(['channel', name, config]); await channelHook?.(); },
       scheduleNotificationAsync: async request => { calls.push(['present', request]); presented.push({ request: { identifier: request.identifier } }); return request.identifier; },
       getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => { calls.push(['dismiss', id]); presented.splice(presented.findIndex(row => row.request.identifier === id), 1); },
+      cancelScheduledNotificationAsync: async id => { calls.push(['cancel-pending', id]); pending.splice(pending.findIndex(row => row.key === id), 1); },
     },
   });
   const scope = { repository: d.repository, userId: 'owner', groupId, assertAccess };
   const runtime = module.createNativeV2CompletionNotices(scope);
-  return { f, d, member, a, b, module, runtime, calls, presented, scope, channel(work) { channelHook = work; }, stop() { active = false; },
+  return { f, d, member, a, b, module, runtime, calls, presented, pending, gateway, scope, channel(work) { channelHook = work; }, stop() { active = false; },
     async enable() { await a.actions.patchGroupPolicy({ completionPushEnabled: true }); await runtime.synchronize(); calls.length = 0; },
     async complete() { await receive(member, await loadSharedFacts(d.database, groupId)); await b.actions.complete({ choreId: 'floor', anchorDate: '2026-10-27', subjectUserId: null }); await receive(d, await loadSharedFacts(member.database, groupId)); },
     close() { d.connection.close(); member.connection.close(); } };
@@ -72,7 +78,54 @@ for (const platform of ['ios', 'android']) {
       assert.equal(h.presented.length, 2);
     } finally { h.close(); }
   });
+  test(`${platform} immediate completion presentation waits for the existing notification queue and snapshots its input`, async () => {
+    const h = await setup(platform); let release; let entered; const ready = new Promise(resolve => { entered = resolve; });
+    try {
+      const gate = new Promise(resolve => { release = resolve; }); const previous = notificationQueue.withLocalNotificationOperation(h.gateway, async () => { entered(); await gate; }); await ready;
+      const notice = { key: projection.v2CompletionNoticePrefix('owner', groupId) + 'a'.repeat(64), title: '確認済みの題名', body: '確認済みの本文', count: 1 };
+      const queued = h.module.createV2CompletionNoticePresenter(h.scope)(notice, async () => h.scope.assertAccess()); notice.body = '待機中の書換え';
+      await new Promise(setImmediate); assert.deepEqual(h.calls, [], 'OS access must wait behind the existing planner operation');
+      release(); await previous; await queued;
+      assert.equal(h.calls.find(call => call[0] === 'present')[1].content.body, '確認済みの本文');
+    } finally { release?.(); h.close(); }
+  });
+  test(`${platform} a revoked queued completion cannot reach native delivery after waiting for another notification operation`, async () => {
+    const h = await setup(platform); let release; let entered; const ready = new Promise(resolve => { entered = resolve; });
+    try {
+      const gate = new Promise(resolve => { release = resolve; }); const previous = notificationQueue.withLocalNotificationOperation(h.gateway, async () => { entered(); await gate; }); await ready;
+      const work = h.module.createV2CompletionNoticePresenter(h.scope)({ key: projection.v2CompletionNoticePrefix('owner', groupId) + 'b'.repeat(64), title: '', body: '', count: 1 }, async () => h.scope.assertAccess());
+      const rejected = assert.rejects(work, /account changed/u); h.stop(); release(); await previous; await rejected; assert.deepEqual(h.calls, []);
+    } finally { release?.(); h.close(); }
+  });
+  test(`${platform} completion cleanup cancels an immediate request still pending before dismissing every obsolete displayed notice`, async () => {
+    const h = await setup(platform); try {
+      const prefix = projection.v2CompletionNoticePrefix('previous', groupId); h.pending.push({ key: prefix + 'pending' }, { key: 'personal-future' });
+      h.presented.push(...[prefix + 'one', prefix + 'two', 'personal-presented'].map(identifier => ({ request: { identifier } })));
+      await h.module.clearInactiveV2CompletionNotices([], h.scope.assertAccess);
+      assert.deepEqual(h.pending.map(row => row.key), ['personal-future']); assert.deepEqual(h.presented.map(row => row.request.identifier), ['personal-presented']);
+      assert.ok(h.calls.findIndex(call => call[0] === 'cancel-pending') < h.calls.findIndex(call => call[0] === 'dismiss'));
+    } finally { h.close(); }
+  });
+  test(`${platform} development OS audit notices have their own guarded namespace without weakening cleanup of an unregistered normal workspace`, async () => {
+    const h = await setup(platform); const previous = globalThis.__DEV__; globalThis.__DEV__ = true;
+    try {
+      const qaPrefix = h.module.developmentV2CompletionNoticePrefix(h.scope); assert.ok(qaPrefix.startsWith('liflow-qa-v2-completed:'));
+      const normal = projection.v2CompletionNoticePrefix('owner', groupId) + 'normal';
+      h.presented.push({ request: { identifier: normal } }, { request: { identifier: qaPrefix + 'audit' } });
+      await h.module.clearInactiveV2CompletionNotices([], h.scope.assertAccess);
+      assert.deepEqual(h.presented.map(row => row.request.identifier), [qaPrefix + 'audit']);
+      globalThis.__DEV__ = false; assert.throws(() => h.module.createV2CompletionNoticePresenter(h.scope, 'development-os-audit'), /開発ビルド専用/u);
+    } finally { h.close(); if (previous === undefined) delete globalThis.__DEV__; else globalThis.__DEV__ = previous; }
+  });
 }
+test('iOS immediate completion delivery preserves a full app-wide reservation without evicting another scope', async () => {
+  const h = await setup('ios'); try {
+    h.pending.push(...Array.from({ length: 60 }, (_, index) => ({ key: `other-scope-${index}` })));
+    const notice = { key: projection.v2CompletionNoticePrefix('owner', groupId) + 'c'.repeat(64), title: '', body: '', count: 1 };
+    await assert.rejects(h.module.createV2CompletionNoticePresenter(h.scope)(notice, async () => {}), /通知予約上限/u);
+    assert.equal(h.pending.length, 60); assert.equal(h.calls.filter(call => ['present', 'dismiss', 'cancel-pending'].includes(call[0])).length, 0);
+  } finally { h.close(); }
+});
 test('completion OS QA service rejects release before reading OS permissions or presented notifications', () => {
   const previous = globalThis.__DEV__; globalThis.__DEV__ = false;
   try {

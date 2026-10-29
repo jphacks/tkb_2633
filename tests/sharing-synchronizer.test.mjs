@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDatabase } from './helpers/sqlite.mjs';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
-import { createDeviceIdentity, encryptSharedOperation, signSharedOperation, wrapGroupKey } from '../src/features/sharing/crypto.ts';
+import { createDeviceIdentity, encryptSharedOperation, signSharedDocument, signSharedOperation, wrapGroupKey } from '../src/features/sharing/crypto.ts';
 import { approveSharedDevice, createSharedRoster, sharedAuthorIdentity } from '../src/features/sharing/roster.ts';
 import { createEncryptedSharedSnapshot } from '../src/features/sharing/snapshots.ts';
 import { buildSharedReplica } from '../src/features/sharing/replica.ts';
@@ -138,6 +138,27 @@ test('tampered ciphertext and interrupted projection do not advance the cursor o
     assert.equal((await b.checkpoint()).sequence, 0); assert.equal((await b.replica()).operations.length, 0);
     b.failProjection(false); await b.sync(); assert.equal((await b.checkpoint()).sequence, 1);
   } finally { a.connection.close(); b.connection.close(); }
+});
+
+test('security attack: correctly signed corrupt transport stalls safely without acknowledging it or losing independent offline edits', async () => {
+  const f = await fixture(); const target = await f.device();
+  try {
+    const operation = { schemaVersion: 1, operationId: 'malicious-approved-author', groupId: 'group-test', authorUserId: 'member',
+      authorDeviceId: f.member.deviceId, deviceSequence: 1, logicalClock: 1, context: {}, keyVersion: 2,
+      entityType: 'chore', entityId: 'floor', operationType: 'patch', payload: { name: 'synthetic' } };
+    const { signature: _signature, ...unsigned } = await encryptSharedOperation(crypto, operation, f.keys.get(2), f.member);
+    unsigned.encryptedPayload = `${unsigned.encryptedPayload.startsWith('00') ? 'ff' : '00'}${unsigned.encryptedPayload.slice(2)}`;
+    await f.cloud.upload({ ...unsigned, signature: signSharedDocument(unsigned, f.member) });
+    await target.edit(['独立した未送信の変更']);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await assert.rejects(target.sync({ force: true }));
+      assert.equal((await target.checkpoint()).sequence, 0);
+      assert.equal((await ledger.listSharingOutbox(target.database, 'group-test', Number.MAX_SAFE_INTEGER)).length, 1);
+      const replica = await target.replica();
+      assert.equal(replica.operations.length, 1); assert.equal(replica.entities[0].fields.name, '独立した未送信の変更');
+      assert.equal(f.state.events.length, 1); assert.equal(f.state.acknowledgements.length, 0);
+    }
+  } finally { target.connection.close(); }
 });
 
 test('an old encrypted outbox item rekeys after transactional absence while its original author operation stays unchanged', async () => {

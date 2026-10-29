@@ -5710,5 +5710,41 @@
         "name": "early chore labels have their own blue badge and stronger background while completed chores lose the early label"
       }
     ]
+  },
+  {
+    "feature": "security-appliance-manufacturer-own-property-allowlist",
+    "tests": [
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: prototype property manufacturers cannot escape the official-domain allowlist or start an AI request" },
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security attack: inherited manufacturer names fail closed in the mobile official-link validator without crashing the screen" }
+    ]
+  },
+  {
+    "feature": "security-api-bounded-uploads-and-retained-results",
+    "tests": [
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: bounded malformed official HTML cannot trap the process in repeated unclosed-tag or comment scans" },
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: hardened manual cleanup preserves visible custom elements self-closing markup and Japanese procedures" },
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: an oversized unfinished upload is rejected before the attacker ends the body and releases its connection" },
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: many distinct jobs cannot evict a retained result before its promised lifetime and capacity recovers after expiry" },
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: JSON-like media types are rejected while parameterized JSON remains compatible" },
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: spoofed forwarding addresses do not bypass admission limits and CORS only reflects a configured exact origin" },
+      { "file": "tests/security-api-attacks.test.mjs", "name": "API attack: ambiguous content-length and transfer-encoding is rejected by the strict HTTP parser before analysis" }
+    ]
+  },
+  {
+    "feature": "security-resigned-ciphertext-and-business-authority-attacks",
+    "tests": [
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security compatibility: the hardened v2 protocol refuses an older draft without mutating its signed data and leaves v1 usable" },
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security attack: 320 correctly re-signed ciphertext, salt and nonce mutations fail AEAD without returning plaintext" },
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security attack: correctly signed snapshot and recipient-key mutations cannot bypass their independent AEAD or context bindings" },
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security attack: signed member updates cannot change administrator fields across group types and chore presets" },
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security attack: a signed forged grant and its descendants cannot escalate privilege while independent members continue editing" },
+      { "file": "tests/security-sharing-attacks.test.mjs", "name": "security attack: concurrent completion, replay and targeted undo converge without deleting another members work" },
+      { "file": "tests/sharing-synchronizer.test.mjs", "name": "security attack: correctly signed corrupt transport stalls safely without acknowledging it or losing independent offline edits" }
+    ],
+    "cloudTests": [
+      { "file": "tests/security-cloud-attacks.integration.mjs", "name": "another groups owner, members and unauthenticated clients cannot enumerate or read any protected path" },
+      { "file": "tests/security-cloud-attacks.integration.mjs", "name": "a legitimate member cannot rewrite roles, device ownership, keys or another users acknowledgement" },
+      { "file": "tests/security-cloud-attacks.integration.mjs", "name": "revocation immediately rejects every protected read, queued write and stale access attempt" }
+    ]
   }
 ]

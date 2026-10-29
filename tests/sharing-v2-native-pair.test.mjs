@@ -22,6 +22,6 @@ for (const development of [false, true]) test(`native QA portal ${development ? 
     const navigation = []; const h = screenHarness('src/app/development/index.tsx', { navigate: (...args) => navigation.push(args) });
     if (!development) { assert.match(h.text(), /開発ビルド専用/u); assert.equal(h.nodes().filter(node => node.props.accessibilityRole === 'button').length, 0); return; }
     await h.change('Emulator host', '192.168.1.73'); await h.press('参加者に切り替える'); await h.press('異種OSの同一グループを検査');
-    assert.deepEqual(navigation, [['push', { pathname: '/development/v2-native-pair', params: { host: '192.168.1.73', port: '8186', run: 'phase6-v36-a1', role: 'member' } }]]);
+    assert.deepEqual(navigation, [['push', { pathname: '/development/v2-native-pair', params: { host: '192.168.1.73', port: '8186', run: 'phase6-v37-a1', role: 'member' } }]]);
   } finally { globalThis.__DEV__ = before; }
 });

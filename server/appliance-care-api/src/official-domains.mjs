@@ -11,7 +11,8 @@ export const OFFICIAL_DOMAINS_BY_MANUFACTURER = Object.freeze({
 
 export function officialDomainsForManufacturer(manufacturer) {
   if (typeof manufacturer !== 'string') return [];
-  return OFFICIAL_DOMAINS_BY_MANUFACTURER[manufacturer.normalize('NFKC').trim().toLocaleLowerCase('en-US')] ?? [];
+  const key = manufacturer.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+  return Object.hasOwn(OFFICIAL_DOMAINS_BY_MANUFACTURER, key) ? OFFICIAL_DOMAINS_BY_MANUFACTURER[key] : [];
 }
 
 export function isAllowedOfficialUrl(value, allowedDomains) {

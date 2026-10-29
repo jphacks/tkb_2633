@@ -31,6 +31,7 @@ import { applianceResult } from './helpers/sharing-v2-appliance.mjs';
 import { v2ReadPoint } from '../src/features/sharing/v2/view-point.ts';
 import { createSharedJoinRequest } from '../src/features/sharing/invitations.ts';
 import { createV2PersonalCopyStore } from '../src/platform/storage/sharing-v2-personal-copy.ts';
+import { createV2CompletionNoticeStore } from '../src/platform/storage/sharing-v2-completion-notices.ts';
 import { privateFixture } from './helpers/sharing-v2-private-fixture.mjs';
 const { readPersonalPlannerOverlaySnapshot } = await import('../src/platform/storage/repository.ts');
 
@@ -112,6 +113,21 @@ test('v2 workspace sessions restore real encrypted bootstrap and offline edits a
       const sent = await copy.read(); assert.equal(sent.synchronization, 'sent');
       await copy.confirm(prepared.review); await owner.synchronizer.sync({ force: true });
       assert.equal((await f.cloud.readGroup(groupId)).group.headSequence, beforeCopyHead + 2);
+      const noticeInput = { repository: owner.repository, userId: 'owner', groupId, assertAccess: () => {} };
+      const notices = createV2CompletionNoticeStore(noticeInput); assert.equal(await notices.enabled(), false);
+      await owner.controller.actions.patchGroupPolicy({ completionPushEnabled: true });
+      await owner.synchronizer.sync({ force: true }); await member.synchronizer.sync({ force: true });
+      assert.equal(await notices.collect(true, new Date()), null, 'opt-in initializes a non-notifying baseline');
+      const [copyCompleted] = await member.controller.actions.complete({ choreId: sharedCopy.sharedChoreId, anchorDate: sharedCopy.configuration.anchorDate, ruleVersion: 1, subjectUserId: 'member' });
+      assert.equal(await notices.collect(true, new Date()), null, 'unreceived work is not notified');
+      await member.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+      const receivedNotice = await notices.collect(true, new Date()); assert.equal(receivedNotice.keys.length, 1); assert.deepEqual(receivedNotice.names, [privateData.chore.name]);
+      const afterNotice = await f.cloud.readGroup(groupId); const restoredNotices = createV2CompletionNoticeStore(noticeInput);
+      assert.equal(await restoredNotices.collect(true, new Date()), null); assert.equal((await f.cloud.readGroup(groupId)).group.headSequence, afterNotice.group.headSequence);
+      await member.controller.actions.undo(copyCompleted.operationId); await member.synchronizer.sync({ force: true }); await owner.synchronizer.sync({ force: true });
+      assert.equal(await notices.collect(true, new Date()), null);
+      await owner.controller.actions.patchGroupPolicy({ completionPushEnabled: false }); await owner.synchronizer.sync({ force: true }); await member.synchronizer.sync({ force: true });
+      assert.deepEqual(privateRows(), beforePrivate, 'received-completion metadata remains outside the original personal database');
     } finally { privateData.connection.close(); }
     const chore = initial.plan.chores[0];
     await member.repository.commit([{ operationId: 'session-offline-edit', entityType: 'chore', entityId: chore.id, operationType: 'patch', payload: { name: '再起動後も残る変更' } }]);

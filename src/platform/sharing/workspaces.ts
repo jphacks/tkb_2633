@@ -375,7 +375,7 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
     };
     const reminders = () => {
       if (!reminderPromise) {
-        const pending = import('./v2-reminders').then(module => module.createNativeV2Reminders({ database, ...selection, controller: session.controller, assertAccess: assertNativeAccess }));
+        const pending = import('./v2-reminders').then(module => module.createNativeV2Reminders({ database, ...selection, repository: session.repository, controller: session.controller, assertAccess: assertNativeAccess }));
         reminderPromise = pending; void pending.catch(() => { if (reminderPromise === pending) reminderPromise = undefined; });
       }
       return reminderPromise;

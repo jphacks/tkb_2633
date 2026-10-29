@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenHarness } from './helpers/screen-harness.mjs';
 import { loadNativeModule } from './helpers/native-module.mjs';
-import { notificationWorkspace } from '../src/features/notifications/workspace-response.ts';
+import { notificationWorkspace, isPlannerNotification } from '../src/features/notifications/workspace-response.ts';
 import { sharedGoogleNamespace } from '../src/features/google-sync/workspace-policy.ts';
 
 test('sharing screen preserves anonymous personal mode, explicit Google login, collapsed creation and separate group switching', async () => {
@@ -66,7 +66,7 @@ for (const platform of ['ios', 'android']) test(`${platform} a cold notification
   const { NotificationWorkspaceBridge } = loadNativeModule('src/components/notification-workspace-bridge.tsx', {
     react: { useRef: (value) => refs[index++] ??= { current: value }, useEffect: (callback) => { effect = callback; } },
     'expo-router': { router: { replace: (route) => events.push(['route', route]) } },
-    '@/hooks/use-workspace': { useWorkspace: () => context }, '@/features/notifications/workspace-response': { notificationWorkspace },
+    '@/hooks/use-workspace': { useWorkspace: () => context }, '@/features/notifications/workspace-response': { notificationWorkspace, isPlannerNotification },
     'expo-notifications': { addNotificationResponseReceivedListener: (callback) => { listener = callback; return { remove: () => events.push(['remove']) }; },
       getLastNotificationResponse: () => stored, clearLastNotificationResponse: () => { stored = null; events.push(['clear']); } },
   });

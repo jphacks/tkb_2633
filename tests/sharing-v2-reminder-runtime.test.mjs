@@ -63,6 +63,18 @@ test('v2 concurrent sync requests share a Promise and a mid-read preference chan
     assert.equal(h.stored.size, 0); assert.deepEqual(h.calls, []);
   } finally { h.close(); }
 });
+test('v2 shared reminders and received-completion delivery share one coalesced worker budget', async () => {
+  const h = await setup(); let release; let entered; const ready = new Promise(resolve => { entered = resolve; });
+  try {
+    let calls = 0; const budgets = []; const pending = new Promise(resolve => { release = resolve; });
+    const runtime = createV2ReminderRuntime({ ...h.input, afterSynchronize: async remaining => { calls++; budgets.push(remaining); if (calls === 1) { entered(); await pending; } } });
+    const work = runtime.synchronize(5000); await ready;
+    assert.equal(runtime.synchronize(2000), work); release(); await work;
+    assert.equal(calls, 2, 'one change while delivery runs receives one follow-up, not another worker');
+    assert.ok(budgets.every(value => value > 0 && value <= 5000)); assert.ok(budgets[1] <= 2000);
+    assert.equal(h.reads(), 0); assert.equal(h.calls.length, 0, 'neither feature requests permission or personal data while off');
+  } finally { release?.(); h.close(); }
+});
 
 test('v2 group changes during native scheduling trigger a fresh plan and remove the stale reminder', async () => {
   const h = await setup(); try {

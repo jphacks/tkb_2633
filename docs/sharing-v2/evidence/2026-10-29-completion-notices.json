@@ -1,0 +1,333 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "87d8799efaae38edaa25c047e90a2932d5017aa5",
+  "scope": "Opt-in received-completion local notification in the existing coalesced worker; private durable per-subject claims; native Android OS delivery of a separate synthetic notification",
+  "checks": {
+    "ios": 2071,
+    "android": 2071,
+    "cloud": 70,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 304,
+    "mandatoryCloudTests": 40,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "doctor": "20/20"
+  },
+  "behavior": {
+    "initialOff": true,
+    "normalAdministratorAutosaveSetting": true,
+    "noInteractivePermissionOnSync": true,
+    "ownCompletionsNotNotified": true,
+    "pendingRejectedUndoneUnconfirmedWorkNotNotified": true,
+    "concurrentSameSubjectNormalized": true,
+    "privacyDisplayPreferenceRetained": true,
+    "initialAndReenabledHistoricalBaselineNotNotified": true,
+    "nativeRequestsFor5000NewSubjects": 1,
+    "privateBaselineSQLBatches": [
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100
+    ],
+    "sharedOrPersonalWritesFromNoticeDelivery": false,
+    "coalescedRequestsTest": 100,
+    "sameExistingWorkerAndBudget": true,
+    "newBackgroundTimers": 0,
+    "notificationKindRecognizerSharedWithTapBridge": true,
+    "separateNamespaceAndScopedCleanup": true
+  },
+  "deliverySemantics": {
+    "type": "Local OS presentation after receiving authenticated shared completion; not a remote push transport",
+    "deduplication": "At most once per common occurrence and completion subject on this device, including restart",
+    "uncertainty": "A crash or lost OS reply after the durable claim may omit a notice. Such claims are not automatically replayed and are not reported as confirmed delivery. The immutable work history remains independent.",
+    "firstEnable": "Initial/reenabled history forms a non-notifying baseline; no historical burst",
+    "background": "OS-scheduled background reception and end-to-end immediacy are not guaranteed"
+  },
+  "reproducedAndFixed": [
+    {
+      "counterexample": "Group opt-in switched OFF during the last asynchronous OS-permission check",
+      "before": "9/10 new core cases passed; the stale notice was presented",
+      "after": "Recheck the authenticated projection after permission and after Android channel creation, immediately before presenting; no presentation in the counterexample"
+    }
+  ],
+  "cloud": {
+    "emulatorOnly": true,
+    "actualSDKAndRules": true,
+    "actualPairedServerReceipt": true,
+    "receivedMemberCompletionClaimsOnce": true,
+    "targetedUndoDoesNotCreateAnotherNotice": true,
+    "reconstructedStoreKeepsClaims": true,
+    "privateNoticeMetadataDoesNotAdvanceSharedHead": true,
+    "originalPersonalSQLiteTablesRemainUnchanged": true
+  },
+  "native": {
+    "android": {
+      "device": "Sony I4293 Android10/API29",
+      "results": {
+        "request": {
+          "step": "request",
+          "proof": "完了通知のOS要求 PASS：合成1件・他領域保持",
+          "scope": "OS delivery only; no shared transport receipt was synthesized",
+          "dataReset": false
+        },
+        "presented": {
+          "step": "presented",
+          "proof": "完了通知のOS表示 PASS：合成1件・内容一致",
+          "scope": "OS delivery only; no shared transport receipt was synthesized",
+          "dataReset": false
+        },
+        "cleaned": {
+          "step": "cleaned",
+          "proof": "完了通知の片付け PASS：合成0件・他領域保持",
+          "scope": "OS delivery only; no shared transport receipt was synthesized",
+          "dataReset": false
+        }
+      },
+      "exactSamePresenterAsNormalRuntime": true,
+      "iOSImmediateTrigger": "null",
+      "androidImmediateTrigger": "channel-only housework-completions",
+      "realSharedTransportTest": false,
+      "serverReceiptSynthesized": false,
+      "preservation": {
+        "beforeTableCount": 17,
+        "afterTableCount": 17,
+        "allRowsUnchanged": true,
+        "dataReset": false
+      },
+      "dataReset": false,
+      "finalScreen": "off after successful cleanup"
+    },
+    "ios": {
+      "status": "NOT RUN",
+      "reason": "Mac remains screen-locked; existing request to unlock is pending; no repeated XCTest attempt"
+    }
+  },
+  "limits": [
+    "Phase 6 is not complete.",
+    "Personal relocation has no original time in current date-only schedules; user clarification requested before moving data.",
+    "iPhone Tasks/copy/completion-notice and integrated heterogeneous-OS E2E remain pending.",
+    "No production Rules/schema deployment, real-group migration, main merge or Draft release."
+  ],
+  "sources": [
+    {
+      "path": "src/app/development/v2-completion-notice-preview.tsx",
+      "sha256": "a06976130882f2714d12a176d48cea8283304baff637c77ce2ef7f4bc9714f2a"
+    },
+    {
+      "path": "src/components/notification-workspace-bridge.tsx",
+      "sha256": "7f83c8c6719ba5894a9bb0367dcd3a05b2c5931b765edef28466f40bd362c312"
+    },
+    {
+      "path": "src/features/notifications/workspace-response.ts",
+      "sha256": "2fa69b3a4e1b01e4ca9cc38794ea3f0fe0b1f17718957b1570d862d9193da554"
+    },
+    {
+      "path": "src/features/sharing/v2-ui/group-policy-editor.tsx",
+      "sha256": "510d8e84c0c494fc74e49a3a54826b1112984a241cf62d745573b359a57a4ab1"
+    },
+    {
+      "path": "src/features/sharing/v2/completion-notice-runtime.ts",
+      "sha256": "f2f5660e16ee84f522f414e92c53b7946761ea2c93f3b76eab8817e977190513"
+    },
+    {
+      "path": "src/features/sharing/v2/completion-notices.ts",
+      "sha256": "7cd86067dcd0e887f51ef7c59986265b2be85fc3f30ff46a573e6750ac68df0c"
+    },
+    {
+      "path": "src/features/sharing/v2/reminder-runtime.ts",
+      "sha256": "f3bdb61eb84599dea1af1c91341f5c4eeb68941ea1993e09063a876933063531"
+    },
+    {
+      "path": "src/platform/sharing/v2-completion-notice-preview.ts",
+      "sha256": "ddd67200659c9be8eac1eb26929e64d957d1d090bdcf2c24e59c744f5146c9c8"
+    },
+    {
+      "path": "src/platform/sharing/v2-completion-notices.ts",
+      "sha256": "7208582e7fbfc2dd1d81dc14d6f4ce311e03f069c2243e106c8f949d51b5a5fe"
+    },
+    {
+      "path": "src/platform/sharing/v2-reminders.ts",
+      "sha256": "c1568db59d9b6485524e6433685d4a108874522aa7312adbdfdc05bcd654598f"
+    },
+    {
+      "path": "src/platform/sharing/workspaces.ts",
+      "sha256": "1b30e4a3107e93624baf6d226c8a192f1f3120643ce5890314e7850eac94f471"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-completion-notices.ts",
+      "sha256": "c3d71a2d9b8e9466f34150cb8be519e242f79eb31a4e0b1a56521c8cdff9f220"
+    },
+    {
+      "path": "tests/sharing-screens.test.mjs",
+      "sha256": "fe81d2515379b5c1597b1685c98c473773a9240bb4cf6c666d458989088a5678"
+    },
+    {
+      "path": "tests/sharing-v2-cloud.integration.mjs",
+      "sha256": "0121f2f0207f93ba22ad8cc3c2eeec6a7de74322ebf7b7bd91aac94b0599e6b9"
+    },
+    {
+      "path": "tests/sharing-v2-completion-notices-native.test.mjs",
+      "sha256": "abcff23a9beabf61eb16ca718cdeb9ed28bfb3cbd33bf414d20fdc548705ff3b"
+    },
+    {
+      "path": "tests/sharing-v2-completion-notices.test.mjs",
+      "sha256": "ba3c5f3f413d8f1913c90d43b97c683d2ddf2937e7210c56605d92ffa19ba3b5"
+    },
+    {
+      "path": "tests/sharing-v2-group-policy-ui.test.mjs",
+      "sha256": "4b14ef290ec5ded02a9cfa06257a9819b2612e0502327dde1f3bfdc5168dc695"
+    },
+    {
+      "path": "tests/sharing-v2-reminder-native.test.mjs",
+      "sha256": "2fc53073f2bacddd38333c71e51b40fc520bcd33a7ff79aa90e3983bbbfa78e2"
+    },
+    {
+      "path": "tests/sharing-v2-reminder-runtime.test.mjs",
+      "sha256": "d914097c6dd241592fb61d07f8dfc245a5738ebe98ff7721e856544bdf1ed87d"
+    }
+  ],
+  "files": [
+    {
+      "name": "phase4bd-full-ios.log",
+      "sha256": "1536e957f4526fcf77f931f280ea90e809253e8f59d6d17c3d9998af7520b94a",
+      "bytes": 248426
+    },
+    {
+      "name": "phase4bd-full-android.log",
+      "sha256": "e89bc9e1cab455aef0cb97ba40a530f3d881a42717f1e9a34e7e07c0310515db",
+      "bytes": 248383
+    },
+    {
+      "name": "phase4bd-cloud.log",
+      "sha256": "9ee0027a9fd218fef49539d11d3aa5a15abcaab3f3af120846a4d86dfc7c43e4",
+      "bytes": 30657
+    },
+    {
+      "name": "phase4bd-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f",
+      "bytes": 321
+    },
+    {
+      "name": "phase4bd-types-final.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598",
+      "bytes": 53
+    },
+    {
+      "name": "phase4bd-doctor.log",
+      "sha256": "ab39d6a58873a0d1151d2a625641a5db22b312df3276b2c2ab3d03a3e9dbe4e1",
+      "bytes": 78
+    },
+    {
+      "name": "phase4bd-notices-linked.log",
+      "sha256": "9143b9279f233670716b31c4cc38a980d540e6577c6badbbe6e023b168339770",
+      "bytes": 2171
+    },
+    {
+      "name": "phase4bd-notices-current.log",
+      "sha256": "a73bc5e745dfc72f4900879085cef588268cd68ad7ebe62ff5207fc926987156",
+      "bytes": 1336
+    },
+    {
+      "name": "phase4bd-notices-volume-green.log",
+      "sha256": "dd9030133bc82e38c8bbcd7044a79f48931f08daeacf5b0b5ef607892d1463ba",
+      "bytes": 10358
+    },
+    {
+      "name": "phase4bd-android-request.json",
+      "sha256": "62b5e498c00f2d65fedb809b7c1df602c8d9eb82096e81308b915f79ca99654e",
+      "bytes": 196
+    },
+    {
+      "name": "phase4bd-android-request.xml",
+      "sha256": "154d95bdadbebfa0e7a48bca2222d2ed362d25ca9f40115bef25681dbe882062",
+      "bytes": 12823
+    },
+    {
+      "name": "phase4bd-android-request.png",
+      "sha256": "31cedfc4d44eb762fdfb55eacb7d382ca3ac1ce77c48edb058e98644aa15e099",
+      "bytes": 231883
+    },
+    {
+      "name": "phase4bd-android-presented.json",
+      "sha256": "b28a34bbdf4247f40328383424423f1cc2319ae8a4e1c042ecd538096ac63109",
+      "bytes": 195
+    },
+    {
+      "name": "phase4bd-android-presented.xml",
+      "sha256": "9eb6563918a19ab417ad26a0569e476dd002e58f3dba116464384b403b98708f",
+      "bytes": 12820
+    },
+    {
+      "name": "phase4bd-android-presented.png",
+      "sha256": "c1f86b1ec5e87ceae34bf262a9249e40348013f06ca05d8cba102745274c9b4f",
+      "bytes": 229424
+    },
+    {
+      "name": "phase4bd-android-cleaned.json",
+      "sha256": "e2de5cd0fc6d3ad5b417255d5b54e43c2df081f8fc80ad64a2bbdf69a26c6b63",
+      "bytes": 197
+    },
+    {
+      "name": "phase4bd-android-cleaned.xml",
+      "sha256": "05e99c9cff4859e049e0892ecbea7938ddf873731e2d4d014b0f4a90d5585881",
+      "bytes": 12824
+    },
+    {
+      "name": "phase4bd-android-cleaned.png",
+      "sha256": "6d4c14beb9a2a1e20264460f0ecbda1e242727a1966393806d474fe964064a7b",
+      "bytes": 230480
+    },
+    {
+      "name": "phase4bd-personal-preservation/comparison.json",
+      "sha256": "4bfabd5dc14084e8fde1a6f6d848aac7a2db27d4011eec0e35301eb82bc2ffae",
+      "bytes": 104
+    }
+  ]
+}

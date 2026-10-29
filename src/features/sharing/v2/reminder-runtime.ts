@@ -9,7 +9,8 @@ import { v2NotificationPrefix } from './native-identity.ts';
 class ReminderChanged extends Error {}
 const sameControl = (a: V2ReminderControl, b: V2ReminderControl) => a.revision === b.revision && a.groupRevision === b.groupRevision;
 export function createV2ReminderRuntime(input: { userId: string; groupId: string; store: V2ReminderStore; gateway: LocalNotificationGateway;
-  readModel(now: Date): Promise<V2GroupScreenModel & { personal?: V2PersonalPlan }>; assertAccess(): void | Promise<void>; now?: () => Date; budgetNow?: () => number }) {
+  readModel(now: Date): Promise<V2GroupScreenModel & { personal?: V2PersonalPlan }>; assertAccess(): void | Promise<void>; now?: () => Date; budgetNow?: () => number;
+  afterSynchronize?: (remainingMs: number) => Promise<void> }) {
   let running: Promise<{ skippedDates: string[] }> | null = null; let requested = false;
   const elapsed = input.budgetNow ?? Date.now; let deadline = 0;
   const prefix = v2NotificationPrefix(input.userId, input.groupId);
@@ -27,7 +28,9 @@ export function createV2ReminderRuntime(input: { userId: string; groupId: string
         await reconcileLocalNotifications(input.gateway, { prefix, enabled: before.preferences.enabled, desired: planned.requests,
           assertCurrent: async () => { budget(); await input.assertAccess(); if (!sameControl(before, await input.store.read())) throw new ReminderChanged(); budget(); } });
       } catch (error) { if (error instanceof ReminderChanged) continue; throw error; }
-      result = { skippedDates: planned.skippedDates }; if (!requested) return result;
+      result = { skippedDates: planned.skippedDates };
+      budget(); await input.afterSynchronize?.(Math.max(1, deadline - elapsed())); budget();
+      if (!requested) return result;
     }
     throw new Error('共有予定が更新されています。通知は次回の同期で更新します。');
   }

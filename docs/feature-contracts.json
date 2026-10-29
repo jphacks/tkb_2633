@@ -4952,5 +4952,73 @@
         "name": "${platform} personal copy distinguishes an accepted send from a revoked unpublished copy without adding again"
       }
     ]
+  },
+  {
+    "feature": "v2-completion-notice-opt-in-and-normalized-history",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices.test.mjs",
+        "name": "v2 completion notices default off and never request permission or read a personal planner"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices.test.mjs",
+        "name": "v2 completion notices normalize concurrent history and preserve the completion display preference"
+      },
+      {
+        "file": "tests/sharing-v2-group-policy-ui.test.mjs",
+        "name": "${platform} completion notifications expose an opt-in switch and autosave without changing other group rules"
+      }
+    ]
+  },
+  {
+    "feature": "v2-completion-notice-durable-claims-and-restart",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices.test.mjs",
+        "name": "v2 completion notification baseline skips old history then presents one received round only once across restart"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices.test.mjs",
+        "name": "v2 notification delivery uncertainty keeps a durable claim instead of repeating an OS request after restart"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices.test.mjs",
+        "name": "v2 notice baseline batches five thousand private claims by100 and a budget interruption rolls the whole batch back"
+      }
+    ]
+  },
+  {
+    "feature": "v2-completion-notice-platform-delivery-and-fences",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} Native completion notices use noninteractive permission and platform-correct immediate delivery only after opt-in"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "Android rechecks the completion setting after creating a channel before any immediate OS request"
+      },
+      {
+        "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+        "name": "v2 shared reminders and received-completion delivery share one coalesced worker budget"
+      }
+    ]
+  },
+  {
+    "feature": "v2-completion-notice-routing-cleanup-and-release-guard",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} Native completion cleanup removes only departed owner scopes and preserves personal v1 and valid notifications"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "${platform} completion OS QA route rejects release before creating a presenter or requesting permission"
+      },
+      {
+        "file": "tests/sharing-v2-completion-notices-native.test.mjs",
+        "name": "notification metadata has one shared kind recognizer for completion and reminders without changing personal or v1 routing"
+      }
+    ]
   }
 ]

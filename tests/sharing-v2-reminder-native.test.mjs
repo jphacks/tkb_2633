@@ -35,10 +35,12 @@ async function setup() {
     '../../features/notifications/reconcile-local-notifications': reconciliation, '../../features/sharing/v2/native-identity': identity,
     './private-calendar-runtime': { openPrivateCalendarRuntime(uid) { assert.equal(uid, scope.userId); guard(); calls.push('local-calendar');
       return { async readPlannerPreferences() { guard(); return null; }, async readForPlan() { guard(); return null; }, async readOwnCalendar() { throw new Error('notification rendering must not acquire Google'); } }; } },
+    './v2-completion-notices': { createNativeV2CompletionNotices(input) { assert.equal(input.repository, d.repository); return { synchronize: async () => {} }; },
+      clearInactiveV2CompletionNotices: async () => {}, clearV2CompletionNoticesForScope: async () => {} },
   };
   nativeMocks['./v2-local-planning'] = loadNativeModule('src/platform/sharing/v2-local-planning.ts', nativeMocks);
   const module = loadNativeModule('src/platform/sharing/v2-reminders.ts', nativeMocks);
-  const runtime = module.createNativeV2Reminders({ ...scope, database: d.database, controller, assertAccess: guard });
+  const runtime = module.createNativeV2Reminders({ ...scope, database: d.database, repository: d.repository, controller, assertAccess: guard });
   return { f, d, module, runtime, calls, scheduled, stopDuringPersonalRead() { failPersonal = true; }, close() { d.connection.close(); } };
 }
 

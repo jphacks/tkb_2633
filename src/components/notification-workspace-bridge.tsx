@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { addNotificationResponseReceivedListener, clearLastNotificationResponse, getLastNotificationResponse } from 'expo-notifications';
 import type { NotificationResponse } from 'expo-notifications';
 import { useWorkspace } from '@/hooks/use-workspace';
-import { notificationWorkspace } from '@/features/notifications/workspace-response';
+import { notificationWorkspace, isPlannerNotification } from '@/features/notifications/workspace-response';
 
 /** Resolve after secure workspace restoration, including taps that cold-started the app. */
 export function NotificationWorkspaceBridge() {
@@ -21,7 +21,7 @@ export function NotificationWorkspaceBridge() {
         if (handled.current.has(id)) return;
         const current = latest.current; const data = response.notification.request.content.data;
         const selection = notificationWorkspace(data, current.userId, current.groups);
-        if (!data || !['daily-housework-digest', 'v2-housework-digest'].includes(String(data.kind))) return;
+        if (!isPlannerNotification(data)) return;
         if (selection === undefined) router.replace('/sharing');
         else { await current.switchTo(selection); if (live) router.replace('/'); }
         handled.current.add(id);

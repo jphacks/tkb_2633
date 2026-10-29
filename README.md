@@ -26,7 +26,7 @@ Androidでは、バックグラウンドで待機処理が止まるSDKの互換�
 
 [共有編集の追加監査](docs/shared-group-editing-audit-2026-10-27.md)では、古い編集画面からの上書き、収集ルールの同時変更、競合解決中の権限変化を修正しました。AndroidとiPhoneの実機でオフライン編集・再起動・再送・競合解決を行い、両端末の状態一致を確認しています。競合など確認が必要な項目は通常の画面にも案内を表示します。
 
-[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotと通常画面を接続しました。本人専用Calendarと休日・実施可能時間帯には、グループとは別の暗号化・承認端末・同期経路を設けています。独立した合成データで、iPhone・Android 10間の転送、競合確認、通信障害後の再送を検査しました。端末別の共有通知とv2 Tasksを通常画面・既存workerへ接続し、通知予約は両実機、Tasksの双方向完了・取消と期日変更はAndroid 10の合成3件で確認しました。個人設定のコピーは、明示確認・過去履歴の非公開・元DBの保持とAndroidの再起動を検査しました。iPhoneのTasks実検査、個人家事の実移動、完了通知、移行と総合E2Eは未完了で、既存グループはv1のままです。[進捗と未接続部分](docs/sharing-v2/05-progress.md)を参照してください。
+[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotと通常画面を接続しました。本人専用Calendarと休日・実施可能時間帯には、グループとは別の暗号化・承認端末・同期経路を設けています。独立した合成データで、iPhone・Android 10間の転送、競合確認、通信障害後の再送を検査しました。端末別の共有通知とv2 Tasksを通常画面・既存workerへ接続し、通知予約は両実機、Tasksの双方向完了・取消と期日変更はAndroid 10の合成3件で確認しました。個人設定のコピーは、明示確認・過去履歴の非公開・元DBの保持とAndroidの再起動を検査しました。初期OFFの受信時完了通知を接続し、Androidで合成1件のOS表示と削除を確認しました。iPhoneのTasks・完了通知、個人家事の実移動、移行と総合E2Eは未完了で、既存グループはv1のままです。[進捗と未接続部分](docs/sharing-v2/05-progress.md)を参照してください。
 
 OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
@@ -598,13 +598,13 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **2048 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む。2026-10-29）** |
+| 自動テスト | **2071 tests PASS（iOS・Androidの両条件、未有効化のv2基盤・画面部品を含む。2026-10-29）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **300機能（従来295を保持、元の44を含む）／必須Cloud回帰40件** |
+| 保護対象feature contract | **304機能（従来300を保持、元の44を含む）／必須Cloud回帰40件** |
 | Firestore Emulator | **70 tests PASS（本番へのv2 Rules配備とは別）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |

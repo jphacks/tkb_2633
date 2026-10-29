@@ -34,6 +34,16 @@ async function open(c, platform) {
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} completion notifications expose an opt-in switch and autosave without changing other group rules`, async () => {
+    const f = await setup(); await f.c.actions.patchGroupPolicy({ completionPushEnabled: false }); const ui = await open(f.c, platform);
+    try {
+      const before = ui.props.model.groupPolicy.value; await ui.screen.press('担当と完了状況を開く');
+      const flag = ui.screen.nodes().find(node => node.type === 'Switch' && node.props.accessibilityLabel === 'メンバーの完了を通知');
+      assert.ok(flag); assert.equal(flag.props.value, false); assert.match(ui.screen.text(), /同期で受信した完了/u);
+      flag.props.onValueChange(true); await ui.screen.flush(); await ui.screen.press('戻る'); await ui.settle(() => ui.backs() === 1);
+      assert.deepEqual((await f.c.readModel(range, { groupPolicy: true })).groupPolicy.value, { ...before, completionPushEnabled: true });
+    } finally { await ui.close(); f.close(); }
+  });
   test(`${platform} the shared screen immediately displays the authenticated offline group name instead of a stale registry label`, async () => {
     const f = await setup(); let leave;
     try {

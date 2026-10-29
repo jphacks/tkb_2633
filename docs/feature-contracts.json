@@ -5077,5 +5077,39 @@
         "name": "${platform} development OS audit notices have their own guarded namespace without weakening cleanup of an unregistered normal workspace"
       }
     ]
+  },
+  {
+    "feature": "v2-legacy-migration-authenticated-source-only",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-legacy-migration.test.mjs",
+        "name": "v2 migration rejects a structural or deserialized checkpoint before legacy authority can be admitted"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-migration.test.mjs",
+        "name": "v2 verified migration binds every compacted receipt and retained source fact to the exact protocol transition"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-migration.test.mjs",
+        "name": "v2 SQLite staging rolls back a forged migration checkpoint and retains every original legacy proof with a verified source"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-migration.test.mjs",
+        "name": "v2 compaction after a new edit retains the verified legacy source facts and their original signatures"
+      }
+    ]
+  },
+  {
+    "feature": "v2-legacy-migration-preview-preserves-unknowns-and-old-authority",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-legacy-migration.test.mjs",
+        "name": "v2 legacy preview preserves original performer recorder and targeted undo without inventing prior assignment or recording time"
+      },
+      {
+        "file": "tests/sharing-v2-legacy-migration.test.mjs",
+        "name": "v2 legacy source authenticates former member facts at their original membership epoch after key rotation"
+      }
+    ]
   }
 ]

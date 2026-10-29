@@ -1,8 +1,8 @@
 # Phase 6：必須30ケースの照合（未完了）
 
-2026-10-29、基点`277381d`。検査数だけで完了とせず、元の必須ケースごとに実行した反例を対応付ける。下表の自動検査はiOS条件・Android条件の各実行ログで成功を確認した。これは各ケース全体の両物理端末PASSや、本番配備を意味しない。
+2026-10-29、基点`ca8d131`。検査数だけで完了とせず、元の必須ケースごとに実行した反例を対応付ける。下表の自動検査はiOS条件・Android条件の各実行ログで成功を確認した。これは各ケース全体の両物理端末PASSや、本番配備を意味しない。
 
-両OS条件各2,084件、失敗・skip 0。Emulator70件は直前の完了通知接続で成功。今回は通知キュー・予約容量・清掃、コピー専用読取を補強。Rules・Native依存は変更していない。
+両OS条件各2,094件、失敗・skip 0。Emulator70件は直前の完了通知接続で成功。移行元の署名検証・プレビューコアと隔離SQLite受信、元の証拠を保つ整理処理を補強。Rules・Native依存は変更していない。
 
 | # | 必須ケース | 実行した自動検査 | 残る確認 |
 | --- | --- | --- | --- |
@@ -35,17 +35,19 @@
 | 27 | 剥奪・管理者変更・再参加 | [sharing-v2-repository.test.mjs](../../tests/sharing-v2-repository.test.mjs)：v2 delayed former-administrator edits lose privileged effects at server delivery without erasing original facts or ordinary member edits<br>[sharing-v2-membership-rights.test.mjs](../../tests/sharing-v2-membership-rights.test.mjs)：v2 membership periods preserve continuous users across device changes and invalidate an appended removal and rejoin | このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。 |
 | 28 | 個人設定コピー・過去非公開 | [sharing-v2-personal-copy.test.mjs](../../tests/sharing-v2-personal-copy.test.mjs)：personal copy preparation persists only a private review and confirmation atomically commits it with signed events<br>[sharing-v2-personal-copy-runtime.test.mjs](../../tests/sharing-v2-personal-copy-runtime.test.mjs)：Native personal copy reads only the validated personal database, filters selection and closes every connection | 通常UI・署名SQLite・実Emulatorの受信と元DB保持、Androidの確認中／確定後のcold復元は確認。iPhoneと異種OS総合は未実施。 |
 | 29 | 本人Google Tasksの完了・取消 | [sharing-v2-google-tasks.test.mjs](../../tests/sharing-v2-google-tasks.test.mjs)：v2 Google undo targets only this owner’s acknowledged completions and cannot erase another member’s work<br>[sharing-v2-google-tasks.test.mjs](../../tests/sharing-v2-google-tasks.test.mjs)：v2 local completion during Google read cannot be silently undone by the older remote status | Android実Googleの合成3件で完了・取消を双方向確認。iPhone TasksはMacロックにより未実施。 |
-| 30 | 既存回帰・通知・世代と障害 | [sharing-v2-repository.test.mjs](../../tests/sharing-v2-repository.test.mjs)：v2 repository binds a fresh database and preserves every personal table and v1 workspace without in-place conversion<br>[sharing-v2-reminder-runtime.test.mjs](../../tests/sharing-v2-reminder-runtime.test.mjs)：v2 shared reminders and received-completion delivery share one coalesced worker budget<br>[sharing-v2-completion-notices.test.mjs](../../tests/sharing-v2-completion-notices.test.mjs)：v2 notice permissions policy and workspace are rechecked before a native presentation | 従来305契約を保持し309契約へ拡張。通知予約は両実機、受信時完了通知のOS表示はAndroidのみ。iPhone配信と端末間の総合検査は残る。 |
+| 30 | 既存回帰・通知・世代と障害 | [sharing-v2-repository.test.mjs](../../tests/sharing-v2-repository.test.mjs)：v2 repository binds a fresh database and preserves every personal table and v1 workspace without in-place conversion<br>[sharing-v2-reminder-runtime.test.mjs](../../tests/sharing-v2-reminder-runtime.test.mjs)：v2 shared reminders and received-completion delivery share one coalesced worker budget<br>[sharing-v2-completion-notices.test.mjs](../../tests/sharing-v2-completion-notices.test.mjs)：v2 notice permissions policy and workspace are rechecked before a native presentation<br>[sharing-v2-legacy-migration.test.mjs](../../tests/sharing-v2-legacy-migration.test.mjs)：v2 SQLite staging rolls back a forged migration checkpoint and retains every original legacy proof with a verified source | 従来309契約を保持し311契約へ拡張。移行元検証・プレビューコアと隔離SQLite受信は確認。所有者画面・実変換・世代切替とiPhone／端末間の総合検査は残る。 |
 
 ## 完了にする前の残件
 
 1. D10の方針を確定し、個人予定の実際の移動・本人確認・固定の保護・変更理由と履歴を接続する。現在は純粋関数までで、表示しただけで元の個人データを動かさない。
 2. Mac解除後、必要なiPhoneのTasks・コピー・受信時完了通知を検査し、異種OS間の同一合成グループで完了・取消・復帰・オフライン再送を照合する。以前の独立した暗号化転送やAndroidのOS通知だけで、この総合成功を代用しない。
-3. 計画中のv1移行プレビュー・変換を準備・検査する。現時点では実装されておらず、元のv1を保持したまま未確認の昇格を拒否する。
+3. 計画中のv1移行プレビュー・変換を準備・検査する。移行元検証・プレビューコアと隔離SQLite受信は検査済み。所有者画面・実変換・世代切替は未実装で、元のv1を保持したまま未確認の昇格を拒否する。
 4. ソース・保存・署名・暗号境界の最終照合と全回帰を行う。本番Rules・実グループ移行・main・Draft解除は、その具体的な結果を揃えてから別途承認を受ける。
 
 自然なOSバックグラウンド動作と強制workerを区別し、最小実行間隔を確実な配信時刻として報告しない。全ページUI調整は、上記を終えてPhase 6を完了してから行う。
 
-[機械可読の対応と実行証拠](evidence/2026-10-29-phase6-case-matrix-refreshed.json)。各テストのsource hashと両条件の成功ログhashを記録した。
+[機械可読の対応と実行証拠](evidence/2026-10-29-phase6-case-matrix-migration-source.json)。各テストのsource hashと両条件の成功ログhashを記録した。
 
 通知の直列実行・容量・未配信清掃とコピー専用SQL読取の追加検査は、[独立した証拠](evidence/2026-10-29-notification-queue-and-copy-reader.json)へ記録。以前の試行と証拠は保持した。
+
+移行元の検証とSnapshot整理の反例は[移行準備](09-legacy-migration-preparation.md)へ記録。これらのコアを、所有者が操作できる実移行の完成とは数えない。

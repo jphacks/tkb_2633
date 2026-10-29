@@ -36,14 +36,12 @@ import { createV2AssignmentHistory, v2AssignmentRequestReference } from './assig
 import { v2ReadPoint } from './view-point.ts';
 import { v2ConfirmedReceiptContext, v2ObservedReceipts } from './receipt-context.ts';
 import { v2AssignmentLineage } from './assignment-lineage.ts';
+import { assertVerifiedLegacyMigration } from './legacy-migration-source.ts';
+import type { VerifiedLegacyMigration } from './legacy-migration-source.ts';
+export type { VerifiedLegacyMigration } from './legacy-migration-source.ts';
 type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
 
 export class V2AuthorityError extends Error { readonly code = 'sharing/v2-authority-denied'; }
-export interface VerifiedLegacyMigration {
-  /** Taken from the locally verified source snapshot, never from a proposed operation's payload. */
-  sourceSnapshotDigest: string;
-  frontier: VersionVector;
-}
 const CHORE_COMMON_FIELDS = new Set(['enabled', 'archived', 'recommendedCycleDays', 'userIntervalDays', 'manufacturerRecommendedIntervalDays',
   'requiresCycleSelection', 'frequencyDaysByMode', 'windowRadiusDays', 'maxShiftDays', 'load', 'holidayPriority', 'everyday', 'estimatedMinutes', 'laundryDryingPreference']);
 
@@ -72,6 +70,7 @@ export interface V2ReceiptEvidence {
 }
 export function assessV2BusinessHistory(replica: SharedReplica, archive: readonly VerifiedSharedRoster[], migration?: VerifiedLegacyMigration,
   evidence?: V2ReceiptEvidence) {
+  if (migration !== undefined) assertVerifiedLegacyMigration(migration, replica, archive);
   const pending = new Set(replica.pendingOperationIds); const rejected: V2RejectedOperation[] = [];
   const provisionalOperationIds: string[] = [];
   const receiptEpochs = new Map<string, VerifiedSharedRoster>();

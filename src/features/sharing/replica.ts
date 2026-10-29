@@ -211,11 +211,12 @@ export function buildSharedReplica(groupId: string, input: readonly SharedOperat
 export function compactSharedReplica(replica: SharedReplica): SharedSnapshotBase {
   if (replica.pendingOperationIds.length) throw new Error('Cannot compact a causally incomplete shared history');
   const retained = new Set(replica.entities.flatMap((entity) => Object.values(entity.revisions).flat()));
+  const preserveCausalHistory = replica.operations.some((op) => op.schemaVersion === 2);
   const last = new Map<string, SharedOperation>();
   for (const op of replica.operations) {
     // V2 authority is evaluated at each operation's causal cut. Earlier grants and
-    // policies remain evidence even after a later value supersedes them.
-    if (op.entityType === 'completion' || op.schemaVersion === 2) retained.add(op.operationId);
+    // policies, including verified legacy source facts, remain migration evidence.
+    if (op.entityType === 'completion' || preserveCausalHistory) retained.add(op.operationId);
     if ((last.get(op.authorDeviceId)?.deviceSequence ?? 0) < op.deviceSequence) last.set(op.authorDeviceId, op);
   }
   for (const op of last.values()) retained.add(op.operationId);

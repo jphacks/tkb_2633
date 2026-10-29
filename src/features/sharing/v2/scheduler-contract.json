@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-34",
+  "version": "liflow-shared-2-draft-35",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -18,6 +18,8 @@
     "src/features/sharing/v2/authority-context.ts",
     "src/features/sharing/v2/history-view.ts",
     "src/features/sharing/v2/receiver-authority.ts",
+    "src/features/sharing/v2/legacy-migration-source.ts",
+    "src/features/sharing/replica.ts",
     "src/features/sharing/v2/common-frames.ts",
     "src/features/sharing/v2/occurrence-id.ts",
     "src/features/sharing/v2/local-time.ts",
@@ -72,5 +74,5 @@
     "src/features/sharing/private-planner/preferences.ts",
     "src/features/sharing/private-planner/relocation.ts"
   ],
-  "sourceSha256": "1148daf03adf40855bbebbc5f69f7379ef829a190a43c26b21836c18d4e3e542"
+  "sourceSha256": "2b12c7869d2ccab6ac68cf7647f4095c1175a65c55926ff5336a1c54a74f5ffa"
 }

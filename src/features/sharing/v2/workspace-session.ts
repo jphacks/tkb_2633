@@ -30,9 +30,19 @@ export async function createV2WorkspaceSession(deps: Omit<SharedSyncDependencies
   if (record.status === 'creating' && (!record.creation || !['family', 'roommates'].includes(creationKind ?? ''))) throw new Error('新しい共有グループの種類を確認してください。');
   assertCurrentAccount(); assertWritable();
   const scope = { userId: deps.userId, groupId: deps.groupId, householdId };
+  const generation = record.localGeneration;
   await initializeV2EventStore(deps.database, scope); assertCurrentAccount(); assertWritable();
+  const assertCurrentAccess = async (editing: boolean) => {
+    assertCurrentAccount(); const current = await deps.readRecord(); assertCurrentAccount(); assertWritable();
+    if (current.userId !== scope.userId || current.groupId !== scope.groupId || !['active', 'creating', 'joining'].includes(current.status)) throw new SharingAccessError('この共有グループは現在編集できません。');
+    if (current.localGeneration !== generation) throw new SharingAccessError('再参加前のデータは読み取り専用で保持されています。');
+    if (!editing) return;
+    if (current.lastErrorCode === 'sharing/scheduler-version-mismatch') throw new SharingSchedulerVersionError();
+    if (['sharing/access-denied', 'permission-denied'].includes(current.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
+  };
   const repository = createV2EventRepository(deps.database, { ...scope, identity: deps.identity, anchor: verified[0], archive,
-    assertWritable: () => { assertCurrentAccount(); assertWritable(); }, now: () => new Date((deps.now ?? Date.now)()), afterCommit });
+    assertWritable: () => { assertCurrentAccount(); assertWritable(); }, verifyCurrentAccess: assertCurrentAccess,
+    now: () => new Date((deps.now ?? Date.now)()), afterCommit });
   const synchronizer = createV2Synchronizer({ ...transport, repository, assertCurrentAccount });
   const manager = createSharedGroupManager({ ...transport, project: repository.project, sync: synchronizer.sync,
     verifyMembership: synchronizer.verifyMembership, makeId, markLeft: async () => { assertCurrentAccount(); await markLeft(); assertCurrentAccount(); } });
@@ -43,6 +53,6 @@ export async function createV2WorkspaceSession(deps: Omit<SharedSyncDependencies
     await repository.commit(v2GroupBootstrap({ groupId: deps.groupId, ownerUserId: deps.userId, ownerDisplayName: creation.ownerDisplayName,
       name: record.displayName, timeZone: creation.timeZone, anchorDate: creation.anchorDate as Parameters<typeof v2GroupBootstrap>[0]['anchorDate'], kind: creationKind! }));
   }
-  return { repository, synchronizer, manager, controller };
+  return { repository, synchronizer, manager, controller, assertCurrentAccess };
 }
 export type V2WorkspaceSession = Awaited<ReturnType<typeof createV2WorkspaceSession>>;

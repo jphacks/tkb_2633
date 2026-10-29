@@ -2,6 +2,7 @@ import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { workspaceHarness } from './helpers/sharing-workspaces-harness.mjs';
+import { withSharingLedgerTransaction } from '../src/platform/storage/sharing-ledger.ts';
 import { readSharingWorkspace, updateSharingWorkspace } from '../src/platform/storage/sharing-registry.ts';
 import { approveSharedDevice, upgradeSharedRoster } from '../src/features/sharing/roster.ts';
 import { rosterCloudFields } from '../src/features/sharing/cloud-contract.ts';
@@ -64,6 +65,57 @@ test('a departed v2 session cannot save new operations while all prior signed hi
     await assert.rejects(workspace.session.repository.commit([{ operationId: 'forbidden', entityType: 'chore', entityId: 'x', operationType: 'patch', payload: { name: '変更' } }]));
     assert.equal((await workspace.checkpoint()).pendingCount, 23);
   } finally { await h.close(); }
+});
+
+for (const [change, name] of [
+  ['removed', 'a queued v2 Native edit rechecks removal after authorization and preserves its old facts and outbox'],
+  ['rejoin', 'a queued v2 Native edit cannot write an archived database after a fresh rejoin generation'],
+]) test(name, async () => {
+  const h = await workspaceHarness({ deferWorkspaceTimers: true }); let release;
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record); const chore = (await workspace.readOverview()).chores[0];
+    const before = JSON.stringify(h.handles[1].connection.prepare('SELECT * FROM sharing_operations ORDER BY operation_id').all());
+    let entered; const started = new Promise(done => { entered = done; }); const gate = new Promise(done => { release = done; });
+    const holding = withSharingLedgerTransaction(workspace.database, async () => { entered(); await gate; }); await started;
+    const saving = workspace.session.controller.actions.patchChore(chore.id, { name: '保存を待っている編集' });
+    for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+    await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, record => ({ ...record, status: 'removed' }));
+    if (change === 'rejoin') await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, record => ({ ...record,
+      status: 'joining', localGeneration: 'fresh-approved-generation', archivedLocalGenerations: ['initial'] }));
+    release(); await holding;
+    await assert.rejects(saving, change === 'rejoin' ? /再参加前/u : /現在編集できません/u);
+    assert.equal(JSON.stringify(h.handles[1].connection.prepare('SELECT * FROM sharing_operations ORDER BY operation_id').all()), before);
+    assert.equal((await workspace.checkpoint()).pendingCount, 23);
+  } finally { release?.(); await h.close(); }
+});
+
+test('a queued v2 Native read refuses group contents when membership was removed during its SQLite wait', async () => {
+  const h = await workspaceHarness({ deferWorkspaceTimers: true }); let release;
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record); let entered;
+    const started = new Promise(done => { entered = done; }); const gate = new Promise(done => { release = done; });
+    const holding = withSharingLedgerTransaction(workspace.database, async () => { entered(); await gate; }); await started;
+    const reading = workspace.readOverview();
+    for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+    await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, record => ({ ...record, status: 'removed' }));
+    release(); await holding; await assert.rejects(reading, /現在編集できません/u);
+    assert.equal((await workspace.checkpoint()).pendingCount, 23);
+  } finally { release?.(); await h.close(); }
+});
+
+test('a queued v2 Native command rechecks a newly stored access error while its cached model remains readable', async () => {
+  const h = await workspaceHarness({ deferWorkspaceTimers: true }); let release;
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record); const chore = (await workspace.readOverview()).chores[0]; let entered;
+    const started = new Promise(done => { entered = done; }); const gate = new Promise(done => { release = done; });
+    const holding = withSharingLedgerTransaction(workspace.database, async () => { entered(); await gate; }); await started;
+    const saving = workspace.session.controller.actions.patchChore(chore.id, { name: '反映しない編集' });
+    for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+    await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, record => ({ ...record, lastErrorCode: 'permission-denied' }));
+    release(); await holding; await assert.rejects(saving, /参加状態を同期/u);
+    assert.equal((await workspace.readOverview()).chores.find(item => item.id === chore.id).name, chore.name);
+    assert.equal((await workspace.checkpoint()).pendingCount, 23);
+  } finally { release?.(); await h.close(); }
 });
 test('v2 UI commands recheck a stored version or access failure while cached data remains readable and retry does not invent edits', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] }); const h = await workspaceHarness();

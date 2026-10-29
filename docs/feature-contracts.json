@@ -5216,5 +5216,51 @@
         "name": "a shared cached snapshot awaits asynchronous registry authorization before returning private group content"
       }
     ]
+  },
+  {
+    "feature": "v2-command-input-capture-before-async-boundaries",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-command-capture.test.mjs",
+        "name": "v2 native command captures the reviewed nested edit before waiting for account authorization"
+      },
+      {
+        "file": "tests/sharing-v2-command-capture.test.mjs",
+        "name": "v2 native model read captures its date range and detail selection before authorization yields"
+      },
+      {
+        "file": "tests/sharing-v2-command-capture.test.mjs",
+        "name": "v2 repository freezes a literal command page before SQLite waits without signing later caller edits"
+      },
+      {
+        "file": "tests/sharing-v2-command-capture.test.mjs",
+        "name": "v2 current-state builder output cannot change after it yields to a SQLite operation lookup"
+      },
+      {
+        "file": "tests/sharing-v2-command-capture.test.mjs",
+        "name": "v2 captured commands preserve optional arguments and evaluate dynamic date ranges against the current group timezone"
+      }
+    ]
+  },
+  {
+    "feature": "v2-native-live-access-during-queued-transaction",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a queued v2 Native edit rechecks removal after authorization and preserves its old facts and outbox"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a queued v2 Native edit cannot write an archived database after a fresh rejoin generation"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a queued v2 Native read refuses group contents when membership was removed during its SQLite wait"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a queued v2 Native command rechecks a newly stored access error while its cached model remains readable"
+      }
+    ]
   }
 ]

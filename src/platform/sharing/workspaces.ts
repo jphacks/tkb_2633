@@ -369,12 +369,7 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
           void sync(remaining === undefined ? {} : { budgetMs: remaining }).catch(() => undefined);
         }, 350);
       } });
-    const session = { ...openedSession, controller: guardV2GroupController(openedSession.controller, async (editing) => {
-      const current = await access.readRecord(); access.assertWritable();
-      if (!editing) return;
-      if (current.lastErrorCode === 'sharing/scheduler-version-mismatch') throw new SharingSchedulerVersionError();
-      if (['sharing/access-denied', 'permission-denied'].includes(current.lastErrorCode ?? '')) throw new SharingAccessError('共有グループの参加状態を同期して確認してください。');
-    }) };
+    const session = { ...openedSession, controller: guardV2GroupController(openedSession.controller, openedSession.assertCurrentAccess) };
     let reminderPromise: Promise<import('../../features/sharing/v2/reminder-runtime').V2ReminderRuntime> | undefined;
     let taskPromise: Promise<import('../../features/sharing/v2/google-tasks-runtime').V2GoogleTaskRuntime> | undefined;
     const assertNativeAccess = async () => {

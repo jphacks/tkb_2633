@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { PlannerSnapshot } from './repository.ts';
 
 export type SharedRepositoryMutation = 'completeFirstSetup' | 'updatePlannerSettings' | 'updateChoreDefinition'
-  | 'updateChoreSettings' | 'saveReviewedApplianceCare' | 'setChoreEnabled' | 'completeChore'
+  | 'updateChoreSettings' | 'saveReviewedApplianceCare' | 'setChoreEnabled' | 'setChoresEnabled' | 'completeChore'
   | 'importGoogleTaskCompletions' | 'importGoogleTaskChanges' | 'undoCompletedChore' | 'recordIncompleteChore'
   | 'setChoreAssignments' | 'addHouseholdMember' | 'replaceChoreDependencies' | 'saveWeeklyWasteSchedule'
   | 'setWasteOccurrenceHidden' | 'deleteWeeklyWasteSchedule' | 'setCalendarAvailabilityEnabled';

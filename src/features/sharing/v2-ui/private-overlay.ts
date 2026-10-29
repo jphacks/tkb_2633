@@ -11,7 +11,7 @@ import type { V2PersonalDayLoad } from '../v2/personal-plan';
 
 export interface V2PrivateTaskRow {
   source: 'personal'; key: string; revision: string; ownerUserId: string; householdId: string;
-  date: LocalDate; graceDays: 0 | 3; chore: ChoreDefinition; completed: boolean; suggestedDate: LocalDate;
+  date: LocalDate; graceDays: 0 | 3; chore: ChoreDefinition; completed: boolean; suggestedDate: LocalDate; windowEnd?: LocalDate;
 }
 export interface V2PrivateOverlay {
   status: 'ready'; ownerUserId: string; householdId: string; timeZone: string; today: LocalDate; setupCompleted: boolean;
@@ -66,7 +66,7 @@ export function projectV2PrivateTasks(input: PrivatePlannerInput, ownerUserId: s
     const rows = (date: LocalDate, graceDays: 0 | 3) => selectDateTasks(entries, relevant, date, graceDays, [chore]).map((task): V2PrivateTaskRow => ({
       source: 'personal', key: `personal:${JSON.stringify([ownerUserId, snapshot.household.id, date, graceDays, chore.id])}`,
       revision: dateTaskRevision(task), ownerUserId, householdId: snapshot.household.id, date, graceDays, chore,
-      completed: task.completed, suggestedDate: task.suggestedDate,
+      completed: task.completed, suggestedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd,
     }));
     home.push(...rows(today, 3));
     for (let date = range.from; date <= range.through; date = addDays(date, 1)) {
@@ -87,6 +87,18 @@ export function projectV2PrivateTasks(input: PrivatePlannerInput, ownerUserId: s
   for (const [date, rows] of byDate) byDate.set(date, order(rows, date));
   return { status: 'ready', ownerUserId, householdId: snapshot.household.id, today, timeZone, range: { ...range },
     generatedThrough: addDays(today, 180), setupCompleted: snapshot.settings.setupCompleted, home: order(home, today), byDate, counts, dailyLoad };
+}
+
+/** Count the same recommended day as the saved model, including an early completion on another visible day. */
+export function privateOverlayPendingCounts(overlay: V2PrivateOverlay | undefined, values?: ReadonlyMap<string, boolean>) {
+  const counts = new Map(overlay?.counts);
+  if (overlay && values?.size) for (const rows of overlay.byDate.values()) for (const row of rows) {
+    const next = values.get(row.key);
+    if (next !== undefined && next !== row.completed) {
+      counts.set(row.suggestedDate, Math.max(0, (counts.get(row.suggestedDate) ?? 0) + Number(row.completed) - Number(next)));
+    }
+  }
+  return counts;
 }
 
 export function privateOverlayForViewer(value: V2PrivateOverlayState | undefined, viewerUserId: string): V2PrivateOverlayState | undefined {

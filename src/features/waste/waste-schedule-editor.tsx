@@ -1,5 +1,7 @@
+import { Chevron } from '../../components/chevron';
+import { FormTextInput as TextInput } from '../../components/form-text-input';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { NumberInputField } from '@/components/number-input-field';
 
 import { AppButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -80,10 +82,10 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
           <Text style={styles.label}>候補を選択</Text>
           {candidates.map((candidate) => <Pressable key={candidate.label} accessibilityRole="button" accessibilityLabel={`${candidate.label}を選択`} disabled={locked}
             onPress={() => update({ query: candidate.label, label: candidate.label })} style={styles.candidate}>
-            <Text style={[styles.candidateText, { color: wasteTypeColor(candidate.label) }]}>{candidate.label}</Text><Text style={styles.arrow}>›</Text>
+            <Text style={[styles.candidateText, { color: wasteTypeColor(candidate.label) }]}>{candidate.label}</Text><Chevron />
           </Pressable>)}
           {!candidates.length ? <Pressable accessibilityRole="button" disabled={locked} onPress={() => update({ query: query.trim(), label: query.trim() })} style={styles.candidate}>
-            <Text style={styles.candidateText}>「{query.trim()}」を使う</Text><Text style={styles.arrow}>›</Text>
+            <Text style={styles.candidateText}>「{query.trim()}」を使う</Text><Chevron />
           </Pressable> : null}
         </View>
       ) : null}

@@ -108,7 +108,7 @@ for (const platform of ['ios', 'android']) {
   test(`${platform} v2 isolated round navigation records explicit past work in its original group and history instead of routing the ID into a personal chore`, async () => {
     const f = await screenFixture(platform);
     try {
-      await f.screen.press('フローリングを掃除する全員共通 · 担当未確定'); const [kind, occurrenceId, subjectId] = f.navigation.pop(); assert.equal(kind, 'round');
+      await f.screen.press('フローリングを掃除するの説明を開く'); const [kind, occurrenceId, subjectId] = f.navigation.pop(); assert.equal(kind, 'round');
       Object.assign(f.props, { view: 'round', occurrenceId, subjectId }); f.screen.render();
       assert.ok(f.screen.text().includes('実施を記録'));
       const choice = f.screen.nodes().find((node) => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === '以前実施した'); choice.props.onPress(); await f.screen.flush();
@@ -139,6 +139,7 @@ for (const platform of ['ios', 'android']) {
     const f = await screenFixture(platform);
     try {
       assert.ok(f.screen.text().includes('今日の共有家事')); assert.ok(f.screen.text().includes('フローリングを掃除する'));
+      assert.ok(f.screen.nodes().find((node) => node.type === 'FlatList').props.itemLayoutAnimation, 'shared Home must animate the virtualized cells');
       assert.equal(f.screen.nodes().filter((node) => node.props.accessibilityRole === 'checkbox').length, 2);
       await f.screen.press('期限を過ぎた家事（1件）を開く'); assert.equal(f.screen.nodes().filter((node) => node.props.accessibilityRole === 'checkbox').length, 3);
       await f.screen.press('期限を過ぎた家事（1件）を閉じる'); assert.equal(f.screen.nodes().filter((node) => node.props.accessibilityRole === 'checkbox').length, 2);
@@ -170,7 +171,7 @@ for (const platform of ['ios', 'android']) {
       const navigation = []; let { screen, leave } = await openRoute(f.preview, platform, 'calendar', {}, navigation, '共有カレンダー'); cleanup = leave;
       const day = screen.nodes().find((node) => node.props.accessibilityLabel === '2026年10月12日、確認できる未完了の共有家事1件'); assert.ok(day);
       await day.props.onPress(); await screen.flush();
-      await screen.press('過去の家事全員共通 · 担当未確定'); const target = navigation.at(-1); assert.equal(target[1].params.anchorDate, '2026-10-12');
+      await screen.press('過去の家事の説明を開く'); const target = navigation.at(-1); assert.equal(target[1].params.anchorDate, '2026-10-12');
       cleanup(); ({ screen, leave } = await openRoute(f.preview, platform, 'round', target[1].params, navigation, '実施を記録')); cleanup = leave;
       const past = screen.nodes().find((node) => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === '以前実施した');
       past.props.onPress(); await screen.flush(); await screen.change('実施日', '2026-10-12'); await screen.change('実施時刻', '12:30');

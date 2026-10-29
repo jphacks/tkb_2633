@@ -1,6 +1,7 @@
+import { FormTextInput as TextInput } from '../../components/form-text-input';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, StatusBadge, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';

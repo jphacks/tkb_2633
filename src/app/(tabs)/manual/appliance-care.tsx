@@ -1,6 +1,7 @@
+import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { NumberInputField } from '@/components/number-input-field';
@@ -148,8 +149,7 @@ export default function ApplianceCareScreen() {
   };
 
   return (
-    <Page>
-      <BackButton onPress={() => { analysisRequest.current?.abort(); if (returnTo) router.dismissTo(returnTo); else router.back(); }} />
+    <Page keyboardAware footerHasTabBar footer={<BackButton onPress={() => { analysisRequest.current?.abort(); if (returnTo) router.dismissTo(returnTo); else router.back(); }} />}>
       <ScreenHeading
         eyebrow="OFFICIAL MANUAL"
         title={applianceId ? '公式資料を再解析' : '家電を追加'}

@@ -28,16 +28,19 @@ test('LiFlow icon is opaque and its white artwork fits the circular mask and And
   const png = PNG.sync.read(readFileSync(new URL('../assets/images/liflow-icon.png', import.meta.url)));
   assert.equal(png.width, png.height);
   assert.ok(png.width >= 1024);
-  let whitePixels = 0, maxRadius = 0;
+  let whitePixels = 0, maxRadius = 0; let minX = png.width, minY = png.height, maxX = 0, maxY = 0;
   for (let y = 0; y < png.height; y += 1) for (let x = 0; x < png.width; x += 1) {
     const i = (y * png.width + x) * 4;
     assert.equal(png.data[i + 3], 255);
     if (png.data[i] > 235 && png.data[i + 1] > 235 && png.data[i + 2] > 235) {
       whitePixels += 1;
+      minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       maxRadius = Math.max(maxRadius, Math.hypot(x - (png.width - 1) / 2, y - (png.height - 1) / 2));
     }
   }
   assert.ok(whitePixels / (png.width * png.height) > 0.08);
+  assert.ok(Math.abs((minX + maxX) / 2 - (png.width - 1) / 2) / png.width < 0.01, 'Center the complete white artwork horizontally');
+  assert.ok(Math.abs((minY + maxY) / 2 - (png.height - 1) / 2) / png.height < 0.01, 'Center the complete white artwork vertically');
   assert.ok(maxRadius / png.width < 0.43, 'Keep visible blue space around every white tip under a circle mask');
   const adaptiveArtworkDiameterDp = 2 * maxRadius / png.width * 72;
   assert.ok(adaptiveArtworkDiameterDp <= 66, '108dp adaptive layer shrinks to a 72dp viewport and stays inside its 66dp safe zone');

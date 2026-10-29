@@ -2,28 +2,20 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import { useContext } from 'react';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { typography } from './planner-typography';
 import { WorkspaceContext } from '../contexts/workspace-context';
 import { PlannerIssuesContext } from '../contexts/planner-issues-context';
 
+import { palette } from './planner-colors';
+import { Chevron } from './chevron';
+
 export { typography } from './planner-typography';
+export { palette } from './planner-colors';
 
-export const palette = {
-  background: '#FFFFFF',
-  surface: '#FFFFFF',
-  ink: '#292C3B',
-  muted: '#68718B',
-  accent: '#4AADE0',
-  accentSoft: '#E4F7FC',
-  border: '#DFE4EF',
-  warning: '#B75C55',
-  warningSoft: '#FBEDEC',
-  gold: '#B8873B',
-  goldSoft: '#F6F0E3',
-};
 
-export function Page({ children, contentStyle, keyboardAware = false }: PropsWithChildren<{ contentStyle?: object; keyboardAware?: boolean }>) {
+export function Page({ children, contentStyle, keyboardAware = false, footer, footerHasTabBar = false }: PropsWithChildren<{ contentStyle?: object; keyboardAware?: boolean; footer?: ReactNode; footerHasTabBar?: boolean }>) {
+  const insets = useSafeAreaInsets();
   const workspace = useContext(WorkspaceContext);
   const issues = useContext(PlannerIssuesContext);
   const issueCount = workspace?.active?.groupId === issues?.groupId ? issues?.issueCount ?? 0 : 0;
@@ -41,6 +33,7 @@ export function Page({ children, contentStyle, keyboardAware = false }: PropsWit
         </Pressable> : null}
         {children}
       </ScrollView>
+      {footer ? <View style={[styles.footer, { paddingBottom: footerHasTabBar ? 8 : Math.max(insets.bottom, 8) }]}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
@@ -85,7 +78,7 @@ export function BackButton({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed, disabled && styles.buttonDisabled]}>
-      <View style={styles.backIcon} aria-hidden><View style={styles.backChevron} /></View>
+      <Chevron direction="left" />
       <Text style={styles.backText}>戻る</Text>
     </Pressable>
   );
@@ -120,7 +113,8 @@ export function AppButton({
         disabled && styles.buttonDisabled,
         pressed && !disabled && styles.buttonPressed,
       ]}>
-      <Text style={[styles.buttonText, styles[`buttonText_${variant}`], compact && styles.buttonTextCompact]}>{title}</Text>
+      {title === '‹' || title === '›' ? <Chevron direction={title === '‹' ? 'left' : 'right'} />
+        : <Text style={[styles.buttonText, styles[`buttonText_${variant}`], compact && styles.buttonTextCompact]}>{title}</Text>}
     </Pressable>
   );
 }
@@ -177,6 +171,7 @@ const styles = StyleSheet.create({
   planningNoticeText: { ...typography.label, color: palette.ink },
   planningNoticeLink: { ...typography.label, color: palette.gold, fontWeight: '700' },
   safeArea: { flex: 1, backgroundColor: palette.background },
+  footer: { paddingHorizontal: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, backgroundColor: palette.surface },
   page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 12 },
   heading: { gap: 5, marginBottom: 2 },
   eyebrow: { ...typography.caption, color: palette.accent, fontWeight: '700', letterSpacing: 1.4 },

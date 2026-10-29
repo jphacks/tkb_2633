@@ -1,14 +1,16 @@
+import { FormTextInput as TextInput } from '../components/form-text-input';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { ChoreToggleList } from '@/features/settings/chore-toggle-list';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { AccordionSection } from '@/components/accordion-section';
 import { DataCredits, LocationAttribution, WeatherAttribution } from '@/components/data-credits';
 import { CALENDAR_COUNT_COLOR_OPTIONS } from '@/domain/calendar/count-colors';
-import type { ChoreDefinition, FrequencyMode } from '@/domain/chores/types';
+import type { FrequencyMode } from '@/domain/chores/types';
 import type { CalendarCountDisplayMode, Weekday } from '@/domain/shared/types';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
@@ -22,6 +24,7 @@ import {
   saveGoogleSyncState,
   saveWeatherLocation,
   setNotificationsEnabled,
+  setChoresEnabled,
   updateCalendarCountDisplay,
   updatePlannerSettings,
 } from '@/platform/storage/repository';
@@ -48,12 +51,13 @@ const weekdays: { id: Weekday; label: string }[] = [
 const notificationGateway = new ExpoLocalNotificationGateway();
 
 export default function SettingsScreen() {
-  const { snapshot, loading, error: loadError, refresh, database } = usePlannerData();
+  const { snapshot, loading, error: loadError, refresh, database, readError } = usePlannerData();
   if (loading || !snapshot) return <PlannerLoadState title="設定" message="設定を読み込んでいます。" error={loadError} retry={refresh} />;
-  return <SettingsContent snapshot={snapshot} loadError={loadError} refresh={refresh} database={database} />;
+  return <SettingsContent snapshot={snapshot} loadError={loadError} refresh={refresh} database={database} readError={readError} />;
 }
 
-function SettingsContent({ snapshot, loadError, refresh, database }: {
+function SettingsContent({ snapshot, loadError, refresh, database, readError }: {
+  readError?: () => string | null;
   snapshot: PlannerSnapshot;
   loadError: string | null;
   refresh: (options?: { waitForWeather?: boolean }) => Promise<void>;
@@ -464,21 +468,21 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
           <View key={key} style={styles.colorTier}>
             <Text style={styles.label}>{title}</Text>
             <View style={styles.colorOptionRow}>
-              {CALENDAR_COUNT_COLOR_OPTIONS.map((option) => {
-                const selected = calendarCountColors[key] === option.value;
+              {CALENDAR_COUNT_COLOR_OPTIONS.map(({ value: color, name }) => {
+                const selected = calendarCountColors[key] === color;
                 return (
                   <Pressable
-                    key={option.value}
+                    key={color}
                     accessibilityRole="button"
-                    accessibilityLabel={`${title}の色を${option.name}にする`}
+                    accessibilityLabel={`${title}の色を${name}にする`}
                     accessibilityState={{ selected }}
-                    onPress={() => setCalendarCountColors((current) => ({ ...current, [key]: option.value }))}
+                    onPress={() => setCalendarCountColors((current) => ({ ...current, [key]: color }))}
                     style={styles.colorOption}
                   >
-                    <View style={[styles.colorSwatch, { backgroundColor: option.value }, selected && styles.colorSwatchSelected]}>
+                    <View style={[styles.colorSwatch, { backgroundColor: color }, selected && styles.colorSwatchSelected]}>
                       {selected ? <Text style={styles.colorCheck}>✓</Text> : null}
                     </View>
-                    <Text style={[styles.colorOptionLabel, selected && styles.colorOptionLabelSelected]}>{option.name}</Text>
+                    <Text style={[styles.colorOptionLabel, selected && styles.colorOptionLabelSelected]}>{name}</Text>
                   </Pressable>
                 );
               })}
@@ -568,38 +572,10 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
       <AccordionSection title="家事ごとの設定" expanded={expandedSections.has('chore-settings')} onToggle={() => toggleSection('chore-settings')}>
         <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
-        {groupChoresByCategory(snapshot.chores.filter((chore) => !chore.archived)).map(([category, chores]) => {
-          const expanded = expandedCategories.has(category);
-          return (
-            <View key={category} style={styles.choreGroup}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded }}
-                onPress={() => setExpandedCategories((current) => {
-                  const next = new Set(current);
-                  if (next.has(category)) next.delete(category);
-                  else next.add(category);
-                  return next;
-                })}
-                style={styles.choreGroupHeader}>
-                <Text style={styles.choreGroupTitle}>{category}</Text>
-                <Text style={styles.groupCount}>{chores.length}件　{expanded ? '−' : '＋'}</Text>
-              </Pressable>
-              {expanded ? chores.map((chore) => (
-                <Pressable
-                  key={chore.id}
-                  accessibilityRole="button"
-                  onPress={() => router.push({ pathname: '/settings/chore/[id]', params: { id: chore.id } })}
-                  style={styles.choreSettingRow}>
-                  <View style={styles.choreSettingCopy}>
-                    <Text style={styles.choreSettingTitle}>{chore.name}</Text>
-                  </View>
-                  <Text style={styles.chevron}>›</Text>
-                </Pressable>
-              )) : null}
-            </View>
-          );
-        })}
+        <ChoreToggleList chores={snapshot.chores} expanded={expandedCategories} setExpanded={setExpandedCategories}
+          save={async (ids, enabled) => { await setChoresEnabled(database, ids, enabled); await refresh(); return { refreshed: !readError?.() }; }}
+          retryRead={async () => { await refresh(); return !readError?.(); }}
+          onOpen={(id) => router.push({ pathname: '/settings/chore/[id]', params: { id } })} />
       </AccordionSection>
 
       <Card>
@@ -750,11 +726,7 @@ function syncFailureMessage(kind: 'retry' | 'authRequired' | 'error', code?: str
   return '同期できませんでした。同期状態を確認し、OAuth設定を見直してください。';
 }
 
-function groupChoresByCategory(chores: readonly ChoreDefinition[]): [string, ChoreDefinition[]][] {
-  const groups = new Map<string, ChoreDefinition[]>();
-  for (const chore of chores) groups.set(chore.category, [...(groups.get(chore.category) ?? []), chore]);
-  return [...groups.entries()];
-}
+
 
 const styles = StyleSheet.create({
   accordionChevron: { color: palette.accent, fontSize: 23, fontWeight: '700', lineHeight: 28, transform: [{ rotate: '0deg' }] },

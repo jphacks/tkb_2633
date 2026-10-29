@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProcedureStep } from '../../components/procedure-step';
 import { AppButton, BackButton, Card, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import type { ChoreDefinition } from '@/domain/chores/types';
 import { applianceCategoryLabel } from '@/features/appliance-care/categories';
@@ -94,7 +95,7 @@ export function MaintenanceTaskCard({ task, chore, manufacturer, index, schedule
       )}
       {task.recommendedConditions?.length && (schedule !== undefined || !noSchedule) ? task.recommendedConditions.map((condition) => <Text key={condition} style={styles.body}>メーカー指定条件：{condition}</Text>) : null}
       <SectionHeading title="手順" level="subsection" />
-      {task.steps.map((step, stepIndex) => <Text key={`${stepIndex}-${step}`} style={styles.body}>{stepIndex + 1}. {step}</Text>)}
+      {task.steps.map((step, stepIndex) => <ProcedureStep key={`${stepIndex}-${step}`} step={step} index={stepIndex} />)}
       <Text style={styles.body}>必要な道具：{task.tools.length ? task.tools.join('、') : '記載なし'}</Text>
       {task.safetyCautions.length > 0 ? (
         <View style={styles.cautionBox}>

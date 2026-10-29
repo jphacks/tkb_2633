@@ -25,6 +25,21 @@ function next(ops, draft, device = 'device-a') {
 const plan = (ops, extra = {}) => buildSharedPlannerSnapshot(buildSharedReplica('group-test', ops),
   { householdId: 'local-household', now: new Date('2026-10-26T16:00:00Z'), ...extra });
 
+test('shared category toggles stage one atomic set of field patches and reject foreign chores without changing the replica', () => {
+  const ops = fixture(); const snapshot = plan(ops); const replica = buildSharedReplica('group-test', ops);
+  const ids = snapshot.chores.slice(0, 3).map(row => row.id); let n = 0;
+  const context = { snapshot, replica, userId: 'owner', now: new Date('2026-10-27T00:00:00Z'), makeId: () => `bulk-${++n}` };
+  const result = planSharedMutation(context, 'setChoresEnabled', [ids, true]);
+  assert.equal(result.drafts.length, 6);
+  assert.equal(result.drafts.filter(row => row.entityType === 'chore' && row.payload.enabled === true).length, 3);
+  assert.equal(result.drafts.filter(row => row.entityType === 'baseline' && row.payload.initialPending === true && row.payload.initialScheduledDate === snapshot.today).length, 3);
+  const updated = [...ops]; for (const draft of result.drafts) updated.push(next(updated, draft));
+  assert.equal(plan(updated).chores.filter(row => row.enabled).length, 3);
+  assert.ok(snapshot.chores.every(row => !row.enabled));
+  assert.throws(() => planSharedMutation(context, 'setChoresEnabled', [[ids[0], 'foreign-chore'], true]));
+  assert.deepEqual(buildSharedReplica('group-test', ops), replica);
+});
+
 test('a separate shared workspace starts with 20 disabled built-ins and never imports private settings or external availability', () => {
   const ops = fixture(); const snapshot = plan(ops, { privateSettings: { frequencyMode: 'relaxed', restDays: [],
     heavyDailyLimit: 99, weatherLocation: { latitude: 0, longitude: 0, displayName: '個人用', region: 'private' },

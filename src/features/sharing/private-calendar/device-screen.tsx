@@ -1,5 +1,6 @@
+import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '../../../components/planner-ui';
 import type { PrivateCalendarDeviceSession, PrivateCalendarDeviceView } from './device-session';
 import { snapshotPrivateCalendarPairingReference, verifyPrivateCalendarPairingRequest } from './pairing';

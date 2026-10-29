@@ -1,6 +1,7 @@
 import type { ChoreDefinition, ChoreScheduleEntry, HouseholdPlannerSettings } from '../../domain/chores/types.ts';
 import type { ChoreSettingsPatch } from '../../domain/chores/settings-patch.ts';
 import { applyChoreSettingsPatch } from '../../domain/chores/settings-patch.ts';
+import { validateChoreToggle } from '../../domain/chores/chore-groups.ts';
 import { wouldCreateDependencyCycle } from '../../domain/scheduling/engine.ts';
 import { parseLocalDate } from '../../domain/scheduling/local-date.ts';
 import type { PlannerSnapshot } from '../../platform/storage/repository.ts';
@@ -71,6 +72,11 @@ export function sharedCompletionDraft(context: SharedMutationContext, entry: Pic
 
 /** Pure planning; the adapter commits these operations and their projection in one SQLite transaction. */
 export function planSharedMutation(context: SharedMutationContext, kind: SharedRepositoryMutation, args: readonly unknown[]): SharedMutationPlan {
+  if (kind === 'setChoresEnabled') {
+    const [ids, enabled] = args; validateChoreToggle(ids, enabled);
+    const plans = ids.map(id => planSharedMutation(context, 'setChoreEnabled', [id, enabled]));
+    return { drafts: plans.flatMap(plan => plan.drafts), result: undefined };
+  }
   const { snapshot, replica } = context; const draft = (type: SharedOperation['entityType'], id: string, fields: Record<string, JsonValue>, op?: SharedOperation['operationType']) => sharedDraft(context, type, id, fields, op);
   if (kind === 'completeFirstSetup') throw new Error('初期設定は個人モードで行ってください。共有データは個人データへ上書きされません。');
   if (kind === 'setCalendarAvailabilityEnabled') {

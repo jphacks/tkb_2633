@@ -1,0 +1,446 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "25fdf5e74402f3d6b3f983f9f222c531abb68e4a",
+  "branch": "codex/encrypted-group-sharing",
+  "scope": "Post-Phase-6 mobile UI changes; development regression gate, no production activation or release.",
+  "unit": {
+    "ios": {
+      "passed": 2198,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "ui-final-regression-ios.log",
+      "sha256": "9cd6c9c62aa639a8065d1389f7f827a6fbdd763c900c25d91bc379a9d506c7bc"
+    },
+    "android": {
+      "passed": 2198,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "ui-final-regression-android.log",
+      "sha256": "6b1233bb0dd8892122c876c0bc7270e6068ea3eb198735c0f58e6e4a42ce540a"
+    }
+  },
+  "cloud": {
+    "passed": 71,
+    "failed": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "file": "ui-final-cloud.log",
+    "sha256": "96640c8ca204769c210bd7d1c6f6eb4a106cdd4f44c40e7e2e9e98fcd674192f",
+    "transport": "local strict Firestore Rules Emulator; existing 41 mandatory Cloud regressions retained"
+  },
+  "checks": {
+    "lint": {
+      "exitCode": 0,
+      "file": "ui-lint-final.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "file": "ui-types-final.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    },
+    "expoDoctor": {
+      "passed": 20,
+      "total": 20,
+      "file": "ui-doctor.log",
+      "sha256": "ab39d6a58873a0d1151d2a625641a5db22b312df3276b2c2ab3d03a3e9dbe4e1"
+    },
+    "featureContracts": {
+      "before": 326,
+      "after": 330,
+      "allPreviousEntriesDeepEqual": true
+    },
+    "sharedScheduler": {
+      "v1": "liflow-shared-1",
+      "v2": "liflow-shared-2-draft-36",
+      "tzdb": "2026e",
+      "unchangedSourceContractsPassed": true
+    }
+  },
+  "nativeBuild": {
+    "expo": "~58.0.21",
+    "reactNative": "0.88.1",
+    "ios": {
+      "result": "BUILD SUCCEEDED",
+      "destination": "physical iPhone 12 / iOS 26.7.2",
+      "file": "ui-ios-build.log",
+      "sha256": "7c9f097cfd2662d8c45b6c57e8e332aaf8853651628b852a820128a2f892d7da"
+    },
+    "android": {
+      "result": "BUILD SUCCESSFUL",
+      "abi": "arm64-v8a",
+      "destination": "physical Sony I4293 / Android 10",
+      "file": "ui-android-arm64-build.log",
+      "sha256": "839c27bd4508ed67d891a2621bdbcb0730764ad73d0abdf322fdc14da1301b11"
+    },
+    "inPlaceInstall": true,
+    "dataReset": false,
+    "sameSigningIdentityAndPackageChecked": true,
+    "sqliteFilesByteComparisonBeforeLaunch": {
+      "android": {
+        "filesBefore": 94,
+        "filesAfter": 94,
+        "allSQLiteFilesByteEqual": true,
+        "changed": []
+      },
+      "ios": {
+        "filesBefore": 107,
+        "filesAfter": 107,
+        "allSQLiteFilesByteEqual": true,
+        "changed": []
+      }
+    },
+    "comparisonNote": "201 SQLite-related files, not 201 databases. Device Keychain and every AppGroup file were not byte-compared. Existing encrypted v1 workspace reopened successfully."
+  },
+  "physicalIos": {
+    "method": "XCTest",
+    "booksAndSettings": {
+      "test": "testPostPhase6ReadOnlyBooksAndNavigation",
+      "passed": true,
+      "durationSeconds": 68.971,
+      "file": "ui-ios-final-native.log",
+      "sha256": "c3dc8e807dc0208628ac9a266e1d64f27ae09cdf056a4b146226a9f0c2348b77"
+    },
+    "calendarAndApplianceReturn": {
+      "test": "testPostPhase6CalendarApplianceNavigation",
+      "passed": true,
+      "durationSeconds": 29.861,
+      "file": "ui-ios-navigation-and-launcher.log",
+      "sha256": "e23d30aad104c0995d949568efe926fa9cb7dab89fe420372621a4ffa1934290"
+    },
+    "launcher": {
+      "test": "testPostPhase6LauncherGestureState",
+      "passed": true,
+      "label": "LiFlow",
+      "actualHomeImageSha256": "79c3f5b5dedb57dc2b57f3719bc05108ab83d17ca0aa00c43a47622fe7e7f6bf",
+      "file": "ui-ios-launcher-gesture.log",
+      "sha256": "e59a3191e0214cdc95e6f9b32956eea8f0f6410b8479d9dc2cef1d6e6dc97d91"
+    },
+    "excludedAttempts": [
+      "Old calendar tab selector did not include the native tab suffix; the corrected test method passed.",
+      "Home-key/search attempts did not expose Springboard. Actual fast home gesture did.",
+      "Mixed xcresult bundles contain failed automation methods; only named passing methods above are claimed."
+    ]
+  },
+  "physicalAndroid": {
+    "method": "ADB",
+    "normalCalendar": {
+      "nextMonth": true,
+      "previousMonth": true,
+      "coldVersion": "0.88.1",
+      "dataReset": false
+    },
+    "applianceReturn": {
+      "productDraftPassedToDetails": true,
+      "fixedBackVisible": true,
+      "returnedToList": true,
+      "analysisRequested": false,
+      "dataReset": false
+    },
+    "sharedCalendarFeedback": {
+      "device": "Sony I4293",
+      "os": "Android 10",
+      "scope": "existing isolated local v2 preview; no cloud/account data",
+      "pass": true,
+      "calendarCounts": [
+        2,
+        1,
+        2
+      ],
+      "completedCardBelowPending": true,
+      "undoRestoresPriority": true,
+      "loadedHeaderNeverAddedProgressParagraph": true,
+      "homeRestoredPending": true
+    },
+    "normalHomeCompletionUndo": {
+      "passed": true,
+      "before": "5件中0件が完了しました",
+      "completed": "5件中1件が完了しました",
+      "restored": "5件中0件が完了しました",
+      "checkedCardMovedBelowUnfinished": true
+    },
+    "launcher": {
+      "label": "LiFlow",
+      "circularMaskVisuallyChecked": true,
+      "imageSha256": "7a0a11e90fa1380e8c1f80a9e358f08b90450c852f24cc50e8f6cdf330d9ba1f"
+    },
+    "displayTurnedOffAfterTests": true
+  },
+  "icon": {
+    "method": "imagegen edit from the existing mascot asset; no manual raster editing",
+    "file": "assets/images/liflow-icon.png",
+    "sha256": "2948549c10c75c098604587cfecfbe9d9b1803babe0a54a3a62b966cb4ea76fa",
+    "sameArtworkOnBothOS": true,
+    "automatedGuards": [
+      "opaque square >=1024",
+      "white artwork bbox centered within 1% each axis",
+      "white tips within circular safe zone",
+      "Android adaptive inset retained"
+    ]
+  },
+  "limitations": [
+    "No new AI analysis call or appliance save in the physical UI inspection. No claim that an existing saved appliance detail was exercised in an empty device workspace.",
+    "Common forms and regression coverage were reviewed across routes; every screen at every data volume and font scale was not manually exercised.",
+    "No fixed FPS benchmark or guarantee of OS background scheduling.",
+    "Earlier Phase 6 paired transfer and independent real Google E2E remain separate evidence.",
+    "No main merge, Draft release, production Rules/schema changes or app reset."
+  ],
+  "localCapacity": {
+    "actions": [
+      "Removed reproducible non-target ABI intermediates",
+      "Cleaned npm cache",
+      "Removed only this build ModuleCache after successful iOS build"
+    ],
+    "approxFreeGiB": 4.2,
+    "developmentToolsAndBuildProductsRetained": true,
+    "externalStorageMounted": false
+  },
+  "changedSourceManifest": [
+    {
+      "file": "assets/images/liflow-icon.png",
+      "sha256": "2948549c10c75c098604587cfecfbe9d9b1803babe0a54a3a62b966cb4ea76fa"
+    },
+    {
+      "file": "docs/feature-contracts.json",
+      "sha256": "ee41bf50066291ec3442813ba2b576b7a53662fadcf01c137ccc8a1bed963e5f"
+    },
+    {
+      "file": "package-lock.json",
+      "sha256": "aa093a1b21cbd5a9fa512a87562885dc35f0cd3715e5e1133955d9f38bf913e4"
+    },
+    {
+      "file": "package.json",
+      "sha256": "890455a7efe867990ff87c62a320cfcf92d5b2f722e66d3df915ab849c79bfd8"
+    },
+    {
+      "file": "src/app/(tabs)/explore.tsx",
+      "sha256": "0697e4bb97a9a7322c2830d4911b8020e7b294e9c9c499e09dc5fb84bbd17153"
+    },
+    {
+      "file": "src/app/(tabs)/guide.tsx",
+      "sha256": "f3590c93b5bc93a74c77c1c5c0dac48bc36324a2ea4e30c4133312b6d7539c1a"
+    },
+    {
+      "file": "src/app/(tabs)/index.tsx",
+      "sha256": "051c9d3c18107862aca35717717502b3150acf14640128ac10e25fbd971c06ef"
+    },
+    {
+      "file": "src/app/(tabs)/manual/appliance-care.tsx",
+      "sha256": "f0221197beed058e00b5e6169e007ca1b71b422c7b7a0d39d47a2d865421bb22"
+    },
+    {
+      "file": "src/app/(tabs)/manual/index.tsx",
+      "sha256": "43e53f6340261758f981698f8eb21f357b47b750742e49ffc1ae053b7c9be1b3"
+    },
+    {
+      "file": "src/app/chores/[id].tsx",
+      "sha256": "ad4f63836fad569bd3edf36c86ccf30f67cb39c75940582a93906266062a05fe"
+    },
+    {
+      "file": "src/app/chores/index.tsx",
+      "sha256": "1f40df94030312285b79ef937b6007adf0d740aa706e952a6854ca3a218fb1c5"
+    },
+    {
+      "file": "src/app/settings.tsx",
+      "sha256": "1b47dbaab9c3281b2401370a90902e72d155976ebf9138266f0e8c877ae78c26"
+    },
+    {
+      "file": "src/app/sharing/index.tsx",
+      "sha256": "4f43e88c8f9c55a521e11f314979c0532e709c09a59c2b877978f619822083f5"
+    },
+    {
+      "file": "src/components/accordion-section.tsx",
+      "sha256": "45c43f35023f11b71f7e66b80440a098a692aa637d94ce5298694e122ed9715c"
+    },
+    {
+      "file": "src/components/chevron.tsx",
+      "sha256": "afd9834a801dc8707734bba4b54ab0e71f3344e90c8ea65453f199f4a5e13541"
+    },
+    {
+      "file": "src/components/chore-book.tsx",
+      "sha256": "5c6facd8896726576faeea89f52b53ec9bc56f32b55f5cc676783964c99e7f60"
+    },
+    {
+      "file": "src/components/chore-meta.tsx",
+      "sha256": "df8c6ff6143a2521aa311ecdff1da903da15b10d97690a97d0d583606491b022"
+    },
+    {
+      "file": "src/components/form-text-input.tsx",
+      "sha256": "c74d9ebbd36d290d51fdee77f92c88e5e21fcee184340542d924bd7d971d9b5f"
+    },
+    {
+      "file": "src/components/planner-colors.ts",
+      "sha256": "db087651030d94ba4bcc2ab636268346d8a76e4f92692d5b1f505dad7ccb055c"
+    },
+    {
+      "file": "src/components/planner-ui.tsx",
+      "sha256": "e873646c6465a650096ec6603dc0ff55eaeb9c414c1a4c824bcc6b3acb887a59"
+    },
+    {
+      "file": "src/components/procedure-step.tsx",
+      "sha256": "b3c28c741b39b94e3e20b92aa313b8618cc02a67216953775e90591307a24d2b"
+    },
+    {
+      "file": "src/components/task-checkbox-row.tsx",
+      "sha256": "3665253c1de49e8c90539193fa738ac01173f930b16cd463e0f1ccfb65718d89"
+    },
+    {
+      "file": "src/domain/chores/chore-groups.ts",
+      "sha256": "688420b9507cffc7f67b178c0b0ea5937401f4bf66cb87bb01354d985d91cf47"
+    },
+    {
+      "file": "src/domain/scheduling/date-tasks.ts",
+      "sha256": "926016081b61f06f73845bfc1620bc0407267cd7fc23a06ebead2256121b5dcb"
+    },
+    {
+      "file": "src/domain/scheduling/task-priority.ts",
+      "sha256": "d09d7eb2e92b8aa0fe69f371cf0d6be5e63467d5ec21e0196387f460af15afc9"
+    },
+    {
+      "file": "src/features/appliance-care/appliance-detail-content.tsx",
+      "sha256": "c15c84e3f19b70077f672f8be0b12e0a120a9fd5b4cf9f6b78a88ef3e679ebd8"
+    },
+    {
+      "file": "src/features/chores/guide-chapter-actions.tsx",
+      "sha256": "4292c8b23687a01459d4d38bd4857bbfe193eb9c06419109d8949d34be23fa45"
+    },
+    {
+      "file": "src/features/help/help-content.ts",
+      "sha256": "911354a3e02dd39d07ad2b7a66911c49dc1d3a626df98b1f29f83a98e0c0e5fc"
+    },
+    {
+      "file": "src/features/onboarding/first-run-setup.tsx",
+      "sha256": "609f42942e2858e687b7728ea48ac4af5eefb2c2b1e05de8ef07ca762bbb3577"
+    },
+    {
+      "file": "src/features/planner/home-summary.ts",
+      "sha256": "d714fcb028f1f62b592b11b4bb5e0ae98b5ddad93b27ac83b4bd95c0b662950a"
+    },
+    {
+      "file": "src/features/planner/task-mutations.ts",
+      "sha256": "99d7de229cd7171b0c77b51a8de09ede359bc5d52442c5187a1cd04d482ede6d"
+    },
+    {
+      "file": "src/features/settings/chore-settings-editor.ts",
+      "sha256": "e034ce1a2bc8aea2452fe8d81605826352f835898e9e14bf0f7387cd47b6821a"
+    },
+    {
+      "file": "src/features/settings/chore-toggle-list.tsx",
+      "sha256": "67e85f4d034fb7a8b3dd920b29f376921dab8f02085dd0a619ded5e5492f985d"
+    },
+    {
+      "file": "src/features/settings/use-chore-settings-autosave.tsx",
+      "sha256": "0323a36ee2387e2204fde6c62248cc3c1a9b1746e883c91eac51fdec9e7921bf"
+    },
+    {
+      "file": "src/features/sharing/mutations.ts",
+      "sha256": "34a3e7c4b6e33710d8ff813a7d247ad45f9741e92013da94ee364d90140532ef"
+    },
+    {
+      "file": "src/features/sharing/private-calendar/device-screen.tsx",
+      "sha256": "cfbd70a2288eebf37074cc66e9c5066b08eef6165ccdc23f2c9fa69d77c7f2d9"
+    },
+    {
+      "file": "src/features/sharing/private-planner/preference-screen.tsx",
+      "sha256": "381ed82eea0a164f88a6dfd153d0a436b86af7abdab8a455e5b5c196ed2dd628"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/calendar-projection.ts",
+      "sha256": "d0228bb689a3f3edc96c91d4bdfb2ce48fa26aca3a9e9446fea2ac74b0540e13"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/calendar.tsx",
+      "sha256": "bb81b7f7c4fa526268f2a3e8522bda806e475466e46a357537988c8571ad4279"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/chore-procedures.tsx",
+      "sha256": "0bee5d0ccbaddecb1b52695d088cef1bee2c90471c5d1376edf94878f10f24e2"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/completion-feedback.ts",
+      "sha256": "66d62c7f0ce01ba85ce80f8a8be6ae5e6bfebb80d14508e2076bb24b1c9e9ccb"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/configuration-editor.tsx",
+      "sha256": "16483888a3c14e3303cdd6b97846c8cc33555fe9f268117ef23a0b035d8db923"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/form-controls.tsx",
+      "sha256": "874109803a25ca733e4f16a6b6f8a0a443b9ddbb6386bf963e8ec6155f4ced3b"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/group-screen.tsx",
+      "sha256": "738ae7b64c14c268373b5d605477089efd52fb8ce22d2dde772d33f7d3b9b841"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/private-overlay.ts",
+      "sha256": "c03fc973dbae65d8e1396fcaec51c9ba0e11f5fc7c16e17815d942a429b48ab5"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/private-task-card.tsx",
+      "sha256": "7cb1a1c01a09a81afae8bd06aeceb76f7182f0a68da1baa1aaf37f0698f37d34"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/round-card.tsx",
+      "sha256": "f8da2c71bf163aec91e316b50b4458871c0ec4cec34fbea4cd56cac70076f9af"
+    },
+    {
+      "file": "src/features/sharing/v2-ui/task-order.ts",
+      "sha256": "fb6e7068c3ff690f52dc01bb7402e97ecfab0ae2d96f5bd9662c5ae82e5777a1"
+    },
+    {
+      "file": "src/features/waste/waste-schedule-editor.tsx",
+      "sha256": "54e57f3b7e71b2e941a0d0fb0ce5428b780aab84380f39f9f8accff79ba5e45f"
+    },
+    {
+      "file": "src/hooks/use-home-clock.tsx",
+      "sha256": "dc5d6b76a44d1aacc0ea20f6efb61e819e1f1dc57c995893a478ee2557057050"
+    },
+    {
+      "file": "src/hooks/use-planner-data.ts",
+      "sha256": "3ea0f6920265d1da9f29a14fb69f4dd7d6c5214b2128cf6be7b0d3697bdef0b3"
+    },
+    {
+      "file": "src/hooks/use-task-completion.tsx",
+      "sha256": "f4d5ed9c01a2e5382b160bff846a326d40735adfded6056c2db3295c023e3100"
+    },
+    {
+      "file": "src/platform/storage/repository.ts",
+      "sha256": "f6ffb53e086c73d6dca67bc84aa2b1c3078e7f348f2de8742f29d50afb57e3ca"
+    },
+    {
+      "file": "src/platform/storage/shared-repository-adapter.ts",
+      "sha256": "ce0410cdb46f8be00b39addfa8e7f313524f20fa555a710b6d14c7b998be05a2"
+    },
+    {
+      "file": "tests/app-branding.test.mjs",
+      "sha256": "7214c796db1ebe06b504cc435fe8f10559e8e143444dc7c12e0580019837b825"
+    },
+    {
+      "file": "tests/date-tasks.test.mjs",
+      "sha256": "627058b8f9429796020bdcc884bced1ad737a28deed58bd8162529e6649ef91b"
+    },
+    {
+      "file": "tests/helpers/screen-harness.mjs",
+      "sha256": "a30603eb0b1f72620f415d56113965b03d8eba0fdd3d1a8e1331c9f168145b89"
+    },
+    {
+      "file": "tests/post-phase6-mobile-ui.test.mjs",
+      "sha256": "467f0431dabe8c38f7d014c997d6700107fdb484f2a2f38da3a463896f1ba6c3"
+    },
+    {
+      "file": "tests/sharing-planning.test.mjs",
+      "sha256": "0de40da81fe5ae0f72f7d08821fb5253b6580ad8fad25cf5dfce7c86952b63ff"
+    },
+    {
+      "file": "tests/sharing-v2-calendar-ui.test.mjs",
+      "sha256": "a4c6c98d10b6d41c58a8cc2c43416caa9e39b3bf41245ddf2835dbdba5847a51"
+    },
+    {
+      "file": "tests/sharing-v2-development-preview.test.mjs",
+      "sha256": "56a5283a3872c948e83e6b8e5112f9d1a697e8783906704a3fa181c64c49de17"
+    }
+  ]
+}

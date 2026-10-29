@@ -1,7 +1,8 @@
+import { FormTextInput as TextInput } from '../../components/form-text-input';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Share, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { AccordionSection } from '@/components/accordion-section';
 import { useWorkspace } from '@/hooks/use-workspace';

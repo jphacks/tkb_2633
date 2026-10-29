@@ -28,12 +28,17 @@ import { V2ChoreList } from './chore-list';
 import { V2AddChore } from './add-chore';
 import { V2ChoreProcedures } from './chore-procedures';
 import { V2GroupPolicyEditor } from './group-policy-editor';
-import { v2CanShowCompletion } from './round-visibility';
+import { createV2RoundVisibility, v2CanShowCompletion } from './round-visibility';
 import { V2DateRightsEditor } from './date-rights-editor';
 import type { V2MutationOutcome } from './mutation-outcome';
 import { V2WasteScreen } from './waste-screen';
 import { V2WasteOccurrence } from './waste-occurrence';
 import { V2ApplianceScreen } from './appliance-screen';
+import { orderTaskRows } from './task-order';
+import type { CompletionFeedback } from './completion-feedback';
+import Animated, { LinearTransition } from 'react-native-reanimated';
+import { useHomeClock } from '../../../hooks/use-home-clock';
+import { homeSummary } from '../../planner/home-summary';
 
 export interface V2GroupScreenProps {
   purpose: 'development' | 'workspace'; workspaceName?: string; workspaceError?: string; onManage?: () => void;
@@ -65,6 +70,9 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const [session, setSession] = useState<V2GroupUiSession | null>(null); const [screenModel, setModel] = useState<Awaited<ReturnType<V2GroupUiSession['readModel']>> | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [expiredOpen, setExpiredOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(true);
+  const [completionValues, setCompletionValues] = useState(new Map<string, boolean>());
+  const feedbackEpoch = useRef(0);
+  const clock = useHomeClock(screenModel?.plan.timeZone);
   const alive = useRef(false); const generation = useRef(0); const running = useRef(false);
   const notificationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mutationRead = useRef(false); const refreshQueued = useRef(false);
@@ -76,7 +84,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     const revision = ++generation.current;
     try {
       const preview = await loadSession(); const value = await preview.readModel(readOptions.current);
-      if (alive.current && generation.current === revision) { setSession(preview); setModel(value); setError(null); } return true;
+      if (alive.current && generation.current === revision) { setSession(preview); setModel(value); setError(null); setCompletionValues(new Map()); } return true;
     } catch (cause) { if (alive.current && generation.current === revision) setError(cause instanceof Error ? cause.message : '共有データを読み込めませんでした。'); return false; }
   }, [loadSession]);
   useFocusEffect(useCallback(() => {
@@ -91,7 +99,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       if (running.current) { if (mutationRead.current) refreshQueued.current = true; return; }
       notificationTimer.current = setTimeout(() => { notificationTimer.current = undefined; if (alive.current) void refresh(); }, 80);
     });
-    void refresh(); return () => { alive.current = false; generation.current++; clearTimeout(notificationTimer.current); refreshQueued.current = false; unsubscribe?.(); };
+    void refresh(); return () => { alive.current = false; feedbackEpoch.current++; setCompletionValues(new Map()); generation.current++; clearTimeout(notificationTimer.current); refreshQueued.current = false; unsubscribe?.(); };
   }, [refresh, anchorDate, subscribe, view, choreId, applianceId]));
   useEffect(() => {
     if (!screenModel) return;
@@ -118,6 +126,15 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     }
     return { committed: !failed, refreshed: loaded, ...(failed ? { error: failure } : {}) };
   };
+  const feedback: CompletionFeedback = { values: completionValues, run: async (key, completed, work) => {
+    if (running.current || !alive.current) return;
+    const epoch = feedbackEpoch.current;
+    setCompletionValues(values => new Map(values).set(key, completed));
+    const result = await perform(work);
+    if (alive.current && epoch === feedbackEpoch.current && (!result.committed || result.refreshed)) {
+      setCompletionValues(values => { const next = new Map(values); next.delete(key); return next; });
+    }
+  } };
   const run = async (work: () => Promise<unknown>) => { await perform(work); };
   const notice = <View style={styles.notice}>
     {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{typeof screenModel?.plan.commonSettings.name === 'string'
@@ -182,7 +199,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       } catch (cause) { setError(cause instanceof Error ? cause.message : '表示する月を確認してください。'); }
     };
     return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}><V2Calendar model={model} personal={personal} privateOverlay={privateOverlay} privateSource={session.privateTasks} month={month}
-      selectedDate={calendarDay ?? model.plan.range.asOfDate} busy={busy} actions={controller.actions} run={run}
+      selectedDate={calendarDay ?? model.plan.range.asOfDate} feedback={feedback} busy={busy} actions={controller.actions} run={run}
       onMonth={selectMonth} onSelectDate={(day) => { if (day.slice(0, 7) === month.slice(0, 7)) setCalendarDay(day); else void selectMonth(day, day); }}
       onRound={(id, subject, anchor) => onRound?.(id, subject, anchor)}
       header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="共有カレンダー" /></View>} /></V2ScreenFrame>;
@@ -210,7 +227,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
       {notice}<BackButton onPress={onBack} disabled={busy} />
       {round && subject ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === round.choreId)?.name ?? '共有家事'} />
         {view === 'assignment' ? <V2AssignmentForm model={model} round={round} actions={controller.actions} busy={busy} run={run} />
-          : view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} readOwnCalendar={session.readOwnCalendar} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} showActions
+          : view === 'date' ? <V2DateForm model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} readOwnCalendar={session.readOwnCalendar} /> : <><V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} feedback={feedback} showActions
           onDate={onDate ? () => onDate(round.id, subject.id) : undefined}
           onAssignment={onAssignment ? () => onAssignment(round.id, subject.id) : undefined}
           onAssignmentRequest={onAssignment ? () => onAssignment(round.id, subject.id) : undefined}
@@ -225,7 +242,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     </V2FormScrollView></V2ScreenFrame>;
   }
   const recommendations = new Map(personal.recommendations.map((entry) => [entry.subjectOccurrenceId, entry]));
-  const card = (round: V2PlannedOccurrence, subject: V2SubjectPlan) => <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run}
+  const card = (round: V2PlannedOccurrence, subject: V2SubjectPlan) => <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} feedback={feedback}
     recommendation={recommendations.get(subject.id)}
     onOpen={() => onRound ? onRound(round.id, subject.id) : onConfiguration(round.choreId)} />;
   if (view === 'history') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
@@ -236,14 +253,25 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   </V2ScreenFrame>;
   const entries = model.plan.occurrences.flatMap((round) => round.subjects.filter((subject) => subject.required && (subject.subjectUserId === null || subject.subjectUserId === model.viewerUserId)).map((subject) => ({ round, subject })));
   const today = entries.filter(({ round, subject }) => round.activeInPeriod && (recommendations.get(subject.id)?.date ?? subject.suggestedDate) === model.plan.range.asOfDate);
-  const homeRows = [...(model.waste?.occurrences ?? []).filter(entry => entry.occurrence.date === model.plan.range.asOfDate && entry.hidden !== true)
+  const visibility = createV2RoundVisibility(model);
+  const choreById = new Map(model.plan.chores.map(chore => [chore.id, chore]));
+  const homeRows = orderTaskRows([...(model.waste?.occurrences ?? []).filter(entry => entry.occurrence.date === model.plan.range.asOfDate && entry.hidden !== true)
     .map(entry => ({ source: 'waste' as const, key: `waste:${entry.key}`, entry })),
     ...today.map((entry) => ({ source: 'shared' as const, key: `shared:${entry.subject.id}`, ...entry })),
-    ...(privateOverlay?.status === 'ready' ? privateOverlay.home : []).map((row) => ({ source: 'personal' as const, key: row.key, row }))];
+    ...(privateOverlay?.status === 'ready' ? privateOverlay.home : []).map((row) => ({ source: 'personal' as const, key: row.key, row }))], model.plan.range.asOfDate, item => item.source === 'personal'
+      ? { completed: completionValues.get(item.key) ?? item.row.completed, load: item.row.chore.load, recommendedDate: item.row.suggestedDate, windowEnd: item.row.windowEnd, asOfDate: privateOverlay?.status === 'ready' ? privateOverlay.today : undefined }
+      : item.source === 'shared' ? { completed: visibility(item.round, item.subject).showStatus && (completionValues.get(item.key) ?? item.subject.completed),
+        load: choreById.get(item.round.choreId)?.load ?? 'light', recommendedDate: recommendations.get(item.subject.id)?.date ?? item.subject.suggestedDate, windowEnd: item.subject.executionWindowEnd }
+        : { completed: false, load: 'light', recommendedDate: model.plan.range.asOfDate });
+  const total = homeRows.filter(item => item.source !== 'waste').length;
+  const done = homeRows.filter(item => item.source === 'personal' ? completionValues.get(item.key) ?? item.row.completed
+    : item.source === 'shared' && visibility(item.round, item.subject).showStatus && (completionValues.get(item.key) ?? item.subject.completed)).length;
+  const summary = homeSummary(total, done, clock, model.plan.timeZone);
   const expired = entries.filter(({ subject }) => subject.showExpiredOnHome);
   return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
-    <FlatList data={homeRows} keyExtractor={(entry) => entry.key} contentContainerStyle={styles.page} initialNumToRender={8}
+    <Animated.FlatList data={homeRows} itemLayoutAnimation={LinearTransition.duration(240)} keyExtractor={(entry) => entry.key} contentContainerStyle={styles.page} initialNumToRender={8}
       ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title={session.privateTasks ? '今日の家事' : '今日の共有家事'} />
+        <Card><Text style={styles.noticeTitle}>{summary.greeting}</Text>{summary.showProgress ? <Text style={styles.caption}>{total}件中{done}件が完了しました　{summary.percent}%</Text> : null}</Card>
         <V2PrivateTaskNotice overlay={privateOverlay} sharedTimeZone={model.plan.timeZone} />
         <V2DailyLoadNotice assessment={dailyLoad} />
         {privateOverlay?.status === 'ready' && privateOverlay.today !== model.plan.range.asOfDate ? <Text style={styles.caption}>個人の今日：{privateOverlay.today} · 共有の今日：{model.plan.range.asOfDate}</Text> : null}
@@ -252,7 +280,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         {purpose === 'workspace' ? <AppButton title="今すぐ同期" variant="quiet" disabled={busy} onPress={() => void run(() => session.controller.sync())} /> : null}</>}
       ListEmptyComponent={<Card><Text style={styles.body}>{privateOverlay?.status === 'unavailable' ? '今日の共有家事はありません。個人家事は未取得です。' : '今日の家事はありません。'}</Text></Card>}
       renderItem={({ item }) => item.source === 'waste' ? <V2WasteOccurrence entry={item.entry} actions={controller.actions} busy={busy} run={run} />
-        : item.source === 'personal' ? <V2PrivateTaskCard row={item.row} source={session.privateTasks} busy={busy} run={run} /> : card(item.round, item.subject)}
+        : item.source === 'personal' ? <V2PrivateTaskCard row={item.row} source={session.privateTasks} busy={busy} run={run} feedback={feedback} /> : card(item.round, item.subject)}
       ListFooterComponent={<View style={styles.footer}>
         {expired.length ? <AccordionSection title={`期限を過ぎた家事（${expired.length}件）`} expanded={expiredOpen} onToggle={() => setExpiredOpen((value) => !value)}>
           {expired.map(({ round, subject }) => <View key={subject.id}>{card(round, subject)}</View>)}
@@ -273,7 +301,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
 function V2ScreenFrame({ purpose, children, ...props }: ComponentProps<typeof SafeAreaView> & { purpose: V2GroupScreenProps['purpose'] }) {
   return <SafeAreaView {...props}>{purpose === 'development' ? <Text style={styles.qaScope}>開発用・端末内プレビュー</Text> : null}{children}</SafeAreaView>;
 }
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: palette.background }, page: { padding: 16, gap: 16, paddingBottom: 40 },
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: palette.background }, page: { padding: 16, gap: 10, paddingBottom: 40 },
   qaScope: { ...typography.caption, color: palette.warning, paddingHorizontal: 16, paddingVertical: 4 },
   notice: { padding: 12, gap: 4, borderWidth: 1, borderRadius: 12, borderColor: palette.border }, noticeTitle: { ...typography.label, fontWeight: '600', color: palette.ink },
   caption: { ...typography.caption, color: palette.muted }, body: { ...typography.body, color: palette.ink }, error: { ...typography.caption, color: palette.warning }, footer: { gap: 16, paddingTop: 12 },

@@ -15,7 +15,7 @@ export function v2CalendarMonth(day: LocalDate, offset = 0) {
 }
 
 /** Local display only. Personal recommendations never change the common plan or another member's date. */
-export function v2CalendarProjection(model: V2GroupScreenModel, personal?: V2PersonalPlan) {
+export function v2CalendarProjection(model: V2GroupScreenModel, personal?: V2PersonalPlan, completionValues?: ReadonlyMap<string, boolean>) {
   if (personal && (personal.viewerUserId !== model.viewerUserId || personal.groupId !== model.plan.groupId || personal.commonPlanHash !== model.plan.planHash)) {
     throw new Error('本人と現在の共有予定に対応する推奨を取得してください。');
   }
@@ -25,7 +25,7 @@ export function v2CalendarProjection(model: V2GroupScreenModel, personal?: V2Per
     const visible = visibility(round, subject);
     const candidate = recommendations.get(subject.id); const recommendation = candidate && visible.owns ? candidate : undefined;
     return { id: subject.id, round, subject, recommendation, date: recommendation?.date ?? subject.suggestedDate,
-      counted: visible.showStatus && subject.required && !subject.completed };
+      counted: visible.showStatus && subject.required && !(completionValues?.get(`shared:${subject.id}`) ?? subject.completed) };
   }));
   const byDate = new Map<LocalDate, typeof entries>(); const counts = new Map<LocalDate, number>();
   for (const entry of entries) {

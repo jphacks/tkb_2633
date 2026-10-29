@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { createHouseholdChoreDefinitions } from '@/domain/chores/catalog';
 import { upgradeBuiltInScheduleDefaults } from '@/domain/chores/catalog-upgrade';
+import { validateChoreToggle } from '@/domain/chores/chore-groups';
 import { applyChoreSettingsPatch } from '@/domain/chores/settings-patch';
 import type { ChoreSettingsPatch } from '@/domain/chores/settings-patch';
 import type {
@@ -1055,6 +1056,28 @@ async function setChoreEnabledImpl(database: SQLiteDatabase, choreId: EntityId, 
   await updateChoreDefinitionImpl(database, definition);
 }
 
+async function setChoresEnabledImpl(database: SQLiteDatabase, choreIds: string[], enabled: boolean): Promise<void> {
+  validateChoreToggle(choreIds, enabled);
+  // Validate the complete group before writing. Unknown appliance cycles must never be invented.
+  await database.withTransactionAsync(async () => {
+    const changes: { chore: ChoreDefinition; wasEnabled: boolean }[] = [];
+    for (const id of choreIds) {
+      const row = await database.getFirstAsync<DefinitionRow>('SELECT id, enabled, definition_json FROM chore_definitions WHERE id = ? AND household_id = ?', id, LOCAL_HOUSEHOLD_ID);
+      if (!row) throw new Error('家事が見つかりません。最新の一覧を読み直してください。');
+      const chore = { ...JSON.parse(row.definition_json) as ChoreDefinition, enabled };
+      if (chore.archived) throw new Error('削除済みの家事は変更できません。');
+      if (enabled && chore.requiresCycleSelection) throw new Error(`「${chore.name}」の周期を設定してから有効にしてください。`);
+      if (Boolean(row.enabled) !== enabled) changes.push({ chore, wasEnabled: Boolean(row.enabled) });
+    }
+    for (const { chore } of changes) {
+      await database.runAsync('UPDATE chore_definitions SET enabled = ?, definition_json = ? WHERE id = ? AND household_id = ?', enabled ? 1 : 0, JSON.stringify(chore), chore.id, LOCAL_HOUSEHOLD_ID);
+      await database.runAsync('DELETE FROM chore_schedule_entries WHERE chore_id = ?', chore.id);
+      if (enabled) await database.runAsync(`UPDATE chore_state SET initial_pending = 1, initial_scheduled_date = NULL,
+        unknown_reason = COALESCE(unknown_reason, 'unknown') WHERE chore_id = ? AND last_completed_date IS NULL`, chore.id);
+    }
+  });
+}
+
 async function completeChoreImpl(
   database: SQLiteDatabase,
   entry: ChoreScheduleEntry,
@@ -2066,6 +2089,7 @@ export const updateChoreDefinition = serializePlannerOperation(updateChoreDefini
 export const updateChoreSettings = serializeDatabaseOperation(updateChoreSettingsImpl, 'updateChoreSettings');
 export const saveReviewedApplianceCare = serializePlannerOperation(saveReviewedApplianceCareImpl, 'saveReviewedApplianceCare');
 export const setChoreEnabled = serializePlannerOperation(setChoreEnabledImpl, 'setChoreEnabled');
+export const setChoresEnabled = serializePlannerOperation(setChoresEnabledImpl, 'setChoresEnabled');
 export const completeChore = serializePlannerOperation(completeChoreImpl, 'completeChore');
 export const readPersonalPlannerOverlaySnapshot = serializeDatabaseOperation(readPersonalPlannerOverlaySnapshotImpl);
 export const readPersonalChoreCopySource = serializeDatabaseOperation(readPersonalChoreCopySourceImpl);

@@ -83,14 +83,37 @@ test('v2 calendar markers follow shared-card visibility and cannot reveal anothe
     await f.controller.actions.complete(ref); model = await f.controller.readModel(range);
     assert.equal(model.plan.occurrences[0].completed, true);
     assert.equal(v2CalendarProjection({ ...model, viewerUserId: 'member' }).counts.get(ref.anchorDate) ?? 0, 0);
+    assert.equal(v2CalendarProjection({ ...model, viewerUserId: 'member' }, undefined,
+      new Map([[`shared:${model.plan.occurrences[0].subjects[0].id}`, false]])).counts.get(ref.anchorDate) ?? 0, 0);
   } finally { f.close(); }
 });
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform} v2 calendar reflects completion feedback immediately without changing stored state or shifting the loaded header`, async () => {
+    const f = await setup(platform);
+    try {
+      const subject = f.props.model.plan.occurrences[0].subjects[0]; const key = `shared:${subject.id}`;
+      const before = JSON.stringify(f.props.model);
+      f.props.feedback = { values: new Map([[key, true]]), run: async () => {} }; f.props.busy = true; f.screen.render();
+      assert.ok(f.screen.nodes().some(node => node.props.accessibilityLabel === '2026年10月27日、確認できる未完了の共有家事0件'));
+      assert.equal(f.screen.nodes().find(node => node.props.accessibilityRole === 'checkbox').props.accessibilityState.checked, true);
+      assert.equal(f.screen.text().includes('共有予定を読み込んでいます…'), false);
+      assert.equal(JSON.stringify(f.props.model), before);
+      f.props.feedback.values.clear(); f.screen.render();
+      assert.ok(f.screen.nodes().some(node => node.props.accessibilityLabel === '2026年10月27日、確認できる未完了の共有家事1件'));
+      await f.controller.actions.complete({ choreId: 'floor', anchorDate: '2026-10-27', ruleVersion: 1, subjectUserId: null });
+      f.props.model = await f.controller.readModel({ from: '2026-09-27', through: '2026-10-31', asOfDate: '2026-10-27' });
+      f.props.feedback.values.set(key, false); f.screen.render();
+      assert.ok(f.screen.nodes().some(node => node.props.accessibilityLabel === '2026年10月27日、確認できる未完了の共有家事1件'));
+      assert.equal(f.props.model.plan.occurrences[0].subjects[0].completed, true);
+    } finally { f.close(); }
+  });
   test(`${platform} calendar mutations keep the visible cards and known counts while disabling another action instead of emptying the list`, async () => {
     const f = await setup(platform);
     try {
-      const before = f.screen.nodes().find((node) => node.type === 'FlatList').props.data.map((entry) => entry.key);
+      const list = f.screen.nodes().find((node) => node.type === 'FlatList');
+      assert.ok(list.props.itemLayoutAnimation, 'the virtualized cells must animate their reordered positions');
+      const before = list.props.data.map((entry) => entry.key);
       assert.ok(before.length > 0); f.props.busy = true; f.screen.render();
       assert.deepEqual(f.screen.nodes().find((node) => node.type === 'FlatList').props.data.map((entry) => entry.key), before);
       assert.ok(f.screen.nodes().some((node) => node.props.accessibilityLabel === '2026年10月27日、確認できる未完了の共有家事1件'));
@@ -114,7 +137,7 @@ for (const platform of ['ios', 'android']) {
     const f = await setup(platform, '2026-10-12');
     try {
       const round = f.props.model.plan.occurrences.find((entry) => entry.anchorDate === '2026-10-12'); assert.equal(round.subjects[0].showExpiredOnHome, false);
-      await f.screen.press('床を掃除する全員共通 · 担当未確定'); assert.deepEqual(f.navigation, [[round.id, round.subjects[0].id, '2026-10-12']]);
+      await f.screen.press('床を掃除するの説明を開く'); assert.deepEqual(f.navigation, [[round.id, round.subjects[0].id, '2026-10-12']]);
       assert.equal(f.props.model.plan.history.length, 0);
     } finally { f.close(); }
   });

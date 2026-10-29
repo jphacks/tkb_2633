@@ -1,7 +1,9 @@
+import { Chevron } from '../../../components/chevron';
+import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import { applianceCategoryLabel } from '@/features/appliance-care/categories';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { PlannerLoadState } from '@/components/planner-load-state';
@@ -44,7 +46,7 @@ export default function ManualScreen() {
             <Text style={styles.applianceName}>{appliance.displayName}</Text>
             <Text style={styles.applianceMeta}>{applianceCategoryLabel(appliance.category) ?? appliance.manufacturer} · {appliance.modelNumber}</Text>
           </View>
-          <Text style={styles.chevron}>›</Text>
+          <Chevron />
         </Pressable>
       ))}
 
@@ -69,7 +71,7 @@ export default function ManualScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => setAddDialogVisible(false)}>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>家電を追加</Text>
             <Text style={styles.modalHint}>製品名を入力してください。</Text>
@@ -95,7 +97,7 @@ export default function ManualScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <View style={styles.secondaryActions}>

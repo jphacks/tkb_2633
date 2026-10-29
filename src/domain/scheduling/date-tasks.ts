@@ -3,6 +3,7 @@ import type { LocalDate } from '@/domain/shared/types';
 import { calendarPendingCountsByDate } from '../calendar/day-entries.ts';
 import { completionCycleDate, completionIncludesDate, completionMatchesEntry } from './completion-matching.ts';
 import { addDays, daysBetween, localDateFromISODateTime } from './local-date.ts';
+import { compareTaskKeys, taskPriority } from './task-priority.ts';
 
 export interface DateTask {
   id: string;
@@ -71,13 +72,14 @@ export function orderDateTasks(
   tasks: readonly DateTask[],
   date: LocalDate,
   chores: readonly Pick<ChoreDefinition, 'id' | 'load'>[],
+  today: LocalDate = date,
 ): DateTask[] {
   const loadById = new Map(chores.map((chore) => [chore.id, chore.load]));
-  const priority = (task: DateTask) => loadById.get(task.choreId) === 'heavy' ? 0
-    : loadById.get(task.choreId) === 'normal' ? 1 : 2;
-  return [...tasks].sort((left, right) => Number(left.suggestedDate !== date) - Number(right.suggestedDate !== date)
-    || priority(left) - priority(right)
-    || Number(left.completed) - Number(right.completed));
+  const priority = (task: DateTask) => taskPriority({ completed: task.completed,
+    load: loadById.get(task.choreId) ?? 'light', recommendedDate: task.suggestedDate,
+    windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today);
+  return [...tasks].sort((left, right) => priority(left) - priority(right)
+    || compareTaskKeys(left.choreId, right.choreId));
 }
 
 export function recommendedChoreCounts(

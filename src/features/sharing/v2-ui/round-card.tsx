@@ -9,12 +9,16 @@ import type { V2PlannedOccurrence, V2SubjectPlan } from '../v2/common-plan';
 import type { V2RoundReference } from '../v2/actions';
 import type { V2Recommendation } from '../v2/personal-plan';
 import { v2TargetLabel } from './target-form';
+import type { LocalDate } from '../../../domain/shared/types';
+import { isTaskUrgent } from '../../../domain/scheduling/task-priority';
+import type { CompletionFeedback } from './completion-feedback';
 
-export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false, recommendation }: {
+export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen, onDate, onAssignment, onPast, onAssignmentRequest, showActions = false, recommendation, displayDate, feedback }: {
   model: V2GroupScreenModel; round: V2PlannedOccurrence; subject: V2SubjectPlan; actions: V2GroupController['actions']; busy: boolean;
   run: (work: () => Promise<unknown>) => Promise<void>; onOpen: () => void; onDate?: () => void; onAssignment?: () => void;
   onPast?: () => void; onAssignmentRequest?: () => void; showActions?: boolean;
   recommendation?: V2Recommendation;
+  displayDate?: LocalDate; feedback?: CompletionFeedback;
 }) {
   const chore = model.plan.chores.find((entry) => entry.id === round.choreId); if (!chore) return null;
   const viewer = model.viewerUserId;
@@ -24,18 +28,25 @@ export function V2RoundCard({ model, round, subject, actions, busy, run, onOpen,
   const ref: V2RoundReference = { choreId: round.choreId, anchorDate: round.anchorDate, ruleVersion: round.ruleVersion, subjectUserId: subject.subjectUserId,
     expectedConfigurationIds: model.configurations.find((entry) => entry.choreId === round.choreId)?.candidates.map((entry) => entry.operationId), expectedTimeZone: model.plan.timeZone };
   const canComplete = owns && round.activeInPeriod && !subject.pendingCompletionIds.length && !subject.dependencyBlocked && !subject.dependencyAwaitingCompletion && !round.assignmentConflictIds.length;
-  const onToggle = busy ? undefined : subject.completed ? undo.length ? () => run(() => actions.undoMany(undo)) : undefined
-    : canComplete ? () => run(() => actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] })) : undefined;
+  const key = `shared:${subject.id}`;
+  const work = subject.completed ? undo.length ? () => actions.undoMany(undo) : undefined
+    : canComplete ? () => actions.complete(ref, { expectedAssigneeIds: subject.subjectUserId === null ? round.assigneeIds : [subject.subjectUserId] }) : undefined;
+  const onToggle = busy || feedback?.values.has(key) || !work ? undefined : () => feedback
+    ? feedback.run(key, subject.completed ? undo.length < subject.completionOperationIds.length : true, work) : run(work);
   const category = subject.subjectUserId ? `各人が実施 · ${nameOf(subject.subjectUserId)}` : round.assigneeIds.length
     ? `${round.claimState === 'provisional' ? '暫定担当' : '担当'}：${round.assigneeIds.map(nameOf).join('・')}` : '全員共通 · 担当未確定';
   const formal = subject.formalDate;
   const schedules = relatedWork.filter((record) => record.active && record.schedule).map((record) => record.schedule!);
   const recordedWindow = subject.completed && schedules.length && schedules.every((schedule) => schedule.windowStart === schedules[0].windowStart && schedule.windowEnd === schedules[0].windowEnd) ? schedules[0] : null;
-  const displayCompleted = showStatus && subject.completed;
+  const displayCompleted = showStatus && (feedback?.values.get(key) ?? subject.completed);
+  const recommendedDate = recommendation?.date ?? subject.suggestedDate;
   const assignmentPending = model.assignmentRequests.some((request) => !request.cancelled && request.proposal.occurrenceId === round.id && request.proposal.requesterUserId === viewer
     && ['pendingDelivery', 'awaiting'].includes(request.kind));
   return <View style={styles.card}>
-    <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={showStatus && subject.completed} deemphasized={subject.cooldownSuppressed || subject.virtuallyConsumed} onOpen={onOpen} onToggle={onToggle} />
+    <TaskCheckboxRow chore={{ ...chore, householdId: '', category }} completed={displayCompleted}
+      source={formal.kind === 'manual' ? 'instructed' : 'shared'} early={formal.kind === 'automatic' && (displayDate ?? model.plan.range.asOfDate) < recommendedDate}
+      urgent={isTaskUrgent({ completed: displayCompleted, load: chore.load, recommendedDate, windowEnd: subject.executionWindowEnd }, model.plan.range.asOfDate)}
+      deemphasized={subject.cooldownSuppressed || subject.virtuallyConsumed} onOpen={onOpen} onToggle={onToggle} />
     <View style={styles.details}>
       <Text style={styles.date}>{formal.kind === 'manual' ? `${formal.mode === 'fixed' ? '固定日時' : formal.mode === 'deadline' ? '期限' : '実施日'}：${v2TargetLabel(formal.target, formal.timeZone)}`
         : `${recommendation ? '推奨日' : '基準日'}：${formatJapaneseDate(recommendation?.date ?? subject.suggestedDate, { weekday: true })}`}</Text>

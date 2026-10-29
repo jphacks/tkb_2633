@@ -1,5 +1,6 @@
+import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '../../../components/planner-ui';
 import { NumberInputField } from '../../../components/number-input-field';
 import type { Weekday } from '../../../domain/shared/types';

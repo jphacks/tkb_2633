@@ -27,7 +27,11 @@ export function screenHarness(filename, options = {}) {
   const react = {
     useState: hook,
     useRef: (value) => hook(() => ({ current: value }))[0],
-    useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
+    useMemo: (fn, deps) => {
+      const [memo] = hook(() => ({ deps, value: fn() }));
+      if (!deps || !memo.deps || deps.length !== memo.deps.length || deps.some((value, i) => !Object.is(value, memo.deps[i]))) { memo.deps = deps; memo.value = fn(); }
+      return memo.value;
+    }, useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
     useLayoutEffect: (callback) => options.layoutEffect?.(callback),
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     useContext: (context) => context._currentValue ?? null,
@@ -48,7 +52,7 @@ export function screenHarness(filename, options = {}) {
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) },
     'react-native-reanimated': {
-      __esModule: true, default: { View: 'AnimatedView' }, LinearTransition: transition,
+      __esModule: true, default: { View: 'AnimatedView', FlatList: (props) => mocks['react-native'].FlatList(props) }, LinearTransition: transition,
       useSharedValue: (value) => hook(() => ({ value }))[0], useAnimatedStyle: (fn) => fn(), withTiming: (value) => value,
     },
     'expo-router': {
@@ -63,6 +67,11 @@ export function screenHarness(filename, options = {}) {
     },
     'expo-sqlite': { useSQLiteContext: () => options.database },
     'expo-linking': { openURL: async (url) => options.openURL?.(url) },
+    // Native FlatList jumps are tested directly in chore-book tests. Other screen tests
+    // inspect the requested virtual chapter instead of pretending all chapters are mounted.
+    '@/components/chore-book': { ChoreBook: (props) => jsx('ChoreBook', { ...props, children: [props.header,
+      props.renderChore(props.chores.find(row => row.id === props.selectedId) ?? props.chores[0]),
+      jsx(load(resolve(root, 'src/components/planner-ui.tsx')).BackButton, { onPress: props.onBack })] }) },
     '@/hooks/use-planner-data': { usePlannerData: () => ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.() }) },
     '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
     '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },

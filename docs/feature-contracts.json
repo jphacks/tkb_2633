@@ -5411,5 +5411,89 @@
         "name": "native pair harness uses real encrypted v2 sessions with approval cold restore offline completion and unchanged private adapters"
       }
     ]
+  },
+  {
+    "feature": "home-evening-greeting-and-empty-progress",
+    "tests": [
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "home greeting changes at 19 only for zero chores or all completed and hides empty progress"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "${platform} empty home omits its progress count percentage and bar while preserving the greeting"
+      }
+    ]
+  },
+  {
+    "feature": "task-nine-tier-order-and-immediate-completion",
+    "tests": [
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "home and calendar share all nine priority tiers and stable ties across completion undo and date selection"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "completion responds before slow storage and rejects same-frame duplicate taps without changing another occurrence"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "completion rolls back failed writes but keeps saved checks after read failure and retries only the read"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "completion lifetime fences late refreshes and old handlers after a workspace switch"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "${platform} calendar mutations keep the visible cards and known counts while disabling another action instead of emptying the list"
+      },
+      {
+        "file": "tests/sharing-v2-development-preview.test.mjs",
+        "name": "${platform} v2 isolated native preview connects home, collapsed expired rounds, configuration navigation and targeted history undo to actual SQLite"
+      },
+      {
+        "file": "tests/sharing-v2-calendar-ui.test.mjs",
+        "name": "${platform} v2 calendar reflects completion feedback immediately without changing stored state or shifting the loaded header"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "private calendar completion feedback adjusts only the original recommended day and never mutates the saved projection"
+      }
+    ]
+  },
+  {
+    "feature": "connected-chore-books-and-retained-autosave",
+    "tests": [
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "${platform} connected chore book virtualizes long chapters keeps its back dock outside the list and jumps by stable identity"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "connected settings retain invalid drafts and failed saves after virtual rows unmount and retry without losing newer metadata"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "hardware back preserves invalid connected settings until corrected and then flushes before repeating navigation"
+      }
+    ]
+  },
+  {
+    "feature": "category-and-chore-atomic-enable-switches",
+    "tests": [
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "category enable disable is atomic and preserves individual cadence metadata completion history and unknown cycles"
+      },
+      {
+        "file": "tests/post-phase6-mobile-ui.test.mjs",
+        "name": "category switches reject double taps roll back failed writes and retain saved values across a failed reread"
+      },
+      {
+        "file": "tests/sharing-planning.test.mjs",
+        "name": "shared category toggles stage one atomic set of field patches and reject foreign chores without changing the replica"
+      }
+    ]
   }
 ]

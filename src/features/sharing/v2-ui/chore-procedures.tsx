@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { palette, SectionHeading, typography } from '../../../components/planner-ui';
+import { ProcedureStep } from '../../../components/procedure-step';
 import { ChoreSourceLinks } from '../../../components/chore-source-links';
 import type { ChoreDefinition } from '../../../domain/chores/types';
 
@@ -8,9 +9,7 @@ export function V2ChoreProcedures({ chore }: { chore: Pick<ChoreDefinition, 'des
   const sections = chore.procedureSections?.length ? chore.procedureSections : [{ title: '', steps: chore.instructions }];
   return <View style={{ gap: 12 }}>{chore.description ? <Text style={styles.body}>{chore.description}</Text> : null}
     {sections.map((section, sectionIndex) => <View key={sectionIndex} style={{ gap: 8 }}>{section.title ? <SectionHeading title={section.title} level="subsection" /> : null}
-      {section.steps.length ? section.steps.map((step, index) => <View key={index} style={styles.step}>
-        <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text><Text style={[styles.body, { flex: 1 }]}>{step}</Text>
-      </View>) : <Text style={styles.caption}>手順はまだ登録されていません。</Text>}
+      {section.steps.length ? section.steps.map((step, index) => <ProcedureStep key={index} step={step} index={index} />) : <Text style={styles.caption}>手順はまだ登録されていません。</Text>}
     </View>)}
     {chore.tools.length ? <View style={{ gap: 6 }}><SectionHeading title="使う道具" level="subsection" /><Text style={styles.body}>{chore.tools.join('・')}</Text></View> : null}
     {chore.cautions.length ? <View style={{ gap: 6 }}><SectionHeading title="注意点" level="subsection" />{chore.cautions.map((text, index) => <Text key={index} style={styles.body}>・{text}</Text>)}</View> : null}

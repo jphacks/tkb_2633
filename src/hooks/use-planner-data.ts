@@ -1,6 +1,6 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { createContext, createElement, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { createContext, createElement, useContext, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
 
@@ -129,6 +129,7 @@ export function PlannerDataProvider({ children, databaseOverride }: { children: 
 export function usePlannerData() {
   const context = useContext(PlannerContext);
   if (!context) throw new Error('usePlannerData must be used within PlannerDataProvider');
+  const readError = useCallback(() => context.controller.getSnapshot().error, [context.controller]);
   const state = useSyncExternalStore(context.controller.subscribe, context.controller.getSnapshot, context.controller.getSnapshot);
-  return { ...state, database: context.database, refresh: context.controller.refresh };
+  return { ...state, database: context.database, refresh: context.controller.refresh, readError };
 }

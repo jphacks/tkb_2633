@@ -6,6 +6,9 @@ import { formatJapaneseDate } from '../../../domain/scheduling/local-date';
 import type { V2PrivateOverlayState, V2PrivateTaskRow, V2PrivateTaskSource } from './private-overlay';
 import { v2FormStyles as styles } from './form-controls';
 import { V2ChoreProcedures } from './chore-procedures';
+import type { CompletionFeedback } from './completion-feedback';
+import { isTaskUrgent } from '../../../domain/scheduling/task-priority';
+import type { LocalDate } from '../../../domain/shared/types';
 
 export function V2PrivateTaskNotice({ overlay, sharedTimeZone, date }: { overlay?: V2PrivateOverlayState; sharedTimeZone: string; date?: string }) {
   if (!overlay) return null;
@@ -20,13 +23,17 @@ export function V2PrivateTaskNotice({ overlay, sharedTimeZone, date }: { overlay
 }
 
 /** The shared actions object is deliberately absent. Only the captured personal source accepts this checkbox. */
-export function V2PrivateTaskCard({ row, source, busy, run }: { row: V2PrivateTaskRow; source?: V2PrivateTaskSource; busy: boolean;
+export function V2PrivateTaskCard({ row, source, busy, run, feedback, today = row.date }: { row: V2PrivateTaskRow; source?: V2PrivateTaskSource; busy: boolean; feedback?: CompletionFeedback; today?: LocalDate;
   run: (work: () => Promise<unknown>) => Promise<void> }) {
   const [open, setOpen] = useState(false); const chore = row.chore;
+  const completed = feedback?.values.get(row.key) ?? row.completed;
   return <View style={{ gap: 6 }}>
-    <TaskCheckboxRow chore={{ ...chore, category: `個人 · 本人のみ${chore.category ? ` · ${chore.category}` : ''}` }} completed={row.completed}
-      deemphasized={row.suggestedDate !== row.date} onOpen={() => setOpen((value) => !value)}
-      onToggle={!busy && source ? () => run(() => source.setCompleted(row.key, row.revision, !row.completed)) : undefined} />
+    <TaskCheckboxRow chore={{ ...chore, category: `本人のみ${chore.category ? ` · ${chore.category}` : ''}` }} completed={completed} source="personal"
+      early={row.date < row.suggestedDate} urgent={isTaskUrgent({ completed, load: chore.load, recommendedDate: row.suggestedDate, windowEnd: row.windowEnd }, today)}
+      onOpen={() => setOpen((value) => !value)}
+      onToggle={!busy && source && !feedback?.values.has(row.key) ? () => feedback
+        ? feedback.run(row.key, !row.completed, () => source.setCompleted(row.key, row.revision, !row.completed))
+        : run(() => source.setCompleted(row.key, row.revision, !row.completed)) : undefined} />
     <Text style={styles.caption}>個人の推奨日：{formatJapaneseDate(row.suggestedDate, { weekday: true })}</Text>
     {open ? <Card><V2ChoreProcedures chore={chore} />
       <AppButton title="手順を閉じる" variant="quiet" compact onPress={() => setOpen(false)} />

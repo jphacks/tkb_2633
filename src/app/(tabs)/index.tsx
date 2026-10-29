@@ -1,5 +1,5 @@
 import { Tabs, router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,17 +16,21 @@ import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
 import { useWasteOccurrenceToggle } from '@/features/waste/use-waste-occurrence-toggle';
 import { WeatherAttribution } from '@/components/data-credits';
-import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
-import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
+import { useTaskCompletion } from '@/hooks/use-task-completion';
+import { useHomeClock } from '@/hooks/use-home-clock';
+import { homeSummary } from '@/features/planner/home-summary';
+import { dateTaskKey } from '@/features/planner/task-mutations';
+import { isTaskUrgent } from '@/domain/scheduling/task-priority';
 
 type WeekScope = 'current' | 'next';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { snapshot, loading, error, refresh, database } = usePlannerData();
-  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const { snapshot, loading, error, refresh, database, readError } = usePlannerData();
+  const completion = useTaskCompletion(database, refresh, readError);
+  const clock = useHomeClock(snapshot?.timeZone);
   const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const actionError = completion.error;
   const [weekScope, setWeekScope] = useState<WeekScope>('current');
   const today = snapshot?.today ?? localDateFromDate(new Date());
   const thisWeekEnd = addDays(today, 7 - weekdayOf(today));
@@ -34,16 +38,16 @@ export default function HomeScreen() {
   const nextWeekEnd = addDays(nextWeekStart, 6);
   const periodStart = weekScope === 'current' ? today : nextWeekStart;
   const periodEnd = weekScope === 'current' ? thisWeekEnd : nextWeekEnd;
-  const upcomingByDate = useMemo(() => {
+  const upcomingByDate = (() => {
     const groups: [LocalDate, DateTask[]][] = [];
     if (!snapshot) return groups;
     const firstVisibleDate = periodStart > today ? periodStart : addDays(today, 1);
     for (let date = firstVisibleDate; date <= periodEnd; date = addDays(date, 1)) {
-      const tasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date, 0, snapshot.chores), date, snapshot.chores);
+      const tasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, date, 0, snapshot.chores)), date, snapshot.chores, today);
       if (tasks.length) groups.push([date, tasks]);
     }
     return groups;
-  }, [periodEnd, periodStart, snapshot, today]);
+  })();
 
   if (loading || !snapshot) {
     return <><Tabs.Screen options={{ tabBarStyle: { display: 'none' } }} /><PlannerLoadState title="今日の家事" message="今日の家事を読み込んでいます。" error={error} retry={refresh} /></>;
@@ -59,54 +63,18 @@ export default function HomeScreen() {
   }
 
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const orderedDueToday = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores), today, snapshot.chores);
+  const orderedDueToday = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores)), today, snapshot.chores);
   const todayTotal = orderedDueToday.length;
   const todayDone = orderedDueToday.filter((task) => task.completed).length;
-  const progress = todayTotal ? Math.round((todayDone / todayTotal) * 100) : 0;
+  const summary = homeSummary(todayTotal, todayDone, clock, snapshot.timeZone);
+  const progress = summary.percent;
   const todayWaste = snapshot.upcomingWasteDates.filter((occurrence) => occurrence.date === today);
-
-  const finish = async (entryId: string) => {
-    const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
-    if (!entry || completingIds.has(entryId)) return;
-    setCompletingIds((current) => new Set(current).add(entryId));
-    setActionError(null);
-    try {
-      if (await completeChore(database, entry)) syncGoogleTasksAfterLocalCompletion(database);
-      await refresh();
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');
-    } finally {
-      setCompletingIds((current) => {
-        const next = new Set(current);
-        next.delete(entryId);
-        return next;
-      });
-    }
-  };
-
-  const undo = async (completionId: string) => {
-    if (completingIds.has(completionId)) return;
-    setCompletingIds((current) => new Set(current).add(completionId));
-    setActionError(null);
-    try {
-      if (await undoCompletedChore(database, completionId)) syncGoogleTasksAfterLocalCompletion(database);
-      await refresh();
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : '完了を取り消せませんでした。');
-    } finally {
-      setCompletingIds((current) => {
-        const next = new Set(current);
-        next.delete(completionId);
-        return next;
-      });
-    }
-  };
 
   return (
     <>
       <Tabs.Screen options={{ tabBarStyle: { ...plannerTabBarLayout(insets.bottom), backgroundColor: '#FFFFFF', borderTopColor: palette.border, borderTopWidth: 1 } }} />
       <Page contentStyle={styles.homePage}>
-        {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text></Card> : null}
+        {error || actionError ? <Card><Text style={styles.error}>{actionError ?? error}</Text>{actionError ? <Pressable accessibilityRole="button" onPress={() => void completion.retryRead()}><Text style={styles.textLink}>表示を再読込</Text></Pressable> : null}</Card> : null}
 
       <View style={styles.todayHeading}>
         <View style={styles.todayCopy}>
@@ -126,12 +94,12 @@ export default function HomeScreen() {
       <Card style={styles.progressCard}>
         <View style={styles.progressHeader}>
           <View style={styles.progressCopy}>
-            <Text style={styles.progressTitle}>今日も一日頑張りましょう</Text>
-            <Text style={styles.progressCaption}>{todayTotal}件中{todayDone}件が完了しました</Text>
+            <Text style={styles.progressTitle}>{summary.greeting}</Text>
+            {summary.showProgress ? <Text style={styles.progressCaption}>{todayTotal}件中{todayDone}件が完了しました</Text> : null}
           </View>
-          <Text style={styles.progressValue}>{progress}%</Text>
+          {summary.showProgress ? <Text style={styles.progressValue}>{progress}%</Text> : null}
         </View>
-        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View>
+        {summary.showProgress ? <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View> : null}
       </Card>
 
       {snapshot.weatherOutcome === 'adjusted' ? (
@@ -158,7 +126,7 @@ export default function HomeScreen() {
       {orderedDueToday.map((task) => {
         const chore = choresById.get(task.choreId);
         if (!chore) return null;
-        const { completed, entry, completion } = task;
+        const { completed } = task;
         return (
           <Animated.View
             key={chore.id}
@@ -166,11 +134,11 @@ export default function HomeScreen() {
             <TaskCheckboxRow
               chore={chore}
               completed={completed}
-              deemphasized={today !== task.suggestedDate}
+              source={snapshot.sharing ? 'shared' : 'personal'}
+              early={today < task.suggestedDate}
+              urgent={isTaskUrgent({ completed, load: chore.load, recommendedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today)}
               onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-              onToggle={completed
-                ? completion && !completingIds.has(completion.id) ? () => void undo(completion.id) : undefined
-                : entry && !completingIds.has(entry.id) ? () => void finish(entry.id) : undefined}
+              onToggle={!completion.pending.has(dateTaskKey(task)) ? () => void completion.toggle(task) : undefined}
             />
           </Animated.View>
         );
@@ -198,18 +166,14 @@ export default function HomeScreen() {
           {entries.map((row) => {
             const chore = choresById.get(row.choreId);
             if (!chore) return null;
-            const completionId = row.completion?.id;
-            const entryId = row.entry?.id;
             return (
               <Animated.View key={`${row.choreId}:${date}`} layout={LinearTransition.duration(240)}>
                 <TaskCheckboxRow
                   chore={chore}
                   completed={row.completed}
-                  deemphasized={row.suggestedDate !== date}
+                  source={snapshot.sharing ? 'shared' : 'personal'} early={date < row.suggestedDate}
                   onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'home' } })}
-                  onToggle={row.completed
-                    ? completionId && !completingIds.has(completionId) ? () => void undo(completionId) : undefined
-                    : entryId && !completingIds.has(entryId) ? () => void finish(entryId) : undefined}
+                  onToggle={!completion.pending.has(dateTaskKey(row)) ? () => void completion.toggle(row) : undefined}
                 />
               </Animated.View>
             );

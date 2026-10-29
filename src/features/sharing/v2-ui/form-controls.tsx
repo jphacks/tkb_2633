@@ -1,5 +1,6 @@
+import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import type { StyleProp, TextInputProps, ViewStyle } from 'react-native';
 import { palette, typography } from '../../../components/planner-ui';
 import { v2LocalTimeChoices } from './target-form';
@@ -15,10 +16,10 @@ export function V2Choices<T extends string>({ label, value, choices, onChange, d
   label: string; value: T; choices: readonly { value: T; label: string }[]; onChange: (value: T) => void; disabled?: boolean;
 }) {
   return <View style={v2FormStyles.group}><Text style={v2FormStyles.label}>{label}</Text><View style={v2FormStyles.choices}>
-    {choices.map((choice) => <Pressable key={choice.value} accessibilityRole="radio" accessibilityLabel={choice.label}
-      accessibilityState={{ checked: value === choice.value, disabled }} disabled={disabled} onPress={() => onChange(choice.value)}
-      style={[v2FormStyles.choice, value === choice.value && v2FormStyles.selectedChoice, disabled && v2FormStyles.disabled]}>
-      <Text style={v2FormStyles.choiceText}>{choice.label}</Text>
+    {choices.map(({ value: choiceValue, label: choiceLabel }) => <Pressable key={choiceValue} accessibilityRole="radio" accessibilityLabel={choiceLabel}
+      accessibilityState={{ checked: value === choiceValue, disabled }} disabled={disabled} onPress={() => onChange(choiceValue)}
+      style={[v2FormStyles.choice, value === choiceValue && v2FormStyles.selectedChoice, disabled && v2FormStyles.disabled]}>
+      <Text style={v2FormStyles.choiceText}>{choiceLabel}</Text>
     </Pressable>)}
   </View></View>;
 }

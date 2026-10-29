@@ -1,6 +1,9 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useLocalSearchParams, usePreventRemove } from 'expo-router';
+import { useMemo, useRef, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
+import { ChoreBook } from '@/components/chore-book';
+import { createChoreSettingsDocument } from '@/features/settings/chore-settings-editor';
+import type { ChoreSettingsEditor } from '@/features/settings/chore-settings-editor';
 import { NumberInputField } from '@/components/number-input-field';
 
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -24,14 +27,38 @@ export default function ChoreSettingsScreen() {
   const choreId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { snapshot, loading, error, refresh, database } = usePlannerData();
   const [reloadVersion, setReloadVersion] = useState(0);
+  const caches = useMemo(() => createChoreSettingsDocument(database), [database]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const leaving = useRef(false);
   const chore = snapshot?.chores.find((item) => item.id === choreId);
-
+  const leaveAfterSave = async (navigate: () => void) => {
+    if (leaving.current) return; leaving.current = true;
+    try {
+      for (const [id, cache] of caches.entries()) {
+        const saved = await cache.flush(); const draft = cache.getSnapshot().draft;
+        const invalid = Boolean(draft.cycleText.trim() && parseSettingInteger(draft.cycleText, 1, 3650) === undefined)
+          || parseSettingInteger(draft.radiusText, 0, 14) === undefined;
+        if (!saved || invalid) {
+          setSaveError(invalid ? '数値に入力の誤りがあります。表示中の家事で確認してください。' : '保存できていない変更があります。該当する家事で再試行してください。');
+          router.setParams({ id }); return;
+        }
+      }
+      disablePrevention(); navigate();
+    } finally { leaving.current = false; }
+  };
+  const disablePrevention = usePreventRemove(true, ({ repeat }) => { void leaveAfterSave(repeat); });
   if (loading || !snapshot) return <PlannerLoadState title="家事ごとの設定" message="設定を読み込んでいます。" error={error} retry={refresh} />;
-  if (!chore) return <Page><BackButton onPress={() => router.back()} /><ScreenHeading title="家事が見つかりません" /></Page>;
-
-  return <ChoreSettingsContent key={`${chore.id}:${reloadVersion}`} chore={chore} snapshot={snapshot} error={error}
-    onReload={async () => { await refresh(); setReloadVersion((version) => version + 1); }}
-    savePatch={async (patch, base) => { if (await updateChoreSettings(database, chore.id, patch, base)) await refresh(); }} />;
+  if (!chore) return <Page><BackButton onPress={() => void leaveAfterSave(() => router.back())} /><ScreenHeading title="家事が見つかりません" /></Page>;
+  const rows = snapshot.chores.filter(item => !item.archived);
+  const back = () => leaveAfterSave(() => router.back());
+  return <ChoreBook chores={rows} selectedId={choreId} title="家事ごとの設定" onBack={() => void back()}
+    header={saveError || error ? <Text accessibilityRole="alert" style={styles.error}>{saveError ?? error}</Text> : undefined}
+    renderChore={item => {
+      const cache = caches.get(item, snapshot.settings.frequencyMode, async (patch, base) => { if (await updateChoreSettings(database, item.id, patch, base)) await refresh(); });
+      return <ChoreSettingsContent key={`${item.id}:${reloadVersion}`} chore={item} snapshot={snapshot} error={null} cache={cache}
+        onReload={async () => { await refresh(); caches.forget(item.id); setReloadVersion(version => version + 1); }}
+        savePatch={async (patch, base) => { if (await updateChoreSettings(database, item.id, patch, base)) await refresh(); }} />;
+    }} />;
 }
 
 function ChoreSettingsContent({
@@ -40,14 +67,16 @@ function ChoreSettingsContent({
   error,
   savePatch,
   onReload,
+  cache,
 }: {
   chore: ChoreDefinition;
+  cache?: ChoreSettingsEditor;
   snapshot: PlannerSnapshot;
   error: string | null;
   savePatch: (patch: ChoreSettingsPatch, displayedBase: ChoreDefinition) => Promise<void>;
   onReload: () => Promise<void>;
 }) {
-  const autosave = useChoreSettingsAutosave(chore, snapshot.settings.frequencyMode, savePatch);
+  const autosave = useChoreSettingsAutosave(chore, snapshot.settings.frequencyMode, savePatch, cache);
   const { cycleText, radiusText, load, holidayPriority, dryingPreference, enabled } = autosave.draft;
 
   const state = snapshot.states.find((item) => item.choreId === chore.id);
@@ -57,13 +86,11 @@ function ChoreSettingsContent({
   const latestCompletion = state?.lastCompletedDate ?? (previousCompletion ? localDateFromISODateTime(previousCompletion.completedAt) : undefined);
 
   return (
-    <Page>
-      <BackButton onPress={() => void autosave.navigateAfterSave(() => router.back())} />
-      <ScreenHeading eyebrow={chore.category.toUpperCase()} title={`${chore.name}の設定`} />
+    <View style={{ gap: 12 }}>
+      <ScreenHeading title={`${chore.name}の設定`} />
       {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
 
       <Card>
-        <SectionHeading title="個別設定" />
         <SectionHeading title="基本" level="subsection" />
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
@@ -137,7 +164,7 @@ function ChoreSettingsContent({
         {autosave.status.phase === 'error' && snapshot.sharing ? <AppButton title="最新の設定を読み直す" onPress={() => void onReload().catch(() => undefined)} variant="secondary" /> : null}
         <AppButton title="この家事の履歴を見る" onPress={() => void autosave.navigateAfterSave(() => router.push({ pathname: '/history', params: { choreId: chore.id } }))} variant="secondary" />
       </Card>
-    </Page>
+    </View>
   );
 }
 

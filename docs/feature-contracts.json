@@ -5020,5 +5020,14 @@
         "name": "notification metadata has one shared kind recognizer for completion and reminders without changing personal or v1 routing"
       }
     ]
+  },
+  {
+    "feature": "v2-long-cadence-history-and-stable-future-frames",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-common-plan.test.mjs",
+        "name": "v2 seven-to3650-day recurrences retain the same future anchors after different members complete early or late"
+      }
+    ]
   }
 ]

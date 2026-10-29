@@ -45,6 +45,23 @@ test('v2 common planner applies short-cycle cooldown only to the matching subjec
     assert.equal(plan.history.length, 1); assert.equal(plan.occurrences[1].subjects.find((entry) => entry.subjectUserId === 'a').completed, false);
   }
 });
+test('v2 seven-to3650-day recurrences retain the same future anchors after different members complete early or late', async () => {
+  for (const preset of ['common', 'eachMember']) for (const cycle of [7, 14, 30, 90, 180, 365, 3650]) {
+    const f = await fixture({ preset, cycle, before: 2, after: 2 });
+    const range = { from: anchorDate, through: addDays(anchorDate, Math.min(cycle * 3, 3650)), asOfDate: addDays(anchorDate, 2) };
+    const frames = plan => plan.occurrences.map(row => [row.id, row.anchorDate, row.windowStart, row.windowEnd]);
+    const original = frames(f.plan(range)); assert.ok(original.length >= 2);
+    for (const [actor, offset] of [['a', -1], ['b', 1]]) {
+      f.complete({ actor, subject: preset === 'eachMember' ? actor : null, performedAt: `${addDays(anchorDate, offset)}T01:00:00Z`,
+        recordedAt: `${addDays(anchorDate, 2)}T01:00:00Z`, receivedAt: `${addDays(anchorDate, 2)}T02:00:00Z` });
+      accepted(f); const plan = f.plan(range); assert.deepEqual(frames(plan), original, `${preset}/${cycle}/${actor}`);
+      assert.ok(plan.occurrences.flatMap(row => row.subjects).every(subject => subject.minimumNextExecutionDay === null));
+      assert.ok(plan.occurrences.slice(1).flatMap(row => row.subjects).every(subject => !subject.completed));
+    }
+    const next = f.plan({ ...range, from: addDays(anchorDate, cycle) }); assert.deepEqual(frames(next), original.slice(1));
+    assert.equal(next.history.length, 2, 'narrowing the visible horizon never removes actual work');
+  }
+});
 test('v2 common planner keeps expired rounds and virtual consumption distinct from actual completion and the five-day home window', async () => {
   const f = await fixture({ before: 0, after: 0 });
   for (let age = 0; age <= 6; age++) {

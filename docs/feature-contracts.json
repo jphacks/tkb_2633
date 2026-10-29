@@ -5636,5 +5636,79 @@
         "name": "v2 common history reflects other members and explicit undo but excludes another persons individual subject and unapproved work"
       }
     ]
+  },
+  {
+    "feature": "settings-personal-and-group-explicit-independent-destinations",
+    "tests": [
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "${platform} chore settings order personal first in Settings and group first in Group with independent saves"
+      },
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "detached group editor targets its named workspace without switching away from another group"
+      },
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "settings history links preserve the explicit personal or named group source even while another group is selected"
+      }
+    ]
+  },
+  {
+    "feature": "settings-group-access-and-private-service-isolation",
+    "tests": [
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "named group settings reject account and membership changes or a different returned group without touching private data"
+      },
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "removed memberships never mount a group editor and v2 members cannot use administrator activation controls"
+      },
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "v2 detached settings use management-only reads and existing single-chore authority without private services or category partial writes"
+      }
+    ]
+  },
+  {
+    "feature": "settings-fixed-audience-and-private-editor-retention",
+    "tests": [
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "${platform} connected editors show one fixed audience and personal edits keep the current group untouched"
+      },
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "fixed audience stays outside the virtual document and a thousand chores keep bounded rail marks"
+      }
+    ]
+  },
+  {
+    "feature": "settings-native-switch-frame-and-aligned-columns",
+    "tests": [
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "${platform} settings switches have a centered native frame without a second iOS background and matching control columns"
+      }
+    ]
+  },
+  {
+    "feature": "connected-chore-book-category-and-chore-scrubbing",
+    "tests": [
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "${platform} category rail scrubs by measured position clamps the ends and preserves accessible taps"
+      }
+    ]
+  },
+  {
+    "feature": "early-chore-visible-status-badge",
+    "tests": [
+      {
+        "file": "tests/settings-source-ui.test.mjs",
+        "name": "early chore labels have their own blue badge and stronger background while completed chores lose the early label"
+      }
+    ]
   }
 ]

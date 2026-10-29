@@ -1,8 +1,8 @@
 import type { ChoreDefinition } from './types';
 
 /** Same category and item order in settings, connected editors and guides. */
-export function groupChores(chores: readonly ChoreDefinition[]): [string, ChoreDefinition[]][] {
-  const groups = new Map<string, ChoreDefinition[]>();
+export function groupChores<T extends Pick<ChoreDefinition, 'category' | 'archived'>>(chores: readonly T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
   for (const chore of chores) if (!chore.archived) {
     const rows = groups.get(chore.category) ?? []; rows.push(chore); groups.set(chore.category, rows);
   }

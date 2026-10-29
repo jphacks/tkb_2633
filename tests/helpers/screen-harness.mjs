@@ -17,6 +17,7 @@ export function screenHarness(filename, options = {}) {
   const modules = new Map();
   let current;
   let tree = [];
+  const readError = options.readError ?? (() => null);
   const jsx = (type, props, key) => ({ type, props: props ?? {}, key });
   const hook = (initial) => {
     const index = current.index++;
@@ -47,6 +48,7 @@ export function screenHarness(filename, options = {}) {
         ...((props.data ?? []).length ? props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })) : [props.ListEmptyComponent]),
         props.ListFooterComponent] }),
       Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1, absoluteFill: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 } },
+      PanResponder: { create: callbacks => ({ panHandlers: callbacks }) },
       AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
     },
@@ -71,10 +73,10 @@ export function screenHarness(filename, options = {}) {
     'expo-linking': { openURL: async (url) => options.openURL?.(url) },
     // Native FlatList jumps are tested directly in chore-book tests. Other screen tests
     // inspect the requested virtual chapter instead of pretending all chapters are mounted.
-    '@/components/chore-book': { ChoreBook: (props) => jsx('ChoreBook', { ...props, children: [props.header,
+    '@/components/chore-book': { ChoreBook: (props) => jsx('ChoreBook', { ...props, children: [props.titleAccessory, props.header,
       props.renderChore(props.chores.find(row => row.id === props.selectedId) ?? props.chores[0]),
       jsx(load(resolve(root, 'src/components/planner-ui.tsx')).BackButton, { onPress: props.onBack })] }) },
-    '@/hooks/use-planner-data': { usePlannerData: (scope) => scope?.personal && options.personalData ? options.personalData() : ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.(), readSnapshot: options.snapshot ?? (() => null) }) },
+    '@/hooks/use-planner-data': { usePlannerData: (scope) => scope?.personal && options.personalData ? options.personalData() : ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.(), readSnapshot: options.snapshot ?? (() => null), readError }) },
     '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
     '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },
     '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: () => {} },

@@ -1,5 +1,6 @@
+import { SettingsSwitch as Switch } from '@/components/settings-switch';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, typography } from '../../../components/planner-ui';
 import { NumberInputField } from '../../../components/number-input-field';
 import type { V2ReminderRuntime } from '../v2/reminder-runtime';

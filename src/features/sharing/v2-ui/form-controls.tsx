@@ -1,6 +1,7 @@
 import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SettingsSwitch as Switch } from '../../../components/settings-switch';
 import type { StyleProp, TextInputProps, ViewStyle } from 'react-native';
 import { palette, typography } from '../../../components/planner-ui';
 import { v2LocalTimeChoices } from './target-form';

@@ -1,6 +1,7 @@
+import { SettingsSwitch as Switch } from '@/components/settings-switch';
 import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import { useState } from 'react';
-import { StyleSheet, Switch, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { BackButton, Card, palette, SectionHeading, typography } from '../../../components/planner-ui';
 import { NumberInputField } from '../../../components/number-input-field';
 import type { LocalDate } from '../../../domain/shared/types';

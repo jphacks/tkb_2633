@@ -1,11 +1,12 @@
 import { FormTextInput as TextInput } from '../components/form-text-input';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SettingsSwitch as Switch } from '@/components/settings-switch';
 
 import { AppButton, BackButton, Card, ChoiceChip, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
-import { ChoreToggleList } from '@/features/settings/chore-toggle-list';
+import { ChoreSettingsSources } from '@/features/settings/chore-settings-sources';
 import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-indicator';
 import { AccordionSection } from '@/components/accordion-section';
 import { DataCredits, LocationAttribution, WeatherAttribution } from '@/components/data-credits';
@@ -14,6 +15,7 @@ import type { FrequencyMode } from '@/domain/chores/types';
 import type { CalendarCountDisplayMode, Weekday } from '@/domain/shared/types';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
+import { WorkspaceContext } from '@/contexts/workspace-context';
 import type { WeatherRegionCandidate } from '@/features/weather/open-meteo-geocoder';
 import { useMunicipalitySuggestions } from '@/features/weather/use-municipality-suggestions';
 import {
@@ -24,7 +26,6 @@ import {
   saveGoogleSyncState,
   saveWeatherLocation,
   setNotificationsEnabled,
-  setChoresEnabled,
   updateCalendarCountDisplay,
   updatePlannerSettings,
 } from '@/platform/storage/repository';
@@ -51,18 +52,19 @@ const weekdays: { id: Weekday; label: string }[] = [
 const notificationGateway = new ExpoLocalNotificationGateway();
 
 export default function SettingsScreen() {
-  const { snapshot, loading, error: loadError, refresh, database, readError } = usePlannerData();
+  const { snapshot, loading, error: loadError, refresh, database } = usePlannerData();
   if (loading || !snapshot) return <PlannerLoadState title="設定" message="設定を読み込んでいます。" error={loadError} retry={refresh} />;
-  return <SettingsContent snapshot={snapshot} loadError={loadError} refresh={refresh} database={database} readError={readError} />;
+  return <SettingsContent snapshot={snapshot} loadError={loadError} refresh={refresh} database={database} />;
 }
 
-function SettingsContent({ snapshot, loadError, refresh, database, readError }: {
-  readError?: () => string | null;
+function SettingsContent({ snapshot, loadError, refresh, database }: {
   snapshot: PlannerSnapshot;
   loadError: string | null;
   refresh: (options?: { waitForWeather?: boolean }) => Promise<void>;
   database: SQLiteDatabase;
 }) {
+  const workspace = useContext(WorkspaceContext);
+  const v2 = workspace?.active?.protocol === 2;
   const [mode, setMode] = useState<FrequencyMode>(snapshot.settings.frequencyMode);
   const [restDays, setRestDays] = useState<Weekday[]>(snapshot.settings.restDays as Weekday[]);
   const [heavyLimit, setHeavyLimit] = useState(snapshot.settings.heavyDailyLimit);
@@ -72,7 +74,6 @@ function SettingsContent({ snapshot, loadError, refresh, database, readError }: 
   const [calendarCountColors, setCalendarCountColors] = useState(snapshot.settings.calendarCountColors);
   const [calendarCountDisplayMode, setCalendarCountDisplayMode] = useState<CalendarCountDisplayMode>(snapshot.settings.calendarCountDisplayMode);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [calendarColorsSaving, setCalendarColorsSaving] = useState(false);
   const [calendarColorsMessage, setCalendarColorsMessage] = useState<string | null>(null);
@@ -571,17 +572,13 @@ function SettingsContent({ snapshot, loadError, refresh, database, readError }: 
       </AccordionSection>
 
       <AccordionSection title="家事ごとの設定" expanded={expandedSections.has('chore-settings')} onToggle={() => toggleSection('chore-settings')}>
-        <Text style={styles.hint}>家事を選ぶと周期、実施期間、負荷を変更できます。</Text>
-        <ChoreToggleList chores={snapshot.chores} expanded={expandedCategories} setExpanded={setExpandedCategories}
-          save={async (ids, enabled) => { await setChoresEnabled(database, ids, enabled); await refresh(); return { refreshed: !readError?.() }; }}
-          retryRead={async () => { await refresh(); return !readError?.(); }}
-          onOpen={(id) => router.push({ pathname: '/settings/chore/[id]', params: { id } })} />
+        <ChoreSettingsSources first="personal" />
       </AccordionSection>
 
       <Card>
-        <SectionHeading title="ゴミ収集日" />
+        <SectionHeading title={v2 ? 'グループのゴミ収集日' : 'ゴミ収集日'} />
         <Text style={styles.hint}>ゴミの種類と毎週・隔週・毎月の収集日を登録できます。</Text>
-        <AppButton title="ゴミ収集日を管理" onPress={() => router.push('/waste')} variant="secondary" />
+        <AppButton title="ゴミ収集日を管理" onPress={() => router.push(v2 ? '/group-v2/waste' : '/waste')} variant="secondary" />
       </Card>
 
       <AccordionSection title="通知・ウィジェット" expanded={expandedSections.has('notifications')} onToggle={() => toggleSection('notifications')}>

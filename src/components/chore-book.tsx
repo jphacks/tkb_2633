@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, StyleSheet, Text, View } from 'react-native';
 import type { ListViewToken } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChoreDefinition } from '../domain/chores/types';
 import { groupChores } from '../domain/chores/chore-groups';
 import { BackButton, palette, typography } from './planner-ui';
+import { ChoreCategoryRail } from './chore-category-rail';
 
 /** A continuous, virtualized document. The dock and category rail never scroll away. */
-export function ChoreBook({ chores, selectedId, renderChore, onBack, header, title, hasTabBar = false }: {
+export function ChoreBook({ chores, selectedId, renderChore, onBack, header, title, titleAccessory, hasTabBar = false }: {
   chores: readonly ChoreDefinition[]; selectedId?: string; title: string; header?: ReactNode;
+  titleAccessory?: ReactNode;
   renderChore(chore: ChoreDefinition): ReactNode; onBack(): void;
   hasTabBar?: boolean;
 }) {
@@ -21,22 +23,27 @@ export function ChoreBook({ chores, selectedId, renderChore, onBack, header, tit
   const target = useRef<string | null>(null); const retries = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [category, setCategory] = useState(ordered.find(row => row.id === selectedId)?.category ?? groups[0]?.[0] ?? '');
+  const [visibleId, setVisibleId] = useState(selectedId ?? ordered[0]?.id);
+  const scrubbing = useRef(false);
+  const onScrubChange = useCallback((active: boolean) => { scrubbing.current = active; }, []);
   const insets = useSafeAreaInsets();
   const jump = useCallback((id: string) => {
     const index = latest.current.findIndex(row => row.id === id); if (index < 0) return;
+    clearTimeout(timer.current);
     target.current = id; retries.current = 0;
     list.current?.scrollToIndex({ index, animated: false, viewPosition: 0, viewOffset: 8 });
     setCategory(latest.current[index].category);
+    setVisibleId(id);
   }, []);
   useEffect(() => {
     if (selectedId) timer.current = setTimeout(() => jump(selectedId), 0);
     return () => { clearTimeout(timer.current); target.current = null; };
   }, [selectedId, jump]);
   const visible = useCallback(({ viewableItems }: { viewableItems: ListViewToken[] }) => {
-    const first = viewableItems.find(item => item.isViewable)?.item; if (first) setCategory(first.category);
+    const first = viewableItems.find(item => item.isViewable)?.item; if (first && !scrubbing.current) { setCategory(first.category); setVisibleId(first.id); }
   }, []);
   return <SafeAreaView style={styles.safe} edges={['top']}>
-    <View style={styles.captionBar}><Text style={styles.captionTitle}>{title}</Text><Text style={styles.caption}>{category}</Text></View>
+    <View style={styles.captionBar}><View style={styles.captionCopy}><Text style={styles.captionTitle}>{title}</Text><Text style={styles.caption}>{category}</Text></View>{titleAccessory}</View>
     <View style={styles.document}>
       <FlatList ref={list} data={ordered} keyExtractor={chore => chore.id} initialNumToRender={2} maxToRenderPerBatch={2} windowSize={5}
         removeClippedSubviews={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
@@ -55,23 +62,19 @@ export function ChoreBook({ chores, selectedId, renderChore, onBack, header, tit
           {index === 0 || ordered[index - 1].category !== item.category ? <Text style={styles.category}>{item.category}</Text> : null}
           {renderChore(item)}
         </View>} />
-      <View style={styles.rail}>{groups.map(([name, rows]) => <Pressable key={name} accessibilityRole="button"
-        accessibilityLabel={`${name}の先頭へ移動`} accessibilityState={{ selected: category === name }} onPress={() => jump(rows[0].id)} style={styles.railTarget}>
-        <View style={[styles.railBar, category === name && styles.railSelected]} />
-      </Pressable>)}</View>
+      <ChoreCategoryRail groups={groups.map(([name, chores]) => ({ name, chores }))} category={category} selectedId={visibleId} onSelect={jump} onScrubChange={onScrubChange} />
     </View>
     <View style={[styles.dock, { paddingBottom: hasTabBar ? 8 : Math.max(8, insets.bottom) }]}><BackButton onPress={onBack} /></View>
   </SafeAreaView>;
 }
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: palette.background }, document: { flex: 1 },
-  captionBar: { paddingVertical: 8, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border, gap: 2 },
-  captionTitle: { ...typography.label, color: palette.ink, fontWeight: '700' }, caption: { ...typography.caption, color: palette.muted },
+  captionBar: { paddingVertical: 8, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  captionCopy: { gap: 2, flexShrink: 0 },
+  captionTitle: { ...typography.body, color: palette.ink, fontWeight: '700' }, caption: { ...typography.caption, color: palette.muted },
   content: { paddingLeft: 16, paddingRight: 42, paddingTop: 8, paddingBottom: 20, gap: 24, maxWidth: 820, width: '100%', alignSelf: 'center' },
   chapter: { gap: 12, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: palette.border },
   category: { ...typography.caption, color: palette.accent, fontWeight: '700', marginTop: 6 },
-  rail: { position: 'absolute', right: 0, top: '12%', bottom: '12%', width: 36, justifyContent: 'center' },
-  railTarget: { minHeight: 44, width: 36, alignItems: 'center', justifyContent: 'center' },
-  railBar: { height: 3, width: 12, backgroundColor: '#C7CFDE', borderRadius: 2 }, railSelected: { width: 20, backgroundColor: palette.accent },
   dock: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingHorizontal: 18, backgroundColor: palette.surface },
 });

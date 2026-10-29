@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ActivityIndicator, Alert, Share, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { AccordionSection } from '@/components/accordion-section';
+import { ChoreSettingsSources } from '@/features/settings/chore-settings-sources';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { enableSharingSession, createSharingWorkspace, createV2SharingWorkspace, openSharedWorkspace, requestSharingWorkspace, sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
 import { GroupCreationForm } from '@/features/sharing/group-creation-form';
@@ -114,6 +115,7 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
   const [invite, setInvite] = useState<Awaited<ReturnType<NonNullable<SharedWorkspace['manager']>['createInvitation']>> | null>(null);
   const [failedQr, setFailedQr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false); const [clock, setClock] = useState(() => Date.now());
+  const [choreSettingsOpen, setChoreSettingsOpen] = useState(false);
   const load = useCallback(async () => {
     const record = await workspace.record(); const checkpoint = await workspace.checkpoint();
     let snapshot: SharedWorkspaceOverview | null = null; let openError: string | null = null;
@@ -160,6 +162,9 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
       <AppButton title="今すぐ同期" disabled={busy || ['left', 'removed'].includes(record.status)} onPress={() => void run(async () => { await workspace.sync({ force: true, budgetMs: 120_000 }); await refresh(); await loadRequests(); })} />
       {snapshot ? <Text style={styles.caption}>共通の時刻：{snapshot.timeZone}</Text> : null}
     </Card>
+    {snapshot ? <AccordionSection title="家事ごとの設定" expanded={choreSettingsOpen} onToggle={() => setChoreSettingsOpen(value => !value)}>
+      <ChoreSettingsSources first="group" group={workspace} />
+    </AccordionSection> : null}
     {snapshot ? <Card><SectionHeading title="メンバー" />
       {roster?.body.members.map((member) => <View key={member.userId} style={styles.member}>
         <Text style={styles.label}>{snapshot.members.find((item) => item.id === member.userId)?.displayName ?? 'メンバー'}{member.userId === workspace.userId ? '（自分）' : ''}{member.userId === roster.body.ownerUserId ? ' · 所有者' : ''}</Text>

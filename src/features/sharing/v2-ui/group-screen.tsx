@@ -41,6 +41,7 @@ import { useHomeClock } from '../../../hooks/use-home-clock';
 import { HomeHeader, HomeProgress, LoadSortButton, CompletionToast } from '../../../components/home-ui';
 import { useHomeDisplay } from '../../../hooks/use-home-display';
 import { homeSummary } from '../../planner/home-summary';
+import { SettingsAudience } from '../../../components/settings-audience';
 
 export interface V2GroupScreenProps {
   purpose: 'development' | 'workspace'; workspaceName?: string; workspaceError?: string; onManage?: () => void;
@@ -63,7 +64,7 @@ function readOptionsForView(view: V2GroupScreenProps['view'], anchorDate?: strin
   if (view === 'groupPolicy') return { management: true, groupPolicy: true };
   if (view === 'dateRights') return { management: true, permissionsChoreId: choreId };
   if (view === 'details') return { management: true, detailChoreId: choreId };
-  if (view === 'chores' || view === 'addChore') return { management: true };
+  if (view === 'chores' || view === 'addChore' || view === 'configuration') return { management: true };
   if (anchorDate) return { focusDate: anchorDate, ...(['calendar', 'home'].includes(view) ? { waste: true } : {}) };
   return view === 'calendar' ? { calendarMonth: 'current', waste: true } : view === 'home' ? { waste: true } : undefined;
 }
@@ -145,8 +146,13 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     }
   } };
   const run = async (work: () => Promise<unknown>) => { await perform(work); };
+  const editingSettings = view === 'configuration' || view === 'details';
+  const groupName = typeof screenModel?.plan.commonSettings.name === 'string' ? screenModel.plan.commonSettings.name : workspaceName ?? '共有グループ';
+  const settingsHeader = purpose === 'workspace' && editingSettings ? <View style={styles.settingsHeader}>
+    <Text style={styles.settingsHeaderTitle}>家事ごとの設定</Text><SettingsAudience groupName={groupName} />
+  </View> : null;
   const notice = <View style={styles.notice}>
-    {purpose === 'workspace' ? <Text style={styles.noticeTitle}>{typeof screenModel?.plan.commonSettings.name === 'string'
+    {purpose === 'workspace' && !editingSettings ? <Text style={styles.noticeTitle}>{typeof screenModel?.plan.commonSettings.name === 'string'
       ? screenModel.plan.commonSettings.name : workspaceName ?? '共有グループ'}</Text> : null}
     <Text style={styles.caption}>{purpose === 'development' ? '検査用の独立したデータです。既存データやログイン中のアカウントを使わず、共有操作をクラウドへ送信しません。' : '端末に保存した変更は、接続後に共有します。申請・回答は受付と必要な承認の完了後に確定します。'}</Text>
     {purpose === 'workspace' && onManage ? <AppButton title="グループの管理・切り替え" variant="quiet" compact onPress={onManage} /> : null}
@@ -190,10 +196,19 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     <V2AddChore actions={controller.actions} busy={busy} run={run} header={notice} onBack={onBack} onCreated={onChoreCreated ?? onDetails ?? onConfiguration} />
   </V2ScreenFrame>;
   if (view === 'details') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    {settingsHeader}
     <V2ChoreDetailsEditor model={model} choreId={choreId ?? ''} controller={controller} header={notice} onBack={onBack}
       onConfiguration={choreId ? () => onConfiguration(choreId) : undefined}
       onDateRights={choreId && onDateRights ? () => onDateRights(choreId) : undefined}
       onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} />
+  </V2ScreenFrame>;
+  if (view === 'configuration') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+    {settingsHeader}
+    <V2FormScrollView contentContainerStyle={styles.page}>{notice}
+      {choreId && model.configurations.some((entry) => entry.choreId === choreId) ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === choreId)?.name ?? '共有家事'} />
+        <V2ConfigurationEditor model={model} choreId={choreId} controller={controller} onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} onBack={onBack} /></>
+        : <><BackButton onPress={onBack} /><Text style={styles.body}>設定する家事を選んでください。</Text></>}
+    </V2FormScrollView>
   </V2ScreenFrame>;
   if (!personal) return <V2ScreenFrame purpose={purpose} style={styles.safe}>{notice}<Text style={styles.body}>本人の推奨日を読み込めませんでした。</Text>
     <AppButton title="読み込みを再試行" variant="quiet" onPress={() => void refresh()} /></V2ScreenFrame>;
@@ -221,13 +236,6 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   if (view === 'requests') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
     <V2DateRequests model={model} actions={controller.actions} busy={busy} run={run} readOwnCalendar={session.readOwnCalendar}
       header={<View style={{ gap: 16 }}>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="日時の変更申請" /></View>} />
-  </V2ScreenFrame>;
-  if (view === 'configuration') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
-    <V2FormScrollView contentContainerStyle={styles.page}>{notice}
-      {choreId && model.configurations.some((entry) => entry.choreId === choreId) ? <><ScreenHeading title={model.plan.chores.find((entry) => entry.id === choreId)?.name ?? '共有家事'} />
-        <V2ConfigurationEditor model={model} choreId={choreId} controller={controller} onSaved={async () => { if (!await refresh()) throw new Error('保存済みです。表示を更新するため画面を開き直してください。'); }} onBack={onBack} /></>
-        : <><BackButton onPress={onBack} /><Text style={styles.body}>設定する家事を選んでください。</Text></>}
-    </V2FormScrollView>
   </V2ScreenFrame>;
   if (view === 'round' || view === 'date' || view === 'assignment') {
     const round = model.plan.occurrences.find((entry) => entry.id === occurrenceId); const subject = round?.subjects.find((entry) => entry.id === subjectId);
@@ -318,6 +326,9 @@ function V2ScreenFrame({ purpose, children, ...props }: ComponentProps<typeof Sa
   return <SafeAreaView {...props}>{purpose === 'development' ? <Text style={styles.qaScope}>開発用・端末内プレビュー</Text> : null}{children}</SafeAreaView>;
 }
 const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: palette.background }, page: { padding: 16, gap: 10, paddingBottom: 40 },
+  settingsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 18, paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border },
+  settingsHeaderTitle: { ...typography.body, color: palette.ink, fontWeight: '700' },
   qaScope: { ...typography.caption, color: palette.warning, paddingHorizontal: 16, paddingVertical: 4 },
   notice: { padding: 12, gap: 4, borderWidth: 1, borderRadius: 12, borderColor: palette.border }, noticeTitle: { ...typography.label, fontWeight: '600', color: palette.ink },
   caption: { ...typography.caption, color: palette.muted }, body: { ...typography.body, color: palette.ink }, error: { ...typography.caption, color: palette.warning }, footer: { gap: 16, paddingTop: 12 },

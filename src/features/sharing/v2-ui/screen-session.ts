@@ -8,12 +8,14 @@ import type { V2PersonalPlan } from '../v2/personal-plan';
 import { v2CalendarMonth } from './calendar-projection.ts';
 import type { V2PrivateOverlayState, V2PrivateTaskSource } from './private-overlay';
 import type { PrivateCalendarRuntime } from '../private-calendar/runtime';
+import { assessV2UntimedDailyLoad } from '../v2/daily-load.ts';
+import type { V2DailyLoadAssessment } from '../v2/daily-load';
 
 export interface V2GroupUiSession {
   controller: V2GroupController; groupId: string; userId: string;
   privateTasks?: V2PrivateTaskSource;
   readOwnCalendar?: PrivateCalendarRuntime['readOwnCalendar'];
-  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean; appliances?: boolean; applianceId?: string; reminders?: boolean }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState }>;
+  readModel: (options?: { calendarMonth?: string; focusDate?: string; detailChoreId?: string; management?: boolean; groupPolicy?: boolean; permissionsChoreId?: string; waste?: boolean; appliances?: boolean; applianceId?: string; reminders?: boolean }) => Promise<V2GroupScreenModel & { personal?: V2PersonalPlan; privateOverlay?: V2PrivateOverlayState; dailyLoad?: V2DailyLoadAssessment }>;
 }
 
 /** The UI computes its range and personal suggestions from one authenticated group clock. */
@@ -53,6 +55,8 @@ export function createV2ScreenSession(input: { controller: V2GroupController; gr
         ? { ownerUserId: input.userId, days: privateOverlay.dailyLoad } : undefined;
       const personal = buildV2PersonalPlan(model.plan, { viewerUserId: input.userId, now: instant.getTime(), settings: preferences.settings, privateLoad,
         ...(calendar ? { calendar: { cache: calendar.cache, binding: calendar.binding } } : {}) });
-      return { ...model, personal, ...(privateOverlay ? { privateOverlay } : {}) };
+      const dailyLoad = model.plan.initialized && model.plan.policy && model.plan.range.from <= model.plan.range.asOfDate && model.plan.range.through >= model.plan.range.asOfDate
+        ? assessV2UntimedDailyLoad({ model, userId: input.userId, personal, privateOverlay, limits: preferences.settings.loadLimits }) : undefined;
+      return { ...model, personal, ...(privateOverlay ? { privateOverlay } : {}), ...(dailyLoad ? { dailyLoad } : {}) };
     } };
 }

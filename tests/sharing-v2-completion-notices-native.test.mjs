@@ -13,6 +13,7 @@ import { notificationWorkspace, isPlannerNotification } from '../src/features/no
 import { readFileSync } from 'node:fs';
 import { screenHarness } from './helpers/screen-harness.mjs';
 import * as notificationQueue from '../src/features/notifications/reconcile-local-notifications.ts';
+import * as localDate from '../src/domain/scheduling/local-date.ts';
 
 async function receive(d, facts) { const checkpoint = await readSharingCheckpoint(d.database, groupId);
   await applyReceivedSharedFacts(d.database, groupId, facts, String(facts.length), d.repository.project, checkpoint.cursor, now().getTime(), d.repository.evidenceForServerReceipts(receiptsFor(facts))); }
@@ -25,11 +26,12 @@ async function setup(platform) {
   const gateway = { maximumScheduledRequests: platform === 'ios' ? 60 : undefined,
     getScheduledRequests: async () => { calls.push('pending-read'); return [...pending]; } };
   const assertAccess = () => { if (!active) throw new Error('account changed'); };
-  const module = loadNativeModule('src/platform/sharing/v2-completion-notices.ts', {
+  const mocks = {
     'react-native': { Platform: { OS: platform } }, '../storage/sharing-v2-completion-notices': stores,
     '../../features/sharing/v2/completion-notice-runtime': runtimes, '../../features/sharing/v2/completion-notices': projection,
     '../../features/sharing/v2/native-identity': identities,
     '../../features/notifications/reconcile-local-notifications': notificationQueue,
+    '../../domain/scheduling/local-date': localDate,
     '../notifications/expo-local-notification-gateway': { expoLocalNotificationGateway: gateway },
     'expo-notifications': { AndroidImportance: { DEFAULT: 3 }, getPermissionsAsync: async () => { calls.push('permission'); return { granted: true }; },
       setNotificationChannelAsync: async (name, config) => { calls.push(['channel', name, config]); await channelHook?.(); },
@@ -37,7 +39,9 @@ async function setup(platform) {
       getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => { calls.push(['dismiss', id]); presented.splice(presented.findIndex(row => row.request.identifier === id), 1); },
       cancelScheduledNotificationAsync: async id => { calls.push(['cancel-pending', id]); pending.splice(pending.findIndex(row => row.key === id), 1); },
     },
-  });
+  };
+  mocks['./v2-immediate-notices'] = loadNativeModule('src/platform/sharing/v2-immediate-notices.ts', mocks);
+  const module = loadNativeModule('src/platform/sharing/v2-completion-notices.ts', mocks);
   const scope = { repository: d.repository, userId: 'owner', groupId, assertAccess };
   const runtime = module.createNativeV2CompletionNotices(scope);
   return { f, d, member, a, b, module, runtime, calls, presented, pending, gateway, scope, channel(work) { channelHook = work; }, stop() { active = false; },

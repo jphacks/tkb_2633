@@ -5,6 +5,7 @@ import { v2NativeWorkspaceNamespace, v2NotificationPrefix } from './native-ident
 import { addDays, parseLocalDate } from '../../../domain/scheduling/local-date.ts';
 import { sharedDateAtTime, sharedLocalDate } from '../group-clock.ts';
 import type { LocalDate } from '../../../domain/shared/types';
+import { v2OwnedPendingSchedule } from './owner-schedule.ts';
 
 export interface V2ReminderPreferences { enabled: boolean; hour: number; minute: number }
 export function validateV2ReminderPreferences(value: V2ReminderPreferences): V2ReminderPreferences {
@@ -24,20 +25,8 @@ export function createV2ReminderRequests(input: { model: V2GroupScreenModel; use
   const today = sharedLocalDate(now, plan.timeZone); const through = addDays(today, 30);
   if (plan.range.from > today || plan.range.through < through || plan.range.asOfDate !== today) throw new Error('通知に必要な予定期間を読み直してください。');
   if (!preferences.enabled || !plan.initialized || !plan.policy) return { requests: [] as LocalNotificationRequest[], skippedDates: [] as LocalDate[] };
-  const names = new Map(plan.chores.map(chore => [chore.id, chore]));
-  const suggestions = new Map(personal?.recommendations.map(row => [row.subjectOccurrenceId, row]) ?? []);
   const dates = new Map<LocalDate, Map<string, string>>();
-  for (const round of plan.occurrences) {
-    const chore = names.get(round.choreId);
-    if (!chore || !chore.enabled || chore.archived || !round.activeInPeriod || round.assignmentConflictIds.length || round.needsAssignment) continue;
-    for (const subject of round.subjects) {
-      const owns = subject.subjectUserId === null ? !round.assigneeIds.length || round.assigneeIds.includes(userId) : subject.subjectUserId === userId;
-      if (!owns || !subject.required || subject.completed || subject.pendingCompletionIds.length || subject.cooldownSuppressed || subject.virtuallyConsumed
-        || subject.requestReviewIds.length || subject.dependencyBlocked || subject.dependencyAwaitingCompletion
-        || subject.formalDate.kind === 'conflict' || subject.formalDate.kind === 'review') continue;
-      const recommendation = suggestions.get(subject.id);
-      if (recommendation && !['recommended', 'manual'].includes(recommendation.state)) continue;
-      const date = recommendation?.date ?? subject.suggestedDate;
+  for (const { chore, subject, date } of v2OwnedPendingSchedule(model, userId, personal)) {
       const manual = subject.formalDate.kind === 'manual' && subject.formalDate.mode !== 'deadline';
       const candidates = manual ? [date] : [date, subject.executionWindowEnd, addDays(subject.executionWindowEnd, 1)];
       for (const candidate of new Set(candidates)) {
@@ -45,7 +34,6 @@ export function createV2ReminderRequests(input: { model: V2GroupScreenModel; use
         if (candidate < today || candidate > through) continue;
         const bucket = dates.get(candidate) ?? new Map(); bucket.set(subject.id, chore.name); dates.set(candidate, bucket);
       }
-    }
   }
   const requests: LocalNotificationRequest[] = []; const skippedDates: LocalDate[] = [];
   for (const [date, rows] of [...dates].sort(([a], [b]) => a.localeCompare(b))) {

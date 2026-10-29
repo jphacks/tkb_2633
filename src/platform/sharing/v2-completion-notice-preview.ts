@@ -2,6 +2,7 @@ import { getPermissionsAsync, getPresentedNotificationsAsync, dismissNotificatio
 import { createV2CompletionNoticePresenter, developmentV2CompletionNoticePrefix } from './v2-completion-notices';
 import { V2_SCHEDULER_VERSION } from '../../features/sharing/v2/payload-schema';
 import { sharedDocumentDigest } from '../../features/sharing/crypto';
+import { serializeNotificationRequests } from '../../features/notifications/request-snapshot';
 
 /** OS-delivery check only. It neither invents a server receipt nor acts as evidence of a real shared completion. */
 export function createV2CompletionNoticePreview() {
@@ -9,8 +10,8 @@ export function createV2CompletionNoticePreview() {
   const scope = { userId: 'qa-notice-owner-20261029', groupId: `qa-notice-group-20261029.${V2_SCHEDULER_VERSION}` };
   const prefix = developmentV2CompletionNoticePrefix(scope); const key = prefix + sharedDocumentDigest('synthetic-os-delivery-v1');
   const guard = async () => { if (!__DEV__) throw new Error('検査用の通知配信を利用できません。'); };
-  const other = async () => sharedDocumentDigest(JSON.stringify((await getPresentedNotificationsAsync()).filter(row => !row.request.identifier.startsWith(prefix))
-    .map(row => row.request).sort((a, b) => a.identifier.localeCompare(b.identifier))));
+  const other = async () => sharedDocumentDigest(serializeNotificationRequests((await getPresentedNotificationsAsync()).filter(row => !row.request.identifier.startsWith(prefix))
+    .map(row => row.request)));
   return {
     async present() {
       await guard(); if (!(await getPermissionsAsync()).granted) throw new Error('通知が許可されていません。'); await guard();

@@ -5262,5 +5262,139 @@
         "name": "a queued v2 Native command rechecks a newly stored access error while its cached model remains readable"
       }
     ]
+  },
+  {
+    "feature": "v2-untimed-work-is-load-only",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "untimed daily load warns at the configured limit without inventing a time conflict or moving any chore"
+      },
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "untimed load counts only this member’s pending work and removes completed disabled or differently assigned chores"
+      },
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "untimed load combines matching civil days but preserves personal dates and separate loads across timezones"
+      },
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "untimed load accepts shared tzdb regions even when an older Native Intl cannot format that timezone"
+      },
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "date-only manual work checks load even when Calendar is missing without becoming an interval or requesting a time"
+      },
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "untimed load includes overdue cards still displayed today and removes completed cards using the existing private selector"
+      },
+      {
+        "file": "tests/sharing-v2-untimed-load.test.mjs",
+        "name": "${platform} untimed daily-load UI shows counts without a time picker or move confirmation"
+      }
+    ]
+  },
+  {
+    "feature": "v2-untimed-load-private-once-daily-marker",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "untimed load notifications coalesce one hundred requests and retain one private daily marker across runtime restart"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "load alerts stay opt-in and denied permission or below-limit work creates no durable marker"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "real SQLite daily load claims are exclusive across callers and reject obsolete preference or group revisions"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "daily load marker transaction rolls back if authority disappears after insertion and never initializes a personal database"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "uncertain OS delivery retains its private claim to avoid duplicate alerts while a new civil day may alert once"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "a private cache becoming available in another timezone cannot deliver a second load alert on the same group day"
+      }
+    ]
+  },
+  {
+    "feature": "v2-untimed-load-current-scope-and-budget",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "load notifications revalidate changed private counts limits and settings before reserving the one daily alert"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "load notification rejects a stale civil day changed account foreign owner and exhausted worker budget without a native write"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "a shorter shared-worker budget fences an already queued load notification and cannot start another worker"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-runtime.test.mjs",
+        "name": "queued load notification captures its displayed assessment and preferences before an asynchronous boundary"
+      }
+    ]
+  },
+  {
+    "feature": "v2-untimed-load-native-queue-capacity-and-routing",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-load-notice-native.test.mjs",
+        "name": "${platform} untimed load Native delivery is owner-scoped opt-in immediate and contains neither chore names nor times"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-native.test.mjs",
+        "name": "${platform} untimed alert waits for the app-wide queue and rechecks a changed account before claiming or writing"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-native.test.mjs",
+        "name": "${platform} immediate notice cleanup preserves current personal v1 completion and QA scopes when a load group is removed"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-native.test.mjs",
+        "name": "Android disabling notifications while a load channel is created prevents both the private marker and OS delivery"
+      },
+      {
+        "file": "tests/sharing-v2-load-notice-native.test.mjs",
+        "name": "iOS a full native reservation refuses a load alert before claiming the date and preserves all sixty existing reminders"
+      }
+    ]
+  },
+  {
+    "feature": "v2-untimed-load-preserves-completion-notices",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-reminder-native.test.mjs",
+        "name": "a failed untimed-load alert does not suppress received-completion delivery within the same shared worker budget"
+      }
+    ]
+  },
+  {
+    "feature": "v2-tasks-qa-first-action-after-reopen",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-tasks-preview-cold.test.mjs",
+        "name": "${platform} v2 Tasks QA can complete and undo as its first action after reopening without an unprepared Native port or extra Google read"
+      }
+    ]
+  },
+  {
+    "feature": "native-notification-snapshot-preserves-values-without-order-noise",
+    "tests": [
+      { "file": "tests/sharing-v2-notice-preview-snapshot.test.mjs", "name": "Native notification snapshots preserve all JSON values while ignoring dictionary and request ordering" },
+      { "file": "tests/sharing-v2-notice-preview-snapshot.test.mjs", "name": "completion OS QA treats Native dictionary and request ordering changes as unchanged notifications" },
+      { "file": "tests/sharing-v2-notice-preview-snapshot.test.mjs", "name": "completion OS QA still rejects a changed or removed non-QA notification" }
+    ]
   }
 ]

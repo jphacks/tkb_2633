@@ -61,6 +61,7 @@ function ReminderEditor({ runtime, saved, onBack, notice }: { runtime: V2Reminde
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}><Text style={typography.label}>通知を受け取る</Text>
         <Switch accessibilityLabel="このグループの通知を受け取る" value={state.raw.enabled} disabled={busy} onValueChange={value => { void toggle(value); }} /></View>
       <Text style={typography.caption}>本人担当と担当未確定の共通家事を通知します。ほかの人だけの担当は催促しません。</Text>
+      <Text style={typography.caption}>時刻未設定の家事は日ごとの負荷だけを確認し、上限以上で通知します。</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <NumberInputField accessibilityLabel="共有通知の時" suffix="時" value={state.raw.hour} maxLength={2} editable={!busy} onChangeText={hour => change({ hour })} onBlur={() => { void store.flush(); }} />
         <NumberInputField accessibilityLabel="共有通知の分" suffix="分" value={state.raw.minute} maxLength={2} editable={!busy} onChangeText={minute => change({ minute })} onBlur={() => { void store.flush(); }} />

@@ -2,7 +2,7 @@ import { sharedGoogleNamespace } from '../google-sync/workspace-policy.ts';
 import { v2NativeWorkspaceNamespace } from '../sharing/v2/native-identity.ts';
 
 export function isPlannerNotification(data: unknown): data is { kind: string; workspace?: unknown } {
-  return Boolean(data && typeof data === 'object' && 'kind' in data && ['daily-housework-digest', 'v2-housework-digest', 'v2-housework-completed'].includes(String(data.kind)));
+  return Boolean(data && typeof data === 'object' && 'kind' in data && ['daily-housework-digest', 'v2-housework-digest', 'v2-housework-completed', 'v2-housework-load'].includes(String(data.kind)));
 }
 
 /** Notification metadata contains only an opaque scope; never infer a group from a chore name. */

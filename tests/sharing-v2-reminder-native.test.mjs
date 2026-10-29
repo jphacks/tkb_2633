@@ -14,10 +14,14 @@ import * as identity from '../src/features/sharing/v2/native-identity.ts';
 import * as personalPlan from '../src/features/sharing/v2/personal-plan.ts';
 import * as cryptoModule from '../src/features/sharing/crypto.ts';
 import { sharedLocalDate } from '../src/features/sharing/group-clock.ts';
+import * as loadStores from '../src/platform/storage/sharing-v2-load-notices.ts';
+import * as loadRuntime from '../src/features/sharing/v2/load-notice-runtime.ts';
+import * as completionNotices from '../src/features/sharing/v2/completion-notices.ts';
+import * as localDate from '../src/domain/scheduling/local-date.ts';
 
-async function setup() {
+async function setup(options = {}) {
   const f = await fixture(); const d = await f.device(); await d.repository.commit(seeds());
-  const calls = []; const scheduled = new Map(); let active = true; let failPersonal = false;
+  const calls = []; const scheduled = new Map(); let active = true; let failPersonal = false; let completionCalls = 0;
   const guard = () => { if (!active) throw new Error('account changed'); };
   const gateway = { maximumScheduledRequests: 60, async requestPermission() { calls.push('request-permission'); return true; }, async hasPermission() { return true; },
     async getScheduledRequests() { return [...scheduled.values()]; }, async schedule(request) { scheduled.set(request.key, request); return request.key; }, async cancel(key) { scheduled.delete(key); } };
@@ -33,15 +37,24 @@ async function setup() {
     '../../features/sharing/v2-ui/private-overlay': overlayModule, '../../features/sharing/v2-ui/owner-preferences': ownerModule,
     '../../features/sharing/v2/personal-plan': personalPlan, '../../features/sharing/crypto': cryptoModule,
     '../../features/notifications/reconcile-local-notifications': reconciliation, '../../features/sharing/v2/native-identity': identity,
+    '../../features/sharing/v2/completion-notices': completionNotices, '../../features/sharing/v2/load-notice-runtime': loadRuntime,
+    '../storage/sharing-v2-load-notices': loadStores, '../../domain/scheduling/local-date': localDate,
+    'react-native': { Platform: { OS: process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' } },
+    'expo-notifications': { AndroidImportance: { DEFAULT: 3 }, setNotificationChannelAsync: async () => {},
+      scheduleNotificationAsync: async request => { calls.push(['immediate', request]); return request.identifier; },
+      getPresentedNotificationsAsync: async () => [], dismissNotificationAsync: async () => {}, cancelScheduledNotificationAsync: async key => scheduled.delete(key) },
     './private-calendar-runtime': { openPrivateCalendarRuntime(uid) { assert.equal(uid, scope.userId); guard(); calls.push('local-calendar');
       return { async readPlannerPreferences() { guard(); return null; }, async readForPlan() { guard(); return null; }, async readOwnCalendar() { throw new Error('notification rendering must not acquire Google'); } }; } },
-    './v2-completion-notices': { createNativeV2CompletionNotices(input) { assert.equal(input.repository, d.repository); return { synchronize: async () => {} }; },
+    './v2-completion-notices': { createNativeV2CompletionNotices(input) { assert.equal(input.repository, d.repository); return { synchronize: async () => { completionCalls++; } }; },
       clearInactiveV2CompletionNotices: async () => {}, clearV2CompletionNoticesForScope: async () => {} },
   };
+  nativeMocks['./v2-immediate-notices'] = loadNativeModule('src/platform/sharing/v2-immediate-notices.ts', nativeMocks);
+  nativeMocks['./v2-load-notices'] = loadNativeModule('src/platform/sharing/v2-load-notices.ts', nativeMocks);
+  if (options.failLoad) nativeMocks['./v2-load-notices'] = { createNativeV2LoadNotices: () => ({ synchronize: async () => { throw new Error('load notice failed'); } }) };
   nativeMocks['./v2-local-planning'] = loadNativeModule('src/platform/sharing/v2-local-planning.ts', nativeMocks);
   const module = loadNativeModule('src/platform/sharing/v2-reminders.ts', nativeMocks);
   const runtime = module.createNativeV2Reminders({ ...scope, database: d.database, repository: d.repository, controller, assertAccess: guard });
-  return { f, d, module, runtime, calls, scheduled, stopDuringPersonalRead() { failPersonal = true; }, close() { d.connection.close(); } };
+  return { f, d, module, runtime, calls, scheduled, completionCalls: () => completionCalls, stopDuringPersonalRead() { failPersonal = true; }, close() { d.connection.close(); } };
 }
 
 test('native v2 reminders default off without permission, personal-data read or OAuth, then reuse owner-only planning', async () => {
@@ -69,5 +82,11 @@ test('native v2 cleanup retains valid current-account scopes and never cancels p
     await h.module.clearInactiveV2Reminders([scope]); assert.equal(h.scheduled.has(stale), false); assert.equal(h.scheduled.size, 3); assert.ok(h.scheduled.has(valid));
     await assert.rejects(h.module.clearInactiveV2Reminders([], () => { throw new Error('superseded account'); }), /superseded account/u); assert.equal(h.scheduled.size, 3);
     await h.module.clearV2RemindersForScope(scope.userId, scope.groupId); assert.equal(h.scheduled.size, 2);
+  } finally { h.close(); }
+});
+
+test('a failed untimed-load alert does not suppress received-completion delivery within the same shared worker budget', async () => {
+  const h = await setup({ failLoad: true }); try {
+    await assert.rejects(h.runtime.synchronize(), /load notice failed/u); assert.equal(h.completionCalls(), 1);
   } finally { h.close(); }
 });

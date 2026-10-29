@@ -17,7 +17,7 @@ import { withGoogleSyncOperation } from '../../features/google-sync/operation-lo
 import { getCurrentGoogleSubject, getGoogleTasksAccessToken } from '../google-tasks/google-sign-in-gateway';
 import { createGoogleTasksApi } from '../google-tasks/google-tasks-api';
 import { sharedGoogleOccurrenceNote } from '../../features/google-sync/workspace-policy';
-import { validateV2GoogleTaskTarget } from '../../features/sharing/v2/google-tasks-projection';
+import { validateV2GoogleTaskTarget, v2GoogleTaskItems } from '../../features/sharing/v2/google-tasks-projection';
 import type { V2GoogleTaskItem } from '../../features/sharing/v2/google-tasks-projection';
 import { sharedDocumentDigest } from '../../features/sharing/crypto';
 
@@ -50,7 +50,10 @@ export async function createV2GoogleTasksPreview() {
     const namespace = v2NativeWorkspaceNamespace(userId, groupId); let firstTaskId: string | undefined;
     async function synchronized() { guard(); const result = await runtime.synchronize({ force: true }); guard(); if (result.kind !== 'success' || result.skipped) return fail('sync'); return result; }
     async function reference() {
-      const entries = await runtime.store.port.listEntriesForGoogleSync(today, namespace); guard();
+      // A reopened QA context has not prepared the Native sync adapter's private cache yet.
+      // Use the same pure projection with this fixture's explicit inputs; no extra Google fetch is needed.
+      const plan = await controller.actions.readPlan({ from: today, through: addDays(today, 14), asOfDate: today }); guard();
+      const entries = v2GoogleTaskItems(plan, userId, buildV2PersonalPlan(plan, { viewerUserId: userId, settings, now: Date.now() }));
       const item = entries.find(item => item.entry.choreId === choreId && item.entry.cycleBaseDate === today) as V2GoogleTaskItem | undefined;
       if (!item) return fail('reference');
       return { item, ref: validateV2GoogleTaskTarget(item.target, userId, groupId) };
@@ -65,7 +68,7 @@ export async function createV2GoogleTasksPreview() {
       });
     }
     async function linked() {
-      const value = await reference(); const link = (await runtime.store.port.listGoogleTaskLinks(namespace)).find(link => link.scheduleEntryId === value.item.entry.id);
+      const value = await reference(); const link = (await runtime.store.readSavedLinks()).find(link => link.scheduleEntryId === value.item.entry.id);
       if (!link) return fail('link'); if (firstTaskId && firstTaskId !== link.googleTaskId) return fail('changed-id'); firstTaskId ??= link.googleTaskId;
       return { ...value, link };
     }
@@ -75,7 +78,7 @@ export async function createV2GoogleTasksPreview() {
     }
     return { runtime, close,
       async verify() {
-        await synchronized(); const links = await runtime.store.port.listGoogleTaskLinks(namespace);
+        await synchronized(); const links = await runtime.store.readSavedLinks();
         if (links.length !== 3) fail('count'); const tasks = await remote((api, token, listId) => api.listTasks(token, listId));
         for (const link of links) if (tasks.filter(task => !task.deleted && task.id === link.googleTaskId && task.notes === sharedGoogleOccurrenceNote(namespace, link.scheduleEntryId)).length !== 1) fail('mapping');
         await linked(); return 'Google Tasks予約検査 PASS：3件・本人専用・対応一致';

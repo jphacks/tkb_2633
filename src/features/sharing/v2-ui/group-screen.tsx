@@ -22,6 +22,7 @@ import type { V2GroupUiSession } from './screen-session';
 import { millisecondsUntilNextSharedDay } from '../group-clock';
 import { privateOverlayForViewer } from './private-overlay';
 import { V2PrivateTaskCard, V2PrivateTaskNotice } from './private-task-card';
+import { V2DailyLoadNotice } from './daily-load-notice';
 import { V2ChoreDetailsEditor } from './chore-details-editor';
 import { V2ChoreList } from './chore-list';
 import { V2AddChore } from './add-chore';
@@ -133,7 +134,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   if (!screenModel || !session) return <V2ScreenFrame purpose={purpose} style={styles.safe}>{notice}<ActivityIndicator color={palette.accent} />
     <AppButton title="読み込みを再試行" variant="quiet" onPress={() => void refresh()} /></V2ScreenFrame>;
   // Strip local composition before passing the common model to shared forms and actions.
-  const { personal, privateOverlay: privateValue, ...model } = screenModel;
+  const { personal, privateOverlay: privateValue, dailyLoad, ...model } = screenModel;
   const privateOverlay = privateOverlayForViewer(privateValue, model.viewerUserId);
   const controller = session.controller;
   if (applianceId && (view === 'appliance' || view === 'applianceReview') && model.appliances?.detail?.row.id !== applianceId) return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
@@ -244,6 +245,7 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
     <FlatList data={homeRows} keyExtractor={(entry) => entry.key} contentContainerStyle={styles.page} initialNumToRender={8}
       ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title={session.privateTasks ? '今日の家事' : '今日の共有家事'} />
         <V2PrivateTaskNotice overlay={privateOverlay} sharedTimeZone={model.plan.timeZone} />
+        <V2DailyLoadNotice assessment={dailyLoad} />
         {privateOverlay?.status === 'ready' && privateOverlay.today !== model.plan.range.asOfDate ? <Text style={styles.caption}>個人の今日：{privateOverlay.today} · 共有の今日：{model.plan.range.asOfDate}</Text> : null}
         <Text style={styles.caption}>{purpose === 'development' ? '検査用の未送信操作' : '送信待ち'}：{model.pendingChanges}件</Text>
         {model.waste?.rows.some(row => !row.deleted && row.needsReview) ? <Text style={styles.error}>確認が必要なゴミ収集日があります。共有のゴミ収集日で候補を確認してください。</Text> : null}

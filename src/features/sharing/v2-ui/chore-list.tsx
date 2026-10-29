@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, Platform, Text, View } from 'react-native';
 import { AppButton, Card, palette, typography } from '../../../components/planner-ui';
 import type { V2GroupScreenModel } from '../v2/controller';
 import { V2TextField } from './form-controls';
@@ -13,6 +13,7 @@ export function V2ChoreList({ model, busy, onDetails, onConfiguration, onAdd, he
   const admin = model.viewerUserId === model.adminUserId;
   const configured = new Set(model.configurations.filter((row) => row.configuration).map((row) => row.choreId));
   return <FlatList data={rows} keyExtractor={(chore) => chore.id} initialNumToRender={8} contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
     ListHeaderComponent={<View style={{ gap: 14 }}>{header}{onAdd ? <AppButton title="新しい共有家事を追加" variant="secondary" disabled={busy} onPress={onAdd} /> : null}
       <V2TextField label="共有家事を検索" value={query} onChangeText={setQuery} placeholder="家事名で検索" />
       <Text style={[typography.caption, { color: palette.muted }]}>{rows.length}件</Text></View>}

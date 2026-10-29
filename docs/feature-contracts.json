@@ -5396,5 +5396,20 @@
       { "file": "tests/sharing-v2-notice-preview-snapshot.test.mjs", "name": "completion OS QA treats Native dictionary and request ordering changes as unchanged notifications" },
       { "file": "tests/sharing-v2-notice-preview-snapshot.test.mjs", "name": "completion OS QA still rejects a changed or removed non-QA notification" }
     ]
+  },
+  {
+    "feature": "sharing-v2-native-pair-isolation-and-roundtrip",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-native-pair.test.mjs",
+        "name": "native v2 pair refuses release unsafe identifiers production projects and shared registry before any storage call"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-v2-cloud.integration.mjs",
+        "name": "native pair harness uses real encrypted v2 sessions with approval cold restore offline completion and unchanged private adapters"
+      }
+    ]
   }
 ]

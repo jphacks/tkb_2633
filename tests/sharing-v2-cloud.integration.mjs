@@ -25,6 +25,7 @@ import { createV2PlannerActions } from '../src/features/sharing/v2/actions.ts';
 import { createV2GroupController } from '../src/features/sharing/v2/controller.ts';
 import { createSharedGroupManager } from '../src/features/sharing/group-manager.ts';
 import { createV2WorkspaceSession } from '../src/features/sharing/v2/workspace-session.ts';
+import { createV2NativePair, V2_PAIR_PROJECT } from '../src/features/sharing/development/v2-native-pair.ts';
 import { readCloudWorkspaceArchive } from '../src/features/sharing/workspace-protocol.ts';
 import { workspaceHarness } from './helpers/sharing-workspaces-harness.mjs';
 import { applianceResult } from './helpers/sharing-v2-appliance.mjs';
@@ -576,4 +577,44 @@ test('v2 real gateway and Rules synchronize isolated SQLite users through key ro
     await assert.rejects(member.sync.sync({ force: true })); await assertFails(memberCloud.readGroup(groupId));
     assert.deepEqual(buildV2CommonPlan(await owner.repository.readState(), planRange).history, beforeRemoval);
   } finally { owner.connection.close(); member.connection.close(); restored?.connection.close(); }
+});
+
+
+test('native pair harness uses real encrypted v2 sessions with approval cold restore offline completion and unchanged private adapters', async () => {
+  const opened = []; const makeDatabase = () => { const value = createDatabase(); opened.push(value); return value.database; };
+  const run = 'cloud-native-pair'; let sequence = 0;
+  const create = async role => {
+    const keys = new Map(); const database = makeDatabase(); const registry = makeDatabase();
+    const userId = `development-v2-pair-${run}-${role}`;
+    const identity = await createDeviceIdentity(crypto);
+    const deps = { development: true, projectId: V2_PAIR_PROJECT, run, role, database, registry, identity, crypto,
+      cloud: createSharingCloud(environment.authenticatedContext(userId).firestore(), userId, () => userId),
+      readKey: async version => keys.get(version)?.slice() ?? null, saveKey: async (version, key) => { keys.set(version, key.slice()); },
+      serialized: work => work(), makeId: () => `pair-operation-${++sequence}`, now: () => new Date(), invitationSeed: new Uint8Array(32).fill(93) };
+    return { deps, pair: await createV2NativePair(deps) };
+  };
+  try {
+    const owner = await create('owner'); const member = await create('member');
+    await owner.pair.prepareOwner(); await owner.pair.createInvitation(); await owner.pair.createInvitation();
+    await member.pair.requestJoin(); await member.pair.requestJoin();
+    await assert.rejects(member.pair.ui(), /permission|アクセス|権限|insufficient/iu);
+    await owner.pair.approve(); await member.pair.synchronize(); await owner.pair.prepareChores(); await member.pair.synchronize();
+    const ready = await owner.pair.proof(); const other = await member.pair.proof();
+    assert.equal(ready.sourceHash, other.sourceHash); assert.equal(ready.planHash, other.planHash); assert.equal(ready.members, 2); assert.equal(ready.keyVersion, 2);
+    const ui = await member.pair.ui(); const model = await ui.readModel();
+    const chore = model.plan.chores.find(row => row.name === 'フローリングを掃除する');
+    const ref = { choreId: chore.id, anchorDate: model.plan.range.asOfDate, ruleVersion: 1, subjectUserId: null };
+    const [done] = await ui.controller.actions.complete(ref);
+    assert.equal((await member.pair.proof()).outbox, 1);
+    member.pair.close(); member.pair = await createV2NativePair(member.deps);
+    assert.equal((await member.pair.proof()).outbox, 1); assert.equal((await member.pair.proof()).history, 1);
+    await member.pair.synchronize(); await owner.pair.synchronize();
+    assert.deepEqual((await owner.pair.proof()).completed, (await member.pair.proof()).completed);
+    await (await member.pair.ui()).controller.actions.undo(done.operationId); await member.pair.synchronize(); await owner.pair.synchronize();
+    assert.equal((await owner.pair.proof()).completed.length, 0); assert.equal((await member.pair.proof()).outbox, 0);
+    assert.equal((await owner.pair.proof()).sourceHash, (await member.pair.proof()).sourceHash);
+    await owner.pair.removeMember(); await assert.rejects((await member.pair.ui()).controller.sync());
+    await assert.rejects((await member.pair.ui()).controller.actions.addChore('除名後の編集'), /利用状態|編集|利用でき/u);
+    owner.pair.close(); member.pair.close();
+  } finally { for (const openedDatabase of opened) openedDatabase.connection.close(); }
 });

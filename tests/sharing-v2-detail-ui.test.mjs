@@ -114,6 +114,9 @@ for (const platform of ['ios', 'android']) {
       const opened = []; const props = { model, busy: false, onDetails: (id) => opened.push(id), onConfiguration: () => { throw new Error('member cadence entry'); }, onAdd: () => {} };
       const screen = screenHarness('src/features/sharing/v2-ui/chore-list.tsx', { exportName: 'V2ChoreList', platform, props });
       const list = screen.nodes().find((node) => node.type === 'FlatList'); assert.equal(list.props.data.length, 1000); assert.equal(list.props.initialNumToRender, 8);
+      assert.equal(list.props.keyboardShouldPersistTaps, 'handled', 'a filtered edit action receives the first tap while the keyboard is open');
+      assert.equal(list.props.keyboardDismissMode, 'on-drag', 'dragging the catalog can reveal a keyboard-covered result');
+      assert.equal(list.props.automaticallyAdjustKeyboardInsets, platform === 'ios', 'Android adjustResize must not receive a second inset correction');
       assert.equal(screen.nodes().filter((node) => node.props.accessibilityLabel?.includes('の名前・手順を編集')).length, 8);
       assert.equal(screen.nodes().some((node) => node.props.accessibilityLabel?.includes('の周期・担当の設定')), false);
       await screen.change('共有家事を検索', '共有家事999'); await screen.press('「共有家事999」の名前・手順を編集'); assert.deepEqual(opened, ['ui-only-999']);

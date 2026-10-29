@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createDatabase } from './helpers/sqlite.mjs';
 import { commonChoreLinks, parseSharedMirrorEntryId } from '../src/features/planner/common-chore-links.ts';
 import { registerSharedRepositoryAdapter } from '../src/platform/storage/shared-repository-adapter.ts';
-import { localDateFromDate } from '../src/domain/scheduling/local-date.ts';
+import { localDateFromDate, addDays } from '../src/domain/scheduling/local-date.ts';
 import { screenHarness } from './helpers/screen-harness.mjs';
 import { sharingTestCrypto as crypto } from './helpers/sharing-crypto.mjs';
 import { createDeviceIdentity, signSharedOperation } from '../src/features/sharing/crypto.ts';
@@ -72,7 +72,7 @@ test('remote undo still addresses its original local mirror after a group chore 
 test('common history mirror transactions roll back on access loss and never initialize or mutate a shared database', async () => {
   const h = await fixture(); let calls = 0;
   try {
-    await assert.rejects(h.apply(h.input, async () => { if (++calls === 4) throw new Error('membership changed'); }), /membership changed/);
+    await assert.rejects(h.apply(h.input, async () => { if (++calls === 3) throw new Error('membership changed'); }), /membership changed/);
     assert.equal(h.connection.prepare('SELECT COUNT(*) AS n FROM chore_completions').get().n, 0);
     const stop = registerSharedRepositoryAdapter(h.database, { groupId: 'group-test', userId: 'owner' });
     const writes = h.writes.length;
@@ -134,6 +134,23 @@ test('a changing group snapshot rolls back the old mirror before replaying the l
   try {
     await bridge.sync(); assert.equal(calls, 2);
     assert.equal(h.connection.prepare('SELECT COUNT(*) AS n FROM chore_completions').get().n, 0);
+  } finally { h.connection.close(); }
+});
+
+test('one thousand confirmed common completions replay without per-record SQLite reads or writes', async () => {
+  const h = await fixture();
+  try {
+    const completions = Array.from({ length: 1000 }, (_, index) => ({ ...h.fact, id: `history-${index}`, scheduleEntryId: `occurrence-${index}`,
+      completedAt: new Date(now.getTime() - (1000 - index) * 86400000).toISOString(), scheduledDate: addDays(today, index - 1000),
+      scheduledWindowStart: addDays(today, index - 1000), scheduledWindowEnd: addDays(today, index - 1000) }));
+    await h.apply({ ...h.input, completions });
+    let reads = 0; const original = h.database.getFirstAsync;
+    h.database.getFirstAsync = async (...args) => { reads++; return original(...args); };
+    const writes = h.writes.length; let authorizations = 0;
+    assert.equal(await h.apply({ ...h.input, completions }, async () => { authorizations++; }), 0);
+    assert.ok(reads <= 2, `${reads} per-record queries would delay each home refresh`);
+    assert.ok(authorizations <= 3, `${authorizations} per-record membership reads would delay each home refresh`);
+    assert.equal(h.writes.length, writes);
   } finally { h.connection.close(); }
 });
 

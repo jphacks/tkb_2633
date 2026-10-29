@@ -5617,6 +5617,10 @@
       {
         "file": "tests/home-common-chores.test.mjs",
         "name": "a changing group snapshot rolls back the old mirror before replaying the latest canonical outcome"
+      },
+      {
+        "file": "tests/home-common-chores.test.mjs",
+        "name": "one thousand confirmed common completions replay without per-record SQLite reads or writes"
       }
     ]
   },

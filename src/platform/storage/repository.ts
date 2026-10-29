@@ -1153,15 +1153,17 @@ async function mirrorSharedChoreCompletionsImpl(database: SQLiteDatabase, input:
         && !links.some(link => link.personalChoreId === row.chore_id && link.sharedChoreId === key.sharedChoreId)) links.push(key);
     }
     const known = new Map(existing.map(row => [row.schedule_entry_id, row]));
+    const bySharedChore = new Map<string, typeof links>();
+    for (const link of links) { const values = bySharedChore.get(link.sharedChoreId) ?? []; values.push(link); bySharedChore.set(link.sharedChoreId, values); }
     for (const fact of [...input.completions].sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt) || a.id.localeCompare(b.id))) {
       if (!fact.scheduleEntryId) continue;
       if (!Number.isFinite(Date.parse(fact.completedAt))) throw new Error('共有家事の実施日時を確認してください。');
       for (const date of [fact.scheduledDate, fact.scheduledWindowStart, fact.scheduledWindowEnd]) if (date) parseLocalDate(date);
-      for (const link of links.filter(link => link.sharedChoreId === fact.choreId)) {
+      for (const link of bySharedChore.get(fact.choreId) ?? []) {
         const entryId = sharedMirrorEntryId(input.groupId, fact.choreId, fact.scheduleEntryId, link.personalChoreId);
         const stored = known.get(entryId);
-        await assertAccess();
         if (fact.outcome === 'completed') {
+          if (stored?.outcome === 'completed') continue;
           if (await persistChoreCompletion(database, { id: entryId, householdId: LOCAL_HOUSEHOLD_ID, choreId: link.personalChoreId,
             suggestedDate: fact.scheduledDate, windowStart: fact.scheduledWindowStart, windowEnd: fact.scheduledWindowEnd }, fact.completedAt, 'inApp')) changed++;
         } else if (stored?.outcome === 'completed' && await undoCompletionInTransaction(database, stored.id, 'inApp', localDateFromDate(new Date()))) changed++;

@@ -1,29 +1,29 @@
 {
-  "recordedAtUtc": "2026-10-29T14:40:33.716475+00:00",
-  "baseCommit": "d8c6ade3175ca90b50ed35eac159069a34776442",
+  "recordedAtUtc": "2026-10-29T14:52:58.090729+00:00",
+  "baseCommit": "2282c257900a2878336241ad0b26d27a0408a6b9",
   "remoteMain": "62d05771872fbd7124ec4ba5715f79ca290cb56b",
   "scope": "Home UX and common household chore presentation; original personal definitions preserved",
   "checks": {
     "ios": {
-      "tests": 2232,
-      "pass": 2232,
+      "tests": 2233,
+      "pass": 2233,
       "fail": 0,
       "skipped": 0,
-      "logSha256": "ff3605e19e46cade5d3cf461fc8f11c2526c603cd8666df3adb24c37f8d08657"
+      "logSha256": "fa31e7fd961435cd987127dac448416c4127a37bf9ccd60152270d1e21f0c138"
     },
     "android": {
-      "tests": 2232,
-      "pass": 2232,
+      "tests": 2233,
+      "pass": 2233,
       "fail": 0,
       "skipped": 0,
-      "logSha256": "68fe5ef89ac45539332c74118565af6e6ff3b00e79213ed6207f5290d79234f9"
+      "logSha256": "6496f8f25a0c91314ae4eb1d50599f1d12bc0c5b380dd3512a7985ce3d345f7a"
     },
     "localFirestore": {
       "tests": 71,
       "pass": 71,
       "fail": 0,
       "skipped": 0,
-      "logSha256": "271549bbbeb53ea5bd5573e9b922f63ff6d9532609b8b0c50af4123133183465"
+      "logSha256": "d90ac85f1aa9f5fc516cc4118dadd9968b5371f87095318c1e828475371c91ec"
     },
     "lint": {
       "exitCode": 0,
@@ -91,14 +91,20 @@
     "src/hooks/use-home-display.tsx": "deed517c254c6305598f4ba517f54fe9e76c9c6bcb01e8cea6a3a561449d86cf",
     "src/hooks/use-planner-data.ts": "c6b44c876028db08927544898febebcd4fe5b584be700ee6fac775fcc9a9c573",
     "src/hooks/use-task-completion.tsx": "e1d4b4ddece9fba6f243cbbb78435ec797ba8928ea876587f0c598f77d8fdcd5",
-    "src/platform/storage/repository.ts": "4ce766e3b647a46dda4cf3d45a4576e4a269d78c79bf457818104b5d90566a25",
+    "src/platform/storage/repository.ts": "b885a194521f27e9489fe6ac612b572c528b54e4edcd1900577b0e27b5c3f110",
     "src/platform/storage/shared-repository-adapter.ts": "e67279c54909ee7b8644004f82c7497e1daeaaa36fa7d0f0d3f6d79abf0f28b5",
     "tests/helpers/screen-harness.mjs": "4255512d8bd4fac16d88decc7d6c94be19be7c8f5041503d79bb0a998797d8fd",
     "tests/helpers/sharing-v2-private-fixture.mjs": "7f6db752574f838f65843bdb13344710771163509425bd1d189ffc118324283d",
-    "tests/home-common-chores.test.mjs": "d661e9478a676c8aca2c9ec9b3d37baf2dd6829537752096ed6d6eaf7213b674",
+    "tests/home-common-chores.test.mjs": "769b4a91d75268e0475c96fe0801a2a0d7d42742a0cb326577208d200e681dc8",
     "tests/home-ux.test.mjs": "b130d6ab934da4eea3ec0175fdbecc600ad6c88d5f4488d89fe65477a4312c66",
     "tests/sharing-v2-development-preview.test.mjs": "5032902b80bb4aa95f3ef3b0eee9cedb6ea97026364dffbcf461024c65b600b6",
     "tests/sharing-v2-private-ui.test.mjs": "6e73c9bebaec060fdeace4c806bba0d90ecb29140737b9f6ab9dae58e34d4d48",
     "tests/sharing-v2-waste-ui.test.mjs": "c0060a30a1ccce818141554d49d7ffebb3d0d6ca52920509ca7e2f6265ac80b5"
+  },
+  "performanceRegression": {
+    "confirmedHistoryRecords": 1000,
+    "mirrorReplayGetFirstAsyncMax": 2,
+    "mirrorReplayAuthorizationMax": 3,
+    "writesOnReplay": 0
   }
 }

@@ -181,12 +181,17 @@ test('private Calendar missing, duplicate, swapped, oversized or tampered parts 
     { ...clone(encrypted), chunks: encrypted.chunks.slice(1) },
     { ...clone(encrypted), chunks: encrypted.chunks.map(() => encrypted.chunks[0]) },
     (() => { const value = clone(encrypted); value.chunks[0].encryptedPayload = '00'.repeat(PRIVATE_CALENDAR_CHUNK_BYTES + 17); return value; })(),
-    (() => { const value = clone(encrypted); value.chunks.at(-1).encryptedPayload = 'ff' + value.chunks.at(-1).encryptedPayload.slice(2); return value; })(),
-    (() => { const value = clone(encrypted); value.chunks[0].nonce = '00'.repeat(12); return value; })(),
+    (() => { const value = clone(encrypted); const payload = value.chunks.at(-1).encryptedPayload;
+      value.chunks.at(-1).encryptedPayload = (payload.startsWith('ff') ? '00' : 'ff') + payload.slice(2); return value; })(),
+    (() => { const value = clone(encrypted); const nonce = value.chunks[0].nonce;
+      value.chunks[0].nonce = (nonce.startsWith('00') ? 'ff' : '00') + nonce.slice(2); return value; })(),
     (() => { const value = clone(encrypted); value.chunks[0].index = 0.5; return value; })(),
     (() => { const value = clone(encrypted); value.chunks[0].title = 'forbidden-extra'; return value; })(),
   ];
-  for (const value of candidates) await assert.rejects(() => openPrivateCalendarCache(counting, value, { authority: f.authority, accountKey: f.accountKey, calendarBinding: f.calendarBinding }));
+  for (const value of candidates) {
+    assert.notDeepEqual(value, encrypted, 'every attack candidate must actually change the valid original');
+    await assert.rejects(() => openPrivateCalendarCache(counting, value, { authority: f.authority, accountKey: f.accountKey, calendarBinding: f.calendarBinding }));
+  }
   assert.equal(decryptions, 0);
 });
 

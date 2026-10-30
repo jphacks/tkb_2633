@@ -2,7 +2,8 @@ import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenHarness } from './helpers/screen-harness.mjs';
-import { sharingCreationProtocol } from '../src/features/sharing/rollout.ts';
+import * as rollout from '../src/features/sharing/rollout.ts';
+const { sharingCreationProtocol } = rollout;
 
 function form(props, options = {}) {
   return screenHarness('src/features/sharing/group-creation-form.tsx', {
@@ -16,12 +17,19 @@ async function choose(screen, label) {
 }
 function input(screen) { return screen.nodes().find(item => item.type === 'TextInput' && item.props.accessibilityLabel === 'グループ名'); }
 
-test('sharing v2 creation rollout remains opt-in and never treats truthy strings as release approval', t => {
+test('new shared groups default to v2 and only an explicit false selects legacy creation', t => {
   const previous = process.env.EXPO_PUBLIC_SHARING_V2_ENABLED;
   t.after(() => { if (previous === undefined) delete process.env.EXPO_PUBLIC_SHARING_V2_ENABLED; else process.env.EXPO_PUBLIC_SHARING_V2_ENABLED = previous; });
-  delete process.env.EXPO_PUBLIC_SHARING_V2_ENABLED; assert.equal(sharingCreationProtocol(), 1);
-  for (const value of ['', 'false', 'TRUE', ' true', 'true ', '1', 'yes']) assert.equal(sharingCreationProtocol(value), 1);
-  assert.equal(sharingCreationProtocol('true'), 2);
+  delete process.env.EXPO_PUBLIC_SHARING_V2_ENABLED; assert.equal(sharingCreationProtocol(), 2);
+  for (const value of ['', 'true', 'TRUE', ' true', 'true ', '1', 'yes']) assert.equal(sharingCreationProtocol(value), 2);
+  assert.equal(sharingCreationProtocol('false'), 1);
+});
+
+test('owner recovery is enabled for the standard deployment and can be explicitly disabled without reading group data', t => {
+  const previous = process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY;
+  t.after(() => { if (previous === undefined) delete process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY; else process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY = previous; });
+  delete process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY; assert.equal(rollout.sharingOwnerRecoveryEnabled(), true);
+  assert.equal(rollout.sharingOwnerRecoveryEnabled('true'), true); assert.equal(rollout.sharingOwnerRecoveryEnabled('false'), false);
 });
 
 for (const [kind, name] of [

@@ -15,6 +15,7 @@ import * as manager from '../../src/features/sharing/group-manager.ts';
 import * as sessionFactory from '../../src/features/sharing/v2/workspace-session.ts';
 import * as point from '../../src/features/sharing/v2/view-point.ts';
 import * as controllerAccess from '../../src/features/sharing/v2/controller-access.ts';
+import * as rollout from '../../src/features/sharing/rollout.ts';
 import * as registry from '../../src/platform/storage/sharing-registry.ts';
 import * as ledger from '../../src/platform/storage/sharing-ledger.ts';
 import { createV2ReminderStore } from '../../src/platform/storage/sharing-v2-reminders.ts';
@@ -23,7 +24,7 @@ import { addDays } from '../../src/domain/scheduling/local-date.ts';
 
 /** Real signatures, event repository and SQLite; only native handles/account storage/cloud I/O are injected. */
 export async function workspaceHarness({ pending = false, version = 2, cloud: overrides = {}, deferWorkspaceTimers = false, privateCalendarNeeded = false } = {}) {
-  const handles = []; const calls = []; const reminderCalls = []; const taskCalls = []; const taskControl = { revision: 0, label: null, state: null }; let ordinal = 0;
+  const handles = []; const calls = []; const cloudOptions = []; const reminderCalls = []; const taskCalls = []; const taskControl = { revision: 0, label: null, state: null }; let ordinal = 0;
   const create = () => { const h = createDatabase(); let closed = false;
     h.database.closeAsync = async () => { if (!closed) { closed = true; h.connection.close(); } }; handles.push(h); return h; };
   const index = create(); await registry.initializeSharingRegistry(index.database);
@@ -51,7 +52,8 @@ export async function workspaceHarness({ pending = false, version = 2, cloud: ov
       sharingSecureVault: { getItem: async (key) => vault.get(key) ?? null, setItem: async (key, value) => vault.set(key, value), removeItem: async (key) => vault.delete(key) } },
     './database-location.ts': { sharingDatabaseDirectory: async () => '/protected', openSharingDatabase: async () => { calls.push('legacy-open'); throw new Error('v2 must not open a legacy database'); },
       openSharingV2Database: async (...scope) => { calls.push(['v2-open', ...scope]); return create().database; } },
-    './firestore-cloud.ts': { createSharingCloud: () => cloud }, '../../features/sharing/roster.ts': rosters,
+    './firestore-cloud.ts': { createSharingCloud: (_store, _uid, _guard, options) => { cloudOptions.push(options); cloud.ownerRecoveryEnabled = options.ownerRecoveryEnabled; return cloud; } }, '../../features/sharing/roster.ts': rosters,
+    '../../features/sharing/rollout.ts': rollout,
     '../../features/sharing/operations.ts': operations, '../../features/sharing/crypto.ts': keys,
     '../../features/sharing/workspace-protocol.ts': protocols, '../../features/sharing/v2/workspace-session.ts': sessionFactory,
     '../../features/sharing/v2/view-point.ts': point, '../../features/sharing/synchronizer.ts': synchronizer,
@@ -86,6 +88,6 @@ export async function workspaceHarness({ pending = false, version = 2, cloud: ov
         async synchronize(options) { await input.assertAccess(); taskCalls.push(['sync', options]); return { kind: 'success', skipped: true }; } };
     } },
   }, deferWorkspaceTimers ? { setTimeout: () => 1, clearTimeout: () => {} } : {});
-  return { api, handles, index, calls, reminderCalls, taskCalls, taskControl, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
+  return { api, handles, index, calls, cloudOptions, reminderCalls, taskCalls, taskControl, auth, identity, owner, initial, record, link, request, vault, groupKeys, cloud,
     close: async () => { for (const h of handles) await h.database.closeAsync(); } };
 }

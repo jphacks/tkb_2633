@@ -2,11 +2,27 @@ import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { workspaceHarness } from './helpers/sharing-workspaces-harness.mjs';
+
 import { withSharingLedgerTransaction } from '../src/platform/storage/sharing-ledger.ts';
 import { readSharingWorkspace, updateSharingWorkspace } from '../src/platform/storage/sharing-registry.ts';
 import { approveSharedDevice, upgradeSharedRoster } from '../src/features/sharing/roster.ts';
 import { rosterCloudFields } from '../src/features/sharing/cloud-contract.ts';
 import { signSharedDocument } from '../src/features/sharing/crypto.ts';
+
+for (const [flag, expected, name] of [[undefined, true, 'normal v2 workspace enables owner recovery by default without changing its stored events'],
+  ['false', false, 'an explicit recovery opt-out reaches the native cloud and session without changing its stored events']]) test(name, async (t) => {
+  const previous = process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY;
+  t.after(() => { if (previous === undefined) delete process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY; else process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY = previous; });
+  if (flag === undefined) delete process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY; else process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY = flag;
+  const h = await workspaceHarness({ deferWorkspaceTimers: true });
+  try {
+    const workspace = await h.api.openSharedWorkspace(h.record);
+    assert.equal(h.cloudOptions[0].ownerRecoveryEnabled, expected);
+    assert.equal(workspace.session.recovery.enabled, expected);
+    assert.equal((await workspace.checkpoint()).pendingCount, 23);
+    assert.equal(h.calls.includes('legacy-open'), false);
+  } finally { await h.close(); }
+});
 
 test('native v2 workspace factory chooses its isolated session and never registers a legacy planner adapter', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] }); const h = await workspaceHarness();

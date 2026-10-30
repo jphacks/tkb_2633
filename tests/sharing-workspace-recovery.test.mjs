@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadNativeModule } from './helpers/native-module.mjs';
+import * as rollout from '../src/features/sharing/rollout.ts';
 
 function fixture(options = {}) {
   const events = []; const handles = []; const synchronizers = []; const syncBudgets = [];
@@ -28,6 +29,7 @@ function fixture(options = {}) {
     './firestore-cloud.ts': { createSharingCloud: () => ({}) },
     '../../features/sharing/roster.ts': { sharedRosterDigest: () => 'test-digest', verifyPinnedSharedRoster: (roster) => roster },
     '../../features/sharing/operations.ts': { canonicalJson: JSON.stringify },
+    '../../features/sharing/rollout.ts': rollout,
     '../../features/sharing/workspace-protocol.ts': { verifyWorkspaceArchive: (record) => [record.anchor], sharedWorkspaceProtocol: () => 1 },
     '../../features/sharing/v2/workspace-session.ts': {}, '../../features/sharing/v2/view-point.ts': {},
     '../../features/sharing/v2/controller-access.ts': {},

@@ -28,6 +28,7 @@ import { decodeSharingSelection, encodeSharingSelection } from '../../features/s
 import type { SharingSelection } from '../../features/sharing/workspace-selection.ts';
 import { sharedGroupBootstrap } from '../../features/sharing/planning.ts';
 import { SharingAccessError, SharingKeyVersionError, SharingSchedulerVersionError } from '../../features/sharing/cloud-contract.ts';
+import { sharingOwnerRecoveryEnabled } from '../../features/sharing/rollout.ts';
 import { initializeSharingRegistry, listSharingWorkspaces, readSharingWorkspace, saveSharingWorkspace, updateSharingWorkspace } from '../storage/sharing-registry.ts';
 import type { SharingWorkspaceRecord } from '../storage/sharing-registry.ts';
 import { initializeSharedProjection } from '../storage/sharing-projection.ts';
@@ -120,7 +121,7 @@ async function buildWorkspace(selection: SharingSelection): Promise<SharedWorksp
   const identity = await loadOrCreateSharingDeviceIdentity(userId, record.localGeneration);
   if ((await requireUser()).uid !== userId) throw new SharingAccessError('共有アカウントが切り替わりました。');
   const cloud = createSharingCloud(getSharingServices().firestore, userId, () => getSharingServices().auth.currentUser?.uid ?? null,
-    { ownerRecoveryEnabled: process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY === 'true' });
+    { ownerRecoveryEnabled: sharingOwnerRecoveryEnabled() });
   const context = { selection, user, registry, record, identity, archive, cloud };
   const approved = archive?.at(-1)?.body.members.some((member) => member.userId === userId && member.devices.some((device) => device.identity.deviceId === identity.deviceId));
   if (!protocol || record.status === 'joining' && !approved) return buildPendingWorkspace(context);
@@ -484,7 +485,7 @@ export function createSharingWorkspace(name: string, timeZone = Intl.DateTimeFor
   return createWorkspaceIntent(name, timeZone, { protocol: 1 });
 }
 
-/** The caller must explicitly choose a kind. Enabling v2 creation in production remains a separate deployment decision. */
+/** The caller must explicitly choose a kind. New v2 groups never convert an existing workspace in place. */
 export async function createV2SharingWorkspace(name: string, kind: 'family' | 'roommates', timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): Promise<V2SharedWorkspace> {
   if (!['family', 'roommates'].includes(kind)) throw new Error('グループの種類を選んでください。');
   const workspace = await createWorkspaceIntent(name, timeZone, { protocol: 2, kind });

@@ -5168,7 +5168,15 @@
     "tests": [
       {
         "file": "tests/sharing-group-creation.test.mjs",
-        "name": "sharing v2 creation rollout remains opt-in and never treats truthy strings as release approval"
+        "name": "new shared groups default to v2 and only an explicit false selects legacy creation"
+      },
+      {
+        "file": "tests/sharing-group-creation.test.mjs",
+        "name": "owner recovery is enabled for the standard deployment and can be explicitly disabled without reading group data"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "normal v2 workspace enables owner recovery by default without changing its stored events"
       },
       {
         "file": "tests/sharing-group-creation.test.mjs",

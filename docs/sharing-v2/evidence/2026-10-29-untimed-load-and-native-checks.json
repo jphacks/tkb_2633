@@ -1,0 +1,299 @@
+{
+  "date": "2026-10-29",
+  "timeZone": "Asia/Tokyo",
+  "baseCommit": "ce8ada5d237edf4fed656eaaf2fe6c2eea3de9dd",
+  "branch": "codex/encrypted-group-sharing",
+  "ios": {
+    "tasksConnect": {
+      "passed": true,
+      "log": "phase6-ios-tasks-connect-consent2.log",
+      "logSha256": "7cc88d4a1bf6d73a3b74b51a7618ef23dafe0eb620f11e4eefb6b1065c536f5c",
+      "proofs": [
+        "Google Tasks予約検査 PASS：3件・本人専用・対応一致"
+      ],
+      "imageSha256": [
+        "5fa1947c8b0cf7305105a960e89e5b63b2ea1e77e013164f12cc2f1e7787ee22",
+        "b412cb418281c641444747f5239911a2522f02af7747c302ecc9cdc19c7b7212",
+        "5fa1947c8b0cf7305105a960e89e5b63b2ea1e77e013164f12cc2f1e7787ee22",
+        "109efc794ab9710968ea31e920db64f209275048939d479dde2fbf2d47004fe5"
+      ]
+    },
+    "tasksSequence": {
+      "passed": true,
+      "log": "phase6-ios-tasks-frozen-sequence.log",
+      "logSha256": "2d2d1d7c32b66ac553c802b73cb5657cf30c06febd61b4cb7507a08b0ffdd63e",
+      "proofs": [
+        "Tasksアプリ取消検査 PASS：同じID・Google未完了",
+        "Tasksアプリ完了検査 PASS：同じID・Google完了",
+        "Tasks保存検査 PASS：接続・3件の対応を再取得なしで復元・照合値487c1dc871951a50ef0059d9f3e6ea53e3b4a93c8f861daa3398995405643fc2",
+        "Tasks外部取消検査 PASS：対象の完了だけ取消",
+        "Tasks外部完了検査 PASS：本人の署名付き履歴へ取込",
+        "Tasks期日検査 PASS：家事回とGoogle IDを保持"
+      ],
+      "imageSha256": [
+        "0ef9c6e9b42ebbd4fbc95906f20a41d68fd947c308c50775c3e3812982300fec",
+        "9fef755270d2b754c9bc4af466f4d9100e2682a64f83dcfe990dc465208cfe82",
+        "7b77a8c6b24a86d5d145abcc38d4cfe3d8e3d37feb8e93877bb84d0ad5e8f7c4",
+        "fa708cacbe4289842f5c269b1d3f7d281a122fe937218a770984652594c97c04",
+        "638121a0b51a98681d895401de5da6c56bf5f2dbca5533bca47a65df90cf9b69",
+        "2d3b8f3d6a17950106b465bf4f4c6f437cf7d4d3d8e0d68e0ff1d59b841a3836",
+        "0ef9c6e9b42ebbd4fbc95906f20a41d68fd947c308c50775c3e3812982300fec"
+      ]
+    },
+    "tasksAfterDueCold": {
+      "passed": true,
+      "log": "phase6-ios-tasks-after-due-cold.log",
+      "logSha256": "41ab082b5d1442a854a3226fa99581b81891c35ffeb43a04f6c9250be1c7a94d",
+      "proofs": [
+        "Tasks保存検査 PASS：接続・3件の対応を再取得なしで復元・照合値487c1dc871951a50ef0059d9f3e6ea53e3b4a93c8f861daa3398995405643fc2"
+      ],
+      "imageSha256": [
+        "c8922a59f206a8da8e312ac14bbeb71048a79705ac84fc48547df4d95d4e1c27",
+        "46c549cb75cea83fc24dcf2e108e02f11f723dd73435ad26b17fa5ae20e4c37f"
+      ]
+    },
+    "tasksCleanup": {
+      "passed": true,
+      "log": "phase6-ios-tasks-qa-clean.log",
+      "logSha256": "1e8bfb3e30c4634b1d9d0181e7be6d9e9fee6187854b394631342d372d4383fa",
+      "proofs": [
+        "Tasks保存検査 PASS：接続・3件の対応を再取得なしで復元・照合値487c1dc871951a50ef0059d9f3e6ea53e3b4a93c8f861daa3398995405643fc2",
+        "Tasks片付け検査 PASS：合成3件だけ削除・個人データ保持"
+      ],
+      "imageSha256": [
+        "67cda1d3cf1ccc3774bcaadcbb1eca3a8da1e86f311031568b6197f0c94ad8b3",
+        "59a572ffca6b2d57a73c728ae73462709ea63c2e30be1021d8ac308b0dd7bd84"
+      ]
+    },
+    "copyReview": {
+      "passed": true,
+      "log": "phase6-ios-copy-prepare.log",
+      "logSha256": "77d41a678c5b0f8f5e1bc8ce4a2bde92646151bd2c8994abc38366526ea83b13",
+      "proofs": [
+        "コピー保存検査 PASS：確認中・共有追加なし・元設定保持・過去履歴0件・照合値b70986afc7b522bda46c81fd38f72fb33f76d88ffcbc26d3424f43d6cef25261"
+      ],
+      "imageSha256": [
+        "b43807f2824c5e488774028e57bb264e6a030061942bc073e1ff7ff4731cc636"
+      ]
+    },
+    "copyColdReview": {
+      "passed": true,
+      "log": "phase6-ios-copy-cold-review.log",
+      "logSha256": "8ee2c577c129b5eb78d99e3f60bc8dcd8b6be8489b2978416257425cf5074b03",
+      "proofs": [
+        "コピー保存検査 PASS：確認中・共有追加なし・元設定保持・過去履歴0件・照合値b70986afc7b522bda46c81fd38f72fb33f76d88ffcbc26d3424f43d6cef25261"
+      ],
+      "imageSha256": [
+        "dbc7549f843d9b75f42590884d39b15b448861aceda411621ca80cc31da7d31b"
+      ]
+    },
+    "copyCommitted": {
+      "passed": true,
+      "log": "phase6-ios-copy-confirm.log",
+      "logSha256": "fc5b60a697099e0a4ebd83986438b49ebfc6fe4034a1000476bbc11b7b552e9d",
+      "proofs": [
+        "コピー保存検査 PASS：追加済み・二重追加なし・元設定保持・過去履歴0件・照合値b70986afc7b522bda46c81fd38f72fb33f76d88ffcbc26d3424f43d6cef25261"
+      ],
+      "imageSha256": [
+        "103745838c77faf31382536b178c5e5ad0a9059e4af416cb1dc507bceb1bc19a"
+      ]
+    },
+    "copyColdCommitted": {
+      "passed": true,
+      "log": "phase6-ios-copy-cold-committed.log",
+      "logSha256": "4b882322ad224f3a6d729cc9cf445dc010bd57b06b2e6501ec9527ddf8339e1a",
+      "proofs": [
+        "コピー保存検査 PASS：追加済み・二重追加なし・元設定保持・過去履歴0件・照合値b70986afc7b522bda46c81fd38f72fb33f76d88ffcbc26d3424f43d6cef25261"
+      ],
+      "imageSha256": [
+        "4148ee03bdfc6ad25e2e7c8ee9c1dbaebc2add7d2626834100c6392a721555bb"
+      ]
+    },
+    "completionNoticeOS": {
+      "passed": true,
+      "log": "phase6-ios-completion-notice-final.log",
+      "logSha256": "a6f30a7c12aa9ac143ed4d6eb4a7ba8d9e90ede9db7997871dc4706fe29046fb",
+      "proofs": [
+        "完了通知のOS表示 PASS：合成1件・内容一致",
+        "完了通知のOS要求 PASS：合成1件・他領域保持",
+        "完了通知の片付け PASS：合成0件・他領域保持"
+      ],
+      "imageSha256": [
+        "597e7a390ae40639831b7fba01fc266a11a6f497322ba55ad16b43d626c63f19",
+        "e251650f44b43161a271dfb9ac63e328a26ca2634836603f39e23a4ad0f3751d",
+        "50650771c717f3eae0030910c3cb2c577bca863acef38a6645d08068224ea405"
+      ]
+    }
+  },
+  "android": {
+    "tasksSequence": {
+      "passed": true,
+      "file": "phase4ba-android-phase6-frozen-final-sequence.json",
+      "sha256": "bb31b75b71ebd6807a99fff3e1ba14a68ffbc365c92a386cda7b2c941a615890",
+      "proofs": [
+        "Tasksアプリ完了検査 PASS：同じID・Google完了",
+        "Tasksアプリ取消検査 PASS：同じID・Google未完了",
+        "Tasks外部完了検査 PASS：本人の署名付き履歴へ取込",
+        "Tasks外部取消検査 PASS：対象の完了だけ取消",
+        "Tasks期日検査 PASS：家事回とGoogle IDを保持",
+        "Tasks保存検査 PASS：接続・3件の対応を再取得なしで復元・照合値8d193386274a96fcfeec87f46c13a7336aa1b36dab70b8019c209e535d32cda2"
+      ]
+    },
+    "tasksAfterDueCold": {
+      "passed": true,
+      "file": "phase4ba-android-phase6-frozen-after-due-cold.json",
+      "sha256": "d93aa923852d6220c8a20d4a86c8a3d35f8336dc17991ad176625c7277700fa0",
+      "proofs": [
+        "Tasks保存検査 PASS：接続・3件の対応を再取得なしで復元・照合値8d193386274a96fcfeec87f46c13a7336aa1b36dab70b8019c209e535d32cda2"
+      ]
+    },
+    "tasksCleanup": {
+      "passed": true,
+      "file": "phase4ba-android-phase6-frozen-final-clean.json",
+      "sha256": "8efba8b111532d319976650af89f4dc24e4442f83162b7673022ca3d3b8b90b4",
+      "proofs": [
+        "Tasks片付け検査 PASS：合成3件だけ削除・個人データ保持"
+      ]
+    },
+    "copyReview": {
+      "passed": true,
+      "file": "phase4bc-android-phase6-current-copy-stage.json",
+      "sha256": "4da1b4220aa6e024d60654751ca23f430bacbc22e4dea84ce74870cf7b2a890e",
+      "proofs": [
+        "コピー保存検査 PASS：確認中・共有追加なし・元設定保持・過去履歴0件・照合値abac4d9082e95e55a84ef96df21d6f15b503f8a753309b5bbd89d59890392f4b"
+      ]
+    },
+    "copyColdReview": {
+      "passed": true,
+      "file": "phase4bc-android-phase6-current-copy-cold-review.json",
+      "sha256": "2747ea6c595e9c78bd1170f0a64988451d0c9f9087ef4c6e7cd61fdd7fcf98db",
+      "proofs": [
+        "コピー保存検査 PASS：確認中・共有追加なし・元設定保持・過去履歴0件・照合値abac4d9082e95e55a84ef96df21d6f15b503f8a753309b5bbd89d59890392f4b"
+      ]
+    },
+    "copyCommitted": {
+      "passed": true,
+      "file": "phase4bc-android-phase6-current-copy-confirm.json",
+      "sha256": "9a3a82d6dc1d7bbb7c4c3acd10aae9b2c1b7184545ca2ecb4519e7f6116e89f4",
+      "proofs": [
+        "コピー保存検査 PASS：追加済み・二重追加なし・元設定保持・過去履歴0件・照合値abac4d9082e95e55a84ef96df21d6f15b503f8a753309b5bbd89d59890392f4b"
+      ]
+    },
+    "copyColdCommitted": {
+      "passed": true,
+      "file": "phase4bc-android-phase6-current-copy-cold-committed.json",
+      "sha256": "44aaf389e326596c22095a3d01934d4513d6ed68a1bf7b2f2762b158470d98e0",
+      "proofs": [
+        "コピー保存検査 PASS：追加済み・二重追加なし・元設定保持・過去履歴0件・照合値abac4d9082e95e55a84ef96df21d6f15b503f8a753309b5bbd89d59890392f4b"
+      ]
+    },
+    "completionNoticeOS": {
+      "passed": true,
+      "steps": [
+        {
+          "file": "phase6-notice-final-android-request.json",
+          "sha256": "62b5e498c00f2d65fedb809b7c1df602c8d9eb82096e81308b915f79ca99654e",
+          "proof": "完了通知のOS要求 PASS：合成1件・他領域保持"
+        },
+        {
+          "file": "phase6-notice-final-android-presented.json",
+          "sha256": "b28a34bbdf4247f40328383424423f1cc2319ae8a4e1c042ecd538096ac63109",
+          "proof": "完了通知のOS表示 PASS：合成1件・内容一致"
+        },
+        {
+          "file": "phase6-notice-final-android-cleaned.json",
+          "sha256": "e2de5cd0fc6d3ad5b417255d5b54e43c2df081f8fc80ad64a2bbdf69a26c6b63",
+          "proof": "完了通知の片付け PASS：合成0件・他領域保持"
+        }
+      ]
+    }
+  },
+  "tasksAccountScope": "Reviewed real Google accounts, synthetic 3-task dedicated lists only; not v2 shared-group transport E2E.",
+  "dataReset": false,
+  "productionRulesChanged": false,
+  "mainChanged": false,
+  "temporaryRootEntryRemoved": true,
+  "untimedPolicy": {
+    "overlap": "excluded",
+    "relocation": "excluded",
+    "forcedTimeInput": false,
+    "limitComparison": "greater-or-equal",
+    "deduplication": "owner/group/group-civil-day"
+  },
+  "phase6Complete": false,
+  "remaining": [
+    "Ordinary v2 group cross-OS integrated E2E",
+    "Then full product UI backlog"
+  ],
+  "deferredByUser": [
+    "Existing v1 group conversion UI and cutover"
+  ],
+  "notClaimed": [
+    "Natural OS background scheduling guarantee",
+    "Production v2 schema rollout",
+    "A separate physical OS delivery specifically for the new load kind"
+  ],
+  "validation": {
+    "ios": {
+      "pass": 2177,
+      "fail": 0,
+      "skip": 0,
+      "logSha256": "79954a9bf0d4145087b7a19218c46cf933c6d6ff0b7c898e4ee26476077d12cc"
+    },
+    "android": {
+      "pass": 2177,
+      "fail": 0,
+      "skip": 0,
+      "logSha256": "6b7221302b97da98dad102bc37616daeee52bd4a799d973d78737f4b8364d757"
+    },
+    "firestoreEmulator": {
+      "pass": 70,
+      "fail": 0,
+      "skip": 0,
+      "logSha256": "6c616e83a529fd156020cdd0aeca7fcefbf85490009881ee1f4656c19e17b918"
+    },
+    "lint": {
+      "exitCode": 0,
+      "logSha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "types": {
+      "exitCode": 0,
+      "logSha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    },
+    "contracts": {
+      "previous": 318,
+      "current": 325,
+      "previousEntriesDeepEqual": true,
+      "newTests": 34
+    }
+  },
+  "sourceSha256": {
+    "src/features/notifications/request-snapshot.ts": "966b29c42ad82187c601779ac0d71072b2145250bcb9e36edbefb5d430a20d0c",
+    "src/features/notifications/workspace-response.ts": "cbd319f06d4df85a2315323f943f7a785bd07527a93fdbf6a07e2d56d2731dc9",
+    "src/features/sharing/v2-ui/daily-load-notice.tsx": "8417e57d1ca2e8f3e333317fd391ff7f29a427b1140c9caa2d53c61e602cf41d",
+    "src/features/sharing/v2-ui/group-screen.tsx": "f2dad2f7e282d788265c9989935d51145dfeeba5ba808553e75feb0046cd7ff8",
+    "src/features/sharing/v2-ui/reminder-screen.tsx": "c5615680531ea1e4f57c4e7255027082a598c0d5e2fe35282686aa71a0d1cc55",
+    "src/features/sharing/v2-ui/screen-session.ts": "55f52417edf70118e74ec099839ad52ec832b7f3455fe120abe6e0043fa8956b",
+    "src/features/sharing/v2/daily-load.ts": "0174d95659ee7c0081971ac57a250c6b6f83b04071edd558fe9f01315c42cd9e",
+    "src/features/sharing/v2/load-notice-runtime.ts": "a3c9f32b7e6e65879e8c6cca77d09dce769389e78ee5d5e3de47e98e493d83e1",
+    "src/features/sharing/v2/owner-schedule.ts": "344a6747a8f17c3a1bcffa22210fb01f70fbc02b1a8594be77987a2f49ed9f57",
+    "src/features/sharing/v2/reminder-runtime.ts": "8bff61d9018ed6c8c552d2fd6940e92f3e7c0b9c218304a423f9d24206006695",
+    "src/features/sharing/v2/reminders.ts": "bfe3cb794a2dea00441aad5967ed03308d2e02011d2f9319f497a7ba936871f5",
+    "src/platform/sharing/v2-completion-notice-preview.ts": "8b21a58566f3c05b77a39aebfe524fb6fa409d78b12acb5f69f462e82c2b32e2",
+    "src/platform/sharing/v2-completion-notices.ts": "aec298ee596fbf78c26a07b54fde32899d95501f416ce56f575ae1e4605cdc0f",
+    "src/platform/sharing/v2-google-tasks-preview.ts": "3354880fb3851d0611910de9f65a45d41b05693d97b45f982b6650f30feb6b8f",
+    "src/platform/sharing/v2-immediate-notices.ts": "a29b9def05fd9a823c3648aacac03d61f0e022bc9ddb76a797618138d08b94c4",
+    "src/platform/sharing/v2-load-notices.ts": "02f20b1330773f1e3d8a15b26836ad07959076f499b150422adb00f1119d16ec",
+    "src/platform/sharing/v2-reminders.ts": "f1afbe29cc8ab210df23373badcc89df9dd958732239025101e781c254c87087",
+    "src/platform/storage/sharing-v2-load-notices.ts": "aec768c33143db8da9e4b2c236ac73126a0f4bb6a328b5ebb6c5ac9a238b5154",
+    "tests/sharing-v2-completion-notices-native.test.mjs": "8170b3e793b1fe16c64dd603ee3c0587cac4a67a5a0fa3f60675e26c5c92e1f5",
+    "tests/sharing-v2-load-notice-native.test.mjs": "ff698a08efea44d1e956ba3856870172bad8344f20995c84cc1cfefc963201dc",
+    "tests/sharing-v2-load-notice-runtime.test.mjs": "3342f8fd22d4a203e9a0b7c74faea09046bb5d630968830e7b6b47516f045650",
+    "tests/sharing-v2-notice-preview-snapshot.test.mjs": "f9d96f11ad1c3cbc7efd04312728150ce3fc470c38edd19f7ef2883a6535acd7",
+    "tests/sharing-v2-reminder-native.test.mjs": "b023cc3796ecb99d7cf55fad4ffeaafb94fc9ea66fe55eb9c3c7e5a6aeb255e5",
+    "tests/sharing-v2-tasks-preview-cold.test.mjs": "ffec143ef056fa9d97077f117b80e30186a55ac7cd7880dfbfd425f71b6abd2b",
+    "tests/sharing-v2-untimed-load.test.mjs": "57f324ea4ffcb0c450c2433be00ab784d54cb2db58b1ef84e9c7c833c0d88443"
+  },
+  "sharedSchedulerVersion": "liflow-shared-2-draft-36",
+  "nativeIntlCurrentDevices": "Both devices support Asia/Tokyo and America/Coyhaique; older-Intl rejection is a regression simulation."
+}

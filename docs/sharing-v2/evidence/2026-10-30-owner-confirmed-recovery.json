@@ -1,0 +1,312 @@
+{
+  "date": "2026-10-30",
+  "timeZone": "Asia/Tokyo",
+  "reviewKind": "development-led attack testing and code review; not independent assurance",
+  "baseCommit": "0fbe8e5249e8bc607c6c4c7cedb37cf5a6445579",
+  "deployment": {
+    "productionRulesDeployed": false,
+    "mainMerged": false,
+    "draftReleased": false,
+    "recoveryDefaultEnabled": false,
+    "explicitFlag": "EXPO_PUBLIC_SHARING_OWNER_RECOVERY=true",
+    "v1RecoveryImplemented": false
+  },
+  "compatibility": {
+    "v1Version": "liflow-shared-1",
+    "v1HashedSourcesUnchanged": 8,
+    "v2Version": "liflow-shared-2-draft-38",
+    "oldDraftDataAndKeysRetained": true,
+    "previousFeatureContractsPreserved": 350,
+    "featureContracts": 355,
+    "mandatoryCloudReferences": 51
+  },
+  "checks": [
+    {
+      "name": "iOS condition full check",
+      "command": "HOUSEWORK_TEST_PLATFORM=ios npm run check",
+      "tests": 2302,
+      "passed": 2302,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "recovery-resumed-ios-check.log",
+      "sha256": "f0dc7d976764c0e58053c99eb696a5e45ec71cfa3a6e3a38d92f25beec8ee322"
+    },
+    {
+      "name": "Android condition full check",
+      "command": "HOUSEWORK_TEST_PLATFORM=android npm run check",
+      "tests": 2302,
+      "passed": 2302,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "recovery-resumed-android-check.log",
+      "sha256": "0def1e0e56ba61bb738f45cfbe1b8516afd2ab0ebd8c62b4465641ac1a9c8e74"
+    },
+    {
+      "name": "actual Firestore Rules and encrypted sessions",
+      "command": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8185 npm run test:sharing-cloud",
+      "tests": 86,
+      "passed": 86,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "recovery-resumed-cloud.log",
+      "sha256": "a8e7d0a6bd3c8b4ff1c337c008f36777946cd2723f48785ec4c76504f4583865"
+    }
+  ],
+  "regressionBeforeFix": {
+    "finding": "A network/auth/evidence failure unnecessarily probed the recovery lock, potentially adding a second network deadline",
+    "unavailableProbeCountBefore": 1,
+    "requiredAfter": 0,
+    "file": "recovery-diagnostic-before.log",
+    "sha256": "d6c95212a6107aad8d42430cd6e54503f59e148653797030a0daf8754238a15e"
+  },
+  "focusedAfterFix": {
+    "tests": 21,
+    "passed": 21,
+    "file": "recovery-resume-focused.log",
+    "sha256": "065e30820e2e744bf21c2a10315173b51f0567816f0c53eae2f8c3f67ae6d5e8"
+  },
+  "cloudScope": {
+    "localOnly": true,
+    "productionAttacks": false,
+    "paidAIAttacks": false,
+    "recoveryCasesAdded": 9,
+    "covers": [
+      "independent edits and causally blocked originals",
+      "outbox preservation",
+      "pinned owner and member rejection",
+      "immutable evidence and original protection",
+      "late-start cancellation",
+      "stale review rejection",
+      "lost final response",
+      "interrupted preparation and restart",
+      "256-entry Rules access budget",
+      "history compaction progress",
+      "prior deployed Rules with recovery OFF"
+    ]
+  },
+  "physicalDevices": {
+    "owner": "Sony I4293 Android 10",
+    "member": "iPhone 12 iOS 26.7.2",
+    "realDeviceDataReset": false,
+    "fixtureProject": "demo-liflow-v2-native",
+    "authentication": "synthetic emulator UIDs with separate SQLite and native device keys",
+    "scenarios": [
+      {
+        "name": "restore an exact owner original",
+        "normalReceiverRejectedCorruptAES": true,
+        "ownerPreview": {
+          "restored": 1,
+          "removedDevices": 0
+        },
+        "explicitSwitchAndAlert": true,
+        "bothDevicesAfter": {
+          "keyVersion": 3,
+          "recoveryProofs": 1,
+          "outbox": 0,
+          "sourceHash": "6ce071c9f5ed1a6fade94b874c59bc95da4d3f9490b8ed388cf34a9451068fd6",
+          "planHash": "2280470d2b86cc62f2961aec93bb27c0fc27f4b77021ba60df3777ccbf355a0a"
+        },
+        "proofs": [
+          {
+            "file": "android-owner-proof.json",
+            "sha256": "19b6f42c12fc5eb76155a53e5bd95ca64af1988e2d40fed6b4f4ee765fa19515"
+          },
+          {
+            "file": "ios-member-proof.json",
+            "sha256": "4b1a54cad7df252d269c51fefb349d9a04d941e4e918d551822998e13d1bed48"
+          }
+        ],
+        "receiverLog": {
+          "file": "recovery-member-proxy-sync-20261030.log",
+          "sha256": "06ae975f39d2a58b0e0f6d2fe6af9f4d95ed1d69ed5899825fd2efc0c4a3c729"
+        }
+      },
+      {
+        "name": "cold application reopening retains recovered state",
+        "proofs": [
+          {
+            "file": "android-owner-cold-proof.json",
+            "sha256": "19b6f42c12fc5eb76155a53e5bd95ca64af1988e2d40fed6b4f4ee765fa19515"
+          },
+          {
+            "file": "ios-member-cold-proof.json",
+            "sha256": "4b1a54cad7df252d269c51fefb349d9a04d941e4e918d551822998e13d1bed48"
+          }
+        ],
+        "receiverLog": {
+          "file": "recovery-member-retained-proof-20261030.log",
+          "sha256": "5660c741860a0b2ca48d1efa78fa9bb8cef14fde747768c108b2a26e49157258"
+        }
+      },
+      {
+        "name": "isolate corrupt member transport and revoke its device",
+        "normalOwnerRejectedCorruptAES": true,
+        "ownerPreview": {
+          "unreadable": 1,
+          "removedDevices": 1,
+          "restored": 0
+        },
+        "explicitSwitchAndAlert": true,
+        "ownerAfter": {
+          "keyVersion": 4,
+          "recoveryProofs": 2,
+          "members": 1,
+          "outbox": 0,
+          "held": 0,
+          "restored": 1
+        },
+        "memberAfter": {
+          "status": "removed",
+          "outbox": 1
+        },
+        "serverReadRejectedWith": "permission-denied",
+        "serverReadUsed": "same removed UID, direct getDocFromServer, not the UI access guard",
+        "proofs": [
+          {
+            "file": "android-owner-recovery-verified.json",
+            "sha256": "a87bab09a558adf7ffe339569c16cb096d2971f59d8600f9e8213755648e1fdc"
+          },
+          {
+            "file": "ios-removed-member-retained.json",
+            "sha256": "b944b6f61e9708603094bb30ab6a86830ecd6a509e8dc630403b250c5106833b"
+          }
+        ],
+        "memberLog": {
+          "file": "recovery-removed-retention-rules-final-20261030.log",
+          "sha256": "81a8e08f83d82ed98e29db30a2f43b129b6a23803ef998f274c327a610b39b74"
+        },
+        "beforeRemovalLog": {
+          "file": "recovery-member-before-removal-20261030.log",
+          "sha256": "e0969821c8f7435538f5c7811674fc29a637401e2fd88df395c6c8e0e2edb3fc"
+        }
+      }
+    ]
+  },
+  "failedTrialsRetained": [
+    {
+      "category": "transport deadline; not counted as success",
+      "file": "recovery-member-online-sync-20261030.log",
+      "sha256": "455d4f2766c97a670e8664ed04b3d3541dfb5dba0c175322642c58cdfcba4df8"
+    },
+    {
+      "category": "cold launch incorrectly assumed QA route would restore; explicit navigation then passed",
+      "file": "recovery-member-cold-20261030.log",
+      "sha256": "2efb4b43d90f185053f3eda1c838e5a93426df43da138a4ae4d11766f3fe3789"
+    },
+    {
+      "category": "denial text matcher missed actual Rules evaluation error; explicit code/direct-read test later passed",
+      "file": "recovery-member-removed-denial-20261030.log",
+      "sha256": "5f36cd7d55b2ac273c09801bd59cc3935b09dbdad52d3e889c81d55f78ae3b07"
+    },
+    {
+      "category": "URL dispatch accessibility timeout; route was delivered",
+      "file": "recovery-resume-member-route-20261030.log",
+      "sha256": "6c56a91069f63292526454bde965a5fe1a6c3d0c10b18ad9a6649b7f7a2143cf"
+    },
+    {
+      "category": "development bundle had not finished downloading; not a data or permission result",
+      "file": "recovery-resume-load-current-bundle-20261030.log",
+      "sha256": "c9ae6ac437b7a7eb353309ed77a18708a25cb7a8b766e76e2ebf38afbbc65904"
+    },
+    {
+      "category": "cleanup connection closed but back destination was not the assumed app home",
+      "file": "recovery-final-home-20261030.log",
+      "sha256": "05dd8f1db60d61c98954d4425d9d608f9ddf63e1cb94abfcc323ae91acaa370f"
+    }
+  ],
+  "staticAnalysis": {
+    "engine": "Semgrep 1.182.1 OSS",
+    "files": 515,
+    "rulesExecuted": 110,
+    "all12AddedSourcesIncluded": true,
+    "codeUpload": false,
+    "metrics": false,
+    "findings": 1,
+    "findingAssessment": "existing CORS warning; exact-origin allowlist and denial regressions inspected",
+    "partialParsingPaths": [
+      "src/features/sharing/private-calendar/source-controller.ts",
+      "src/features/sharing/v2/confirmation.ts"
+    ],
+    "timeouts": 0,
+    "file": "recovery-final-semgrep.json",
+    "sha256": "cf460af07e312068a29b898db1ec61c5007f3f100be8ff61a697fb1d661e7fa7"
+  },
+  "dependencyAudit": {
+    "info": 0,
+    "low": 7,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 7,
+    "remaining": "Expo CLI deepmerge dependency path; no incompatible Expo downgrade",
+    "file": "recovery-final-npm-audit.json",
+    "sha256": "80ac6b960f4c7cecd46ae42ef5bc939ce85af0aa9bce789758ec1a163c483c9e"
+  },
+  "limits": {
+    "scanEvents": 10000,
+    "ciphertextScanBytes": 33554432,
+    "reviewedEntries": 256,
+    "witnesses": 64,
+    "behaviorAtLimit": "retain originals/outbox and stop; never silently truncate or skip"
+  },
+  "notClaimed": [
+    "independent third-party audit or MASVS certification",
+    "v1 corrupt-transport recovery",
+    "production Rules deployment or v2 rollout",
+    "release artifact penetration assessment",
+    "rooted/jailbroken or lost-device key extraction",
+    "natural long-duration OS background execution",
+    "all possible attack methods"
+  ],
+  "verifiedSourceSha256": {
+    "docs/feature-contracts.json": "2081f61e50afe8d11a9e78f7fb9ae9e750c21942b8ffb0d7a82930511739e316",
+    "firestore.rules": "0fb10205a6b688a25d59f5d99bb35904c30bed35bbd119346c2cb86efc985391",
+    "package.json": "f8e7801ad2abc601a2c2d0555a159ee488f330af49d96f1ed07f8611bb99811f",
+    "src/app/development/index.tsx": "b7434d52faad9372175c82bdd5786b0a96f6bce81d4624576c42b9a20ab279d6",
+    "src/app/sharing/index.tsx": "be5a430202ff72c47c8fef7314b7212b20ede71e1c7726d09052ba516522e5ef",
+    "src/features/sharing/development/v2-native-pair-screen.tsx": "5549dfc729f5c1a826173ebed1033e78f66291ee3b15b43b4986dd97c5bbe7e7",
+    "src/features/sharing/development/v2-native-pair.ts": "fba1800e8e4c4b95d920d32d91b8e7b5d9a403d52f6d7448e1125f09a90be623",
+    "src/features/sharing/replica.ts": "9b1e0dc4cf105dd37cb6a65ba50d6fd1d0f8e82e487e292a981a6da0b398654d",
+    "src/features/sharing/roster.ts": "1dc63820e8465c1aa80bccfecd40de24db0ce8dee49b1638f58e873f1ad52c4e",
+    "src/features/sharing/snapshots.ts": "e861bc1d147e96ba413c2b42636e4efe1a2f3f61afff6e8f3da8a23d4804a6b1",
+    "src/features/sharing/synchronizer.ts": "95378b89585512817f3e93cd4098d6102c612cbf882335a73a4ac54d58b1ee53",
+    "src/features/sharing/v2/controller.ts": "6553ecf214515dfc5c456a9d60f8185b4995ab2595ce1722ce751e88bb74eac1",
+    "src/features/sharing/v2/owner-recovery.ts": "03ab104ac25742bb68ff115f09d053d309d979fdb6f5dcb2cb6f0e8dec894605",
+    "src/features/sharing/v2/payload-schema.ts": "c6e6a3688682ff64010015eb61d83bbbda0e6926888f728dfe5ea640980df806",
+    "src/features/sharing/v2/receiver-authority.ts": "b083f48e4b4faf67be5f2cbb421dc67342090448562c1aed1a15f4701f804cd0",
+    "src/features/sharing/v2/recovery-analysis.ts": "91d6b9b7063eec18c4b1833d941290e726616399512e86be0b8304e1bfe37812",
+    "src/features/sharing/v2/recovery-cloud-contract.ts": "3a244c2021af64c2bcbab7eab91ab6ba64b600c9a34dd74a664c02050a59d56c",
+    "src/features/sharing/v2/recovery-contract.ts": "4a98753938107b2dfb2ecc5f37fcbc33a749d40c394497cea27b6822ce4afc2e",
+    "src/features/sharing/v2/recovery-encryption.ts": "7df3785c0bbf2b5ef686a76f653863a15433716800170d1f35870732bcfb1a43",
+    "src/features/sharing/v2/recovery-evidence.ts": "413701cb13a431f6f06da5f40c7a2699c144c4f0a97a3bdb96156008ad014bc2",
+    "src/features/sharing/v2/recovery-lock.ts": "7d45edd95809d04906dc411ea6458a06ecadc5120acd579b72087657d9056f2a",
+    "src/features/sharing/v2/recovery-panel.tsx": "8bac3d7a127a485de996b421acb1da8b8c460baa67055d617b1467ac3ed28ea4",
+    "src/features/sharing/v2/recovery-witness.ts": "ec69655ea444448eedf7fd8e4c40b901b0cf7e63128a17a01256b19d456bfe02",
+    "src/features/sharing/v2/scheduler-contract.json": "414a91ffa402f41a927838afce5548bcafadf1c494d2d4f41919e92ccbea0ec6",
+    "src/features/sharing/v2/synchronizer.ts": "b43296b74d85cc37ba06f7c9ae80103e9e0f4581a365a9d52c021cf3ceb42c30",
+    "src/features/sharing/v2/workspace-session.ts": "6e57291db55a747eb8df1381f2986f580d309a01b9c1f7b955dc2de5ce24e929",
+    "src/platform/sharing/development-v2-native-pair.ts": "1be56508a5e2b71ee015df95d86f92dfdf3904aefc5a74ba38ad3063cfafcd5f",
+    "src/platform/sharing/firestore-cloud.ts": "41b71ed9ecb09f40485f13268efa363e6f8109e62d63d37d95b0b91142515e17",
+    "src/platform/sharing/firestore-context.ts": "8c93a8fd954a9f5b120bd58a56fb91e0f4e443af9d3b74156ecf6450f534cd31",
+    "src/platform/sharing/firestore-management.ts": "c1385ead80035c14bdc89fb5218abef33c244b6133b08b6c84567a79a5cf58ba",
+    "src/platform/sharing/firestore-recovery.ts": "31fb0bb9c5c90663a071a2836a2439848bb6c56efb259a4b5c96c5ed324e94f5",
+    "src/platform/sharing/workspace-types.ts": "37c7cbba3dfb63a182146ecbfeafaf72ef9361092601ead79bd95753d072b0f1",
+    "src/platform/sharing/workspaces.ts": "c4fdd578e6016aef2bbdbdd9afb02525aefee63d1a53f43f6fade2bf18c5c3a6",
+    "src/platform/storage/sharing-v2-recovery.ts": "58826e466a78010fe6cc9e903ddf506dfff64996fb46b9e3e6a5b553963e4d38",
+    "tests/fixtures/sharing-before-owner-recovery.rules": "c29a42e4de670e9cba97479d30048153d9994ad4ba6398c3221d2b56783accd9",
+    "tests/helpers/screen-harness.mjs": "19834d876db0995775b23241a396d7b8cf1d90c66556f421152b4f9d11473e50",
+    "tests/sharing-synchronizer.test.mjs": "38d0f233315725b339acefb4dc393937528e741fc0addd9917c383e6a995aaac",
+    "tests/sharing-v2-native-pair.test.mjs": "79d6f228a6491d6500f0a6b20a51dbb0fb4994b4a0064eb3b27baa8d61d4a390",
+    "tests/sharing-v2-owner-recovery.integration.mjs": "e09b1a7194519f16859db505afc0d97d1c89aa88274aa3bc4e318827a2155b2c",
+    "tests/sharing-v2-recovery-analysis.test.mjs": "4401eb9264722cb76981f09406d202c3c9def92897c48f9b586d71b6ebda9759",
+    "tests/sharing-v2-recovery-encryption.test.mjs": "07fce42d37d9d79c35a853a5ef71c138c7f836e71cf24dd7e424f5d85f31a64d",
+    "tests/sharing-v2-recovery-lock.test.mjs": "35ae494a29298fb08bcf9bb069e0ae5db9b8c76ccf4549384fbc80cef143ec3d",
+    "tests/sharing-v2-recovery-store.test.mjs": "6269403bef8949d2ad8a46a84959bf019b397ce30e3ec9084f968018b73d2aaa",
+    "tests/sharing-v2-recovery-ui.test.mjs": "dda7b1dff575500d7cc64a0cfea056f4f06b85f5d682f4fcf4e81bd31cf0d4b5",
+    "tests/sharing-v2-recovery-witness.test.mjs": "fac4396963863a222bc81b3b2c5f5151e01587427ac8a67c27a7cdbab4106a7c",
+    "tests/sharing-v2-synchronizer.test.mjs": "9eab284b027d8976448ff6408181b844dbbb1505ecca414584259a3d378d0ef0"
+  }
+}

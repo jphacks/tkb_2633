@@ -35,6 +35,27 @@ export function normalizeWasteSchedule(input: WasteScheduleInput): WasteSchedule
   };
 }
 
+/** These fields describe one rule; mixing independently edited parts can create an invalid date. */
+export function wasteCollectionRule(input: WasteScheduleInput) {
+  const value = normalizeWasteSchedule(input);
+  return { recurrence: value.recurrence, collectionWeekdays: [...value.collectionWeekdays],
+    anchorDate: value.anchorDate ?? null, monthlyDay: value.monthlyDay ?? null };
+}
+
+/** Merge only edits made since the form opened, preserving unrelated newer changes. */
+export function mergeWasteScheduleEdits(current: WasteScheduleInput, proposed: WasteScheduleInput, base: WasteScheduleInput) {
+  const latest = normalizeWasteSchedule(current); const next = normalizeWasteSchedule(proposed); const shown = normalizeWasteSchedule(base);
+  if (!shown.id || shown.id !== next.id || latest.id !== next.id) throw new Error('収集日の保存先が一致しません。');
+  const editedLabel = next.label !== shown.label;
+  const rule = (value: WasteScheduleInput) => JSON.stringify(wasteCollectionRule(value));
+  const editedRule = rule(next) !== rule(shown);
+  if ((editedLabel && latest.label !== shown.label && latest.label !== next.label)
+    || (editedRule && rule(latest) !== rule(shown) && rule(latest) !== rule(next))) {
+    throw new Error('この収集日は別の端末で変更されました。編集をキャンセルして、最新の内容を開き直してください。');
+  }
+  return { ...(editedRule ? next : latest), label: editedLabel ? next.label : latest.label };
+}
+
 export function wasteScheduleDescription(schedule: Pick<WeeklyWasteSchedule, 'recurrence' | 'collectionWeekdays' | 'monthlyDay'>): string {
   if (schedule.recurrence === 'monthly') return `毎月${schedule.monthlyDay}日`;
   const days = schedule.collectionWeekdays.map((day) => `${wasteWeekdays.find((item) => item.id === day)?.label ?? ''}曜`).join('・');

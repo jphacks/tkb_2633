@@ -1,0 +1,553 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "b97abd3",
+  "phase6Complete": false,
+  "unitResults": {
+    "ios": 2072,
+    "android": 2072,
+    "failures": 0,
+    "skipped": 0
+  },
+  "coverageMeaning": "These are explicitly executed counterexamples, not a claim that each entire case passed on two physical devices or production.",
+  "cases": [
+    {
+      "case": 1,
+      "requirement": "4種類の家事・完了・権限",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 common planner separates common and each-member work and preserves immutable actual history after targeted undo",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-actions.test.mjs",
+          "name": "v2 members may add disabled chores and procedures without gaining activation or cadence rights",
+          "sourceSha256": "a5835e51e464500febde0ca7cf5f4b5a321ccbfbae0218bd7f116f42291f8066",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 2,
+      "requirement": "共通枠と本人推奨の独立",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-personal-plan.test.mjs",
+          "name": "v2 personal recommendations differ by private Calendar while the common windows and common hash remain identical",
+          "sourceSha256": "0145654954733378112c024051cc94bb8b20b3c4bfd6b346e4320ee7290f60df",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 3,
+      "requirement": "同一人物・別端末と再収束",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-repository.test.mjs",
+          "name": "v2 local repository atomically signs operations and outbox, retains original times on retry and resumes after restart",
+          "sourceSha256": "8098974bb708d1ce13647c5394a3f04c6564d6ad96f0af197b7aa2ded3135a93",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-membership-rights.test.mjs",
+          "name": "v2 another device and another member do not revoke an uninterrupted user delegation",
+          "sourceSha256": "eea6c0daab98324c012ee938a46e39ba3009f6e24e1dac39b3db08fe287ffe65",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 4,
+      "requirement": "Calendar内容を公開しない",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-storage.test.mjs",
+          "name": "v2 events refuse private information, impersonated claims, rewritten facts and unknown policy extensions",
+          "sourceSha256": "1f49d1802d7c320f7028338abde2cd1fd6fde46d641aeb6cb319ca37a0cc0624",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 5,
+      "requirement": "鮮度不明は空きでない",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 private Calendar reports only a scoped conflict result and never treats stale, incomplete or foreign data as free",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 6,
+      "requirement": "手動指定と負荷確認",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-actions.test.mjs",
+          "name": "v2 actions require an explicit high-load confirmation and roll back a cancelled designation",
+          "sourceSha256": "a5835e51e464500febde0ca7cf5f4b5a321ccbfbae0218bd7f116f42291f8066",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-date-form.test.mjs",
+          "name": "v2 date-form high-load confirmation applies only to unchanged input and cancellation cannot save the warning target",
+          "sourceSha256": "749dcb8927f4afece3cd3d721f81f5a59b084a39c1ee92a55ddccd305d82a495",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 7,
+      "requirement": "同一担当の時刻重複拒否",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 overlapping fixed intervals flag all affected subjects without treating touching intervals or different assignees as conflicts",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 8,
+      "requirement": "条件付き個人家事移動",
+      "status": "needs-implementation-and-decision",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 private relocation obeys explicit allowed times, protects fixed chores and requires roommate consent",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 private relocation searches the original civil day first even when earlier allowed windows exist",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "純粋な時刻付き判定のみ。実個人予定は日付だけのため、元の時刻を捏造せず本人確認にするD10が回答待ち。実移動・固定状態・変更理由・履歴への接続は未完。"
+    },
+    {
+      "case": 9,
+      "requirement": "本人固定・未設定帯の保護",
+      "status": "needs-implementation-and-decision",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 private relocation obeys explicit allowed times, protects fixed chores and requires roommate consent",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "純粋な時刻付き判定のみ。実個人予定は日付だけのため、元の時刻を捏造せず本人確認にするD10が回答待ち。実移動・固定状態・変更理由・履歴への接続は未完。"
+    },
+    {
+      "case": 10,
+      "requirement": "前倒し・厳守・期間外",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 date permissions keep fixed, strict, outside-window and assignee-consent rules above automatic earlier approval",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 11,
+      "requirement": "期限の全境界",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 approval grace handles every threshold including one millisecond boundaries using server receipts",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 date-only approval references group 23:59 and an earlier proposal never extends its available time",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 12,
+      "requirement": "期限後のオフライン承認",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-repository.test.mjs",
+          "name": "v2 an offline approval delivered after expiry is retained and acknowledged without changing the formal date",
+          "sourceSha256": "8098974bb708d1ce13647c5394a3f04c6564d6ad96f0af197b7aa2ded3135a93",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 13,
+      "requirement": "繰り返し期間の部分置換",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 period replacement preserves both sides and handles disjoint, boundary and ongoing ranges",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-domain.test.mjs",
+          "name": "v2 two-week and calendar-month validity have explicit inclusive endings rather than assuming thirty days",
+          "sourceSha256": "297d3446d9616f0ec409683181630e4f3ee449109d973bf006d63398feb6228b",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 14,
+      "requirement": "周期変更と今回例外",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 one-off date exceptions keep their original common anchor and remain active across a cadence revision",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 15,
+      "requirement": "過去完了を改変しない",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 common planner keeps a completed round complete when its assigned members change later",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 common planner retains completed old anchors across a cadence change and quarantines missing revision boundaries",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 16,
+      "requirement": "2〜6日周期と再実施不要",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 late actual work suppresses only its own short-cycle next round without consuming another member or inventing completion",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 17,
+      "requirement": "7日以上の共通枠",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 seven-to3650-day recurrences retain the same future anchors after different members complete early or late",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 18,
+      "requirement": "仮想消化と実績の分離",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 common planner keeps expired rounds and virtual consumption distinct from actual completion and the five-day home window",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 19,
+      "requirement": "途中参加・担当変更・退出",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-actions.test.mjs",
+          "name": "v2 unrelated configuration edits do not add a newly joined member until an explicit this-or-next assignment",
+          "sourceSha256": "a5835e51e464500febde0ca7cf5f4b5a321ccbfbae0218bd7f116f42291f8066",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-membership-rights.test.mjs",
+          "name": "v2 rejoining does not resurrect old delegated rights and a new grant preserves the formerly authorized shared instruction",
+          "sourceSha256": "eea6c0daab98324c012ee938a46e39ba3009f6e24e1dac39b3db08fe287ffe65",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 20,
+      "requirement": "同時引き受けと解決",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 concurrent claims keep every claimant provisional regardless of arrival order or duplicate delivery",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 claim release targets only observed own claims and a released resolved winner does not revive losing claims",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 21,
+      "requirement": "解決前の実完了",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 common chores can finish during provisional claims and resolving assignments never erases who actually worked",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 22,
+      "requirement": "代行・承認・取消権限",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 each-member completion stays independent and substitution approval is separate from the immutable work fact",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 completion undo is recorder-or-admin, observed and targeted without removing another independent completion",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 23,
+      "requirement": "実施・記録時刻と再送",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-repository.test.mjs",
+          "name": "v2 local repository atomically signs operations and outbox, retains original times on retry and resumes after restart",
+          "sourceSha256": "8098974bb708d1ce13647c5394a3f04c6564d6ad96f0af197b7aa2ded3135a93",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 common planner excludes verified future-dated actual work from cooldown and effective completion",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 24,
+      "requirement": "超過5日と過去回",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-participation.test.mjs",
+          "name": "v2 expired home visibility is exactly five civil days independently of recurrence consumption",
+          "sourceSha256": "45c7b64bc147a641a58762c0959204ac85dbd20d626cfe8c8bb16812ae5a9db6",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 25,
+      "requirement": "同時日時変更の明示解決",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 conflict resolution observes every candidate and retains completion truth while choosing the formal date",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 26,
+      "requirement": "順序逆転・重複・Snapshot",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-common-plan.test.mjs",
+          "name": "v2 common planner yields identical output across reversed receipt input and duplicate/reordered source delivery",
+          "sourceSha256": "4fb523827505d5b56e55be5358d2971ec5704cfe5ec7f41b0b1409d46a097e67",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-repository.test.mjs",
+          "name": "v2 encrypted snapshots retain original proofs, restore authority state and refuse manifest protocol tampering",
+          "sourceSha256": "8098974bb708d1ce13647c5394a3f04c6564d6ad96f0af197b7aa2ded3135a93",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 27,
+      "requirement": "剥奪・管理者変更・再参加",
+      "status": "automated-evidence-confirmed",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-repository.test.mjs",
+          "name": "v2 delayed former-administrator edits lose privileged effects at server delivery without erasing original facts or ordinary member edits",
+          "sourceSha256": "8098974bb708d1ce13647c5394a3f04c6564d6ad96f0af197b7aa2ded3135a93",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-membership-rights.test.mjs",
+          "name": "v2 membership periods preserve continuous users across device changes and invalidate an appended removal and rejoin",
+          "sourceSha256": "eea6c0daab98324c012ee938a46e39ba3009f6e24e1dac39b3db08fe287ffe65",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "このケースの自動検査と接続箇所を確認。端末間の総合シナリオは全体の完了条件で別途照合する。"
+    },
+    {
+      "case": 28,
+      "requirement": "個人設定コピー・過去非公開",
+      "status": "needs-device-e2e",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-personal-copy.test.mjs",
+          "name": "personal copy preparation persists only a private review and confirmation atomically commits it with signed events",
+          "sourceSha256": "8b9707d9e0399c2bbee6e558990ecd16626a44c6a7733bd2da39535276ce164b",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+          "name": "Native personal copy reads only the validated personal database, filters selection and closes every connection",
+          "sourceSha256": "0ca1740e09588459122e1e4fbd20704e9324cab2793b49dacac554b6c7a10ce8",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "通常UI・署名SQLite・実Emulatorの受信と元DB保持、Androidの確認中／確定後のcold復元は確認。iPhoneと異種OS総合は未実施。"
+    },
+    {
+      "case": 29,
+      "requirement": "本人Google Tasksの完了・取消",
+      "status": "needs-device-e2e",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-google-tasks.test.mjs",
+          "name": "v2 Google undo targets only this owner’s acknowledged completions and cannot erase another member’s work",
+          "sourceSha256": "c4ac11128723ba54401ef72e709706c2135e7223bc45ee42c79f43fcdf1cafcf",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-google-tasks.test.mjs",
+          "name": "v2 local completion during Google read cannot be silently undone by the older remote status",
+          "sourceSha256": "c4ac11128723ba54401ef72e709706c2135e7223bc45ee42c79f43fcdf1cafcf",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "Android実Googleの合成3件で完了・取消を双方向確認。iPhone TasksはMacロックにより未実施。"
+    },
+    {
+      "case": 30,
+      "requirement": "既存回帰・通知・世代と障害",
+      "status": "needs-device-e2e",
+      "tests": [
+        {
+          "file": "tests/sharing-v2-repository.test.mjs",
+          "name": "v2 repository binds a fresh database and preserves every personal table and v1 workspace without in-place conversion",
+          "sourceSha256": "8098974bb708d1ce13647c5394a3f04c6564d6ad96f0af197b7aa2ded3135a93",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-reminder-runtime.test.mjs",
+          "name": "v2 shared reminders and received-completion delivery share one coalesced worker budget",
+          "sourceSha256": "d914097c6dd241592fb61d07f8dfc245a5738ebe98ff7721e856544bdf1ed87d",
+          "executedBothConditions": true
+        },
+        {
+          "file": "tests/sharing-v2-completion-notices.test.mjs",
+          "name": "v2 notice permissions policy and workspace are rechecked before a native presentation",
+          "sourceSha256": "ba3c5f3f413d8f1913c90d43b97c683d2ddf2937e7210c56605d92ffa19ba3b5",
+          "executedBothConditions": true
+        }
+      ],
+      "remaining": "304既存契約と長周期の追加1件を保護。通知予約は両実機、受信時完了通知のOS表示はAndroidのみ。iPhone配信と端末間の総合検査は残る。"
+    }
+  ],
+  "pending": [
+    "D10 original-time absence and actual private relocation/reason/history integration",
+    "Mac unlock and required iPhone Tasks/copy/completion-notice checks",
+    "Integrated heterogeneous-OS scenario with synthetic groups and real local Emulator Rules",
+    "v1 migration preview/conversion in the implementation plan is still absent; keep v1 usable and fail closed on an unverified protocol transition",
+    "Production schema deployment, actual group transition, main merge and Draft release require a separate final approval"
+  ],
+  "logs": [
+    {
+      "name": "phase6-matrix-ios.log",
+      "sha256": "6496518107aa294a358c6e01067f1299a2d81d561352a34dfa5a72cc5f0f3273"
+    },
+    {
+      "name": "phase6-matrix-android.log",
+      "sha256": "5104a0de29a7a883fe60455e805d09c5fa3ae7b3cd4add2fdd4a8fe1b1b439a7"
+    }
+  ]
+}

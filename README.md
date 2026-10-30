@@ -1,5 +1,7 @@
 # LiFlow
 
+開発コードの正本は`main`です。[作業とブランチ整理の方針](docs/development-workflow.md)に従って変更を統合します。
+
 > **家事を記録するだけではなく、家事を「いつ・何を・どうやるか考える負担」まで減らす。**
 
 周期、家事の負荷、休日、天気、Google Calendarの忙しさを考慮して、家事を行うタイミングを自動で調整する家事Plannerです。
@@ -9,6 +11,26 @@ Google Tasksとも連携し、Plannerが決めた予定を普段使うGoogle側�
 家電については、メーカー名・製品名・型番から**メーカー公式情報・公式説明書を確認し、AIでお手入れ方法を構造化**します。
 
 通常の家事管理・Scheduler・履歴は端末内のExpo SQLiteで動作し、外部APIが利用できない場合でも基本機能を継続できます。
+
+---
+
+## 暗号化共有グループ（開発中）
+
+個人データを残したまま、共有グループを別の作業領域として追加する機能を実装中です。家事・完了/取り消し・ゴミ・確認済み家電情報を端末で暗号化し、Firestoreには暗号文を保存します。招待には所有者の明示的な承認が必要です。個人利用にログインは不要です。新規グループはv2が標準です。家族／同居人を本人が選び、共有する家事は無効から開始します。既存v1・旧draftのデータと鍵は保持します。
+
+SQLiteと送信待ち操作の同時保存、競合の確認、鍵更新、Snapshotによる復旧、共通タイムゾーンの予定計算、共有画面と既存の単一workerへの接続を実装しました。Google Tasks/Calendar・通知・Widget・APIキーは個人用と区別します。
+
+Android 10実機とiPhone 12で、別々の実Googleアカウント・本番Firestoreを使い、参加承認、家事の更新、完了と取り消し、オフライン保存と再送、再起動、所有者引き継ぎ、除名と再参加を確認しました。両端末の共有状態も照合しています。[実機検査の範囲と修正](docs/shared-native-interoperability-2026-10-27.md)に記録しています。
+
+Androidでは、バックグラウンドで待機処理が止まるSDKの互換問題を修正し、強制起動したworkerによる受信と終了を実機で確認しました。iPhoneでも開発用強制起動APIからworkerの完了を確認しています。
+
+追加の[信頼性監査](docs/workspace-reliability-audit-2026-10-27.md)では、画面離脱後の古い処理、グループ間の失敗連鎖、保存中の権限変化を修正し、変更のない共有予定の再計算を抑えました。[依存関係対策](docs/dependency-security-2026-10-27.md)ではZod・node-forgeを公式修正版へ更新しました。2026-10-29の再検査ではnpm auditのhigh・critical・moderateは0件、lowは7件です。
+
+[共有編集の追加監査](docs/shared-group-editing-audit-2026-10-27.md)では、古い編集画面からの上書き、収集ルールの同時変更、競合解決中の権限変化を修正しました。AndroidとiPhoneの実機でオフライン編集・再起動・再送・競合解決を行い、両端末の状態一致を確認しています。競合など確認が必要な項目は通常の画面にも案内を表示します。
+
+[グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotと通常画面を接続しました。本人専用Calendarと休日・実施可能時間帯には、グループとは別の暗号化・承認端末・同期経路を設けています。独立した合成データで、iPhone・Android 10間の転送、競合確認、通信障害後の再送を検査しました。端末別の共有通知とv2 Tasksを通常画面・既存workerへ接続し、通知予約は両実機、Tasksの双方向完了・取消、同じIDの期日変更、再起動後の保持は両実機の合成3件で確認しました。個人設定のコピーは、明示確認・過去履歴の非公開・元DBの保持と、両実機で確認中／追加後の再起動・二重追加防止を検査しました。初期OFFの受信時完了通知を接続し、両実機で合成1件のOS表示・内容照合・検査分だけの削除を確認しました。時刻未設定の個人家事は時間帯の競合・移動から外し、日単位の負荷確認と上限以上の案内・端末通知へ変更しました。通常v2のSession・画面・暗号化送受信を使い、ローカルRules Emulatorへ接続した両実機で、同一グループの参加・同時完了・対象取消・再起動・競合解決・除名と鍵更新を確認しました。Phase 6の開発検査を完了しました。続く[モバイルUI調整](docs/sharing-v2/14-mobile-ui-review.md)では、9段階の並び順と即時完了、分類・家事スイッチ、連結した説明・設定と固定Backを実装し、両実機の主要導線を再確認しました。[追加のUI再点検](docs/sharing-v2/15-mobile-ui-followup.md)では、通常カレンダーの今日の期限超過家事も9段階の一覧へまとめ、保存後の読込失敗からの復旧と点・棒の即時更新を修正しました。所有者の確認付きの隔離・復旧を追加し、既存のFirestoreへv2・復旧用Rulesを配備しました。新規v2と復旧を標準にし、新規作成をv1へ戻す設定と、復旧用の追加通信を停止する設定も残しています。[通常接続への切替と確認範囲](docs/sharing-v2/20-v2-default-and-live-rollout.md)を記録しています。最終回帰は各OS2,305件、Emulator86件、355機能契約・必須Cloud51参照です。既存v1を保持し、新規v2を先行する方針で、既存グループの変換は今回の完了条件に含めません。[進捗と検査範囲](docs/sharing-v2/05-progress.md)を参照してください。
+
+OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
 ---
 
@@ -578,17 +600,20 @@ GPT-5.5を利用した3回のE2E検証：
 
 | 検証 | 結果 |
 |---|---:|
-| 自動テスト | **683 tests PASS（iOS・Androidの両条件）** |
+| 自動テスト | **2,305 tests PASS（iOS・Androidの両条件。2026-10-30）** |
 | lint | PASS |
 | TypeScript typecheck | PASS |
 | `npm run check` | PASS |
 | Expo Doctor | PASS |
 | GitHub Actions CI | PASS |
-| 保護対象feature contract | **44機能** |
+| 保護対象feature contract | **355機能／必須Cloud回帰51参照（標準v2への変更をD12に記録）** |
+| Firestore Emulator | **86 tests PASS（攻撃検査はローカルのRules Emulatorで実施）** |
 | iOS Simulator + 実Google E2E | PASS |
 | Android Emulator + 実Google Tasks / Calendar Phase 3 E2E | **PASS（2026-10-26）** |
 | iPhone 12 + Release版（初期設定・自動保存・完了/取消・アイコン） | **PASS（2026-10-26）** |
 | Sony I4293 / Android 10 + Release版（初期設定・保存・完了/取消・ゴミ・Calendar取得） | **PASS（2026-10-26）** |
+| 開発中v2：iPhone / Android 10 + Rules Emulator | **通常Session・画面による同一グループの参加、オフライン同時完了、対象取消、cold復元、競合解決、除名・鍵更新、所有者の確認付き復旧を検査。実サービスの通常接続への切替は[別記録](docs/sharing-v2/20-v2-default-and-live-rollout.md)** |
+| 標準v2：iPhone 12 / Android 10 + 実Googleアカウント・実Firestore | **通常画面の作成・QR招待・番号照合と承認・家事変更・完了/取消・cold再起動を確認。両端末で共有状態一致・Outbox 0、既存個人10テーブル不変（2026-10-30）** |
 
 さらに天気・Calendarについては、**128種類の予報・busyパターン**を使い、
 
@@ -1210,8 +1235,7 @@ docs/
 - 家事・家電データの拡充
 - Android物理端末でのTasks双方向変更・Calendarによる家事移動E2E
 - Android / iOS物理端末でのBackgroundTask検証
-- Plannerの複数端末同期
-- 家族単位での共有
+- 暗号化共有グループの実機E2E・復旧フロー・セキュリティ監査の完了
 - ゴミ収集日の自治体別例外対応
 - 家電AI解析結果の再利用・共有cache
 

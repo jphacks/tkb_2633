@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-30",
+  "baseCommit": "3df87870b131deb3be39c7a09dc4baed00a166e7",
+  "checks": {
+    "ios": {
+      "passed": 2249,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/liflow-v2-20261027/settings-history-ios.log",
+      "sha256": "372850c1cbbf18fbe19f1ce2c3591aff01acf65ed913ddc83f83e7a5bf82b40b"
+    },
+    "android": {
+      "passed": 2249,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/liflow-v2-20261027/settings-history-android.log",
+      "sha256": "f7c75c4504f455b447a66908a3093559dace4bbc9502cd325b881df545b23f23"
+    },
+    "cloud": {
+      "passed": 71,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/liflow-v2-20261027/settings-final-cloud.log",
+      "sha256": "9f670e12acaa765157f6d451ced3eb68e3a2ac82ac1c8250f067dc8ea19d7110"
+    },
+    "lint": {
+      "success": true,
+      "log": "/tmp/liflow-v2-20261027/settings-history-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "types": {
+      "success": true,
+      "log": "/tmp/liflow-v2-20261027/settings-history-types.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    }
+  },
+  "sourceSha256": {
+    "src/app/chores/[id].tsx": "8ad5dd41e0683cb13ffb27f0e715de39f646ed2b12e041ff9645081f6571c52d",
+    "src/app/chores/index.tsx": "69c5bb5389257db80b1e5857faa97a486a6fb69d9d3613292b27a6b03374b5d9",
+    "src/app/history.tsx": "46454e818d140e321b80de7d97c1965ea5c3bcca3c84432486788a71b2f78969",
+    "src/app/settings.tsx": "df0f6d56a8d9b79c1d546cc3bde89ef21bc47397b7460842842b56a8549f085b",
+    "src/app/sharing/chore-settings/[id].tsx": "6913506c92e08a252d12f1cc44002b8b54350ffab5a69831a19e6c9653f984d4",
+    "src/app/sharing/history.tsx": "2a2ef751aaca1f63ca3acb8b7966bb70db1a7ca968f33f62c0ba39c5a95b9ab2",
+    "src/app/sharing/index.tsx": "2794f1288fda4e03b701dbfd058d7e105da0a709103407fa091a0cb004d2b689",
+    "src/components/chore-book.tsx": "cff8faf24f709130b76a71544c5e457fcc2121bfc4cb2f220c26671309be619d",
+    "src/components/chore-category-rail.tsx": "bd4e0fc131a7e4b80057028861767ddb237b0718642dff49e0dad1429cee703a",
+    "src/components/settings-audience.tsx": "465f8bca0b7d2872b8cf44d0e06639530a6595249fc5396ce6731e0f7bf31c30",
+    "src/components/settings-switch.tsx": "6ea208a92f292b189178f3792b5e135dbe1800ebe16c66f18fbab906b87d3251",
+    "src/components/task-checkbox-row.tsx": "14ab138f36e0a8e51788b48ba8aac9c75ebcf101ea30adc1d21ef6db529b488b",
+    "src/components/workspace-navigator.tsx": "9e6ec8433038e58e891f84d8daa8481a8990b58ae7b75f8adc53ad8837090b78",
+    "src/domain/chores/chore-groups.ts": "6bed7f54fd32f3850171c5f99bfbb8a654f6d3ccff38fbd1fb9ac5a46dc8afb3",
+    "src/features/planner/history-content.tsx": "efbb5b8e25faba3993964881e308b6cc2c04a04c1e14406ff0a9bc473c27f899",
+    "src/features/settings/chore-settings-screen.tsx": "5ab6caf3d86c94bb72d32dfd564b996cb8a7ea5c93d8dedb51eee61e61d80174",
+    "src/features/settings/chore-settings-sources.tsx": "ebd02d709bc2f9535211a593e2889dc1ca53a8ede389150624ea466d5e2b39da",
+    "src/features/settings/chore-toggle-list.tsx": "a4a5d07655b50a8ef79e4fe4f1d30d13d1d848fa9bfcd665a7887a871843eae4",
+    "src/features/settings/group-chore-settings-screen.tsx": "b031e78886987019d54b076feed4df8c7bdb83dc5137cb2bbb66ef1a688995bd",
+    "src/features/settings/group-chore-settings-source.ts": "60f2be419610770a14ef6c955ce17d490dc3ede9ad336f537c4ba37160d84f6e",
+    "src/features/settings/group-history-screen.tsx": "7dc9e5206c5ae1882e5197243c725e11b72bed8d4aaa6a03469a18f2bbb5dea1",
+    "src/features/settings/use-group-chore-settings.tsx": "de9217060692fb321248312b2faecfbbc9d3411673678136b76d2301df52645f",
+    "src/features/sharing/v2-ui/configuration-editor.tsx": "0c68c2e1aa77335e16428aa3fba37c2654b9f9c562c7e5971b55d8ae5a0237df",
+    "src/features/sharing/v2-ui/form-controls.tsx": "c5c174cd05c687d361bb1883b6e92e7979929e56a238f5eeae8b5a761f33e427",
+    "src/features/sharing/v2-ui/group-screen.tsx": "d4e6636c018453f6e4900be948f1733c360e0250f0731018a195d3b6e1710448",
+    "src/features/sharing/v2-ui/reminder-screen.tsx": "9df1ebfa7dddef4743870d6c6c400b12d4bec1c1831950898555473fa54d7db2",
+    "tests/helpers/screen-harness.mjs": "400088a80b4dd07fad5dae5e0165c1c1381ca61af9cbf24ae3c3c5d4030f3311",
+    "tests/settings-source-ui.test.mjs": "d13401c112d6aa41971fc57097f8c4fded7b93d9739a7fb6d0f594247ed4b292",
+    "tests/weather-calendar-audit.test.mjs": "93bc1284b2da3106b91d99b372ac7aa173599b552fe10c796a6db80cf50d776c"
+  },
+  "featureContracts": {
+    "preserved": 341,
+    "total": 347
+  },
+  "native": {
+    "simulator": "iOS 27 Housework QA: personal/group settings, fixed audience header, switch off rendering, category/chore rail drag",
+    "physicalIPhone": "XCTest testOvernightReadOnlyControl PASS; Home to Help and Back; screenshots visually checked",
+    "physicalLog": "/tmp/liflow-device-20261026/overnight-tap-20261030.log",
+    "dataReset": false
+  },
+  "boundaries": {
+    "mainMerge": false,
+    "productionRulesOrSchemaDeployment": false,
+    "draftReleased": false
+  }
+}

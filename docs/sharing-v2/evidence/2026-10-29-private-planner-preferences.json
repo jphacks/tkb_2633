@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "560031e",
+  "scope": "Private owner-bound local settings, existing autosave lifecycle, explicit-hour relocation proposals and validation; actual task moves and cross-device preference synchronization remain unconnected.",
+  "checks": {
+    "ios": 1883,
+    "android": 1883,
+    "cloud": 62,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 276,
+    "mandatoryCloudTests": 35,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "existingV1Scheduler": "PASS",
+    "unpublishedV2Scheduler": "liflow-shared-2-draft-34 / tzdb 2026e PASS"
+  },
+  "storage": {
+    "protectedPlatformStore": "Existing chunked SecureVault backed by device-only Keychain / Android Keystore protection",
+    "sqlite": "Existing account-bound no-backup database writer lock. No plaintext preference contents in SQL.",
+    "writes": "Observed revision CAS, idempotent duplicate saves, recover a published protected value after a lost response without replaying a write.",
+    "network": "No preference transport, Google authorization or group operation on settings read/save."
+  },
+  "native": {
+    "iphone": {
+      "inputSeconds": 19.391,
+      "latestColdAssertionSeconds": 19.487,
+      "input": "Real XCTest text input in the normal shared component",
+      "cold": "Stopped the LiFlow process and relaunched without resetting data; both original text values and protected store verified.",
+      "logs": [
+        "phase4ax-ios-preferences-save.log",
+        "phase4ax-ios-prefs-final-cold.log"
+      ]
+    },
+    "android": {
+      "os": "Android 10 / API 29",
+      "input": "Real ADB tap and keyboard input. Stored result verified by QA guard and screenshot. No total input duration claimed.",
+      "initialColdAssertionSeconds": 13.908,
+      "latestColdReopenAssertionSeconds": 9.462,
+      "cold": "Stopped the LiFlow process and relaunched; initial QA link assertion timed out at 30.176s, then reopened the route in the same new process without modifying the fields.",
+      "logs": [
+        "phase4ax-android-preferences-cold.log",
+        "phase4ax-android-prefs-final-cold.log",
+        "phase4ax-android-prefs-final-cold-reopen.log"
+      ]
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ax-ios-preferences-save-attachments/D51A52F1-E8F7-4401-A3F7-406C7704FE09.png",
+      "sha256": "e6937b38ee075870c865b35c603652c308f6197736b2f249adb03a6b9c9eefd5",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ax-ios-prefs-final-cold-attachments/A79885AA-8413-459C-BBBA-4760191C8F47.png",
+      "sha256": "338387b402a1db83f62810369ce0594a21d12e7c3cfd6b3390c05a4327f59063",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ax-android-direct-proof.png",
+      "sha256": "469809d22d8262ee4c22ab90536d08d1e6fd26e2d93e141bcea3bbdcfefdbe19",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4ax-android-prefs-final-cold-reopen.png",
+      "sha256": "2361cdda604b1694f5abc118e7a0a429fbd04877f794dcda1d4a1d082b8e96ee",
+      "visuallyInspected": true
+    }
+  ],
+  "codeSha256": {
+    "src/features/sharing/private-planner/preferences.ts": "bf85fd961f46b453617cf0bf1a3132a21b0dcbf45b9cd388a72759056255b7e2",
+    "src/features/sharing/private-planner/preference-store.ts": "86586f1df947a54e85bba73d472ffccef4dd1868f79b676a7c4c641e4e300ec6",
+    "src/features/sharing/private-planner/preference-editor.ts": "1f1874c7308e15a27032685c5e627bec0fb33e3c21f01c3cb5b034ffe5e7244f",
+    "src/features/sharing/private-planner/preference-screen.tsx": "faf6302cd727ed73769fead611bd31269b4eb8c09cccd05a347b016e6740dd6e",
+    "src/features/sharing/private-planner/relocation.ts": "b4814510ce049b4b5114bd1088505ab77fb84bfd0b70fdd7ee7fa9b44940d5dd",
+    "src/features/sharing/v2/personal-relocation.ts": "50df59e854f5d5d903e0aca3f6c9ecdb2b5b6b62ef7e37bb41376c8e08dc3cb8",
+    "src/features/sharing/v2-ui/workspace-route.tsx": "33690cae45500e9c7199c24117b70cb94e8895037282f404962387eafd14ba34",
+    "src/platform/sharing/private-calendar-secrets.ts": "26b7797c109a871d2108b24cb99708c75e6c911198d359d27a95a8d9a0d42482",
+    "src/app/development/private-planner-preferences-preview.tsx": "021abaed8e49bf64fc30e5dcafbf3178bdfe2b10c697098a4d38c16751d4f335"
+  },
+  "regressions": [
+    "Unset or incomplete times never imply all-day permission.",
+    "DST gap/fold boundaries require review, while explicit complete days span their actual 23/25 hours.",
+    "Keep the original chore region and civil window when allowed bands use another region.",
+    "Reject invalid intervals, unknown group kinds, string authority flags and unrelated range fields before movement.",
+    "One accepted revision for 100 identical saves; independent SQLite writers detect conflicting edits.",
+    "Preserve newer incomplete drafts and block back/navigation until saved or explicitly discarded.",
+    "Reject foreign/malformed/oversized profiles and account changes after asynchronous protected access.",
+    "Use saved owner preferences in the normal v2 route without changing shared plan/hash/outbox.",
+    "Invalid initial defaults are reported before constructing the editor."
+  ],
+  "retainedFailures": [
+    "phase4ax-relocation-red.log: three actual invalid-input regressions failed before the strict guards.",
+    "Initial Native fixture failures required explicitly binding the new actual preference-store module, not weakening permission checks.",
+    "The first new route assertion used a development-only heading; corrected to the actual normal-workspace heading/ready state.",
+    "Android accessibility scroll/property edits did not establish real screen/storage behavior; actual ADB gestures and keyboard input did.",
+    "The temporary helper initially treated a multi-command string as a shell script; switched to separate commands.",
+    "The final Android cold QA link did not arrive before the view assertion timeout; the protected data passed on reopening the route in that new process."
+  ],
+  "limits": [
+    "Both devices independently entered synthetic settings. This is not cross-device preference sync.",
+    "No personal task relocation is persisted, no relocation history is connected yet.",
+    "Cold QA-link retry does not establish all production cold deep links or Widget navigation.",
+    "No app reset or replacement installation in this phase. SDK native builds remain 58.0.21.",
+    "No production Rules deployment, real-group migration, main merge, README overwrite or global product UI polish.",
+    "Phase 6 remains incomplete."
+  ]
+}

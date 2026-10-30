@@ -1,30 +1,40 @@
 import type { PropsWithChildren, ReactNode } from 'react';
+import { useContext } from 'react';
+import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import type { StyleProp, TextStyle } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { typography } from './planner-typography';
+import { WorkspaceContext } from '../contexts/workspace-context';
+import { PlannerIssuesContext } from '../contexts/planner-issues-context';
+
+import { palette } from './planner-colors';
+import { Chevron } from './chevron';
 
 export { typography } from './planner-typography';
+export { palette } from './planner-colors';
 
-export const palette = {
-  background: '#FFFFFF',
-  surface: '#FFFFFF',
-  ink: '#292C3B',
-  muted: '#68718B',
-  accent: '#4AADE0',
-  accentSoft: '#E4F7FC',
-  border: '#DFE4EF',
-  warning: '#B75C55',
-  warningSoft: '#FBEDEC',
-  gold: '#B8873B',
-  goldSoft: '#F6F0E3',
-};
 
-export function Page({ children, contentStyle }: PropsWithChildren<{ contentStyle?: object }>) {
+export function Page({ children, contentStyle, keyboardAware = false, footer, footerHasTabBar = false, compactWorkspace = false, floatingFooter = false }: PropsWithChildren<{ contentStyle?: object; keyboardAware?: boolean; footer?: ReactNode; footerHasTabBar?: boolean; compactWorkspace?: boolean; floatingFooter?: boolean }>) {
+  const insets = useSafeAreaInsets();
+  const workspace = useContext(WorkspaceContext);
+  const issues = useContext(PlannerIssuesContext);
+  const issueCount = workspace?.active?.groupId === issues?.groupId ? issues?.issueCount ?? 0 : 0;
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.page, contentStyle]}>
+      <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={keyboardAware}
+        keyboardDismissMode={keyboardAware ? 'on-drag' : 'none'} contentContainerStyle={[styles.page, contentStyle]}>
+        {workspace?.active && !compactWorkspace ? <Pressable accessibilityRole="button" accessibilityLabel="共有グループを切り替える" onPress={() => router.push('/sharing')}
+          style={styles.workspaceBanner}><Text style={styles.workspaceName}>共有 · {workspace.groups.find((group) => group.groupId === workspace.active!.groupId)?.displayName ?? '共有グループ'}</Text><ActionLabel label="切り替え" style={styles.workspaceSwitch} color={palette.muted} /></Pressable> : null}
+        {workspace?.error ? <Text accessibilityRole="alert" style={styles.workspaceError}>{workspace.error}</Text> : null}
+        {issueCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="共有データを確認する"
+          onPress={() => router.push('/sharing')} style={styles.planningNotice}>
+          <Text style={styles.planningNoticeText}>共有データに確認が必要な項目があります（{issueCount}件）。</Text>
+          <ActionLabel label="内容を確認" style={styles.planningNoticeLink} color={palette.gold} />
+        </Pressable> : null}
         {children}
       </ScrollView>
+      {footer ? <View pointerEvents="box-none" style={floatingFooter ? { position: 'absolute', left: 0, right: 0, bottom: footerHasTabBar ? 0 : insets.bottom } : [styles.footer, { paddingBottom: footerHasTabBar ? 8 : Math.max(insets.bottom, 8) }]}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
@@ -69,10 +79,15 @@ export function BackButton({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed, disabled && styles.buttonDisabled]}>
-      <View style={styles.backIcon} aria-hidden><View style={styles.backChevron} /></View>
+      <Chevron direction="left" />
       <Text style={styles.backText}>戻る</Text>
     </Pressable>
   );
+}
+
+/** Link text uses the same arrow geometry as Back, disclosures and calendar navigation. */
+export function ActionLabel({ label, style, color = palette.accent }: { label: string; style?: StyleProp<TextStyle>; color?: string }) {
+  return <View style={styles.actionLabel}><Text style={[style, styles.actionLabelText, { color }]}>{label}</Text><Chevron color={color} /></View>;
 }
 
 export function AppButton({
@@ -81,16 +96,19 @@ export function AppButton({
   variant = 'primary',
   disabled = false,
   compact = false,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   disabled?: boolean;
   compact?: boolean;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -101,7 +119,8 @@ export function AppButton({
         disabled && styles.buttonDisabled,
         pressed && !disabled && styles.buttonPressed,
       ]}>
-      <Text style={[styles.buttonText, styles[`buttonText_${variant}`], compact && styles.buttonTextCompact]}>{title}</Text>
+      {title === '‹' || title === '›' ? <Chevron direction={title === '‹' ? 'left' : 'right'} />
+        : <Text style={[styles.buttonText, styles[`buttonText_${variant}`], compact && styles.buttonTextCompact]}>{title}</Text>}
     </Pressable>
   );
 }
@@ -110,15 +129,18 @@ export function ChoiceChip({
   label,
   selected,
   onPress,
+  disabled = false,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.buttonPressed]}>
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
@@ -147,7 +169,17 @@ export function MutedText({ children }: PropsWithChildren) {
 }
 
 const styles = StyleSheet.create({
+  actionLabel: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  actionLabelText: { flexShrink: 1 },
+  workspaceBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: palette.accentSoft },
+  workspaceName: { ...typography.label, color: palette.ink, fontWeight: '700', flex: 1 },
+  workspaceSwitch: { ...typography.caption, color: palette.muted },
+  workspaceError: { ...typography.caption, color: palette.warning },
+  planningNotice: { padding: 12, gap: 4, borderRadius: 12, backgroundColor: palette.goldSoft, minHeight: 48 },
+  planningNoticeText: { ...typography.label, color: palette.ink },
+  planningNoticeLink: { ...typography.label, color: palette.gold, fontWeight: '700' },
   safeArea: { flex: 1, backgroundColor: palette.background },
+  footer: { paddingHorizontal: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, backgroundColor: palette.surface },
   page: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36, gap: 12 },
   heading: { gap: 5, marginBottom: 2 },
   eyebrow: { ...typography.caption, color: palette.accent, fontWeight: '700', letterSpacing: 1.4 },

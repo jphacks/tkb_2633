@@ -1,0 +1,15 @@
+{
+  "version": "liflow-shared-1",
+  "timeZoneVersion": "2026e",
+  "sourceFiles": [
+    "src/domain/scheduling/engine.ts",
+    "src/domain/scheduling/local-date.ts",
+    "src/domain/scheduling/completion-matching.ts",
+    "src/domain/scheduling/dependency-matching.ts",
+    "src/domain/scheduling/calendar-penalty.ts",
+    "src/features/sharing/planning.ts",
+    "src/features/sharing/group-clock.ts",
+    "node_modules/moment-timezone/data/packed/latest.json"
+  ],
+  "sourceSha256": "78eaf464696f403419280be29036fcfc6bc7ff01bd469788b0e241be41461c07"
+}

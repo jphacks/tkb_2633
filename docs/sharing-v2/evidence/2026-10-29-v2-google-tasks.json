@@ -1,0 +1,484 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "f6f2e72",
+  "scope": "owner/group-local v2 Google Tasks mapping, signed completion and targeted undo; native Android synthetic group and real Google account; no Firebase group or personal planner writes",
+  "checks": {
+    "ios": 2009,
+    "android": 2009,
+    "cloud": 70,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 295,
+    "mandatoryCloudTests": 40,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "doctor": "20/20",
+    "audit": {
+      "info": 0,
+      "low": 7,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 7
+    }
+  },
+  "behavior": {
+    "defaultUnconfigured": true,
+    "explicitAccountReviewAndGrant": true,
+    "privateBindingTablesOnly": true,
+    "googleIdentifiersInSharedPayload": false,
+    "rollingNewTaskHorizonDays": 14,
+    "maximumBatchOperations": 100,
+    "volumeTest": {
+      "created": 225,
+      "batches": [
+        100,
+        100,
+        25
+      ]
+    },
+    "stableOccurrenceAndGoogleIdsOnDueChanges": true,
+    "atomicSignedCompletionAndPrivateAcknowledgement": true,
+    "targetedUndoOfOwnersAcknowledgedCompletionsOnly": true,
+    "queuedOperationIncludesCredentialsAndHttpInSingleBudget": true,
+    "coalescedRequestsTest": 100,
+    "sameExistingWorkerNoExtraTimer": true,
+    "legacySignOutPreservesPausedV2Connection": true
+  },
+  "reproducedAndFixed": [
+    "Completed personal recommendations were incorrectly blocked from Google synchronization; unit counterexample and Android local completion initially failed.",
+    "Tasklists pagination repeated token was not guarded; a repeated page token now rejects before request three.",
+    "Unknown Google state/link properties were accepted by private persistence; explicit allowlists now reject credential fields on writes and reads.",
+    "Using the device day for the rolling horizon omitted the last shared-region day; UTC-device/Tokyo-group counterexample created two instead of three tasks and now passes."
+  ],
+  "native": {
+    "android": {
+      "date": "2026-10-29",
+      "device": "Sony I4293 Android10/API29",
+      "roundTripResults": [
+        "Tasksアプリ完了検査 PASS：同じID・Google完了",
+        "Tasksアプリ取消検査 PASS：同じID・Google未完了",
+        "Tasks外部完了検査 PASS：本人の署名付き履歴へ取込",
+        "Tasks外部取消検査 PASS：対象の完了だけ取消",
+        "Tasks期日検査 PASS：家事回とGoogle IDを保持",
+        "Tasks保存検査 PASS：接続・3件の対応を再取得なしで復元・照合値ce49820277657bd0165822227b57c076b8740284b6404704d644e6772a5a26ca"
+      ],
+      "coldDigestMatched": true,
+      "cleanupResults": [
+        "Tasks片付け検査 PASS：合成3件だけ削除・個人データ保持"
+      ],
+      "dataReset": false,
+      "files": [
+        {
+          "name": "phase4ba-android-account-choice.json",
+          "sha256": "8feae8e8c7832ae6bba15d91c2a638b010d1a1102248e7800b77ec1f7c43cc5e",
+          "bytes": 148
+        },
+        {
+          "name": "phase4ba-android-account-review-visible-bounds-review.png",
+          "sha256": "1b791a5bc7da6a1840d6598fb763027fe0d073f418c15dd76e52940a5e7695f9",
+          "bytes": 407119
+        },
+        {
+          "name": "phase4ba-android-account-review-visible-bounds-review.xml",
+          "sha256": "f4ee7348483d8c6d2e9236c693381f0453d87eac7c8c2ec8bc4f0a2cbbb2dbd4",
+          "bytes": 17555
+        },
+        {
+          "name": "phase4ba-android-after-account.png",
+          "sha256": "01201cd537e5d095bd4c14af417918257e13a353ad6e129a4214327cd7e530fe",
+          "bytes": 394488
+        },
+        {
+          "name": "phase4ba-android-after-account.xml",
+          "sha256": "d77a6a0b5ad0427012a5c1f2f27e352678e9752bb2407114ecd4ba1e37320a3f",
+          "bytes": 16904
+        },
+        {
+          "name": "phase4ba-android-after-restart.png",
+          "sha256": "9110f7639d4cc5903bc57f933653e50e9d256ee31c6cc331e7fe21faf37d6ec7",
+          "bytes": 265788
+        },
+        {
+          "name": "phase4ba-android-after-restart.xml",
+          "sha256": "cefa570cd50fa6c182ad7943b7796d44460863627bd9ab3b9c5b98fefd30a3cc",
+          "bytes": 31411
+        },
+        {
+          "name": "phase4ba-android-auth.png",
+          "sha256": "2d48c1f79b229cd3e37801fa878ab4eafba34ceaf1c480d50171513f90f3808f",
+          "bytes": 312381
+        },
+        {
+          "name": "phase4ba-android-auth.xml",
+          "sha256": "389ec4e7a619c1955e092133509bc2b61db177e373e57f30345c7c99d0b02fe0",
+          "bytes": 10071
+        },
+        {
+          "name": "phase4ba-android-cold-launch.log",
+          "sha256": "d7acaa0c85a5c9b2803d1a721448c46865988335ed1fe9ee1179b050e4a2c6a2",
+          "bytes": 456
+        },
+        {
+          "name": "phase4ba-android-cold-restored-restored.png",
+          "sha256": "e93f6f8f485e1dd3032c3bc36fb50694c533b6d149169e5fa43b92f88ac8cfaa",
+          "bytes": 346379
+        },
+        {
+          "name": "phase4ba-android-cold-restored-restored.xml",
+          "sha256": "35c02572787f3ecbbffdb777827d611d4bf4be1d26d673a009a2a3f1cc81b3c4",
+          "bytes": 18081
+        },
+        {
+          "name": "phase4ba-android-cold-restored.json",
+          "sha256": "a311513d6d35c2b1835d1f4bff8f35395187c490fdb7d0195d8ecf0f5ce1b9e1",
+          "bytes": 221
+        },
+        {
+          "name": "phase4ba-android-cold-restored.log",
+          "sha256": "fa5e189e8aa735cad38e625ddff598383cc45ace415a6f4624df29a790b0a7c9",
+          "bytes": 151
+        },
+        {
+          "name": "phase4ba-android-completion-before-fix.log",
+          "sha256": "cec659a08a9b72a245a0b17fa547d29e44b20f5bf183d5fbaf4858f370b96cc0",
+          "bytes": 898
+        },
+        {
+          "name": "phase4ba-android-connect.log",
+          "sha256": "acf21aae5f2b23c1cdcaca3e9cfc0fbf0e59b9e3689e1887346a129594733120",
+          "bytes": 489
+        },
+        {
+          "name": "phase4ba-android-connection-footer.png",
+          "sha256": "a64b0a28cff52c29b468662e04a0f7b334782b27ba8ccb86588833bb34d36944",
+          "bytes": 402338
+        },
+        {
+          "name": "phase4ba-android-connection-footer.xml",
+          "sha256": "6b10eb590bfbc052948c2deb7322b9d8cf998b201dd945024908514119d31efc",
+          "bytes": 14685
+        },
+        {
+          "name": "phase4ba-android-final-cleanup-cleaned.png",
+          "sha256": "30d681197a69954c19ad4d4df6bcad8e0354afff2fc154287553c17010ac7f04",
+          "bytes": 351127
+        },
+        {
+          "name": "phase4ba-android-final-cleanup-cleaned.xml",
+          "sha256": "88c3a073fafc6bca059c7c801c45ef479f04ce79193a8e9be6d3f78652c56769",
+          "bytes": 18448
+        },
+        {
+          "name": "phase4ba-android-final-cleanup.json",
+          "sha256": "8efba8b111532d319976650af89f4dc24e4442f83162b7673022ca3d3b8b90b4",
+          "bytes": 145
+        },
+        {
+          "name": "phase4ba-android-final-cleanup.log",
+          "sha256": "380af47188dbf5adf188f40ecb32db27406a6b60e5786a76e1c0709ce12ae0e4",
+          "bytes": 75
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-due.png",
+          "sha256": "afc7caafc7280a5a283ecd326cac0a8186c5bd16ba8df483c9be83c86879cca0",
+          "bytes": 344974
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-due.xml",
+          "sha256": "946b9fd52ee90beb71bdc0edc357a5c082f2e620d1e2d106238228e1525564f4",
+          "bytes": 18429
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-local-complete.png",
+          "sha256": "09895f430de9328228faeeafc84423c4a0bd225687439609d2465704e2051822",
+          "bytes": 340340
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-local-complete.xml",
+          "sha256": "d5a29bff2b4e2cb8d41b478fe430705629eb13e9bf14c8d584663f8ee473d46e",
+          "bytes": 18431
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-local-undo.png",
+          "sha256": "92cf5bc25db7bae60b45f594f262424e172462b074f8ad1a354d9fedb6f80e6d",
+          "bytes": 343366
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-local-undo.xml",
+          "sha256": "38e3c2052211fbb5cabdaab3890aa0c024e9e2d56cff5cc931d38eec15b3c79b",
+          "bytes": 18434
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-remote-complete.png",
+          "sha256": "b96853b6179a8777405a7f1290796222a8b6686c7fdb672bb0b0fbb0ced4d37d",
+          "bytes": 350227
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-remote-complete.xml",
+          "sha256": "c77d07dfcc8345ff793b1ed57184728ab6aa374326450c04dc6858bf6519d186",
+          "bytes": 18441
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-remote-undo.png",
+          "sha256": "7e62b5bff609b8a570c2aab9907cd060c11d92ebd056178cfa532ae67fb56084",
+          "bytes": 347994
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-remote-undo.xml",
+          "sha256": "89bca1265f1d18805f0db52696857d60581a7f97a28f00e5f435a329bd388abd",
+          "bytes": 18432
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-saved.png",
+          "sha256": "cf88fd0b48ca40b6d7489e43fdc0f4a1211b51be6f5943d91b65e3eafd1a1f36",
+          "bytes": 346067
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip-saved.xml",
+          "sha256": "35c02572787f3ecbbffdb777827d611d4bf4be1d26d673a009a2a3f1cc81b3c4",
+          "bytes": 18081
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip.json",
+          "sha256": "54d8a1ec072ffb761a14543265486877600067b92a259017101551e1679fe82a",
+          "bytes": 561
+        },
+        {
+          "name": "phase4ba-android-fixed-completion-roundtrip.log",
+          "sha256": "365413f636b08236d44b419696c7cf4fe5656bbd1cf4d12c8774e2ab5616672d",
+          "bytes": 453
+        },
+        {
+          "name": "phase4ba-android-fixed-initial-verified.png",
+          "sha256": "f07e7a28d2e16fb8a95d7d64fe1d23dfe372c6cc610d91095bec187e3cd43c02",
+          "bytes": 348064
+        },
+        {
+          "name": "phase4ba-android-fixed-initial-verified.xml",
+          "sha256": "464adc9ae7cc62fb64e852f505fb138e0788a4b80d9e4657649d7f441507f6e1",
+          "bytes": 18440
+        },
+        {
+          "name": "phase4ba-android-fixed-initial.json",
+          "sha256": "701b1d1681601305ebac76a30b443dc7eebe20512e6990628f77fe6e2040eeca",
+          "bytes": 138
+        },
+        {
+          "name": "phase4ba-android-fixed-initial.log",
+          "sha256": "8746df1c81b267cc5716cd6470afffe7a5867ae484f346653c82fa267fea9a88",
+          "bytes": 67
+        },
+        {
+          "name": "phase4ba-android-fixed-launch.log",
+          "sha256": "b99ea8c51ebb2da3d23877ec55c110175f09f9c151f0bdff08f47fc09fde6427",
+          "bytes": 456
+        },
+        {
+          "name": "phase4ba-android-initial.png",
+          "sha256": "9de12ce20f5b247493dd6aa3007294e42dfc14a945d98528d2e1bdfffb2b9005",
+          "bytes": 302180
+        },
+        {
+          "name": "phase4ba-android-initial.xml",
+          "sha256": "036b987782cb1ebad220b5321658437b52fbac7acf0a29d00edabdb0f003eb08",
+          "bytes": 18264
+        },
+        {
+          "name": "phase4ba-android-live-diagnostic-verified.png",
+          "sha256": "f670653f96d51ddb5c06e4fc250f6456399369010b0047575b459d775ae22984",
+          "bytes": 347919
+        },
+        {
+          "name": "phase4ba-android-live-diagnostic-verified.xml",
+          "sha256": "464adc9ae7cc62fb64e852f505fb138e0788a4b80d9e4657649d7f441507f6e1",
+          "bytes": 18440
+        },
+        {
+          "name": "phase4ba-android-live-diagnostic.json",
+          "sha256": "701b1d1681601305ebac76a30b443dc7eebe20512e6990628f77fe6e2040eeca",
+          "bytes": 138
+        },
+        {
+          "name": "phase4ba-android-live-diagnostic.log",
+          "sha256": "8746df1c81b267cc5716cd6470afffe7a5867ae484f346653c82fa267fea9a88",
+          "bytes": 67
+        },
+        {
+          "name": "phase4ba-android-retry-diagnostic.log",
+          "sha256": "fdd375fc15ca4b1fd60db44a0c51eb65d98fb6618f693e9b4ab2a94398dd0c7c",
+          "bytes": 284
+        },
+        {
+          "name": "phase4ba-android-review-failed-layout.png",
+          "sha256": "c69f6fbf20011e74a907b0803bfd3f10e59c646ba16b131496b87462b8dcfafb",
+          "bytes": 396793
+        },
+        {
+          "name": "phase4ba-android-review-failed-layout.xml",
+          "sha256": "27b73b33bdd18803833cde87cf30ebcc70390f87ee22b9fcd5cb77ea13455253",
+          "bytes": 16902
+        },
+        {
+          "name": "phase4ba-android-review-visible.log",
+          "sha256": "79391551da97acfcc3f63270f443d04a08ab9163a3de637f5fdd61f6fe6ec4f5",
+          "bytes": 364
+        },
+        {
+          "name": "phase4ba-android-review.log",
+          "sha256": "4b4fd31cd84b76b162068e8ecb58cfd11deee6c6294ed50a166290f610d30755",
+          "bytes": 583
+        }
+      ]
+    },
+    "ios": {
+      "result": "NOT EXECUTED",
+      "reason": "XCTest could not enable UI automation twice before any test began; Mac screen lock independently confirmed; waiting for user unlock",
+      "attemptLogs": [
+        "phase4ba-ios-connect.log",
+        "phase4ba-ios-connect-second.log"
+      ],
+      "elapsedSeconds": [
+        67.195,
+        62.065
+      ],
+      "dataReset": false
+    },
+    "limitations": [
+      "Android synthetic local v2 group with real Google API is distinct from a cloud-synchronized multi-member E2E.",
+      "Google mutations used API through the reviewed Native account; the separate Google Tasks app UI was not used.",
+      "The completion round trip used the personal-completion fix; the final timezone correction was subsequently tested automatically and Android cold bindings were checked without a Google download.",
+      "Initial Android connection saved an error state before any local mappings. Later same-account retry succeeded; original cause was not established.",
+      "A warm route entry was used after process initialization; cold deep link delivery is not a PASS.",
+      "OS natural background execution and real notification delivery were not tested here."
+    ]
+  },
+  "sourceHashes": [
+    {
+      "path": "src/app/development/v2-google-tasks-preview.tsx",
+      "sha256": "e8b7248d5f7fee6114068813e2ba7c276218308c95683f1450e3f0aa19b48f73"
+    },
+    {
+      "path": "src/app/group-v2/google-tasks.tsx",
+      "sha256": "682a3a0483cf00de32dcb28530b9cb0365c78e5b717bd7e342426e2059b70c84"
+    },
+    {
+      "path": "src/features/google-sync/contracts.ts",
+      "sha256": "6b8854882290e38638ff811b961407624c614de4b9e366968eeeeb879b98ddfa"
+    },
+    {
+      "path": "src/features/google-sync/operation-budget.ts",
+      "sha256": "eff8055646af33efb6d330a67945ab723e6125ae7ca4fd9ba7c24fe991f14643"
+    },
+    {
+      "path": "src/features/google-sync/reconcile-google-tasks.ts",
+      "sha256": "56fdc460f8e46e0f1a767aa20f51b6a08c4c376d3da1c2b3c58e8b28569d0a8f"
+    },
+    {
+      "path": "src/features/sharing/v2-ui/google-tasks-screen.tsx",
+      "sha256": "390d734c9498252041402633f4c7f710b7fe48b0a2b362a6fa7e557b16b70457"
+    },
+    {
+      "path": "src/features/sharing/v2-ui/group-screen.tsx",
+      "sha256": "2666c29ca8de5c8d623a419d78946223448e07a4793b6aba081f6f34caeb48f0"
+    },
+    {
+      "path": "src/features/sharing/v2-ui/workspace-route.tsx",
+      "sha256": "cfff26b8877578560f1e6285845220bd8eb9c76f8533adbf786ec83bb4b25ef0"
+    },
+    {
+      "path": "src/features/sharing/v2/google-tasks-projection.ts",
+      "sha256": "44e05647250cb4d14b2fef2ffddf49608545f9600a46985efa3966cdf93886bc"
+    },
+    {
+      "path": "src/features/sharing/v2/google-tasks-runtime.ts",
+      "sha256": "d3c03a96c5d91c0be5bb62fdbf8923c1352ab695a8ab2781abe11518e7b03717"
+    },
+    {
+      "path": "src/platform/google-tasks/google-tasks-api.ts",
+      "sha256": "87e57d2b9378fbbb51d18deb8753e50ac355d998e520b3706f2a9cc834bffa10"
+    },
+    {
+      "path": "src/platform/sharing/v2-google-tasks-preview.ts",
+      "sha256": "218c6d8f86873ea6440f21ba6d70527ddfab9cbdda7a779c2d877cac09307099"
+    },
+    {
+      "path": "src/platform/sharing/v2-google-tasks.ts",
+      "sha256": "50d895d087b1d0f84fd86cbdc1075fcb0b12ec1edfcbcacbbfb8a3f5dd681325"
+    },
+    {
+      "path": "src/platform/sharing/v2-local-planning.ts",
+      "sha256": "24745ae01f1e5de201604f39de9596a1760133af53851d64f0a21988f856b410"
+    },
+    {
+      "path": "src/platform/sharing/v2-reminders.ts",
+      "sha256": "3f1b11e4791a78bfecdc18902b23981da29b3b6a3cd77c3ac868f0091c92247b"
+    },
+    {
+      "path": "src/platform/sharing/workspace-types.ts",
+      "sha256": "32c1fb6fe8af785d213be9a8223aae38d20567963423fd28b5bcd90699238095"
+    },
+    {
+      "path": "src/platform/sharing/workspaces.ts",
+      "sha256": "8a55c37458c626c23d0fc70749099ffe2b789d10cf1c177ca1bf8c2d63edb000"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-events.ts",
+      "sha256": "7462809fd197633cf298d0537b61d5a736fd6eb7fbb9f66d3e8f8b8f3932c1bd"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-google-tasks.ts",
+      "sha256": "f996072505a379d2cf33f3e6380b97af426f245be790e511b721fa9a72cd7234"
+    },
+    {
+      "path": "tests/google-operation-budget.test.mjs",
+      "sha256": "f4170a586f8609b4a6f47e6a5ccc08d881006052ebe2a246db6a5b750f307990"
+    },
+    {
+      "path": "tests/google-tasks-api.test.mjs",
+      "sha256": "5165e9df989c6bce7c114c7f844de84f33afb0e0cbd08398dd54895555984eb0"
+    },
+    {
+      "path": "tests/helpers/sharing-v2-google.mjs",
+      "sha256": "d58bb10cd6040825f221a498a432cc1d9baf9bab4e2d0830ca3ade5e05438707"
+    },
+    {
+      "path": "tests/helpers/sharing-workspaces-harness.mjs",
+      "sha256": "33c773d1e3440448d89b6772a3e910093b018ca2d7d3e78bd9fc24e96fc7b8ba"
+    },
+    {
+      "path": "tests/sharing-v2-google-native.test.mjs",
+      "sha256": "ff4b08360ccf51f66e5266714ee1512ab89040d758114f69d314f91feba8d78c"
+    },
+    {
+      "path": "tests/sharing-v2-google-runtime.test.mjs",
+      "sha256": "6a32e39076070c9998f19caebcb91f9b8384b5af2edf88cf97db1f41e16cc0c4"
+    },
+    {
+      "path": "tests/sharing-v2-google-tasks.test.mjs",
+      "sha256": "c4ac11128723ba54401ef72e709706c2135e7223bc45ee42c79f43fcdf1cafcf"
+    },
+    {
+      "path": "tests/sharing-v2-google-ui.test.mjs",
+      "sha256": "4b97b0876e904849358c195d086e16f187b349c38dad9fde7c219e02e3050113"
+    },
+    {
+      "path": "tests/sharing-v2-native-workspace.test.mjs",
+      "sha256": "911119e52cfe2b87c561a371bb2eacb97b1b8d0adb7ed306eae1e125e9e9ed9f"
+    },
+    {
+      "path": "tests/sharing-v2-reminder-native.test.mjs",
+      "sha256": "a033fc063b69b6b0f3e7986da09d899e2f2edb70241128b773bff407463c9676"
+    },
+    {
+      "path": "tests/sharing-v2-workspace-routes.test.mjs",
+      "sha256": "52605226ae27fee7372fd3a77f74f5b7e95f8984dbf2bd6f2fd8fc3877f1594c"
+    }
+  ],
+  "phase6Complete": false,
+  "productionDeployment": false,
+  "realGroupMigration": false,
+  "mainMerged": false,
+  "draftReleased": false,
+  "productWideUiBacklogStarted": false
+}

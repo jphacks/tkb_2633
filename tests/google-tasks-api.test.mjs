@@ -219,3 +219,9 @@ test('tasks.list rejects repeated page tokens instead of looping forever', async
   await assert.rejects(api.listTasks('test-token', 'list'), /repeated page token/u);
   assert.equal(calls, 2);
 });
+
+test('tasklists.list rejects repeated page tokens before a third HTTP request', async () => {
+  let calls = 0;
+  const api = createGoogleTasksApi(async () => { if (++calls > 2) throw new Error('fixture detected an unbounded read'); return Response.json({ nextPageToken: 'same' }); });
+  await assert.rejects(api.listTaskLists('test-token'), /repeated page token/u); assert.equal(calls, 2);
+});

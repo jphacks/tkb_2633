@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
+import { usePlannerData } from '@/hooks/use-planner-data';
 import { useCallback, useState } from 'react';
 
 import { AppButton, BackButton, Page, ScreenHeading } from '@/components/planner-ui';
@@ -12,7 +12,7 @@ export default function ApplianceDetailScreen() {
   const applianceId = Array.isArray(params.id) ? params.id[0] : params.id;
   const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const returnTo = returnToParam === '/chores' ? '/chores' : returnToParam === '/manual' ? '/manual' : undefined;
-  const database = useSQLiteContext();
+  const { database } = usePlannerData();
   const [saved, setSaved] = useState<{ id: string; context: ApplianceCareReviewContext | null; error?: string } | null>(null);
   const [retry, setRetry] = useState(0);
 

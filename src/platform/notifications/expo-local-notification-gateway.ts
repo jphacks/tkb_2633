@@ -16,6 +16,7 @@ import type {
 } from '@/features/notifications/contracts';
 
 export class ExpoLocalNotificationGateway implements LocalNotificationGateway {
+  readonly maximumScheduledRequests = Platform.OS === 'ios' ? 60 : undefined;
   private permissionRequest: Promise<boolean> | null = null;
 
   async requestPermission(): Promise<boolean> {

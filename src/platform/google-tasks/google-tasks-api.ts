@@ -9,6 +9,7 @@ export interface GoogleTaskList {
 export interface GoogleTask {
   id: string;
   title: string;
+  notes?: string;
   due?: string;
   status: 'needsAction' | 'completed';
   completed?: string;
@@ -19,6 +20,7 @@ export interface GoogleTask {
 export interface GoogleTaskDraft {
   title: string;
   due: string;
+  notes?: string;
 }
 
 export interface GoogleTasksBatchTaskResult {
@@ -42,6 +44,7 @@ export interface GoogleTaskPatch {
   due?: string;
   status?: 'needsAction' | 'completed';
   completed?: string | null;
+  notes?: string;
 }
 
 export interface GoogleTaskUpdate {
@@ -116,6 +119,7 @@ export function createGoogleTasksApi(
   return {
     async listTaskLists(accessToken) {
       const items: GoogleTaskList[] = [];
+      const visitedTokens = new Set<string>();
       let pageToken: string | undefined;
       do {
         const params = new URLSearchParams({ maxResults: '100' });
@@ -125,6 +129,8 @@ export function createGoogleTasksApi(
         );
         items.push(...(page.items ?? []));
         pageToken = page.nextPageToken;
+        if (pageToken && visitedTokens.has(pageToken)) throw new Error('Google Tasks returned a repeated page token');
+        if (pageToken) visitedTokens.add(pageToken);
       } while (pageToken);
       return items;
     },

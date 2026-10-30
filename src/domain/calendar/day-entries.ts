@@ -10,17 +10,26 @@ export function calendarPendingCountsByDate(
   entries: readonly ChoreScheduleEntry[],
   completions: readonly ChoreCompletion[],
 ): Map<LocalDate, number> {
+  return new Map([...calendarPendingChoreIdsByDate(entries, completions)].map(([date, chores]) => [date, chores.size]));
+}
+
+/** Keep occurrence matching and per-chore deduplication shared with immediate UI feedback. */
+export function calendarPendingChoreIdsByDate(
+  entries: readonly ChoreScheduleEntry[],
+  completions: readonly ChoreCompletion[],
+  completedOverrides?: ReadonlyMap<string, boolean>,
+): Map<LocalDate, Set<string>> {
   const choresByDate = new Map<LocalDate, Set<string>>();
   const completedEntryIds = new Set(completions
     .filter((completion) => completion.outcome === 'completed' && completion.scheduleEntryId)
     .map((completion) => completion.scheduleEntryId));
   const legacyCompletions = completions.filter((completion) => !completion.scheduleEntryId);
   for (const entry of entries) {
-    if (completedEntryIds.has(entry.id)
-      || legacyCompletions.some((completion) => completionMatchesEntry(completion, entry))) continue;
+    if (completedOverrides?.get(entry.id) ?? (completedEntryIds.has(entry.id)
+      || legacyCompletions.some((completion) => completionMatchesEntry(completion, entry)))) continue;
     const chores = choresByDate.get(entry.suggestedDate) ?? new Set<string>();
     chores.add(entry.choreId);
     choresByDate.set(entry.suggestedDate, chores);
   }
-  return new Map([...choresByDate].map(([date, chores]) => [date, chores.size]));
+  return choresByDate;
 }

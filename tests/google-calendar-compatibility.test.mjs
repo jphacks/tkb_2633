@@ -18,8 +18,11 @@ test('native Android token refresh cannot resolve authorization UI; incremental 
   }
   suspend fun clearCachedAccessToken(accessTokenString: String) {}`;
  const helper=`  suspend fun authorize(
+    activity: Activity,
+    context: ReactApplicationContext,
     accountEmail: String? = null,
   ) {
+        val authClient = Identity.getAuthorizationClient(activity)
         if (initial.hasResolution()) {
           awaitAuthorizationResolution(activity, pendingIntent.intentSender)
         }
@@ -28,8 +31,14 @@ test('native Android token refresh cannot resolve authorization UI; incremental 
  assert.match(patched.controller,/getTokens\(\)[\s\S]*allowResolution = false/);
  assert.match(patched.helper,/if \(!allowResolution\)[\s\S]*SIGN_IN_REQUIRED[\s\S]*awaitAuthorizationResolution/);
  assert.match(patched.helper,/allowResolution: Boolean = true/);
+ assert.match(patched.helper,/activity: Activity\?/);
+ assert.match(patched.helper,/else Identity.getAuthorizationClient\(context\)/);
+ assert.match(patched.helper,/foregroundActivity = activity \?: throw GoogleSignInException/);
+ assert.doesNotMatch(patched.controller,/requireActivity\(\)/);
  assert.match(patched.controller,/catch \(error: GoogleSignInException\)[\s\S]*error.code != "SIGN_IN_REQUIRED"/);
- assert.match(patched.controller,/scopes = baseScopes,[\s\S]*allowResolution = false/);
+ assert.match(patched.controller,/scopes = requestedScopes,[\s\S]*allowResolution = false/);
+ assert.match(patched.controller,/authorizeSilently\(fallbackScopes\)/);
+ assert.match(patched.controller,/preservedTaskScopes = scopes.filter \{ it == "https:\/\/www.googleapis.com\/auth\/tasks" \}/);
  assert.match(patched.controller,/saveScopesToStorage\(context, lastUserId, baseScopes.toSet\(\)\)/);
  assert.deepEqual(patchSilentTokens(patched.controller,patched.helper),patched);
  assert.throws(()=>patchSilentTokens('unsupported','unsupported'));
@@ -37,10 +46,13 @@ test('native Android token refresh cannot resolve authorization UI; incremental 
  const installedController=readFileSync(new URL('GoogleSignInController.kt',root),'utf8');
  const installedHelper=readFileSync(new URL('GoogleSignInAuthorizationHelper.kt',root),'utf8');
  assert.deepEqual(patchSilentTokens(installedController,installedHelper),{controller:installedController,helper:installedHelper});
+ assert.match(installedController,/val initialScopes = \(getScopesFromStorage\(requireContext\(\), userId\) \+ configuredScopes/);
 });
-test('base native configuration requests Tasks only; Calendar consent is foreground-only',()=>{
+test('base native configuration requests identity only; Tasks and Calendar consent remain explicit',()=>{
  const source=readFileSync(new URL('../src/platform/google-tasks/google-sign-in-gateway.ts',import.meta.url),'utf8');
- assert.match(source,/scopes: \[GOOGLE_TASKS_SCOPE\]/);
+ assert.match(source,/scopes: \[\]/);
+ const tasksAuth=source.slice(source.indexOf('export async function authorizeGoogleTasks'),source.indexOf('export async function getGoogleTasksAccessToken'));
+ assert.match(tasksAuth,/requestScopes\(\[GOOGLE_TASKS_SCOPE\]\)/);
  const calendarAuth=source.slice(source.indexOf('export async function authorizeGoogleCalendarAvailability'),source.indexOf('export async function getGoogleCalendarAccessToken'));
  assert.match(calendarAuth,/AppState.currentState !== 'active'/);
  const getter=source.slice(source.indexOf('export async function getGoogleCalendarAccessToken'),source.indexOf('export async function disconnectGoogleTasksSession'));

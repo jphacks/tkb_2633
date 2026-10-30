@@ -221,11 +221,38 @@ function uniqueCandidates(candidates) {
 }
 
 function stripHtml(html) {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style|noscript|svg|nav|footer|header)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<br\s*\/?>|<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
+  // Scan forward once. Repeated unclosed tags/comments must not make a regex
+  // rescan the remaining (up to 2 MiB) manual at every opening delimiter.
+  const parts = [];
+  const ignored = new Set(['script', 'style', 'noscript', 'svg', 'nav', 'footer', 'header']);
+  let cursor = 0;
+  while (cursor < html.length) {
+    const start = html.indexOf('<', cursor);
+    if (start < 0) { parts.push(html.slice(cursor)); break; }
+    parts.push(html.slice(cursor, start));
+    if (html.startsWith('<!--', start)) {
+      const end = html.indexOf('-->', start + 4);
+      parts.push(' ');
+      if (end < 0) break;
+      cursor = end + 3; continue;
+    }
+    const end = html.indexOf('>', start + 1);
+    if (end < 0) { parts.push(html.slice(start)); break; }
+    const tag = html.slice(start + 1, end);
+    const match = /^(\/?)([a-z][a-z0-9:-]*)(?=[\s/]|$)/iu.exec(tag);
+    const name = match?.[2].toLocaleLowerCase('en-US');
+    cursor = end + 1;
+    if (name && !match[1] && !/\/\s*$/u.test(tag) && ignored.has(name)) {
+      // The name is taken only from the fixed set above, never arbitrary input.
+      const close = new RegExp(`</${name}\\s*>`, 'giu'); close.lastIndex = cursor;
+      const found = close.exec(html);
+      parts.push(' ');
+      if (!found) break; // Raw text in an unclosed hidden element is not manual text.
+      cursor = close.lastIndex; continue;
+    }
+    parts.push(name === 'br' || match?.[1] && /^(?:p|div|li|h[1-6]|tr)$/u.test(name) ? '\n' : ' ');
+  }
+  return parts.join('')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')

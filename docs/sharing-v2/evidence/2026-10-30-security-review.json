@@ -1,0 +1,213 @@
+{
+  "date": "2026-10-30",
+  "baseCommit": "f35bbef4de675835b7b44fcba04464c554514919",
+  "scope": "Development-side security assessment; synthetic localhost attack tests, no production attacks or independent audit",
+  "protocols": {
+    "v1": "liflow-shared-1",
+    "v2": "liflow-shared-2-draft-37",
+    "oldDraftDataPreserved": true,
+    "productionDeployed": false
+  },
+  "checks": {
+    "platforms": {
+      "ios": {
+        "tests": 2265,
+        "pass": 2265,
+        "fail": 0,
+        "skipped": 0
+      },
+      "android": {
+        "tests": 2265,
+        "pass": 2265,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "firestore": {
+      "tests": 77,
+      "pass": 77,
+      "fail": 0,
+      "skipped": 0
+    },
+    "featureContracts": {
+      "preserved": 347,
+      "total": 350,
+      "requiredCloud": 44
+    },
+    "lint": "PASS in both npm run check logs",
+    "typecheck": "PASS in both npm run check logs"
+  },
+  "semgrep": {
+    "version": "1.182.1",
+    "rulesRun": 110,
+    "scannedFiles": 511,
+    "findings": [
+      {
+        "rule": "javascript.express.security.cors-misconfiguration.cors-misconfiguration",
+        "path": "server/appliance-care-api/src/http-server.mjs",
+        "line": 36,
+        "triage": "False positive: exact configured allowlist is checked before reflecting the origin; attack regression verifies denial"
+      }
+    ],
+    "timeouts": 0,
+    "partialParsing": [
+      "src/features/sharing/private-calendar/source-controller.ts",
+      "src/features/sharing/v2/confirmation.ts"
+    ],
+    "metricsDisabled": true,
+    "sourceUpload": false
+  },
+  "npmAudit": {
+    "info": 0,
+    "low": 7,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 7
+  },
+  "native": {
+    "ios": {
+      "model": "iPhone 12",
+      "homeHelpRoundTrip": "PASS",
+      "nativeCrypto": "12/12 PASS; 20000 intervals/22 chunks; 2556ms",
+      "initialDeepLinkAttempts": "Failed accessibility load while the dev bundle was loading; not counted as a pass",
+      "finalHomeHelpRoundTrip": "PASS after the crypto audit; XCTest 10.1sec"
+    },
+    "android": {
+      "model": "Sony I4293",
+      "os": "10",
+      "nativeCrypto": "12/12 PASS; 20000 intervals/22 chunks; 11005ms",
+      "privateDirectoryMode": "0700",
+      "normalShellRead": "Permission denied",
+      "build": "Development DEBUGGABLE; not a Release attack test",
+      "screen": "Turned off after inspection to conserve battery"
+    }
+  },
+  "storageCleanup": {
+    "removed_regenerable_build_caches": [
+      "/private/tmp/liflow-device-20261026/ios-derived/Build/Intermediates.noindex",
+      "/private/tmp/liflow-device-20261026/ios-derived/ModuleCache.noindex"
+    ],
+    "free_before_bytes": 3503443968,
+    "free_after_bytes": 8480268288,
+    "reclaimed_bytes": 4976824320,
+    "kept": [
+      "Build/Products",
+      "ui-derived",
+      "iPhone app data",
+      "Android app data",
+      "SDKs and device tools"
+    ]
+  },
+  "beforeAfter": {
+    "manufacturerPrototype": [
+      {
+        "manufacturer": "constructor",
+        "domainType": "function",
+        "isArray": false,
+        "aiCalls": 1,
+        "serializedTools": [
+          {
+            "type": "web_search",
+            "filters": {}
+          }
+        ],
+        "error": "No official search sources were returned"
+      },
+      {
+        "manufacturer": "__proto__",
+        "domainType": "object",
+        "isArray": false,
+        "aiCalls": 1,
+        "serializedTools": [
+          {
+            "type": "web_search",
+            "filters": {
+              "allowed_domains": {}
+            }
+          }
+        ],
+        "error": "No official search sources were returned"
+      },
+      {
+        "manufacturer": "unknown-manufacturer",
+        "domainType": "object",
+        "isArray": true,
+        "aiCalls": 0
+      }
+    ],
+    "retentionAndOversizeBefore": {
+      "unfinishedOversize": {
+        "responseBeforeEnd": false
+      },
+      "jobRetention": {
+        "requestCounts": {
+          "202": 120
+        },
+        "firstJobStatus": 404
+      }
+    },
+    "htmlBefore": {
+      "status": null,
+      "error": "ETIMEDOUT",
+      "output": ""
+    },
+    "htmlAfter": {
+      "status": 0,
+      "error": null,
+      "output": "{\"elapsedMs\":33}"
+    },
+    "slowClientAfter": {
+      "settings": {
+        "headersTimeout": 15000,
+        "requestTimeout": 30000
+      },
+      "independentHealth": 200,
+      "slowHeaders": {
+        "status": "HTTP/1.1 408 Request Timeout",
+        "elapsedMs": 30003
+      },
+      "slowBody": {
+        "status": "HTTP/1.1 408 Request Timeout",
+        "elapsedMs": 60004
+      }
+    }
+  },
+  "remaining": {
+    "approvedAuthorPoisonedCiphertext": "Reproduced safe stop with preserved local edits; owner-approved evidence-preserving recovery selected by user; follow-up implementation pending",
+    "releaseDynamicTesting": "Not completed",
+    "distributedApiAbuse": "Process-local budget is not a distributed gateway"
+  },
+  "sourceHashes": {
+    "server/appliance-care-api/src/official-domains.mjs": "b9d0af8b16ef9777faa5c7b815fbb78b80f51d63413e7581d9f9610b11166918",
+    "server/appliance-care-api/src/http-server.mjs": "487513a2d0c616a3d51d2be9eb640ac805d22407cb77cec1124c6e12bba6184c",
+    "server/appliance-care-api/src/manual-resolver.mjs": "5e989c9f099b116ab148fa30fc13ea2e04e1df8f2b40226d79f629c50472f85c",
+    "src/features/appliance-care/official-url.ts": "3d8649af4cb92f5214ce28a32496935d11f28ef66eb89c6b5d2706b78238509c",
+    "src/features/sharing/v2/payload-schema.ts": "71a7afb63ba0b57ff624a6f045f30c7480d5cc3df5557a0e9228f31c483c4cfc",
+    "src/features/sharing/v2/scheduler-contract.json": "50341927810db937cf710765a226c1a0bc81f4c2c00cf2c6d7bfe0278db5c80c",
+    "tests/security-api-attacks.test.mjs": "264690eaf1a48f610545f874ba736995e82b70b5a2bcdc31cffa22b8f4976695",
+    "tests/security-sharing-attacks.test.mjs": "b7596c2daf773493d526ade3adfa59f136dc1b8377a3717564359a365ccc4831",
+    "tests/security-cloud-attacks.integration.mjs": "0c6b03b8af56425e30ef3d0dd332c7a5af03312e863bd526cf8832548b87170d",
+    "tests/sharing-synchronizer.test.mjs": "099e24490608b0f0ca8f12f488532e4c658ad6d214dc35786193f39731980cba",
+    "docs/feature-contracts.json": "5d7fa5989dc222a22b82795a679158bdfe36e71523c9376e5ddd5a1547bede9f",
+    "package.json": "6001de83cf759bd3476ce00607bc96eb512efde1e4983a039636026105309075"
+  },
+  "localEvidenceHashes": {
+    "/tmp/liflow-security-20261030/verified-ios.log": "246673a8dd932d942d592fe39a52db703fc5288ce34310340e16a5cd7f4febc2",
+    "/tmp/liflow-security-20261030/verified-android.log": "96c68311b31617d496bb03bb47a3e821ba87805aa9ddc0362279964d5c238468",
+    "/tmp/liflow-security-20261030/final-v37-cloud.log": "848bcb57ebd7d4384bf78a3c5d9f7d442c5909f406bf62650ab1eecd35f1a303",
+    "/tmp/liflow-security-20261030/semgrep-verified.json": "b93fb333799634e561df5953f9530d1a26c05a33dddf45969c248f9919c92fcc",
+    "/tmp/liflow-security-20261030/npm-audit.json": "80ac6b960f4c7cecd46ae42ef5bc939ce85af0aa9bce789758ec1a163c483c9e",
+    "/tmp/liflow-security-20261030/api-attacks-before.log": "ecb3351a61c2062de98afeb5990cbb83c3fc67a4f6068050609092819d1e7276",
+    "/tmp/liflow-security-20261030/sharing-attacks-mobile-before.log": "4dcd5de612a4b3540f0a4152f9b6392908fe5b8c4bbd5e9741ee591f4337f8a2",
+    "/tmp/liflow-security-20261030/manual-html-before.json": "be0fe41d33521126fbcfebb0250f2896301f489f0d7f89459e8da563c13b47d4",
+    "/tmp/liflow-security-20261030/manual-html-after.json": "cced6062fb408fa01323123aec487dcf65c517a1f4d4fde1950873033dceb3ad",
+    "/tmp/liflow-security-20261030/http-slow-client-after.json": "8fc8b32025574325f47c4d2b507782de136c889fefa94e13e044be8ee9ad9694",
+    "/tmp/liflow-security-20261030/poison-transport.log": "7cf185ec8a77af958a9468c70905262b94d0227a80f658982e561df123918324",
+    "/tmp/liflow-device-20261026/overnight-tap-20261030.log": "ca196723ec8d0b6d24f13602d251159f21a78533e94d74b2a97d16a8811b6d1b",
+    "/tmp/liflow-device-20261026/overnight-native-crypto-final-20261030.log": "6ee224eeee663cbf6b748fa99c799030430128bbcc5ebab4a3c52c43a3c953ae",
+    "/tmp/liflow-device-20261026/overnight-home-verification-20261030.log": "632c10b8fdd3997b2e131358cbf53fb62ce8da29a003393ebd83159dcafdc809",
+    "/tmp/liflow-security-20261030/android-native-crypto.png": "592c3c0ef34fb486d82a536dcfcf714bb1b372519802657c7a1b0f94551afc77",
+    "/tmp/liflow-device-20261026/overnight-native-crypto-final-20261030-attachments/D9D8F9F0-5F20-408A-9804-A32315B073F7.png": "005d91548a01ea43bf191f11a77b8c718ff8d4055ef301c06d8e56bdbc87c043"
+  }
+}

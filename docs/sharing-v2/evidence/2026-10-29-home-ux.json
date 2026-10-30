@@ -1,0 +1,110 @@
+{
+  "recordedAtUtc": "2026-10-29T14:52:58.090729+00:00",
+  "baseCommit": "2282c257900a2878336241ad0b26d27a0408a6b9",
+  "remoteMain": "62d05771872fbd7124ec4ba5715f79ca290cb56b",
+  "scope": "Home UX and common household chore presentation; original personal definitions preserved",
+  "checks": {
+    "ios": {
+      "tests": 2233,
+      "pass": 2233,
+      "fail": 0,
+      "skipped": 0,
+      "logSha256": "fa31e7fd961435cd987127dac448416c4127a37bf9ccd60152270d1e21f0c138"
+    },
+    "android": {
+      "tests": 2233,
+      "pass": 2233,
+      "fail": 0,
+      "skipped": 0,
+      "logSha256": "6496f8f25a0c91314ae4eb1d50599f1d12bc0c5b380dd3512a7985ce3d345f7a"
+    },
+    "localFirestore": {
+      "tests": 71,
+      "pass": 71,
+      "fail": 0,
+      "skipped": 0,
+      "logSha256": "d90ac85f1aa9f5fc516cc4118dadd9968b5371f87095318c1e828475371c91ec"
+    },
+    "lint": {
+      "exitCode": 0,
+      "logSha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "logSha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    }
+  },
+  "featureContracts": {
+    "baselinePreserved": 333,
+    "current": 341,
+    "requiredCloud": 41
+  },
+  "nativeVerification": {
+    "device": "Housework QA iPhone 18 Pro Max iOS 27.0 simulator",
+    "reset": false,
+    "observed": [
+      "compact progress and header accepted by user",
+      "leading checks and blue whole-row disclosure",
+      "person and enlarged group icons accepted by user",
+      "completion and targeted Undo round trip",
+      "heavy/light preference and cold process restart",
+      "existing v1 group combined personal 7 and shared 18 then coalesced to 18"
+    ],
+    "newPhysicalDeviceValidation": false
+  },
+  "boundaries": {
+    "mainMerged": false,
+    "productionRulesOrSchemaChanged": false,
+    "draftReleased": false,
+    "groupEntrySimplification": "deferred",
+    "sameAccountAutomaticDeviceAdmission": "deferred"
+  },
+  "sourceSha256": {
+    "src/app/(tabs)/guide.tsx": "e9e884a91073960db40987e9175d98453901a291a266f5db3eec44becae004ca",
+    "src/app/(tabs)/index.tsx": "d67451805ebd459ce8fb6282094fcf260e5f5d45712e59a3fd6c578ea1f11615",
+    "src/app/history.tsx": "7040e8d9a77f8f8acb1889ae8f080d9418d74ededdbe260aac83e9f7e81f6281",
+    "src/components/group-icon.tsx": "adc5a12a1892e060b6d99a7e96c6c7251b3dd4ecad939d14682149bb6b652b98",
+    "src/components/home-ui.tsx": "bc46330197b2d055bad126f6c407b707936a53c8b41671221c2e37088080abbc",
+    "src/components/planner-ui.tsx": "d1c1e4c64d08b4e6f69e12fc374b7645bc9e929230cb92f13e70a9be3441e675",
+    "src/components/task-checkbox-row.tsx": "4710bec54237d164a677b4468d6498cd0715ea0ad2ae9c22abd50c3655c381e3",
+    "src/components/waste-occurrence-card.tsx": "549dd3fca2fa3f4189c10baba36971ad285814dcba99888de521a3d328fe8753",
+    "src/domain/scheduling/date-task-reference.ts": "5e246704524c6b69480791e81436ff662da845550bb3c855c736abc03735dd4b",
+    "src/domain/scheduling/date-tasks.ts": "b399485a2c9369fd7e997abe84349fb284b130857f5f00603a3b7b6648439bda",
+    "src/domain/scheduling/task-priority.ts": "242d9bf9b3da61afb0c2a72b24d4d6751b903da6580a7fd47b737649d97719ca",
+    "src/domain/scheduling/task-row-order.ts": "5cd3bd2312987f7b14018397c7de5d2e7e8746b6c47a93908b295574c754a5b4",
+    "src/features/chores/guide-chapter-actions.tsx": "3b8a178ef178358c0f222d9a099bf13a0979ae21e13a2fd094390aabc12f12dc",
+    "src/features/planner/common-chore-history-bridge.ts": "8686a497fe8376ad5798080cdd3d0fb722c1f2846c21dcacebf68c26ff6327bf",
+    "src/features/planner/common-chore-links.ts": "6923d7dbee4ff743f923c3b1b408d3b237d05334f3731008efbe76721564c12d",
+    "src/features/planner/home-display-store.ts": "73c222dfbe740d61dede25a348ce8b07d6aa2734713a12486d99cd69452ebb39",
+    "src/features/planner/home-presentation.ts": "79cd62ec35f8f3c4b501e8c130c67fc8aabb7c3e4ef6857d4a64d04c5317e3f0",
+    "src/features/planner/task-mutations.ts": "cc55afded7e24e1a11b0a769f6046ac230625517d765d7e6cc730361570c2c52",
+    "src/features/sharing/mutations.ts": "dca570368ee94eebd5bcabdb0fa9ac297e820f3940f08d2d11b1f153e36ee32e",
+    "src/features/sharing/v2-ui/common-chore-history.ts": "0b1db35d1f353037c15837aa167471bea3f22458dc14c34008bc55ca699b0f81",
+    "src/features/sharing/v2-ui/group-screen.tsx": "0ac36b98e184630e6b30bd9ef40c8060e2f5ee2df3338035a9a31611be4a4a55",
+    "src/features/sharing/v2-ui/private-overlay.ts": "c7e266f2a61cd5c5ea1001b86297d22580252129dd4dbbe6f581ada5710794aa",
+    "src/features/sharing/v2-ui/private-task-card.tsx": "60ae378c540cc4654f613bf179f667e2942f638234f1bf7a28c98a9b9a59924f",
+    "src/features/sharing/v2-ui/round-card.tsx": "4561b797c3b1e73c74ab215e35b4a22100757a256f15ad9ecd369fd0a32fb111",
+    "src/features/sharing/v2-ui/screen-session.ts": "23421b61bf526631601e53adec03de3fb6cd6e58741a91186d9fe9bf564db8c3",
+    "src/features/sharing/v2-ui/task-order.ts": "2d45edcbcf1e4077a362c6c925c2aaf5dce9123c75eb5818543ee442ab609db9",
+    "src/features/sharing/v2-ui/workspace-route.tsx": "241f0efe464e0e5b94b6aaacccacb5912468fcd17e74814dbce9b8d945039c27",
+    "src/hooks/use-common-chore-history.tsx": "b816b42e5e71e15c91f78ac3719a3dea12b23c3bff954a0af68b6f8e5c157d15",
+    "src/hooks/use-home-display.tsx": "deed517c254c6305598f4ba517f54fe9e76c9c6bcb01e8cea6a3a561449d86cf",
+    "src/hooks/use-planner-data.ts": "c6b44c876028db08927544898febebcd4fe5b584be700ee6fac775fcc9a9c573",
+    "src/hooks/use-task-completion.tsx": "e1d4b4ddece9fba6f243cbbb78435ec797ba8928ea876587f0c598f77d8fdcd5",
+    "src/platform/storage/repository.ts": "b885a194521f27e9489fe6ac612b572c528b54e4edcd1900577b0e27b5c3f110",
+    "src/platform/storage/shared-repository-adapter.ts": "e67279c54909ee7b8644004f82c7497e1daeaaa36fa7d0f0d3f6d79abf0f28b5",
+    "tests/helpers/screen-harness.mjs": "4255512d8bd4fac16d88decc7d6c94be19be7c8f5041503d79bb0a998797d8fd",
+    "tests/helpers/sharing-v2-private-fixture.mjs": "7f6db752574f838f65843bdb13344710771163509425bd1d189ffc118324283d",
+    "tests/home-common-chores.test.mjs": "769b4a91d75268e0475c96fe0801a2a0d7d42742a0cb326577208d200e681dc8",
+    "tests/home-ux.test.mjs": "b130d6ab934da4eea3ec0175fdbecc600ad6c88d5f4488d89fe65477a4312c66",
+    "tests/sharing-v2-development-preview.test.mjs": "5032902b80bb4aa95f3ef3b0eee9cedb6ea97026364dffbcf461024c65b600b6",
+    "tests/sharing-v2-private-ui.test.mjs": "6e73c9bebaec060fdeace4c806bba0d90ecb29140737b9f6ab9dae58e34d4d48",
+    "tests/sharing-v2-waste-ui.test.mjs": "c0060a30a1ccce818141554d49d7ffebb3d0d6ca52920509ca7e2f6265ac80b5"
+  },
+  "performanceRegression": {
+    "confirmedHistoryRecords": 1000,
+    "mirrorReplayGetFirstAsyncMax": 2,
+    "mirrorReplayAuthorizationMax": 3,
+    "writesOnReplay": 0
+  }
+}

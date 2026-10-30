@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-28",
+  "baseCommit": "d5e884f417032fc4c968ad628b5795d05646ced8",
+  "scope": "Manual private Calendar source controls, actual Native crypto and protected SQLite, Emulator transport, and local-only v2 recommendations. Native Google acquisition uses an explicit synthetic provider in these physical tests.",
+  "checks": {
+    "ios": 1786,
+    "android": 1786,
+    "cloud": 61,
+    "failure": 0,
+    "skip": 0,
+    "featureContracts": 264,
+    "mandatoryCloudTests": 34,
+    "expoDoctor": "20/20",
+    "lint": "PASS",
+    "typecheck": "PASS"
+  },
+  "native": {
+    "iphone": {
+      "captureSeconds": 34.337,
+      "coldRestoreSeconds": 7.75,
+      "captureLog": "/tmp/liflow-v2-20261027/phase4as-ios-final-source-capture.log",
+      "coldLog": "/tmp/liflow-v2-20261027/phase4as-ios-source-cold-verified.log",
+      "processBefore": 12659,
+      "processAfter": 13733,
+      "authorityRevision": 2,
+      "captureQueries": 1,
+      "coldQueries": 0
+    },
+    "android": {
+      "os": "Android 10 / API 29",
+      "captureSeconds": 91.843,
+      "coldRestoreSeconds": 30.517,
+      "captureLog": "/tmp/liflow-v2-20261027/phase4as-android-final-source-capture.log",
+      "coldLog": "/tmp/liflow-v2-20261027/phase4as-android-source-after-confirmed-cold.log",
+      "processBefore": 14775,
+      "processAfter": 19790,
+      "authorityRevision": 2,
+      "captureQueries": 1,
+      "coldQueries": 0
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4as-ios-final-source-capture-attachments/3C02B269-542C-487B-862D-859944618EFE.png",
+      "sha256": "43d2a3f2ff94935764ebd34df6c399f716a1007cd2d4be471ae1ebafa9daab9a",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4as-ios-source-cold-verified-attachments/615C71CE-CA5C-48EA-848E-897F45630BA3.png",
+      "sha256": "ae6064d4e2635b8189f39f2844da01e2087365c8e7dff5e7f936458c6f56060f",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4as-android-final-source-proof-visible.png",
+      "sha256": "0bf1b19c6b53f0cce39a7155a4d75e4b9df059e340d9c0f1bf4372b38fdb5332",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4as-android-source-cold-proof-visible.png",
+      "sha256": "f0d09e9465de35adc02ccad94ef364620a0cb906b4773c660df6e30bb5171dfd",
+      "visuallyInspected": true
+    }
+  ],
+  "confirmedRegressions": [
+    {
+      "before": "An individually valid authority append could make the full pinned history exceed the existing revision/byte reader limits after publication.",
+      "redLog": "/tmp/liflow-v2-20261027/phase4as-history-limit-red.log",
+      "after": "Refuse before a new publication; retain current pin, keys and prepared intents."
+    },
+    {
+      "before": "Returning to an earlier main could revive its obsolete Google source after another main disabled acquisition.",
+      "redLog": "/tmp/liflow-v2-20261027/phase4as-former-main-source-red.log",
+      "after": "Compare the selected protected source with the latest verified source epoch. Require explicit review before a new Google request."
+    },
+    {
+      "before": "A follower-signed identical configuration was accepted as a source epoch.",
+      "redLog": "/tmp/liflow-v2-20261027/phase4as-source-signer-red.log",
+      "after": "Require the previous main for received source epochs while retaining ordinary follower no-op compatibility."
+    }
+  ],
+  "codeSha256": {
+    "src/features/sharing/private-calendar/authority.ts": "03072253a0a9d4a78a908a71017803eb6d81e4e0bb086bcba0c348d8480eccbc",
+    "src/features/sharing/private-calendar/source-controller.ts": "763217e1cbf2ca16ab23b455179049b80b701cb0121c7c6c4f8c580a0272904b",
+    "src/features/sharing/private-calendar/runtime.ts": "4a4e0a5dd2e09711ef57bbf2d22d0052c16fd7f1ff1fc5e50a9a8008b8bdd0c5",
+    "src/features/sharing/private-calendar/calendar-capture.ts": "53d294814f409114b7b01c16558860a50f8b4cdd28968451cbedc7cdd18d5f8e",
+    "src/features/sharing/v2-ui/screen-session.ts": "a9883bfc6cfc40f638a5f877ede48a3e1bf0a58e792594689ca3b568e11664d7",
+    "src/features/sharing/v2-ui/workspace-route.tsx": "cd34c5254bf42542c8a2ef4ca655d6df87332a6f7cd3f3f744633c1981d8d2c2"
+  },
+  "retainedFailures": [
+    "Initial capture testID used an accessibility label instead of a test identifier.",
+    "XCTest tapped a disabled control during the prior local read; the helper now waits for enabled state.",
+    "A stale Android development bundle did not contain the newly added route.",
+    "Cold development clients require explicit Metro reconnection before the QA route; original failed attempts and logs were retained.",
+    "A preliminary Android UI warm-up predicate did not detect the home. A direct screenshot confirmed home before the successful cold probe."
+  ],
+  "limits": [
+    "No production Rules deployment, real-group migration, main merge or README overwrite.",
+    "Native acquisition here is synthetic, not evidence of real Google API reads or real-account private Cloud transfer.",
+    "Periodic/start/foreground/OS background acquisition and pre-query failure backoff are not connected.",
+    "V2 Tasks, notifications, Widget, private relocation and the overall Phase 6 E2E remain incomplete.",
+    "The Native acquisition timings include UI scrolling and Emulator transport and are not comparative performance results.",
+    "Cold restoration was verified before the final source-handover/receiver checks; the final Native capture and full code/Rules regression were repeated after those changes."
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "3e08bf0",
+  "scope": "Expo SDK 58 compatible maintenance, native regeneration, same-signature replacement installation and physical-device revalidation.",
+  "nativeVersions": {
+    "expo": "58.0.21",
+    "reactNative": "0.88.0",
+    "expoRouter": "58.0.28",
+    "expoDevClient": "58.0.17",
+    "expoImage": "58.0.18",
+    "expoWidgets": "58.0.25"
+  },
+  "checks": {
+    "ios": 1843,
+    "android": 1843,
+    "cloud": 62,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 271,
+    "mandatoryCloudTests": 35,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "expoDoctor": "20/20 PASS",
+    "expoInstallCheck": "Dependencies are up to date",
+    "schedulerVersions": "v1 and v2 PASS",
+    "npmAudit": {
+      "info": 0,
+      "low": 7,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 7
+    }
+  },
+  "native": {
+    "android": {
+      "os": "Android 10 / API 29",
+      "build": "PASS (arm64-v8a)",
+      "dataPreservation": {
+        "sameApplicationId": true,
+        "sameSigningCertificate": true,
+        "replacementInstallOnly": true,
+        "preexistingFilesExactlyPreserved": 104,
+        "sqliteDatabasesRetained": 40,
+        "apkSha256": "5f7f7c0e57494d5495b288e8d665a26a8b063a3fe91aaaf1f7dadba754001a9d"
+      },
+      "realGoogleRead": {
+        "days": 181,
+        "requests": 3,
+        "intervals": 76,
+        "seconds": 7.492
+      },
+      "syntheticAuto": {
+        "requests": 100,
+        "additionalQueries": 0,
+        "seconds": 67.856
+      }
+    },
+    "iphone": {
+      "build": "PASS (physical device)",
+      "dataPreservation": {
+        "sameApplicationId": true,
+        "sameDevelopmentTeam": true,
+        "codeSignatureVerified": true,
+        "provisioningValid": true,
+        "replacementInstallOnly": true,
+        "preexistingFilesExactlyPreserved": 93,
+        "sqliteDatabasesRetained": 36,
+        "nativeExecutableSha256": "dbb76d47dd15c4bef71138ad273757ab6c3a2aa258998647cfc5ea1e736d89ff"
+      },
+      "realGoogleRead": {
+        "days": 181,
+        "requests": 3,
+        "intervals": 0,
+        "seconds": 8.989
+      },
+      "syntheticAuto": {
+        "requests": 100,
+        "additionalQueries": 0,
+        "seconds": 12.271
+      }
+    }
+  },
+  "integrity": {
+    "android": {
+      "checkedDatabases": 40,
+      "uninitializedFiles": 0,
+      "unavailable": []
+    },
+    "ios": {
+      "checkedDatabases": 36,
+      "uninitializedFiles": 0,
+      "unavailable": []
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4aw-android-real-google-read.png",
+      "sha256": "606d580c3958645939774119fb24d513242c75321782c812d4fc9218367d8f3a",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4aw-android-auto-proof-visible.png",
+      "sha256": "e1bbec891ae85092151b31df9953e7bb48e24b6a70e6091474996e93f33200db",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4aw-ios-real-read-attachments/D50186EC-1D43-484A-A0EC-C354D6505EB6.png",
+      "sha256": "20236b366b407d9faf8417eb931744669df1627633c99e8b95024c68be38a0f8",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4av-ios-sdk58-patch-auto-attachments/51F11F24-7099-45F7-81AD-79614E625BFD.png",
+      "sha256": "5e3fd69a410ef5c48a44e15c800eae054c09acc734e006da2d1273136d55417a",
+      "visuallyInspected": true
+    }
+  ],
+  "codeSha256": {
+    "package.json": "ce03c8af8289682ea597092db1955f908bf21b83f5ea07286c8bb2b1a0768689",
+    "package-lock.json": "a571161d101be7fe78ede5eb08ddb8b69b6421ccc710b01776e9f2c9c6808562",
+    "app.json": "a6aa5833438db1fb8bd9eeece89d593766f668a193f57963549caa24fb78303a",
+    "src/platform/google-tasks/google-calendar-freebusy-client.ts": "c3d5a0db6cb40ed0df768657d4e4a3302ccdf1ea8d9a8525b794a3fe7899abde",
+    "src/features/sharing/private-calendar/runtime.ts": "a1181ca7f9647f7da7c92f1b19c49cfac7944c1235026cdecd1de21dc79a4f9f"
+  },
+  "generatedCleanupKiB": 2125020,
+  "retainedObservations": [
+    "The installed Expo CLI makes prebuild clean by default; only generated native directories were recreated.",
+    "React Native template warns about 0.88.1; official installed Expo compatibility check and Doctor accept 0.88.0. It was not forced to a different version.",
+    "Xcode 27.1 reports a new Apple credentialImport enum warning in the installed Expo AppleAuthentication package; its unknown-default fallback remains and the build succeeds. Apple login is disabled for the current Personal Team.",
+    "The first cold Android audit link arrived while Metro was loading. The QA view assertion failed, was retained, and passed after the bundle was ready.",
+    "The read audit runner now rejects instrumentation assertion failure even when the adb process exits zero.",
+    "A default-platform repeated local test run was stopped for memory pressure; both verified final runs use HOUSEWORK_TEST_PLATFORM and test concurrency=2."
+  ],
+  "limits": [
+    "Real Google read is aggregate-only and does not save or upload personal busy intervals. Different account results do not establish cross-device convergence.",
+    "The auto test uses synthetic intervals with actual native crypto, protected SQL and local Rules.",
+    "OS-scheduled background execution and full Phase 6 E2E remain incomplete.",
+    "No uninstall, app reset, production Rules, real-group migration, main merge, README overwrite or global product UI polish."
+  ]
+}

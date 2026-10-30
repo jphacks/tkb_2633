@@ -1,0 +1,174 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "ca8d131b720070741e9199abdce7e7d971e244ba",
+  "phase6Complete": false,
+  "scope": "Verified v1 source and owner preview core plus isolated SQLite receiver staging; not an enabled migration workflow",
+  "checks": {
+    "ios": 2094,
+    "android": 2094,
+    "cloud": 70,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 311,
+    "all309PreviousContractsUnchanged": true,
+    "lintExitCode": 0,
+    "typecheckExitCode": 0,
+    "targetedSnapshotAndMigrationTests": 16
+  },
+  "sourceVerification": {
+    "requiresProtectedPinAndExpectedSnapshotManifestDigestAndPosition": true,
+    "signedRosterChainAndOriginalEpochAuthorProofs": true,
+    "pendingLocalEditsRefused": true,
+    "wrongKeyTamperStalePositionForeignGroupAndSchemaRefused": true,
+    "inputsCapturedBeforeAsyncDecryption": true,
+    "temporaryKeyCopyWiped": true,
+    "keyRetainedInCheckpoint": false,
+    "structuralAndDeserializedCheckpointRefused": true,
+    "sourceFrontierFrozen": true,
+    "allCompactedReceiptsAndRetainedFactsBound": true
+  },
+  "preview": {
+    "ownerSelectsKind": true,
+    "defaultKindInferred": false,
+    "oldPerformerRecorderAndUndoKeptSeparate": true,
+    "missingOriginalAssigneesAndRecordingTimeRemainUnknown": true,
+    "conflictsVisible": true,
+    "deviceCompatibilityUnconfirmed": true,
+    "sourceCountTest": 4100,
+    "mayActivate": false,
+    "newSharedOperationsCreated": 0,
+    "normalOwnerScreenConnected": false
+  },
+  "sqliteStaging": {
+    "isolatedSyntheticDatabaseOnly": true,
+    "forgedCheckpointRollsBackEveryTableAndCursor": true,
+    "verifiedSourceRetainsOriginalProofsAndCreatesNoOutbox": true,
+    "integrityCheck": "ok",
+    "realPersonalOrGroupDatabaseModified": false
+  },
+  "compactionCounterexample": {
+    "condition": "After a verified legacy checkpoint, a schema2 edit supersedes all prior chore fields and the mixed replica is snapshotted.",
+    "before": "9/10 tests pass; retained original source fact is dropped and the new verifier rejects restoration.",
+    "after": "Mixed/schema2 history retains original migration evidence; pure schema1 compaction still discards superseded edits and retains collision receipts.",
+    "targetedAfter": 16
+  },
+  "compatibility": {
+    "publishedV1SchedulerUnchanged": "liflow-shared-1",
+    "unreleasedV2Scheduler": "liflow-shared-2-draft-35",
+    "v2SourceContractIncludesCheckpointVerifierAndReplica": true,
+    "nativeDependenciesChanged": false,
+    "newPhysicalDeviceTestsForThisCoreChange": false
+  },
+  "remaining": [
+    "Normal owner preview UI, explicit per-chore policy and occurrence aliases, private Google mapping review, safe conversion into a new database generation and atomic registry switch are still absent.",
+    "Old v1 database, keys and native workspace rejection are retained; do not activate a protocol transition with this preview alone.",
+    "Reverify protected source checkpoint and current authority before future confirmation; old checkpoint JSON cannot restore runtime verification.",
+    "D10 response before actual personal relocation and its reason/history.",
+    "Mac unlock and iPhone Tasks/copy/completion-notice plus integrated heterogeneous-OS E2E.",
+    "No production Rules/schema deployment, real group migration, main merge, Draft release or post-Phase6 UI polish."
+  ],
+  "sources": [
+    {
+      "path": "src/features/sharing/v2/legacy-migration-source.ts",
+      "sha256": "de9336b283b51ef2c45d65b2f5cc9ec393ddbfb25b21b58a06f377ee4db09d6a",
+      "bytes": 6164
+    },
+    {
+      "path": "src/features/sharing/v2/legacy-migration-preview.ts",
+      "sha256": "34fdc3d947612e36630cbf1b15dddf4ce3855a90bc368fbb781ae30a25518328",
+      "bytes": 2917
+    },
+    {
+      "path": "src/features/sharing/v2/receiver-authority.ts",
+      "sha256": "ffa62cda914a3f4ad26bfbbefb215c44c93097c14473a47852388a1311bf49be",
+      "bytes": 49608
+    },
+    {
+      "path": "src/features/sharing/v2/payload-schema.ts",
+      "sha256": "12e6edc3871b1281fd6b0da3fab7d0772833810dc2b6e6081c10818d087bb257",
+      "bytes": 17980
+    },
+    {
+      "path": "src/features/sharing/v2/scheduler-contract.json",
+      "sha256": "888260426b73d720757dd10d343e7ad6dc6e2e29bb0df77ad8b2e052ff88dda8",
+      "bytes": 3724
+    },
+    {
+      "path": "src/features/sharing/replica.ts",
+      "sha256": "d64db3ae8d96a74ea98ef269fe0e57618c3d17e16252f8984b0e5f182c15d1f6",
+      "bytes": 13427
+    },
+    {
+      "path": "tests/sharing-v2-legacy-migration.test.mjs",
+      "sha256": "527ff31472ea947528c9b62bc42093c5a11539c8dd1f127b30a6a9469b8d5cb4",
+      "bytes": 17465
+    },
+    {
+      "path": "docs/feature-contracts.json",
+      "sha256": "892cd1d4cc2c3b820df2332b070626878f2a63724925f5b8e1263d084e6ad8c2",
+      "bytes": 241755
+    }
+  ],
+  "files": [
+    {
+      "path": "phase6-migration-source-first.log",
+      "sha256": "329fcb7a16db01bb36123ddad77961c2dbb50707d615f9ab1277a5f4c5cdbf5e",
+      "bytes": 1856
+    },
+    {
+      "path": "phase6-migration-source-linked.log",
+      "sha256": "2bfc9ce5d44182b445b7ac8ca8d14f912227b4d71a7c922f9a01c8b0e77cb950",
+      "bytes": 6097
+    },
+    {
+      "path": "phase6-migration-source-sqlite.log",
+      "sha256": "3c77edb2f477ee63803581b8443ea5d1573c4c23ae949047933f46a0bbb0d940",
+      "bytes": 1259
+    },
+    {
+      "path": "phase6-migration-compaction-counterexample.log",
+      "sha256": "234438edac49693f6069bd25f30b5d1b82122e4303e1400fa5200fe17ece9307",
+      "bytes": 2491
+    },
+    {
+      "path": "phase6-migration-compaction-fixed.log",
+      "sha256": "86c77ba67856ecdc5ad4967b22a7b11c68f50aa050dd3381f7db037a01c7a366",
+      "bytes": 2119
+    },
+    {
+      "path": "phase6-migration-verified-ios.log",
+      "sha256": "7c5b52dbc099a7abfa29b877ae04fd37c1658c545642fe219db76d6a1aeaa990",
+      "bytes": 251912
+    },
+    {
+      "path": "phase6-migration-verified-android.log",
+      "sha256": "dc607bcc8ddedd16b56c3d2f4d5695b45b28da06dbfb121e6e540c8f0f796f27",
+      "bytes": 251948
+    },
+    {
+      "path": "phase6-migration-verified-cloud.log",
+      "sha256": "5776dce256504bb59be20762486bc0a98b426e45d85ef566b825c94604b48285",
+      "bytes": 30457
+    },
+    {
+      "path": "phase6-migration-verified-lint.log",
+      "sha256": "a099e53b2dd4fd0bb24bd10e43b6db2b5593a058c73af62058448ed9d24560b3",
+      "bytes": 568
+    },
+    {
+      "path": "phase6-migration-verified-typecheck.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598",
+      "bytes": 53
+    },
+    {
+      "path": "phase6-migration-verified-checks.json",
+      "sha256": "534872edbe48d868e84e0d00d2a92c29dcbcd8f60cbfeb2e831785e594c35ae3",
+      "bytes": 181
+    },
+    {
+      "path": "phase6-ca8d131-checks.json",
+      "sha256": "0f3aee22ed7127df1aa30611ecb8fcf781ee17ff6f2dcb6e993f6bc1ed0923fd",
+      "bytes": 596
+    }
+  ]
+}

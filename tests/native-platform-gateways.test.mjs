@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { loadNativeModule as load } from './helpers/native-module.mjs';
+import * as applianceAnalysisValidation from '../src/features/appliance-care/analysis-validation.ts';
 
 for (const platform of ['ios', 'android']) {
   test(`${platform} notification gateway coalesces permission requests and creates Android channels before asking`, async () => {
@@ -52,6 +53,7 @@ for (const platform of ['ios', 'android']) {
       const { applianceCareApiBaseUrl } = load('src/features/appliance-care/api-client.ts', {
         'react-native': { Platform: { OS: platform } },
         '@/features/appliance-care/official-url': {}, './polling': {},
+        './analysis-validation': applianceAnalysisValidation,
       });
       assert.equal(applianceCareApiBaseUrl(), platform === 'android' ? 'http://10.0.2.2:8787' : 'http://localhost:8787');
       process.env.EXPO_PUBLIC_APPLIANCE_CARE_API_URL = ' https://api.example.test/// ';
@@ -70,8 +72,10 @@ test('native entry defines background work before Router can mount any screens',
   const backgroundMocks = {
     'expo-background-task': { BackgroundTaskResult: { Success: 'success', Failed: 'failed' } },
     'expo-task-manager': { defineTask: (name, run) => { events.push(`define:${name}`); callback = run; } },
-    'expo-sqlite': { openDatabaseAsync: async () => ({ closeAsync: async () => { events.push('close'); } }) },
+    'expo-sqlite': { openDatabaseAsync: async (_name, options) => { assert.equal(options.useNewConnection, true); return { closeAsync: async () => { events.push('close'); } }; } },
     './coordinator': { syncGoogleTasks: async () => { events.push('sync'); } },
+    '@/platform/sharing/private-calendar-sync': { syncKnownPrivateCalendar: async budget => { assert.equal(budget, 15000); events.push('private-calendar'); } },
+    '@/platform/sharing/workspaces': { syncKnownSharingWorkspaces: async (budget) => { assert.equal(budget, 30000); events.push('sharing'); } },
     '@/platform/storage/repository': { LOCAL_HOUSEHOLD_ID: 'home', initializeLocalDatabase: async () => { events.push('initialize'); },
       loadGoogleSyncState: async () => ({ enabled: true }) },
   };
@@ -83,7 +87,7 @@ test('native entry defines background work before Router can mount any screens',
   });
   assert.deepEqual(events, ['define:housework-planner-google-tasks-sync', 'router']);
   assert.equal(await callback({}), 'success');
-  assert.deepEqual(events.slice(2), ['initialize', 'sync', 'close']);
+  assert.deepEqual(events.slice(2), ['initialize', 'sync', 'close', 'private-calendar', 'sharing']);
   assert.equal(await callback({ error: { message: 'OS error' } }), 'failed');
 });
 
@@ -94,6 +98,8 @@ test('background tasks close their SQLite connection after a sync failure withou
     'expo-task-manager': { defineTask: (_name, run) => { callback = run; } },
     'expo-sqlite': { openDatabaseAsync: async () => ({ closeAsync: async () => { closed++; } }) },
     './coordinator': { syncGoogleTasks: async () => { throw new Error('SQLite busy'); } },
+    '@/platform/sharing/private-calendar-sync': { syncKnownPrivateCalendar: async () => {} },
+    '@/platform/sharing/workspaces': { syncKnownSharingWorkspaces: async () => {} },
     '@/platform/storage/repository': { LOCAL_HOUSEHOLD_ID: 'home', initializeLocalDatabase: async () => {}, loadGoogleSyncState: async () => ({ enabled: true }) },
   });
   assert.equal(await callback({}), 'failed'); assert.equal(closed, 1);

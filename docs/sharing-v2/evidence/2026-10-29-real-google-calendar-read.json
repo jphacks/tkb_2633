@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "9808f0380ad63162cc8b81e5de273212ed2cccc1",
+  "scope": "Actual Native Google authentication and real FreeBusy read only. Aggregate counts, no SQLite/Firebase/private-cache publication or Google Tasks writes.",
+  "checks": {
+    "ios": 1796,
+    "android": 1796,
+    "cloud": 61,
+    "failure": 0,
+    "skip": 0,
+    "featureContracts": 265,
+    "mandatoryCloudTests": 34,
+    "lint": "PASS",
+    "typecheck": "PASS"
+  },
+  "native": {
+    "android": {
+      "os": "Android 10 / API 29",
+      "seconds": 7.142,
+      "days": 181,
+      "httpRequests": 3,
+      "normalizedIntervals": 76,
+      "log": "/tmp/liflow-v2-20261027/phase4at-android-real-read-first.log"
+    },
+    "iphone": {
+      "os": "iOS 26.7.2",
+      "seconds": 8.885,
+      "days": 181,
+      "httpRequests": 3,
+      "normalizedIntervals": 0,
+      "log": "/tmp/liflow-v2-20261027/phase4at-ios-real-read-after-consent.log"
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4at-android-real-google-read.png",
+      "sha256": "21eb3d4b76d0358e9400acb9552e6e38b31422987ddd881aacbedad7dabdf910",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4at-ios-real-read-after-consent-attachments/F1AF5421-77F0-49C2-8128-2CC5A1481FA1.png",
+      "sha256": "a52286e1152e6f72f2f85c60d0b506ba2d09c4cb35e8c9020b4e64b9d44347ee",
+      "visuallyInspected": true
+    }
+  ],
+  "codeSha256": {
+    "src/features/sharing/development/google-calendar-read-audit.ts": "3052385caf9f90341719c047a6489dc2b3c26e69528f662d991bb76641422122",
+    "src/platform/sharing/google-calendar-read-audit.ts": "a841380966040b3370173d6415334dfad2dca6b7dc1ba515de37e07037176c10",
+    "src/app/development/google-calendar-read-preview.tsx": "3a48f4ec917a0df6c6a7add53fe45d187c6ff0e648e4faddb69a7d524e775cf7",
+    "src/features/sharing/private-calendar/calendar-capture.ts": "e1d864b657d99cf08a9f77e3c0b52acc8d0b49fb3207e81abc838c79dbff4b8a",
+    "tests/sharing-google-calendar-read-audit.test.mjs": "396155e46c0ec71f431ee2b3d52d48d006f375ef909bb8f19bf9cec7983ae827"
+  },
+  "oauthConfiguration": {
+    "project": "Existing Google integration project",
+    "testAudienceBefore": 1,
+    "testAudienceAfter": 2,
+    "existingEntryRetained": true,
+    "publishingStatus": "Testing",
+    "newCredentialsCreated": false,
+    "accountIdentifiersOmitted": true,
+    "proofLocalOnly": "/tmp/liflow-v2-20261027/phase4at-google-test-audience-saved.png"
+  },
+  "retainedFailures": [
+    "Initial iPhone read required Calendar FreeBusy permission.",
+    "The explicit consent was first rejected with access_denied because the current user was not in the testing audience.",
+    "Consent-opening and observer test successes are not counted as Calendar API success."
+  ],
+  "limits": [
+    "The selected Google accounts are not asserted to be the same. Interval counts are not a cross-device convergence result.",
+    "Actual busy intervals were held in memory and not logged or saved by this audit.",
+    "The change does not establish real-account private-cache Cloud transfer, group E2E, or OS-scheduled background execution.",
+    "No app reset, existing-data deletion, main merge, README overwrite, production Rules deployment or real-group migration.",
+    "Overall Phase 6 remains incomplete."
+  ]
+}

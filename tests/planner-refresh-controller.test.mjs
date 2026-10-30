@@ -77,3 +77,68 @@ test('a failed output update keeps the screen usable and retries for the same ca
   await controller.refresh();
   assert.equal(attempts, 2);
 });
+
+test('invalidation before a queued refresh starts prevents reads and native output publication', async () => {
+  const reads = [], published = [];
+  const controller = createPlannerRefreshController({
+    load: async (ids) => { reads.push(ids); return { snapshot: 'departed group', canPublishWidget: true }; },
+    weather: async () => null, publish: (snapshot) => published.push(snapshot),
+  });
+  const pending = controller.refresh({ widgetCompletionIds: ['old-action'] });
+  controller.invalidate();
+  await pending;
+  assert.deepEqual(reads, [], 'an unmounted or backgrounded provider must not start its queued database read');
+  assert.deepEqual(published, [], 'a departed group must not recreate its cancelled reminders');
+});
+
+test('invalidation discards both an in-flight result and an older queued refresh without losing the next resume', async () => {
+  const first = deferred(); const reads = [], published = [];
+  const controller = createPlannerRefreshController({
+    load: async (ids) => {
+      reads.push(ids);
+      return { snapshot: reads.length === 1 ? await first.promise : 'resumed', canPublishWidget: true };
+    },
+    weather: async () => null, publish: (snapshot) => published.push(snapshot),
+  });
+  const running = controller.refresh({ widgetCompletionIds: ['in-flight'] });
+  await Promise.resolve();
+  const queued = controller.refresh({ widgetCompletionIds: ['before-background'] });
+  controller.invalidate();
+  first.resolve('stale');
+  await Promise.all([running, queued]);
+  assert.deepEqual(reads, [['in-flight']]);
+  assert.deepEqual(published, []);
+  await controller.refresh({ widgetCompletionIds: ['after-resume'], force: true });
+  assert.deepEqual(reads, [['in-flight'], ['after-resume']]);
+  assert.deepEqual(published, ['resumed']);
+});
+
+test('a fresh refresh immediately after invalidation runs with only the current workspace request', async () => {
+  const reads = [], published = [];
+  const controller = createPlannerRefreshController({
+    load: async (ids) => { reads.push(ids); return { snapshot: 'current', canPublishWidget: true }; },
+    weather: async () => null, publish: (snapshot) => published.push(snapshot),
+  });
+  const previous = controller.refresh({ widgetCompletionIds: ['obsolete'] });
+  controller.invalidate();
+  const current = controller.refresh({ widgetCompletionIds: ['current'] });
+  await Promise.all([previous, current]);
+  assert.deepEqual(reads, [['current']]);
+  assert.deepEqual(published, ['current']);
+});
+
+test('invalidation from a snapshot subscriber stops native publication and weather without suppressing a later same-snapshot resume', async () => {
+  const snapshot = {}; const published = []; let weatherReads = 0, first = true;
+  const controller = createPlannerRefreshController({
+    load: async () => ({ snapshot, canPublishWidget: true }),
+    weather: async () => { weatherReads++; return null; },
+    publish: (value) => published.push(value),
+  });
+  controller.subscribe(() => { if (first) { first = false; controller.invalidate(); } });
+  await controller.refresh();
+  assert.deepEqual(published, [], 'a synchronous unmount cannot be followed by old notification or widget output');
+  assert.equal(weatherReads, 0);
+  await controller.refresh();
+  assert.deepEqual(published, [snapshot], 'skipping a cancelled output must not mark it as already published');
+  assert.equal(weatherReads, 1);
+});

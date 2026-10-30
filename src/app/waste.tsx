@@ -31,7 +31,7 @@ export default function WasteScreen() {
     setSaving(true);
     setMessage(null);
     try {
-      await saveWeeklyWasteSchedule(database, schedule);
+      await saveWeeklyWasteSchedule(database, schedule, editing);
       setEditing(undefined);
       await refresh();
       setMessage('収集日を保存しました。');
@@ -74,7 +74,7 @@ export default function WasteScreen() {
   };
 
   const nextSevenDays = snapshot.upcomingWasteDates
-    .filter((occurrence) => occurrence.date >= localDateFromDate(new Date()))
+    .filter((occurrence) => occurrence.date >= (snapshot.today ?? localDateFromDate(new Date())))
     .sort((left, right) => left.date.localeCompare(right.date))
     .slice(0, 8);
 
@@ -84,7 +84,7 @@ export default function WasteScreen() {
       <ScreenHeading eyebrow="WASTE DAY" title="ゴミ収集日" description="ゴミの種類を検索して選び、曜日や周期を登録します。" />
       {loadError ? <Card><Text style={styles.error}>{loadError}</Text></Card> : null}
 
-      <WasteScheduleEditor key={editing?.id ?? 'new'} initial={editing} onSubmit={save} onCancel={editing ? () => setEditing(undefined) : undefined} disabled={busy} />
+      <WasteScheduleEditor key={editing?.id ?? 'new'} initial={editing} referenceDate={snapshot.today} onSubmit={save} onCancel={editing ? () => setEditing(undefined) : undefined} disabled={busy} />
       {message ? <Text accessibilityLiveRegion="polite" style={message.includes('しました') ? styles.success : styles.error}>{message}</Text> : null}
 
       <SectionHeading title="登録済み" trailing={<Text style={styles.count}>{snapshot.wasteSchedules.length}種類</Text>} />

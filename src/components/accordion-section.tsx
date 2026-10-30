@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { Chevron } from './chevron';
 import { Card, palette, typography } from '@/components/planner-ui';
 
 const DURATION = 220;
@@ -40,7 +41,7 @@ export function AccordionSection({ title, expanded, onToggle, children }: {
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
         <Text style={styles.title}>{title}</Text>
-        <Text style={[styles.chevron, expanded && styles.chevronExpanded]}>⌄</Text>
+        <Chevron direction={expanded ? 'up' : 'down'} />
       </Pressable>
       <Animated.View
         style={[styles.clip, bodyStyle]}

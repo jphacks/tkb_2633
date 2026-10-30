@@ -1,0 +1,117 @@
+import { orderTaskRows } from './task-order';
+import { createV2RoundVisibility } from './round-visibility';
+import type { CompletionFeedback } from './completion-feedback';
+import Animated, { LinearTransition } from 'react-native-reanimated';
+import type { ReactElement } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppButton, Card, palette, SectionHeading, typography } from '../../../components/planner-ui';
+import { CalendarTaskCountIndicator } from '../../../components/calendar-task-count-indicator';
+import { DEFAULT_CALENDAR_COUNT_COLORS } from '../../../domain/calendar/count-colors';
+import { formatJapaneseDate, weekdayOf } from '../../../domain/scheduling/local-date';
+import type { CalendarCountColors, CalendarCountDisplayMode, LocalDate } from '../../../domain/shared/types';
+import type { V2GroupController, V2GroupScreenModel } from '../v2/controller';
+import type { V2PersonalPlan } from '../v2/personal-plan';
+import { v2CalendarMonth, v2CalendarProjection } from './calendar-projection';
+import { V2RoundCard } from './round-card';
+import { privateOverlayForViewer, privateOverlayPendingCounts } from './private-overlay';
+import type { V2PrivateOverlayState, V2PrivateTaskSource } from './private-overlay';
+import { V2PrivateTaskCard, V2PrivateTaskNotice } from './private-task-card';
+import { wasteCalendarLabels } from '../../waste/calendar-labels';
+import { calendarWasteLabel, wasteTypeColor } from '../../waste/type-appearance';
+import { V2WasteOccurrence } from './waste-occurrence';
+
+export function V2Calendar({ model, personal, privateOverlay: privateValue, privateSource, month, selectedDate, busy, actions, run, onMonth, onSelectDate, onRound, header, feedback,
+  countColors = DEFAULT_CALENDAR_COUNT_COLORS, countMode = 'bar' }: {
+  feedback?: CompletionFeedback;
+  model: V2GroupScreenModel; personal?: V2PersonalPlan; month: LocalDate; selectedDate: LocalDate; busy: boolean;
+  actions: V2GroupController['actions']; run: (work: () => Promise<unknown>) => Promise<void>;
+  onMonth: (month: LocalDate) => void; onSelectDate: (date: LocalDate) => void;
+  onRound: (occurrenceId: string, subjectId: string, anchorDate: LocalDate) => void; header?: ReactElement;
+  countColors?: CalendarCountColors; countMode?: CalendarCountDisplayMode;
+  privateOverlay?: V2PrivateOverlayState; privateSource?: V2PrivateTaskSource;
+}) {
+  const grid = v2CalendarMonth(month); const projection = v2CalendarProjection(model, personal, feedback?.values);
+  const privateOverlay = privateOverlayForViewer(privateValue, model.viewerUserId);
+  const loaded = model.plan.initialized && model.plan.range.from <= grid.from && model.plan.range.through >= grid.through;
+  const wasteLoaded = model.waste && model.waste.range.from <= grid.from && model.waste.range.through >= grid.through;
+  const wasteLabels = wasteCalendarLabels(wasteLoaded ? model.waste!.schedules : [], grid.from, grid.through, model.waste?.hiddenKeys);
+  const privateLoaded = privateOverlay?.status === 'ready' && privateOverlay.range.from <= grid.from && privateOverlay.range.through >= grid.through;
+  const privateCounts = privateOverlayPendingCounts(privateLoaded ? privateOverlay : undefined, feedback?.values);
+  const sharedEntries = loaded ? projection.byDate.get(selectedDate) ?? [] : [];
+  const visible = createV2RoundVisibility(model);
+  const choreById = new Map(model.plan.chores.map(chore => [chore.id, chore]));
+  const entries = orderTaskRows([...(wasteLoaded ? model.waste!.occurrences.filter(entry => entry.occurrence.date === selectedDate) : [])
+    .map(entry => ({ source: 'waste' as const, key: `waste:${entry.key}`, entry })),
+    ...sharedEntries.map((entry) => ({ source: 'shared' as const, key: `shared:${entry.id}`, entry })),
+    ...(privateLoaded ? privateOverlay.byDate.get(selectedDate) ?? [] : []).map((row) => ({ source: 'personal' as const, key: row.key, row }))], model.plan.range.asOfDate, item => item.source === 'personal'
+    ? { completed: feedback?.values.get(item.key) ?? item.row.completed, load: item.row.chore.load, recommendedDate: item.row.suggestedDate, windowEnd: item.row.windowEnd, asOfDate: privateOverlay?.status === 'ready' ? privateOverlay.today : undefined }
+    : item.source === 'shared' ? { completed: visible(item.entry.round, item.entry.subject).showStatus && (feedback?.values.get(`shared:${item.entry.subject.id}`) ?? item.entry.subject.completed),
+      load: choreById.get(item.entry.round.choreId)?.load ?? 'light', recommendedDate: item.entry.recommendation?.date ?? item.entry.subject.suggestedDate, windowEnd: item.entry.subject.executionWindowEnd }
+      : { completed: false, load: 'light', recommendedDate: selectedDate });
+  const move = (offset: number) => { let next; try { next = v2CalendarMonth(grid.month, offset).month; } catch { return; } onMonth(next); };
+  const canMove = (offset: number) => { try { v2CalendarMonth(grid.month, offset); return true; } catch { return false; } };
+  return <Animated.FlatList data={entries} itemLayoutAnimation={LinearTransition.duration(240)} keyExtractor={(entry) => entry.key} initialNumToRender={8} contentContainerStyle={styles.page}
+    ListHeaderComponent={<View style={{ gap: 14 }}>{header}<Card style={styles.calendarCard}>
+      <View style={styles.monthHeader}><AppButton title="‹" accessibilityLabel="前の月" compact variant="secondary" disabled={busy || !canMove(-1)} onPress={() => move(-1)} />
+        <Text style={styles.monthTitle}>{grid.year}年{grid.monthNumber}月</Text>
+        <AppButton title="›" accessibilityLabel="次の月" compact variant="secondary" disabled={busy || !canMove(1)} onPress={() => move(1)} /></View>
+      <View style={styles.week}>{['日', '月', '火', '水', '木', '金', '土'].map((day, index) => <View key={day} style={styles.daySlot}>
+        <View accessibilityLabel={`${day}曜日${wasteLabels.weeklyByColumn[index].length ? `、${wasteLabels.weeklyByColumn[index].join('・')}` : ''}`}
+          style={[styles.weekdayPill, wasteLabels.weeklyByColumn[index].length > 0 && styles.wasteOutline,
+            wasteLabels.weeklyByColumn[index].length > 0 && { borderColor: wasteTypeColor(wasteLabels.weeklyByColumn[index][0]) }]}>
+          <Text style={[styles.weekday, (index === 0 || index === 6) && styles.weekend]}>{day}</Text>
+          {wasteLabels.weeklyByColumn[index].map(name => <WasteName key={name} name={name} />)}
+        </View></View>)}</View>
+      <View>{Array.from({ length: grid.cells.length / 7 }, (_, week) => <View style={styles.week} key={grid.cells[week * 7]}>
+        {grid.cells.slice(week * 7, week * 7 + 7).map((day) => {
+          const selected = day === selectedDate; const today = day === model.plan.range.asOfDate;
+          const labels = wasteLabels.byDate.get(day) ?? []; const hiddenWeekly = wasteLabels.hiddenWeeklyByDate.get(day) ?? [];
+          const outlined = labels.length > 0 || hiddenWeekly.length > 0;
+          const sharedCount = loaded ? projection.counts.get(day) ?? 0 : 0; const privateCount = privateCounts.get(day) ?? 0;
+          const count = sharedCount + privateCount;
+          const countLabel = `${formatJapaneseDate(day, { year: true })}、${loaded ? `確認できる未完了の共有家事${sharedCount}件` : '予定は未取得'}${privateValue ? privateLoaded ? `、個人家事${privateCount}件` : '、個人家事は未取得' : ''}${labels.length ? `、${labels.join('・')}` : ''}${hiddenWeekly.length ? `、非表示の収集日：${hiddenWeekly.join('・')}` : ''}`;
+          return <View key={day} style={styles.daySlot}><Pressable accessibilityRole="button" accessibilityLabel={countLabel}
+            accessibilityState={{ selected, disabled: busy || !loaded }} disabled={busy || !loaded} onPress={() => onSelectDate(day)}
+            style={[styles.day, today && styles.today, selected && styles.selected, labels.length > 0 && styles.wasteOutline,
+              labels.length > 0 && { borderColor: wasteTypeColor(labels[0]) }, hiddenWeekly.length > 0 && styles.hiddenWeeklyDay,
+              selected && outlined && styles.selectedOutlinedDay, today && !selected && labels.length > 0 && styles.today]}>
+            <Text style={[styles.number, day.slice(0, 7) !== grid.month.slice(0, 7) && styles.outside,
+              (weekdayOf(day) === 6 || weekdayOf(day) === 7) && styles.weekend, selected && styles.selectedNumber,
+              selected && outlined && styles.outlinedDayNumber]}>{Number(day.slice(-2))}</Text>
+            {labels.map(name => <WasteName key={name} name={name} />)}
+            <CalendarTaskCountIndicator count={count} colors={countColors} mode={countMode} selected={selected} />
+          </Pressable></View>;
+        })}
+      </View>)}</View>
+    </Card><SectionHeading title={formatJapaneseDate(selectedDate, { year: true, weekday: true })} />
+      <Text style={styles.caption}>{privateValue ? '点と棒：共有と個人の推奨日の未完了数' : '点と棒：確認できる未完了数'}</Text>
+      {!wasteLoaded ? <Text style={styles.caption}>この月の共有収集日は未取得です。月を再読込してください。</Text> : null}
+      {model.waste?.rows.some(row => !row.deleted && row.needsReview) ? <Text style={styles.caption}>確認が必要な収集ルールは表示していません。共有のゴミ収集日で確認できます。</Text> : null}
+      <V2PrivateTaskNotice overlay={privateOverlay} sharedTimeZone={model.plan.timeZone} date={selectedDate} />
+      {privateOverlay?.status === 'ready' && !privateLoaded ? <Text style={styles.caption}>この月の個人家事は未取得です。月を再読込してください。</Text> : null}
+      {busy && !loaded ? <Text style={styles.caption}>共有予定を読み込んでいます…</Text> : !loaded ? <><Text style={styles.caption}>この月の共有予定を取得できていません。</Text>
+        <AppButton title="この月を再読込" variant="secondary" onPress={() => onMonth(grid.month)} /></> : null}
+    </View>}
+    ListEmptyComponent={loaded && !busy ? <Card><Text style={styles.caption}>{privateValue ? 'この日の共有家事はありません。取得済みの個人家事は上の案内に沿って表示します。' : 'この日の共有家事はありません。'}</Text></Card> : undefined}
+    renderItem={({ item }) => item.source === 'waste' ? <V2WasteOccurrence entry={item.entry} compact busy={busy} actions={actions} run={run} />
+      : item.source === 'personal' ? <V2PrivateTaskCard row={item.row} today={privateOverlay?.status === 'ready' ? privateOverlay.today : undefined} source={privateSource} busy={busy} run={run} feedback={feedback} />
+      : <V2RoundCard model={model} round={item.entry.round} subject={item.entry.subject} recommendation={item.entry.recommendation}
+        actions={actions} busy={busy} run={run} feedback={feedback} displayDate={selectedDate} onOpen={() => onRound(item.entry.round.id, item.entry.subject.id, item.entry.round.anchorDate)} />} />;
+}
+function WasteName({ name }: { name: string }) {
+  return <Text style={[styles.wasteLabel, { color: wasteTypeColor(name) }]}>{calendarWasteLabel(name)}</Text>;
+}
+const styles = StyleSheet.create({
+  page: { padding: 16, paddingBottom: 40, gap: 14 }, monthHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  calendarCard: { gap: 6 },
+  monthTitle: { ...typography.section, color: palette.ink, fontWeight: '700' }, week: { flexDirection: 'row', alignItems: 'stretch' },
+  weekday: { ...typography.calendarLabel, color: palette.muted, textAlign: 'center' },
+  weekdayPill: { flex: 1, minHeight: 32, alignItems: 'center', gap: 1, paddingVertical: 2, borderRadius: 10, borderWidth: 1.5, borderColor: 'transparent' },
+  daySlot: { width: `${100 / 7}%`, padding: 2 }, day: { flex: 1, minHeight: 36, justifyContent: 'flex-start', paddingVertical: 2, gap: 1, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: 'transparent' },
+  wasteLabel: { width: '100%', ...typography.calendarLabel, textAlign: 'center', fontWeight: '700' }, wasteOutline: { backgroundColor: '#FFFFFF' },
+  hiddenWeeklyDay: { borderColor: '#929BAA', backgroundColor: '#F3F4F6' }, selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5, paddingVertical: 1 },
+  outlinedDayNumber: { color: '#205B79' },
+  number: { ...typography.calendarDate, color: palette.ink, fontWeight: '600' }, outside: { opacity: 0.45 }, weekend: { color: palette.muted },
+  today: { backgroundColor: palette.accentSoft }, selected: { backgroundColor: palette.accent }, selectedNumber: { color: '#FFFFFF' },
+  caption: { ...typography.caption, color: palette.muted },
+});

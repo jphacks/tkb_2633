@@ -1,0 +1,274 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "82be2f26662757d47a651be3ee66f48430482c7b",
+  "scope": "Explicit personal settings copy; private durable review; atomic schema2 commit and normal UI; local synthetic Android QA; real Emulator encrypted transfer with actual personal SQLite preservation",
+  "checks": {
+    "ios": 2048,
+    "android": 2048,
+    "cloud": 70,
+    "featureContracts": 300,
+    "mandatoryCloudTests": 40,
+    "failures": 0,
+    "skipped": 0,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "doctor": "20/20",
+    "audit": {
+      "info": 0,
+      "low": 7,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 7
+    }
+  },
+  "behavior": {
+    "initialSelectionEmpty": true,
+    "maximumSelection": 20,
+    "administratorRequiredForEnabledAndCycle": true,
+    "newSharedIds": true,
+    "pastCompletionsShared": false,
+    "googleMappingsShared": false,
+    "personalParentIdsShared": false,
+    "noSourceRemoval": true,
+    "noSharedEventsUntilExplicitConfirmation": true,
+    "reviewAndSignedCommitAtomic": true,
+    "staleSourceRosterRegionDayRejected": true,
+    "repeatedConfirmationTest": 100,
+    "keepsReceiptAfterHandover": true,
+    "localPendingAndAcceptedSendDistinct": true
+  },
+  "native": {
+    "android": {
+      "device": "Sony I4293 Android10/API29",
+      "results": {
+        "review": {
+          "mode": "stage",
+          "proof": "コピー保存検査 PASS：確認中・共有追加なし・元設定保持・過去履歴0件・照合値742a87e012cf3649b3891d40f378e9dbc386a9517ef7860b310d1ec57b85d744",
+          "dataReset": false
+        },
+        "review-cold": {
+          "mode": "review-saved",
+          "proof": "コピー保存検査 PASS：確認中・共有追加なし・元設定保持・過去履歴0件・照合値742a87e012cf3649b3891d40f378e9dbc386a9517ef7860b310d1ec57b85d744",
+          "dataReset": false
+        },
+        "confirmed": {
+          "mode": "confirm",
+          "proof": "コピー保存検査 PASS：追加済み・二重追加なし・元設定保持・過去履歴0件・照合値742a87e012cf3649b3891d40f378e9dbc386a9517ef7860b310d1ec57b85d744",
+          "dataReset": false
+        },
+        "committed-cold": {
+          "mode": "saved",
+          "proof": "コピー保存検査 PASS：追加済み・二重追加なし・元設定保持・過去履歴0件・照合値742a87e012cf3649b3891d40f378e9dbc386a9517ef7860b310d1ec57b85d744",
+          "dataReset": false
+        }
+      },
+      "privateDatabasePreservation": {
+        "tableCountBefore": 17,
+        "tableCountAfter": 17,
+        "unchangedTableCount": 17,
+        "changedTableNames": [],
+        "removedTableNames": [],
+        "dataReset": false
+      },
+      "signedNativeSQLite": true,
+      "realPersonalSourceCopied": false,
+      "realCloudGroup": false,
+      "oauthRequested": false,
+      "dataReset": false,
+      "visualReview": "The captured record shows the seven-day cycle, execution period, full source description and the preceding condition-based task kept disabled."
+    },
+    "ios": {
+      "status": "NOT RUN",
+      "reason": "Mac remains screen-locked; previous XCTest automation enablement timed out twice; no new attempt while locked"
+    }
+  },
+  "cloud": {
+    "emulatorOnly": true,
+    "source": "Real isolated personal SQLite with current settings and previous completion retained",
+    "allPersonalTablesCompared": true,
+    "beforeConfirmationHeadUnchanged": true,
+    "afterConfirmationTwoSignedEvents": true,
+    "receiverEachMemberSubjects": 2,
+    "copiedPastHistoryCount": 0,
+    "noPlaintextInCloudEvent": true,
+    "sentReceiptAndIdempotentRetry": true
+  },
+  "reproducedAndFixed": [
+    "A saved private review required current shared metadata and became unreadable after its administrator changed; read binding is now independent while confirmation rechecks live authority.",
+    "A locally committed unpublished copy can be quarantined after handover; its authenticated local receipt is retained and marked for review rather than falsely marked sent."
+  ],
+  "testHarnessFailures": [
+    "The first extended Cloud run could not resolve the repository alias during static ESM linking. The repository is imported after installing the existing test loader; the corrected full suite passes.",
+    "The optional second screenshot search assumed floor precedes conditional; review order follows stable selected IDs. It could not find an earlier heading by scrolling down. The first screenshot and successful stage/confirm/restart results are retained; no second screenshot PASS is claimed."
+  ],
+  "limits": [
+    "No production Rules/schema deployment, real-group migration, main merge or Draft release.",
+    "The iPhone copy screen and integrated heterogeneous-OS group flow remain untested in this increment.",
+    "Natural OS background delivery is not proved by these checks.",
+    "Actual personal schedule relocation and completion-push delivery remain separate pending work."
+  ],
+  "sources": [
+    {
+      "path": "src/app/development/v2-personal-copy-preview.tsx",
+      "sha256": "b372521cc438b87d8d0c882f2bed07eea20544959cd33638ce09a90946856f69"
+    },
+    {
+      "path": "src/app/group-v2/personal-copy.tsx",
+      "sha256": "dc0867d1d4d5a93018725eebc1a9c996ec4ecb4e53f3cedc31391c0809851c36"
+    },
+    {
+      "path": "src/features/sharing/v2-ui/personal-copy-screen.tsx",
+      "sha256": "0eb0510f22ec9110e94993b3a9624c53eea7758e4c379665a3aed893a8d075f1"
+    },
+    {
+      "path": "src/features/sharing/v2/personal-copy-runtime.ts",
+      "sha256": "dc4bc431571542cb15b6edaff63a7b995a2130cbb29d5dc25c24fc8534fde8d2"
+    },
+    {
+      "path": "src/features/sharing/v2/personal-copy.ts",
+      "sha256": "f209d652fd15a1c9e59b02ae570658dedb32aa123988ccdc02e14d29b05f7803"
+    },
+    {
+      "path": "src/platform/sharing/v2-personal-copy-preview.ts",
+      "sha256": "12ba384ad7459e94db0f544453fb694d9c6fc01ba8b0be8ac380b63075c4e75c"
+    },
+    {
+      "path": "src/platform/sharing/v2-personal-copy.ts",
+      "sha256": "b4238d1782c8292c670bcb98405fbe89b10e1f26162658107c4b574187350006"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-personal-copy.ts",
+      "sha256": "b990fc4a91c84d58d267f91b75f8c849441a6674fe9ca346d1ba0e52fdcf5d2c"
+    },
+    {
+      "path": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+      "sha256": "0ca1740e09588459122e1e4fbd20704e9324cab2793b49dacac554b6c7a10ce8"
+    },
+    {
+      "path": "tests/sharing-v2-personal-copy-ui.test.mjs",
+      "sha256": "02b7b648a040d523787db9c2967a14e9c413f8b643bf9a729b443e42bcec8750"
+    },
+    {
+      "path": "tests/sharing-v2-personal-copy.test.mjs",
+      "sha256": "8b9707d9e0399c2bbee6e558990ecd16626a44c6a7733bd2da39535276ce164b"
+    }
+  ],
+  "files": [
+    {
+      "name": "phase4bc-full-ios.log",
+      "sha256": "5bda1711fb4c71294a966ba87936160bfa12906fb598f4f1c5db0e8355385002",
+      "bytes": 245489
+    },
+    {
+      "name": "phase4bc-full-android.log",
+      "sha256": "8ea671faa324148799dfcba7b535410ff2d5da6cdd87d0c8bc0f7831b384fb15",
+      "bytes": 245504
+    },
+    {
+      "name": "phase4bc-cloud-corrected.log",
+      "sha256": "50229923f17a4716e8f72024086668a9282df163f1a781c41771c8542397705c",
+      "bytes": 30362
+    },
+    {
+      "name": "phase4bc-cloud.log",
+      "sha256": "56913bb92df619ebb6397ebff5c22e95a8c3955247ed0a45127972062439f08f",
+      "bytes": 26556
+    },
+    {
+      "name": "phase4bc-lint-final.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f",
+      "bytes": 321
+    },
+    {
+      "name": "phase4bc-types-final.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598",
+      "bytes": 53
+    },
+    {
+      "name": "phase4bc-doctor.log",
+      "sha256": "ab39d6a58873a0d1151d2a625641a5db22b312df3276b2c2ab3d03a3e9dbe4e1",
+      "bytes": 78
+    },
+    {
+      "name": "phase4bc-copy-native-all.log",
+      "sha256": "a69d2da5aa7311d912bd3e180912c1d030a36b8674b81afdbb496dc6aa8afd4a",
+      "bytes": 4744
+    },
+    {
+      "name": "phase4bc-android-review.json",
+      "sha256": "97b8e4e2c8d06511c2c3fdd349e7207cb14deb52756d80fa1f3fc2c12d8fa8cc",
+      "bytes": 231
+    },
+    {
+      "name": "phase4bc-android-review.png",
+      "sha256": "22b20bdf9838ed0abb931e282fa3111c476ee92503f87036f9da43f21dfe022d",
+      "bytes": 388037
+    },
+    {
+      "name": "phase4bc-android-review.xml",
+      "sha256": "8f94acf0ad5725cde665ad937b8ece92e3445152259cf4e8fd385f0b381d15cd",
+      "bytes": 14182
+    },
+    {
+      "name": "phase4bc-android-review-cold.json",
+      "sha256": "a74515f599956012c9977e6a99dbf4fdd2bb5be57c48fe6a502c374afa0b3aa6",
+      "bytes": 238
+    },
+    {
+      "name": "phase4bc-android-review-cold.png",
+      "sha256": "da351f1a9191e5b3eef20e2b65d7e3b501cc1cd0312f726189418f314b430553",
+      "bytes": 246854
+    },
+    {
+      "name": "phase4bc-android-review-cold.xml",
+      "sha256": "79d84c42513ed3648756633dccb8f19d8e8256fad362e7d8a7ce360cdb50cb29",
+      "bytes": 12466
+    },
+    {
+      "name": "phase4bc-android-confirmed.json",
+      "sha256": "f8b6bb9680fa419474aae48bcfb16b6c0837350b1d51fcb094542fc97eb6767f",
+      "bytes": 236
+    },
+    {
+      "name": "phase4bc-android-confirmed.png",
+      "sha256": "27f3e06fb3afeac65c849eec7a9706fb7158ef789a40b4fbfbb60790382de8df",
+      "bytes": 386132
+    },
+    {
+      "name": "phase4bc-android-confirmed.xml",
+      "sha256": "21b5565d89886444b855e200b25595ef9c76b156f241c4717114256764922445",
+      "bytes": 14179
+    },
+    {
+      "name": "phase4bc-android-committed-cold.json",
+      "sha256": "6bd610029a1ed4fba57cf5e1a323eca09310409d11f95b2859f02fe7cc5adbae",
+      "bytes": 234
+    },
+    {
+      "name": "phase4bc-android-committed-cold.png",
+      "sha256": "583453596357cefd05b99ebaf937516030002a53c04bd1dcbed4ecd6b5ff9a6c",
+      "bytes": 385140
+    },
+    {
+      "name": "phase4bc-android-committed-cold.xml",
+      "sha256": "21b5565d89886444b855e200b25595ef9c76b156f241c4717114256764922445",
+      "bytes": 14179
+    },
+    {
+      "name": "phase4bc-android-details.png",
+      "sha256": "eb27634b59e1888702e4a2a4301049b3851b07e1718d3450f59787a8b57c35c0",
+      "bytes": 192974
+    },
+    {
+      "name": "phase4bc-android-details.xml",
+      "sha256": "e3a7c37859e8b06051437c810306132ff098341e7a31ebe2e478c0dee100786d",
+      "bytes": 15504
+    },
+    {
+      "name": "phase4bc-personal-preservation/comparison.json",
+      "sha256": "439d553a80caf4dc4cb517e10814ced026367a29d43c3eb4733e53c4fcfa7e9b",
+      "bytes": 159
+    }
+  ]
+}

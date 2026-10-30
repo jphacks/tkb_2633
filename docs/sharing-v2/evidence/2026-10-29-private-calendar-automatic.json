@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "5b44013",
+  "scope": "Automatic private Calendar foreground/start/resume and existing single-worker integration, bounded acquisition and explicit-action cancellation.",
+  "checks": {
+    "ios": 1843,
+    "android": 1843,
+    "cloud": 62,
+    "failure": 0,
+    "skip": 0,
+    "featureContracts": 271,
+    "mandatoryCloudTests": 35,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "schedulerContracts": "v1 and v2 PASS",
+    "expoCompatibility": "13 newly recommended SDK 58 patches pending. The prior CI Native configuration gate is 19/20, not PASS."
+  },
+  "native": {
+    "iphone": {
+      "seconds": 12.221,
+      "requests": 100,
+      "additionalSyntheticQueries": 0,
+      "log": "/tmp/liflow-v2-20261027/phase4av-ios-final-auto.log"
+    },
+    "android": {
+      "os": "Android 10 / API 29",
+      "seconds": 64.594,
+      "requests": 100,
+      "additionalSyntheticQueries": 0,
+      "log": "/tmp/liflow-v2-20261027/phase4av-android-final-auto.log"
+    },
+    "nativeBuildExpoVersion": "58.0.20"
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4av-ios-final-auto-attachments/44F2299E-E7B9-4047-9DA0-1AE13B861719.png",
+      "sha256": "c76f732cd1b8733f2ba8f655854add744fb17a8469c644ffd1bea64984029ca8",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4av-android-final-auto-proof-visible.png",
+      "sha256": "274cf4fa16b773e69d229b1d4d7c1c99280637c514c1b91756f01be7271d3b02",
+      "visuallyInspected": true
+    }
+  ],
+  "codeSha256": {
+    "src/features/sharing/private-calendar/runtime.ts": "a1181ca7f9647f7da7c92f1b19c49cfac7944c1235026cdecd1de21dc79a4f9f",
+    "src/features/sharing/private-calendar/foreground-observer.ts": "745183c1e56a18c968fb57b4603cdc94ec2667637fb9fc3136a3403ddbfae3bc",
+    "src/features/sharing/private-calendar/sync-deadline.ts": "b8e416c28a7895226a95d36a719ad7c1bebca742976ad3a12a3205b70f0226c3",
+    "src/features/sharing/private-calendar/calendar-capture.ts": "cc88798aeb080c37a6f315aee95ecc646c21bf7f7faf11f2d435a1fc35ccb6d4",
+    "src/features/google-sync/background-task.ts": "93020673cc73e4cddb17cf9d790236c1b271b734d2fb31a2cede57299cbd765e",
+    "src/hooks/use-workspace.tsx": "ed0484bc23b1f0db488be49b8a6b553fa6d310785e8276d0be8364d3e4cb6a62",
+    "src/platform/sharing/private-calendar-sync.ts": "b53f4b6f880c42ec329129352dd68b69ca92cd6ebad63f978913a3b2384a3348",
+    "src/platform/google-tasks/google-calendar-freebusy-client.ts": "c3d5a0db6cb40ed0df768657d4e4a3302ccdf1ea8d9a8525b794a3fe7899abde"
+  },
+  "budgetsMs": {
+    "automatic": 25000,
+    "osWorkerPrivateDomain": 15000,
+    "manual": 100000,
+    "sharedWorkerDomain": 30000,
+    "minimumOsIntervalMinutes": 60
+  },
+  "regressions": [
+    "Keep pre-query and fixed-envelope backoff under automatic device refresh.",
+    "Do not start later chunks or save partial coverage after total timeout, clock rollback, cancellation or logout.",
+    "Source changes and stops preempt automatic acquisition.",
+    "A registry read failure does not suppress private recovery; recheck UID after registry I/O.",
+    "One UID listener and one shared foreground timer; no self-update loops, orphan late listeners or simultaneous observer syncs.",
+    "An unchanged stale server cache remains unknown rather than a fresh clear result.",
+    "Server-confirmed metadata-only events are observed; cached and pending snapshots are ignored."
+  ],
+  "retainedFailures": [
+    "The optional-budget baseline test exposed the old per-chunk-only behavior; its old timeout fixture was stopped when it could not settle at the new shorter budget.",
+    "The initial Cloud watch fixture used an ordinary identical authority no-op. It now requests an explicit synthetic source epoch rather than weakening verification.",
+    "The React compiler rejected the first self-reference in useCallback; use a named callback and retain account recheck coverage.",
+    "Native composition test imports were updated for the new explicit deadline helper."
+  ],
+  "limits": [
+    "Physical verification uses a synthetic busy provider with actual Native crypto, protected SQLite and local Rules.",
+    "OS-selected long-duration BackgroundTask execution and real-account private-cache transfer are not established by these tests.",
+    "Native patch compatibility drift is unresolved at this checkpoint and requires separate update, builds and device verification.",
+    "BackgroundTask minimum interval is not a scheduling guarantee.",
+    "No app reset, production Rules deployment, real-group migration, main merge, README overwrite or global product UI polish.",
+    "Overall Phase 6 remains incomplete."
+  ]
+}

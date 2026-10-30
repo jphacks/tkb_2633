@@ -1,5 +1,6 @@
+import { Chevron } from '../../components/chevron';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -7,13 +8,14 @@ import { CalendarTaskCountIndicator } from '@/components/calendar-task-count-ind
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { TaskCheckboxRow } from '@/components/task-checkbox-row';
 import { WasteOccurrenceCard } from '@/components/waste-occurrence-card';
-import { completionMatchesEntry, completionPeriod } from '@/domain/scheduling/completion-matching';
-import { orderDateTasks, recommendedChoreCounts, selectDateTasks } from '@/domain/scheduling/date-tasks';
+import { completionPeriod } from '@/domain/scheduling/completion-matching';
+import { orderDateTasks, selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { addDays, daysBetween, formatJapaneseDate, localDateFromDate, monthDates, parseLocalDate, weekdayOf } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { completeChore, undoCompletedChore } from '@/platform/storage/repository';
-import { syncGoogleTasksAfterLocalCompletion } from '@/features/google-sync/coordinator';
+import { useTaskCompletion } from '@/hooks/use-task-completion';
+import { isTaskUrgent } from '@/domain/scheduling/task-priority';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import { wasteCalendarLabels } from '@/features/waste/calendar-labels';
 import { calendarWasteLabel, wasteTypeColor } from '@/features/waste/type-appearance';
 import { generateWasteCollectionDates } from '@/features/waste/weekly-scheduler';
@@ -22,14 +24,21 @@ import { useWasteOccurrenceToggle } from '@/features/waste/use-waste-occurrence-
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function CalendarScreen() {
-  const { snapshot, loading, error, refresh, database } = usePlannerData();
-  const today = localDateFromDate(new Date());
+  const { snapshot, loading, error, refresh, database, readError } = usePlannerData();
+  const today = snapshot?.today ?? localDateFromDate(new Date());
   const [month, setMonth] = useState(() => ({ year: new Date().getFullYear(), monthIndex: new Date().getMonth() }));
   const [selectedDate, setSelectedDate] = useState<LocalDate>(today);
   const [periodsExpanded, setPeriodsExpanded] = useState(false);
-  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
-  const [actionError, setActionError] = useState<string | null>(null);
+  const completion = useTaskCompletion(database, refresh, readError);
+  const actionError = completion.error;
   const wasteVisibility = useWasteOccurrenceToggle(database, refresh);
+  const initializedDay = useRef(false);
+  useEffect(() => {
+    if (snapshot && !initializedDay.current) {
+      initializedDay.current = true; const [year, month] = today.split('-').map(Number);
+      setSelectedDate(today); setMonth({ year, monthIndex: month - 1 });
+    }
+  }, [snapshot, today]);
 
   if (loading || !snapshot) return <PlannerLoadState title="カレンダー" message="予定を読み込んでいます。" error={error} retry={refresh} />;
 
@@ -40,10 +49,10 @@ export default function CalendarScreen() {
   const cells = Array.from({ length: weekCount * 7 }, (_, index) => addDays(gridStart, index));
   const { weeklyByColumn, byDate: wasteByDate, hiddenWeeklyByDate } = wasteCalendarLabels(snapshot.wasteSchedules, gridStart, cells[cells.length - 1], snapshot.hiddenWasteOccurrenceKeys);
   const choresById = new Map(snapshot.chores.map((chore) => [chore.id, chore]));
-  const recommendedCountsByDate = recommendedChoreCounts(snapshot.scheduleEntries, snapshot.completions);
-  const selectedTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate, 0, snapshot.chores), selectedDate, snapshot.chores);
+  const recommendedCountsByDate = completion.calendarCounts(snapshot.scheduleEntries, snapshot.completions);
+  const selectedTasks = orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, selectedDate, selectedDate === today ? 3 : 0, snapshot.chores), snapshot.completions), selectedDate, snapshot.chores, today);
   const selectedChoreIds = new Set(selectedTasks.map((task) => task.choreId));
-  const overdueTasks = orderDateTasks(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores)
+  const overdueTasks = selectedDate === today ? [] : orderDateTasks(completion.project(selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3, snapshot.chores), snapshot.completions)
     .filter((task) => task.entry?.status === 'overdue' && !task.completed && !selectedChoreIds.has(task.choreId)), today, snapshot.chores);
   const completedCount = selectedTasks.filter((task) => task.completed).length;
   // Include checked occurrences here so hiding from home can always be undone on its date.
@@ -54,6 +63,7 @@ export default function CalendarScreen() {
     const period = task.entry
       ? { start: task.entry.windowStart, end: task.entry.windowEnd }
       : completionPeriod(task.completion!);
+    if (period.start > selectedDate || period.end < selectedDate) return [];
     return chore ? [{
       id: task.id,
       name: chore.name,
@@ -73,55 +83,18 @@ export default function CalendarScreen() {
     setMonth({ year: nextYear, monthIndex: nextMonth });
   };
 
-  const toggleEntry = async (entryId: string) => {
-    const entry = snapshot.scheduleEntries.find((candidate) => candidate.id === entryId);
-    if (!entry || completingIds.has(entryId)) return;
-    setCompletingIds((current) => new Set(current).add(entryId));
-    setActionError(null);
-    try {
-      const completion = snapshot.completions.find((item) => completionMatchesEntry(item, entry));
-      if (completion) { if (await undoCompletedChore(database, completion.id)) syncGoogleTasksAfterLocalCompletion(database); }
-      else if (await completeChore(database, entry)) syncGoogleTasksAfterLocalCompletion(database);
-      await refresh();
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : '家事の完了状態を保存できませんでした。');
-    } finally {
-      setCompletingIds((current) => {
-        const next = new Set(current);
-        next.delete(entryId);
-        return next;
-      });
-    }
-  };
-
-  const undoCompletion = async (completionId: string) => {
-    if (completingIds.has(completionId)) return;
-    setCompletingIds((current) => new Set(current).add(completionId));
-    setActionError(null);
-    try {
-      if (await undoCompletedChore(database, completionId)) syncGoogleTasksAfterLocalCompletion(database);
-      await refresh();
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : '完了を取り消せませんでした。');
-    } finally {
-      setCompletingIds((current) => {
-        const next = new Set(current);
-        next.delete(completionId);
-        return next;
-      });
-    }
-  };
-
   return (
     <Page contentStyle={styles.calendarPage}>
       <ScreenHeading title="カレンダー" />
-      {error || actionError || wasteVisibility.error ? <Card><Text style={styles.error}>{wasteVisibility.error ?? actionError ?? error}</Text></Card> : null}
+      {error || actionError || wasteVisibility.error ? <Card><Text style={styles.error}>{wasteVisibility.error ?? actionError ?? error}</Text>
+        {error || actionError ? <AppButton title="表示を再読込" variant="quiet" compact disabled={completion.pending.size > 0 || completion.reading}
+          onPress={() => void completion.retryRead()} /> : null}</Card> : null}
       <Pressable accessible={false} onPress={() => setPeriodsExpanded((expanded) => !expanded)}>
       <Card style={styles.calendarCard}>
         <View style={styles.monthHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel="前の月" onPress={(event) => { event.stopPropagation(); moveMonth(-1); }} style={styles.monthArrow}><Text style={styles.arrowText}>‹</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="前の月" onPress={(event) => { event.stopPropagation(); moveMonth(-1); }} style={styles.monthArrow}><Chevron direction="left" /></Pressable>
           <Text style={styles.monthTitle}>{month.year}年{month.monthIndex + 1}月</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="次の月" onPress={(event) => { event.stopPropagation(); moveMonth(1); }} style={styles.monthArrow}><Text style={styles.arrowText}>›</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="次の月" onPress={(event) => { event.stopPropagation(); moveMonth(1); }} style={styles.monthArrow}><Chevron /></Pressable>
         </View>
         {!cells.includes(selectedDate) ? <View style={styles.retainedSelectionRow}>
           <Text style={styles.retainedSelectionText}>{formatJapaneseDate(selectedDate, { weekday: true })}の予定を表示中</Text>
@@ -228,18 +201,15 @@ export default function CalendarScreen() {
       ) : selectedTasks.map((task) => {
         const chore = choresById.get(task.choreId);
         if (!chore) return null;
-        const { entry, completion } = task;
         return (
-          <TaskCheckboxRow
-            key={`${chore.id}:${selectedDate}`}
+          <Animated.View key={`${chore.id}:${selectedDate}`} layout={LinearTransition.duration(240)}><TaskCheckboxRow
             chore={chore}
             completed={task.completed}
-            deemphasized={task.suggestedDate !== selectedDate}
+            source={snapshot.sharing ? 'shared' : 'personal'} early={selectedDate < task.suggestedDate}
+            urgent={isTaskUrgent({ completed: task.completed, load: chore.load, recommendedDate: task.suggestedDate, windowEnd: task.entry?.windowEnd ?? task.completion?.scheduledWindowEnd }, today)}
             onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
-            onToggle={task.completed
-              ? completion && !completingIds.has(completion.id) ? () => void undoCompletion(completion.id) : undefined
-              : entry && !completingIds.has(entry.id) ? () => void toggleEntry(entry.id) : undefined}
-          />
+            onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined}
+          /></Animated.View>
         );
       })}
 
@@ -254,8 +224,8 @@ export default function CalendarScreen() {
               <TaskCheckboxRow
                 key={`overdue-${entry.choreId}`}
                 chore={chore}
-                deemphasized
-                onToggle={!completingIds.has(entry.id) ? () => void toggleEntry(entry.id) : undefined}
+                source={snapshot.sharing ? 'shared' : 'personal'} urgent
+                onToggle={completion.canToggle(task) ? () => void completion.toggle(task) : undefined}
                 onOpen={() => router.navigate({ pathname: '/(tabs)/guide', params: { choreId: chore.id, returnTo: 'calendar' } })}
               />
             );
@@ -285,7 +255,7 @@ const styles = StyleSheet.create({
   wasteOutline: { borderWidth: 1.5, backgroundColor: '#FFFFFF' },
   wasteLabel: { width: '100%', ...typography.calendarLabel, fontWeight: '700', textAlign: 'center' },
   hiddenWeeklyDay: { borderColor: '#929BAA', backgroundColor: '#F3F4F6', borderWidth: 1.5 },
-  selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5 },
+  selectedOutlinedDay: { backgroundColor: palette.accentSoft, borderWidth: 2.5, paddingVertical: 1 },
   outlinedDayNumber: { color: '#205B79' },
   retainedSelectionRow: { alignItems: 'center', paddingVertical: 4 },
   retainedSelectionText: { ...typography.caption, color: palette.accent, fontWeight: '700', textAlign: 'center' },

@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "c94f0d3",
+  "scope": "Durable acquisition lease/backoff, transactionally fenced cache success and preservation of existing manual Native capture.",
+  "checks": {
+    "ios": 1805,
+    "android": 1805,
+    "cloud": 61,
+    "failure": 0,
+    "skip": 0,
+    "newAcquisitionCases": 9,
+    "featureContracts": 266,
+    "mandatoryCloudTests": 34,
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "schedulerContracts": "v1 and v2 PASS"
+  },
+  "confirmedRegressions": {
+    "redLog": "/tmp/liflow-v2-20261027/phase4au-acquisition-red-actual.log",
+    "before": [
+      "A pre-query transport failure was not retained after restarting the runtime.",
+      "Independent runtime instances acquired Google data concurrently.",
+      "An old late query could overwrite a newer successfully saved snapshot.",
+      "Automatic repeated capture did not reuse the fresh matching complete snapshot."
+    ],
+    "after": [
+      "Record the attempt before acquisition; persist bounded jittered retry metadata.",
+      "Acquire the owner/authority checked SQLite lease before network; force cannot steal a live lease.",
+      "Commit only the current unexpired lease together with complete encrypted cache/cursor/outbox.",
+      "Reuse only automatic matching horizons with the actually retained current manifest."
+    ]
+  },
+  "native": {
+    "iphone": {
+      "seconds": 25.567,
+      "log": "/tmp/liflow-v2-20261027/phase4as-ios-acquisition-fence.log",
+      "authorityRevision": 2,
+      "syntheticQueries": 1
+    },
+    "android": {
+      "os": "Android 10 / API 29",
+      "seconds": 92.265,
+      "log": "/tmp/liflow-v2-20261027/phase4as-android-acquisition-fence.log",
+      "authorityRevision": 2,
+      "syntheticQueries": 1
+    }
+  },
+  "images": [
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4as-ios-acquisition-fence-attachments/A954AE1C-4A55-4E18-875A-B04B6341D165.png",
+      "sha256": "e04331dcdc07e2181907e714a17b0526f6b13e0c32958f49fc77d25f1c123d75",
+      "visuallyInspected": true
+    },
+    {
+      "path": "/tmp/liflow-v2-20261027/phase4au-android-acquisition-proof-full.png",
+      "sha256": "beec3ad8f5c843e85fd6dcb4a2c21206096cff3974c1a6d5e06e66431e5e0a77",
+      "visuallyInspected": true
+    }
+  ],
+  "codeSha256": {
+    "src/platform/storage/private-calendar-acquisition.ts": "5bf8ddfe09b0a8e2b635db5cd592188f5f3def215e27e2b38756204c735e3372",
+    "src/platform/storage/private-calendar-cache.ts": "53e39c6436ffc61906a45d21f8333a9b24c270657978feda865494df7beb965b",
+    "src/features/sharing/private-calendar/calendar-capture.ts": "8f464c5068d0164ac3081f3cd1ae636569453ab57867758880b88668abed7a6e",
+    "tests/sharing-private-calendar-acquisition.test.mjs": "f94ab719cb0e4cecc7b61992ed7c8773b97bd4e125f3d5360921cc25de001d59"
+  },
+  "limits": [
+    "Physical capture here uses a synthetic Google provider and actual Native crypto/storage plus local Rules.",
+    "Cross-runtime concurrency, expiry, rollback and corruption were validated with actual SQLite code, not injected into physical device processes.",
+    "The source runner retains phase4as in its filenames; these executions verify the Phase 4au implementation.",
+    "Automatic triggers, worker integration, total operation budgets and aggregate Phase 6 E2E remain unfinished.",
+    "No production Rules deployment, group migration, app reset, main merge, README overwrite or global UI polish."
+  ]
+}

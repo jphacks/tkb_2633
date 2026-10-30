@@ -1,0 +1,348 @@
+{
+  "date": "2026-10-30",
+  "timeZone": "Asia/Tokyo",
+  "recordedAt": "2026-10-30T04:30:07.909085+00:00",
+  "baseCommit": "6863c9765cf0ab295c43b8416cbb1c61703360ae",
+  "decision": "D12: default v2 creation and owner recovery; retain development data",
+  "rollout": {
+    "newGroupDefaultProtocol": 2,
+    "requiresExplicitGroupKind": true,
+    "ownerRecoveryDefaultEnabled": true,
+    "explicitV1CreationOptOut": "EXPO_PUBLIC_SHARING_V2_ENABLED=false",
+    "explicitOldRulesRecoveryOptOut": "EXPO_PUBLIC_SHARING_OWNER_RECOVERY=false",
+    "inPlaceConversion": false
+  },
+  "deployment": {
+    "project": "housework-planner-tkb2633",
+    "release": "projects/housework-planner-tkb2633/releases/cloud.firestore",
+    "ruleset": "projects/housework-planner-tkb2633/rulesets/a3168325-4ec7-4f42-843a-2124956827f7",
+    "sha256": "0fb10205a6b688a25d59f5d99bb35904c30bed35bbd119346c2cb86efc985391",
+    "sourceMatched": true,
+    "verifiedAt": "2026-10-30T04:27:17.403Z",
+    "beforeSha256": "500b8a5051d62048ee33e2d89e7f9de26b9c91ea52cd3f31aaf9e5f76d58735d",
+    "beforeRulesPrivatelyBackedUp": true,
+    "rulesOnly": true,
+    "indexesChanged": false,
+    "authProvidersChanged": false,
+    "billingChanged": false,
+    "log": {
+      "file": "rules-deploy.log",
+      "sha256": "d79a9f8d9ecd23a148bf2282e67aa96a2baf1a13e000f9977587da2612749ea3",
+      "passed": true
+    }
+  },
+  "checks": [
+    {
+      "file": "verified-ios-check.log",
+      "sha256": "360758954648fe86b0b3b60d8c89f4d11e96831a74083406eec23c1fb3edb7ee",
+      "passed": true,
+      "tests": 2305,
+      "failures": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "file": "verified-android-check.log",
+      "sha256": "65a31ca26372fb8ebb15dc670ee3227ec1f09018fc26e5ee9a5f2416ad3b7e43",
+      "passed": true,
+      "tests": 2305,
+      "failures": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "file": "final-focused.log",
+      "sha256": "f6908fe83324522201d62ff5cc75f7205deca576fd662389f3d46db1e9c89503",
+      "passed": true,
+      "tests": 74,
+      "failures": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "file": "default-cloud.log",
+      "sha256": "ce98f6061958f543e4497247a900c3583ede61666ee3a021d6b123ac8633de2c",
+      "passed": true,
+      "tests": 86,
+      "failures": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "file": "final-lint.log",
+      "sha256": "f9700c8fd9729a881b191cf25f368cec97b05fde9eed50d7af59a796e3feabef",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "file": "final-typecheck.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "file": "final-contracts.log",
+      "sha256": "f895f26bbeaf336a96c966c44f8d0f5534f1928a6822b873423f3e7e0192f3b5",
+      "passed": true,
+      "exitCode": 0
+    }
+  ],
+  "contracts": {
+    "features": 355,
+    "cloudRequiredReferences": 51,
+    "v1SourceContractFilesUnchanged": 8,
+    "v1Scheduler": "liflow-shared-1",
+    "v2Scheduler": "liflow-shared-2-draft-38",
+    "intentionalContractChange": "Replace the old v2 opt-in creation requirement with D12 default v2; keep kind selection, busy/retry/account protections and explicit legacy opt-out regressions."
+  },
+  "nativeLive": {
+    "devices": [
+      "iPhone 12 / iOS 26.7.2",
+      "Sony I4293 / Android 10"
+    ],
+    "distinctExistingGoogleAccounts": true,
+    "firestoreTarget": "real existing project",
+    "normalUserInterface": true,
+    "syntheticUidUsed": false,
+    "steps": [
+      "Explicit family choice and one new v2 group",
+      "Initial sync Outbox zero and owner recovery entry",
+      "Decode on-screen invite QR and open ordinary app link on Android",
+      "Submit join request; match verification numbers; owner approval",
+      "Rename only a new-group chore; explicitly configure common completion and daily cadence",
+      "Android receives the name and active daily chore",
+      "Android completes; iPhone receives 1/1 and 100 percent",
+      "iPhone administrator undoes that completion; Android returns to 0/1",
+      "Both processes terminated and developer clients reload the same bundle; group and incomplete state remain",
+      "Quiescent SQLite comparison of shared facts and retained personal/development data"
+    ],
+    "successfulTests": [
+      {
+        "file": "ios-normal-start.log",
+        "sha256": "5d6b3fcdaa30936cc8c3f9b33b2fc59d13bb636e1353eb00eb0de6a0a36aaecc",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-created.log",
+        "sha256": "c43f0da3b14e3465d81425162addb5c5c7944204719fa14eb6002976cbcbb6ee",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-invite.log",
+        "sha256": "33881b10c22baff6c0d1ff785716cd6b5b8834e5d5769f48fee1c760b905c2c8",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-join-request.log",
+        "sha256": "32b269896a6fc40f0001499e3e8049ab13b94c26eaa275d5b73b35ac014968c4",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-approved.log",
+        "sha256": "059d8bf82c0bd57532e0cb6de2ca755d26f8916db9e7d5c5ec5dcc980c44e7db",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-chore-name.log",
+        "sha256": "6a0f2501d67383e187221154cfca409959dcd5e1b9060fbc8514fc45f9273d91",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-config-enabled.log",
+        "sha256": "16c09f62715ea1199db9b6b725f1505f9a894f12304b2082e09af3d57c5913d5",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-home-retry.log",
+        "sha256": "14f16668220d60263698a5b35311fedf983a9a039bee6b35bfa66bd658f9245d",
+        "passed": true
+      },
+      {
+        "file": "ios-normal-cold-reopen.log",
+        "sha256": "88dc78a9df53f62909c9437cfc3db50d9ec765179b9762f6f78d2ddb2f07b15c",
+        "passed": true
+      }
+    ],
+    "androidEvidence": [
+      {
+        "file": "private-ui/android-pending.xml",
+        "sha256": "7edbe6c90c2b2084f9cc27602870de70305f814498f2e4d65d1745f4561e1e2d"
+      },
+      {
+        "file": "private-ui/android-completed.xml",
+        "sha256": "e08010f1d613ff965824fb2ba065193bf4ea6c8a78860c543267caeb9ba63ebd"
+      },
+      {
+        "file": "private-ui/android-undo-received.xml",
+        "sha256": "a259227b0c303adec5de974013bd7ee0dbb392a59983f8a89a8e586f84958f14"
+      },
+      {
+        "file": "private-ui/android-cold-retained.xml",
+        "sha256": "dd9c4762299b45c738ecc25da929b773927821b5cca4f4e1060748af7764d52c"
+      }
+    ],
+    "verificationCodeMatched": true,
+    "partialKeyboardTransfer": {
+      "expectedLength": 780,
+      "observedLength": 407,
+      "inputMatched": false,
+      "joinCompletedThrough": "decoded QR app link and explicit UI request",
+      "clipboardPasteTested": false
+    },
+    "failedAttempts": [
+      {
+        "file": "ios-normal-create.log",
+        "sha256": "d29dfd09d70c561848ecaf290a4a6f2bc1a54fb9e2a90a943f7ce6ed16d17f33",
+        "passed": false,
+        "reason": "The app had returned Home after a bundle refresh; the test assumed the sharing screen."
+      },
+      {
+        "file": "ios-normal-create-retry.log",
+        "sha256": "90e01607d4ff5a5b7d3baafb50bccb9d1cb50a088b1b551899af612c28372bbd",
+        "passed": false,
+        "reason": "The test queried a radio as a Button instead of an accessibility Other."
+      },
+      {
+        "file": "ios-normal-finish-create.log",
+        "sha256": "7749af21ad741047bd252643cb67330d5cfa5093b1cdf9a380a147be9e2590d7",
+        "passed": false,
+        "reason": "A keyboard covered the choice and consumed the generic scroll gesture."
+      },
+      {
+        "file": "ios-normal-finish-create-safe-swipe.log",
+        "sha256": "fe0e8d86b8f80afc972a795f285074709fdbc18942c8c7d329fa84bdaa638b3e",
+        "passed": false,
+        "reason": "The submit button was still covered by the keyboard."
+      },
+      {
+        "file": "ios-normal-create-final.log",
+        "sha256": "9b040e3b9a4945e493fff3d8bfa0662827f2ef4c796f3a70e9538d20516e1b86",
+        "passed": false,
+        "reason": "The choice had not changed when the keyboard was dismissed; the disabled submit performed no creation."
+      },
+      {
+        "file": "ios-normal-enabled.log",
+        "sha256": "26c724ec26083d3711a9685ad17d04c4324908af44cfe8c32d07549a11d6a7f2",
+        "passed": false,
+        "reason": "A tap reached the development overlay; the subsequent scroll gestures acted on its menu."
+      },
+      {
+        "file": "ios-normal-home.log",
+        "sha256": "d149902d6400ebda8f93e69187c566b024c4d2fcc93480eab93a015af08bd055",
+        "passed": false,
+        "reason": "A temporary XCTest query used an invalid API and did not compile."
+      },
+      {
+        "file": "ios-normal-completion-undo.log",
+        "sha256": "0221247c39e3681a58e966914b10525a3cd8e7b7e9add2de26ba2fdbefd8edfd",
+        "passed": false,
+        "reason": "Completion was received, but the test tried the checkbox while the explicit sync was still busy."
+      },
+      {
+        "file": "ios-normal-completion-undo-final.log",
+        "sha256": "d23ce22f76978b2d4b1ae7b58508a3171209186550ead4151f1bc79b8ca404f1",
+        "passed": false,
+        "reason": "The undo was sent, but the test asserted the refreshed Outbox label too early; later cold-state and SQLite checks verified zero."
+      }
+    ],
+    "sharedResult": {
+      "bothProtocol": 2,
+      "acceptedFactCount": 29,
+      "remainingOperationCount": 6,
+      "factHashesEqual": true,
+      "operationSetsEqual": true,
+      "rejected": 0,
+      "pending": 0,
+      "provisional": 0,
+      "outboxPerDevice": 0,
+      "comparisonReceipt": {
+        "file": "preservation-and-convergence.json",
+        "sha256": "4fd164677c52dfe1ebc9ec1d4df7251b3e238b267d0b88782174bd581ffa251f"
+      },
+      "comparisonScript": {
+        "file": "compare-preserved-data.py",
+        "sha256": "3f13f1207b6233350c89e673362ff41ec63546ffe15056d4631d0d8b4bfc125c"
+      }
+    }
+  },
+  "preservation": {
+    "personalBusinessTablesUnchangedPerDevice": {
+      "ios": 10,
+      "android": 10
+    },
+    "personalRowCounts": {
+      "ios": {
+        "households": 1,
+        "household_settings": 1,
+        "household_members": 1,
+        "chore_definitions": 20,
+        "chore_dependencies": 0,
+        "chore_completions": 13,
+        "chore_assignments": 20,
+        "weekly_waste_schedules": 0,
+        "hidden_waste_occurrences": 0,
+        "appliances": 0
+      },
+      "android": {
+        "households": 1,
+        "household_settings": 1,
+        "household_members": 1,
+        "chore_definitions": 21,
+        "chore_dependencies": 0,
+        "chore_completions": 10,
+        "chore_assignments": 21,
+        "weekly_waste_schedules": 1,
+        "hidden_waste_occurrences": 0,
+        "appliances": 1
+      }
+    },
+    "existingGroupDataRetained": {
+      "ios": {
+        "groupFilesRetained": 35,
+        "operationRecordsRetained": 950,
+        "oldPendingRetained": 861
+      },
+      "android": {
+        "groupFilesRetained": 42,
+        "operationRecordsRetained": 1115,
+        "oldPendingRetained": 1013
+      }
+    },
+    "oldOutboxCountsIncludeIsolatedDevelopmentFixtures": true,
+    "newGroupOutbox": 0,
+    "originalCheckpointsRetained": true,
+    "credentialsCopiedToRepository": false
+  },
+  "earlierFailedUnitRuns": [
+    {
+      "file": "default-ios-check.log",
+      "sha256": "3ee22260b820f989b6a0ee81356f58d84ba44413444f836f59cc38e0f4e2b946",
+      "passed": false,
+      "reason": "Old normal-screen mocks expected v1 creation; updated for the explicitly selected v2 kind."
+    },
+    {
+      "file": "default-ios-final-check.log",
+      "sha256": "4eb6be78c9b09ca4c58531fa0ac642a27718be5af2ccb09544cede31da124986",
+      "passed": false,
+      "reason": "The private-calendar tamper test occasionally wrote back the same byte; changed to a guaranteed mutation, keeping rejection checks."
+    }
+  ],
+  "unchangedBoundaries": {
+    "mainMerged": false,
+    "draftReleased": false,
+    "v1Converted": false,
+    "liveAttackTrafficGenerated": false,
+    "independentSecurityAudit": false,
+    "naturalBackgroundExecutionProven": false,
+    "newAppleProviderConfigured": false
+  },
+  "sourceSha256": {
+    ".env.example": "90c3811f5da77502b2a437b65ad91889f6aef996d3fcf7c0fd58f6718cb923f5",
+    "src/features/sharing/rollout.ts": "c5f747c74dd9878ed2557c555fff84b0225c3b61faa2bd2dc8c82aa4abef45b7",
+    "src/platform/sharing/workspaces.ts": "7c9e65c8e90babf0ac1f9a2d323d987e970b199e81873a9517b591a6704a0cc7",
+    "tests/sharing-group-creation.test.mjs": "de8d11d7030dc60836a771df79e95ebcdf97bf627f827e920ae76cad4366ea21",
+    "tests/sharing-private-calendar.test.mjs": "0c766b8b07fab6c070df72109ca18c0299fe0aa352e5e5811a255f01a1de0e14",
+    "tests/sharing-v2-native-workspace.test.mjs": "1c4d15929b048239f7655e15a55cda8e090ef60c3b0e47dfc9819cf4cb6e2e45",
+    "docs/feature-contracts.json": "6da4f711fbb18002491a7babb8a0e07d607804c59e46c17ab93f755506c8f057"
+  }
+}

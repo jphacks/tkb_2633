@@ -17,6 +17,7 @@ export function screenHarness(filename, options = {}) {
   const modules = new Map();
   let current;
   let tree = [];
+  const readError = options.readError ?? (() => null);
   const jsx = (type, props, key) => ({ type, props: props ?? {}, key });
   const hook = (initial) => {
     const index = current.index++;
@@ -27,8 +28,14 @@ export function screenHarness(filename, options = {}) {
   const react = {
     useState: hook,
     useRef: (value) => hook(() => ({ current: value }))[0],
-    useMemo: (fn) => fn(), useCallback: (fn) => fn, useEffect: (callback) => options.effect?.(callback),
+    useMemo: (fn, deps) => {
+      const [memo] = hook(() => ({ deps, value: fn() }));
+      if (!deps || !memo.deps || deps.length !== memo.deps.length || deps.some((value, i) => !Object.is(value, memo.deps[i]))) { memo.deps = deps; memo.value = fn(); }
+      return memo.value;
+    }, useCallback: (fn, deps) => react.useMemo(() => fn, deps), useEffect: (callback) => options.effect?.(callback),
+    useLayoutEffect: (callback) => options.layoutEffect?.(callback),
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+    useContext: (context) => context._currentValue ?? null,
     createElement: (type, props, ...children) => jsx(type, { ...props, children }),
   };
   const transition = { duration: () => transition, springify: () => transition };
@@ -36,31 +43,47 @@ export function screenHarness(filename, options = {}) {
     react,
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': {
-      ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
+      ...Object.fromEntries(['Text', 'View', 'Pressable', 'TextInput', 'Switch', 'ScrollView', 'KeyboardAvoidingView', 'ActivityIndicator', 'Modal'].map((name) => [name, name])),
       FlatList: (props) => jsx('FlatList', { ...props, children: [props.ListHeaderComponent,
-        ...(props.data ?? []).slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index }))] }),
-      Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1 },
+        ...((props.data ?? []).length ? props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })) : [props.ListEmptyComponent]),
+        props.ListFooterComponent] }),
+      Platform: { OS: options.platform ?? process.env.HOUSEWORK_TEST_PLATFORM ?? 'ios' }, StyleSheet: { create: (styles) => styles, hairlineWidth: 1, absoluteFill: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 } },
+      PanResponder: { create: callbacks => ({ panHandlers: callbacks }) },
       AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
+      Alert: { alert: (...args) => options.alert?.(...args) },
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) },
     'react-native-reanimated': {
-      __esModule: true, default: { View: 'AnimatedView' }, LinearTransition: transition,
+      __esModule: true, default: { View: 'AnimatedView', FlatList: (props) => mocks['react-native'].FlatList(props) }, LinearTransition: transition,
       useSharedValue: (value) => hook(() => ({ value }))[0], useAnimatedStyle: (fn) => fn(), withTiming: (value) => value,
     },
     'expo-router': {
       useLocalSearchParams: () => options.params ?? {},
-      useNavigation: () => ({ addListener: () => () => {}, setParams: (value) => { options.params = { ...options.params, ...value }; } }),
+      useRouter: () => options.scopedRouter ?? mocks['expo-router'].router,
+      useNavigation: () => ({ addListener: (event, listener) => { options.navigationListener?.(event, listener); return () => options.navigationUnsubscribe?.(event, listener); },
+        setParams: (value) => { options.params = { ...options.params, ...value }; } }),
       router: { ...Object.fromEntries(['push', 'navigate', 'replace', 'back', 'dismissTo'].map((name) => [name, (...args) => options.navigate?.(name, ...args)])),
         setParams: (value) => { options.params = { ...options.params, ...value }; } },
       Tabs: { Screen: 'TabsScreen' }, useFocusEffect: (callback) => options.focusEffect?.(callback),
+      usePreventRemove: (prevent, callback) => { options.preventRemove?.(prevent, callback); return () => options.disablePrevention?.(); },
     },
     'expo-sqlite': { useSQLiteContext: () => options.database },
+    'expo-sqlite/kv-store': { __esModule: true, default: { getItemSync: () => null, setItemSync: () => {} } },
+    'expo-symbols': { SymbolView: 'SymbolView' },
     'expo-linking': { openURL: async (url) => options.openURL?.(url) },
-    '@/hooks/use-planner-data': { usePlannerData: () => ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.() }) },
+    // Native FlatList jumps are tested directly in chore-book tests. Other screen tests
+    // inspect the requested virtual chapter instead of pretending all chapters are mounted.
+    '@/components/chore-book': { ChoreBook: (props) => jsx('ChoreBook', { ...props, children: [props.titleAccessory, props.header,
+      props.renderChore(props.chores.find(row => row.id === props.selectedId) ?? props.chores[0]),
+      jsx(load(resolve(root, 'src/components/planner-ui.tsx')).BackButton, { onPress: props.onBack })] }) },
+    '@/hooks/use-planner-data': { usePlannerData: (scope) => scope?.personal && options.personalData ? options.personalData() : ({ loading: false, error: null, refresh: options.refresh ?? (async () => {}), database: options.database, snapshot: options.snapshot?.(), readSnapshot: options.snapshot ?? (() => null), readError }) },
     '@/features/weather/use-municipality-suggestions': { useMunicipalitySuggestions: () => ({ status: 'idle', candidates: [] }) },
     '@/platform/notifications/expo-local-notification-gateway': { ExpoLocalNotificationGateway: class { async requestPermission() { return false; } } },
     '@/features/google-sync/coordinator': { syncGoogleTasksAfterLocalCompletion: () => {} },
+    // The real API client imports Native Platform. Screen tests inject responses explicitly; never start a paid API job implicitly.
+    '../../appliance-care/api-client': { analyzeApplianceCareRequest: async () => { throw new Error('Appliance API transport was not injected by this screen test'); } },
+    '@/platform/sharing/workspaces': { hasOtherGoogleWorkspaceConnections: async () => false },
     ...options.mocks,
   };
 

@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "8e98c70ed8c4e7c87ad6a29521e4b8150658dc99",
+  "phase6Complete": false,
+  "unitResults": {
+    "ios": {
+      "tests": 2143,
+      "pass": 2143,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "exitCode": 0,
+      "log": "phase6-command-access-ios.log",
+      "sha256": "05bc150344bd098ad95bad79649b4827e497edc45ff727f61d2b6920563926c8"
+    },
+    "android": {
+      "tests": 2143,
+      "pass": 2143,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "exitCode": 0,
+      "log": "phase6-command-access-android.log",
+      "sha256": "b98c6eba029ea45c76f4fa63e71f2855ab054c19b8703795add4493957988d53"
+    }
+  },
+  "cloud": {
+    "tests": 70,
+    "pass": 70,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "exitCode": 0,
+    "log": "phase6-command-access-cloud.log",
+    "sha256": "1f9d2644b77fc68ecef407f4ba7686ee1ea455df1543b0dee5ef9e2da9a64d46",
+    "project": "demo-liflow-sharing",
+    "emulatorHost": "127.0.0.1:8185"
+  },
+  "checks": {
+    "lint": {
+      "exitCode": 0,
+      "log": "phase6-command-access-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "log": "phase6-command-access-typecheck.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    }
+  },
+  "related": {
+    "tests": 51,
+    "pass": 51,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "exitCode": 0,
+    "log": "phase6-command-and-v2-access-fixed.log",
+    "sha256": "ea2c21728d70591a45c438326e98f6686fd6f629fcd170af8f8752166d49ca74"
+  },
+  "contracts": {
+    "old": 316,
+    "current": 318,
+    "previousContentsUnchanged": true,
+    "requiredCloudRegressions": 40
+  },
+  "sources": [
+    {
+      "path": "src/features/sharing/v2/controller-access.ts",
+      "sha256": "2787858e69b70c0dd63ed8ff2ef1bc9a3a899525b680fff33b1fc9dbf2839b7d"
+    },
+    {
+      "path": "src/features/sharing/v2/input-capture.ts",
+      "sha256": "cfe77a6eaa3bcf8c5eb797da70c94eaae2bc920016d73f36d0e2fc6d069a9f53"
+    },
+    {
+      "path": "src/features/sharing/v2/workspace-session.ts",
+      "sha256": "0de50862226dbec853c87b4f7bfb55097d2f4a849c482e9fc0ad3517d0f968df"
+    },
+    {
+      "path": "src/platform/sharing/workspaces.ts",
+      "sha256": "0aac0c7689b2225d6cbc9977a438f751be883721a5f3df924dd5f4d831513fba"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-events.ts",
+      "sha256": "da46a76b165ccf3ee56d92fe376726d60a83a56cf87358ff92efa3d42eb9baed"
+    },
+    {
+      "path": "tests/sharing-v2-command-capture.test.mjs",
+      "sha256": "ae65cd575ea3051423ad404becc4199ce5ec0a60543bbc63b57122edc4ff431f"
+    },
+    {
+      "path": "tests/sharing-v2-native-workspace.test.mjs",
+      "sha256": "642e7c56dd0bd2f27622ced3abf005053847b56240466f9acafa950390864c2f"
+    }
+  ],
+  "counterexamples": [
+    {
+      "log": "phase6-command-capture-before.log",
+      "failingRegressions": 3,
+      "sha256": "f418e95bbd1cd67066227959a54c0154b85f9c9e8818d40c62240d3f8ed2db48"
+    },
+    {
+      "log": "phase6-v2-generation-before.log",
+      "failingRegressions": 2,
+      "sha256": "d4191a6f6ba410d1b34a3b7151f4358692e254cf14aa8ad549ef18773c19b2fc"
+    }
+  ],
+  "boundary": {
+    "productionWrites": 0,
+    "realPersonalDatabaseWrites": 0,
+    "realGoogleWrites": 0,
+    "newPhysicalDeviceE2E": false,
+    "macLocked": true,
+    "androidBatteryPercent": 15,
+    "androidUsbPowered": false
+  },
+  "pending": [
+    "D10 personal relocation and history",
+    "D11 legacy migration delivery scope",
+    "iPhone Tasks/copy/completion notices and integrated cross-OS E2E"
+  ]
+}

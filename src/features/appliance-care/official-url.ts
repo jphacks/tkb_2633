@@ -9,6 +9,15 @@ const OFFICIAL_DOMAINS: Readonly<Record<string, readonly string[]>> = {
   シャープ: ['jp.sharp'],
 };
 
+function officialDomains(manufacturer: string): readonly string[] {
+  const key = manufacturer.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+  return Object.hasOwn(OFFICIAL_DOMAINS, key) ? OFFICIAL_DOMAINS[key] : [];
+}
+
+/** Japanese and English names for the same supported manufacturer share one identity. */
+export const applianceManufacturerIdentity = (manufacturer: string): string | null =>
+  officialDomains(manufacturer)[0] ?? null;
+
 /** Only open an HTTPS URL on the configured Japanese manufacturer's official host. */
 export function isOfficialApplianceUrl(value: string, manufacturer: string): boolean {
   if (value.length > 2048) return false;
@@ -19,7 +28,7 @@ export function isOfficialApplianceUrl(value: string, manufacturer: string): boo
     return false;
   }
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) return false;
-  const domains = OFFICIAL_DOMAINS[manufacturer.normalize('NFKC').trim().toLocaleLowerCase('en-US')] ?? [];
+  const domains = officialDomains(manufacturer);
   const hostname = url.hostname.toLocaleLowerCase('en-US').replace(/\.$/, '');
   return domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
 }

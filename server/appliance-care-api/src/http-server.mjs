@@ -7,6 +7,7 @@ const MAX_BODY_BYTES = 8 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 20;
 const JOB_RETENTION_MS = 10 * 60_000;
+const MAX_JOBS = 100;
 const STATUS_BY_ERROR = {
   INVALID_REQUEST: 400,
   SEARCH_FAILED: 502,
@@ -25,11 +26,11 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
   const jobsById = new Map();
   const jobsByRequest = new Map();
   const runner = createAnalysisRunner({ dependencies, ...analysisLimits });
-  return createServer(async (request, response) => {
+  return createServer({ requestTimeout: 30_000, headersTimeout: 15_000 }, async (request, response) => {
     setSecurityHeaders(response);
     const origin = request.headers.origin;
     if (origin && !allowedOrigins.includes(origin)) {
-      sendJson(response, 403, { error: { code: 'ORIGIN_NOT_ALLOWED', message: 'この接続元は許可されていません。' } });
+      rejectRequest(request, response, 403, { error: { code: 'ORIGIN_NOT_ALLOWED', message: 'この接続元は許可されていません。' } });
       return;
     }
     if (origin) response.setHeader('access-control-allow-origin', origin);
@@ -80,13 +81,12 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       return;
     }
     if (!consumeRateLimit(request.socket.remoteAddress ?? 'unknown', requestsByAddress)) {
-      sendJson(response, 429, { status: 'error', code: 'RATE_LIMITED', message: '短時間のリクエスト上限に達しました。少し待って再試行してください。' });
+      rejectRequest(request, response, 429, { status: 'error', code: 'RATE_LIMITED', message: '短時間のリクエスト上限に達しました。少し待って再試行してください。' });
       return;
     }
     const contentType = request.headers['content-type'] ?? '';
-    if (!contentType.toLocaleLowerCase('en-US').startsWith('application/json')) {
-      request.resume();
-      sendJson(response, 415, { status: 'error', code: 'INVALID_REQUEST', message: 'Content-Typeはapplication/jsonにしてください。' });
+    if (!/^application\/json(?:\s*;|$)/iu.test(contentType.trim())) {
+      rejectRequest(request, response, 415, { status: 'error', code: 'INVALID_REQUEST', message: 'Content-Typeはapplication/jsonにしてください。' });
       return;
     }
 
@@ -95,7 +95,7 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       body = await readJsonBody(request);
     } catch (error) {
       const tooLarge = error?.code === 'BODY_TOO_LARGE';
-      sendJson(response, tooLarge ? 413 : 400, {
+      rejectRequest(request, response, tooLarge ? 413 : 400, {
         status: 'error',
         code: 'INVALID_REQUEST',
         message: tooLarge ? 'リクエストが大きすぎます。' : 'JSON形式のリクエストを送ってください。',
@@ -124,6 +124,10 @@ export function createApplianceCareHttpServer({ dependencies, aiConfigured = tru
       const existingJob = existingId ? jobsById.get(existingId) : undefined;
       if (existingJob && (!existingJob.done || (body.forceReanalysis !== true && existingJob.result?.status === 'verified'))) {
         sendJson(response, 202, { jobId: existingId });
+        return;
+      }
+      if (jobsById.size >= MAX_JOBS) {
+        sendJson(response, 429, { status: 'error', code: 'RATE_LIMITED', message: '解析状況の保存上限に達しました。しばらく待って再試行してください。' });
         return;
       }
       const jobId = randomUUID();
@@ -156,10 +160,6 @@ function pruneJobs(jobsById, now = Date.now()) {
   for (const [id, job] of jobsById) {
     if (job.done && job.expiresAt <= now) jobsById.delete(id);
   }
-  for (const [id, job] of jobsById) {
-    if (jobsById.size < 100) break;
-    if (job.done) jobsById.delete(id);
-  }
 }
 
 export function startApplianceCareHttpServer({
@@ -187,17 +187,17 @@ async function readJsonBody(request) {
     request.on('data', (chunk) => {
       length += chunk.length;
       if (length > MAX_BODY_BYTES) {
+        if (tooLarge) return;
         tooLarge = true;
         chunks.length = 0;
+        request.pause();
+        const error = new Error('Request body too large'); error.code = 'BODY_TOO_LARGE'; reject(error);
       } else if (!tooLarge) {
         chunks.push(chunk);
       }
     });
     request.on('end', () => {
       if (tooLarge) {
-        const error = new Error('Request body too large');
-        error.code = 'BODY_TOO_LARGE';
-        reject(error);
         return;
       }
       try {
@@ -207,6 +207,7 @@ async function readJsonBody(request) {
       }
     });
     request.on('error', () => reject(new Error('Request read failed')));
+    request.once('aborted', () => reject(new Error('Request aborted')));
   });
 }
 
@@ -238,6 +239,15 @@ function setSecurityHeaders(response) {
 }
 
 function sendJson(response, status, value) {
+  if (response.destroyed || response.writableEnded) return;
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(value));
+}
+
+/** Stop an unconsumed upload after its error has been flushed to the client. */
+function rejectRequest(request, response, status, value) {
+  if (response.destroyed || response.writableEnded) return;
+  response.setHeader('connection', 'close');
+  response.once('finish', () => request.destroy());
+  sendJson(response, status, value);
 }

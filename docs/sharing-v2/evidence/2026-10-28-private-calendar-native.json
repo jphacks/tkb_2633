@@ -1,0 +1,446 @@
+{
+  "date": "2026-10-28",
+  "scope": "Synthetic UID with Native SecureStore, SQLite and Firebase SDK on physical iPhone and Android 10 against a local Firestore Emulator; not real Google, ordinary product settings, OS reboot or OS-scheduled background execution.",
+  "stages": [
+    {
+      "platform": "ios",
+      "step": "reference",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e",
+        "reference": "{\"anchor\":{\"ownerUserId\":\"development-calendar-native-pairing-e2e-v1\",\"accountGeneration\":\"a72eebca52e88de6ea606634576fb854e48c255d24c72425e6b7bd3b4090bf99\",\"rootDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\"},\"authorityDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\",\"authorityRevision\":1}"
+      },
+      "elapsedSeconds": 7.853,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-reference-connected.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-reference-connected-attachments/9666F66B-9B9C-45BA-90B9-C361948B9DC7.png",
+          "sha256": "1c65c3873cff776a25e51b0e413a83897c5328c3d365a9ae491a26a983e097b5"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "request",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "reference": "{\"anchor\":{\"ownerUserId\":\"development-calendar-native-pairing-e2e-v1\",\"accountGeneration\":\"a72eebca52e88de6ea606634576fb854e48c255d24c72425e6b7bd3b4090bf99\",\"rootDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\"},\"authorityDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\",\"authorityRevision\":1}",
+        "request": "{\"body\":{\"accountGeneration\":\"a72eebca52e88de6ea606634576fb854e48c255d24c72425e6b7bd3b4090bf99\",\"authorityDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\",\"authorityRevision\":1,\"device\":{\"deviceId\":\"device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205\",\"signingPublicKey\":\"9950c7468d23173d2fb2a163d1b143adcc67fe0120be1017eaa001833ec4c71b\",\"agreementPublicKey\":\"936f01615133ab5e48c994bd809710f62f56d9e87bc1e8e99a88afdd9efe2e3d\"},\"ownerUserId\":\"development-calendar-native-pairing-e2e-v1\",\"requestNonce\":\"25604bc53b5c5696c5d20007cea480b2ac480c280ac3d8f6c8498772125bbd06\",\"rootDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\",\"schemaVersion\":1,\"suite\":\"liflow-private-calendar-pairing-request-v1\"},\"signature\":\"90eb01da6b8674971fec93d913e8a70c98e7f383248f4a783a5a8ae0156140e2c216300d636ace650fd949422c22d5fb11d6c008dd6d50774ada466935b7a600\"}"
+      },
+      "elapsedSeconds": 4.066,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-request.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-request.png",
+          "sha256": "4cdba694c182729991412a43a06f150ed8375c6460a980de97d2b7220487b342"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "approve",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "968b610e86ef4b76b18d8cf9542ef1892ad582e6e59689532359710761afe607",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e"
+      },
+      "elapsedSeconds": 9.869,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-approve.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-approve-attachments/A4290018-B476-4640-BCE7-832DB1204B3C.png",
+          "sha256": "96ecd9b20b6395d639595023a2c88c505b6e0e5a274b8f50a8ba28aed93ab131"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "join",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "968b610e86ef4b76b18d8cf9542ef1892ad582e6e59689532359710761afe607",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e"
+      },
+      "elapsedSeconds": 15.074,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-join.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-join.png",
+          "sha256": "cbb5107f24519ca29ff991dfc6599a5ede459f2318728cd62a9512e6b9601483"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "publish",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "968b610e86ef4b76b18d8cf9542ef1892ad582e6e59689532359710761afe607",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e",
+        "cache": "8f98f919d96b7aed79118c19cef8a0a01fb86b343e90e4820a3ec0c9d9bfd239",
+        "count": "20000・分割：22・連番：1"
+      },
+      "elapsedSeconds": 11.875,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-publish-initial.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-publish-initial-attachments/D2BB5DE8-0C12-4903-B375-3555E28ACBF4.png",
+          "sha256": "b960cd7428f6f5109f257a0df61f5d389afcc38959431b48fafc8503fdd6d361"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "main",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "9dd4710ea8dd4b7b4bda18bf2573b4b31bd49c673c11d99fb655c0a2cec05a0e",
+        "main": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e"
+      },
+      "elapsedSeconds": 9.79,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-main-android.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-main-android-attachments/25422B1E-4DA3-4240-8630-25C5F3E589E8.png",
+          "sha256": "d068921eaafcacc3d8ff6160c04cb6ed1ec36d386c1e4c1f75764534c943f030"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "publish",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "9dd4710ea8dd4b7b4bda18bf2573b4b31bd49c673c11d99fb655c0a2cec05a0e",
+        "main": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e",
+        "cache": "ec35ad36c72ae7d83663ac43bf4cef8bc2d04276bf46c6b547c025072315a3cf",
+        "count": "20000・分割：22・連番：2"
+      },
+      "elapsedSeconds": 27.191,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-publish-after-main.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-publish-after-main.png",
+          "sha256": "be642423df9187e586b54665f4e4c754f6d767527c3857fe47fb4d398b16d93c"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "receive",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "9dd4710ea8dd4b7b4bda18bf2573b4b31bd49c673c11d99fb655c0a2cec05a0e",
+        "main": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e",
+        "cache": "ec35ad36c72ae7d83663ac43bf4cef8bc2d04276bf46c6b547c025072315a3cf",
+        "count": "20000・分割：22・連番：2"
+      },
+      "elapsedSeconds": 12.774,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-receive-android-cache.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-receive-android-cache-attachments/F2A5EB89-FE66-4BC7-8E38-0B0601A33AE1.png",
+          "sha256": "2fecfd45e8efab313fc5c7d133d1ef597e380cbacdee13f9b98ccb83347f1c65"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "receive",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "9dd4710ea8dd4b7b4bda18bf2573b4b31bd49c673c11d99fb655c0a2cec05a0e",
+        "main": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e",
+        "cache": "ec35ad36c72ae7d83663ac43bf4cef8bc2d04276bf46c6b547c025072315a3cf",
+        "count": "20000・分割：22・連番：2",
+        "restored": "確認済み"
+      },
+      "elapsedSeconds": 12.948,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-receive-after-cold.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-receive-after-cold-attachments/36087DBD-41B0-4165-A583-880ED17B6BC0.png",
+          "sha256": "754190fa5a30a77d25bf775d1b917e26365693b87cadc202957531146ad4b2cd"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "receive",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "9dd4710ea8dd4b7b4bda18bf2573b4b31bd49c673c11d99fb655c0a2cec05a0e",
+        "main": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "key": "79967edea2770a86f1fec09145db533b65357f433c66dea2cd025ce6101a551e",
+        "cache": "ec35ad36c72ae7d83663ac43bf4cef8bc2d04276bf46c6b547c025072315a3cf",
+        "count": "20000・分割：22・連番：2",
+        "restored": "確認済み"
+      },
+      "elapsedSeconds": 27.922,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-receive-after-cold.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-receive-after-cold.png",
+          "sha256": "453dfec054b959cf8564b7baccf2474ce50e62cdd214524ad14452c2ef28f493"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "revoke",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "acbf82f13ace7adc8f5185554b6c40e55c2cb244a106775e684fd5c48353d936"
+      },
+      "elapsedSeconds": 9.882,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-revoke-android.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-revoke-android-attachments/139AB6A1-3B6A-49DF-890D-3AA7B03E18DC.png",
+          "sha256": "83b58d5a8617a2db301e0a8005544cb553ce799c10b28fd54dd000e60d82b657"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "revoked",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2"
+      },
+      "elapsedSeconds": 9.043,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-revoked.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-revoked.png",
+          "sha256": "7b893d8ce90d83090f1454118e2e64833149a0e0d427fdf4bf4c5efc4f74a3ed"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "reference",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "acbf82f13ace7adc8f5185554b6c40e55c2cb244a106775e684fd5c48353d936",
+        "reference": "{\"anchor\":{\"ownerUserId\":\"development-calendar-native-pairing-e2e-v1\",\"accountGeneration\":\"a72eebca52e88de6ea606634576fb854e48c255d24c72425e6b7bd3b4090bf99\",\"rootDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\"},\"authorityDigest\":\"25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32\",\"authorityRevision\":4}"
+      },
+      "elapsedSeconds": 9.859,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-reference-renewed.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-reference-renewed-attachments/A2C00976-4FE4-4445-8E64-0FCBF470F5E1.png",
+          "sha256": "733b0a635aeb11c74fd220b7088c2d2a21781371f113854396bd6d85f3188ad5"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "request",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "reference": "{\"anchor\":{\"ownerUserId\":\"development-calendar-native-pairing-e2e-v1\",\"accountGeneration\":\"a72eebca52e88de6ea606634576fb854e48c255d24c72425e6b7bd3b4090bf99\",\"rootDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\"},\"authorityDigest\":\"25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32\",\"authorityRevision\":4}",
+        "request": "{\"body\":{\"accountGeneration\":\"a72eebca52e88de6ea606634576fb854e48c255d24c72425e6b7bd3b4090bf99\",\"authorityDigest\":\"25d4e2a2e910596647bf385e0ae6069891c808d6dbe8653a1b527add49fb1b32\",\"authorityRevision\":4,\"device\":{\"deviceId\":\"device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205\",\"signingPublicKey\":\"9950c7468d23173d2fb2a163d1b143adcc67fe0120be1017eaa001833ec4c71b\",\"agreementPublicKey\":\"936f01615133ab5e48c994bd809710f62f56d9e87bc1e8e99a88afdd9efe2e3d\"},\"ownerUserId\":\"development-calendar-native-pairing-e2e-v1\",\"requestNonce\":\"743380b8593ab29de78ab5c6a6af6d409dbe76b975276d94451a85493cbbafbd\",\"rootDigest\":\"e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8\",\"schemaVersion\":1,\"suite\":\"liflow-private-calendar-pairing-request-v1\"},\"signature\":\"83d9c947382d17a60a3e5792586caebf52a595bd713fb2894eab59f23fa2f77f4c68f221c589886fe1f9ad2c08e0fea181709de0d3512de492b8b57890348a04\"}"
+      },
+      "elapsedSeconds": 7.582,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-request-renewed.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-request-renewed.png",
+          "sha256": "2ef9373bdb40e330811317d2124f8304ed210be7efec79a954b1e0e78a7f8dac"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "approve",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "d873cfa9506847385618b944bbb08cc5ac1af3085a0bb3713ed11b7838e8f387",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "acbf82f13ace7adc8f5185554b6c40e55c2cb244a106775e684fd5c48353d936"
+      },
+      "elapsedSeconds": 14.837,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-approve-renewed.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-approve-renewed-attachments/18AF319B-C3A1-4A8B-98A5-7B1648CECB78.png",
+          "sha256": "06c2ed12e3c3a45b6eec10bd0f09059adcba900b810fc0c1a49a14ba495a0b0a"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "join",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "d873cfa9506847385618b944bbb08cc5ac1af3085a0bb3713ed11b7838e8f387",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "acbf82f13ace7adc8f5185554b6c40e55c2cb244a106775e684fd5c48353d936"
+      },
+      "elapsedSeconds": 18.939,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-join-renewed.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-join-renewed.png",
+          "sha256": "770fd50f3bb9e4d100970b8a53ec664528447b7291a382093c9fb3ce1c7dbcf5"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "step": "publish",
+      "fields": {
+        "device": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "d873cfa9506847385618b944bbb08cc5ac1af3085a0bb3713ed11b7838e8f387",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "acbf82f13ace7adc8f5185554b6c40e55c2cb244a106775e684fd5c48353d936",
+        "cache": "9f0bd54417760bd76beec9fd5e2dd209adddc0cc8808600a54e5e9d277c899f1",
+        "count": "20000・分割：22・連番：3"
+      },
+      "elapsedSeconds": 20.886,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-iphone-publish-renewed.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-publish-renewed-attachments/82B0C808-0EEB-4408-A5DA-72DA94C974CE.png",
+          "sha256": "ee4b9f0527886c1f51126da7eab744f462209fbc9d35982dfe1b2d95ef1c03c2"
+        }
+      ]
+    },
+    {
+      "platform": "android",
+      "step": "receive",
+      "fields": {
+        "device": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205",
+        "root": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+        "authority": "d873cfa9506847385618b944bbb08cc5ac1af3085a0bb3713ed11b7838e8f387",
+        "main": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+        "key": "acbf82f13ace7adc8f5185554b6c40e55c2cb244a106775e684fd5c48353d936",
+        "cache": "9f0bd54417760bd76beec9fd5e2dd209adddc0cc8808600a54e5e9d277c899f1",
+        "count": "20000・分割：22・連番：3"
+      },
+      "elapsedSeconds": 21.153,
+      "log": "/tmp/liflow-v2-20261027/phase4aq-android-receive-renewed.log",
+      "images": [
+        {
+          "path": "/tmp/liflow-v2-20261027/phase4aq-android-receive-renewed.png",
+          "sha256": "921e03833e52f17124983495e7052dfcf20d541b0b0f8820ac1b68a1e320dc0c"
+        }
+      ]
+    }
+  ],
+  "coldProcessIds": {
+    "ios": [
+      12068,
+      12659
+    ],
+    "android": [
+      "24155",
+      "28890"
+    ]
+  },
+  "independentReadOnlyCloudVerification": {
+    "scope": "Read-only verification of synthetic Native-generated signed records; no private keys or plaintext were loaded.",
+    "project": "demo-liflow-private-native",
+    "authorityCount": 5,
+    "rootDigest": "e766769350027d210aea8681267cad7e6913469ae1e6563807e8048375bee1a8",
+    "authorityDigest": "d873cfa9506847385618b944bbb08cc5ac1af3085a0bb3713ed11b7838e8f387",
+    "keyVersion": 2,
+    "keyIssuer": {
+      "deviceId": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2",
+      "revision": 4
+    },
+    "revisions": [
+      {
+        "revision": 1,
+        "keyVersion": 1,
+        "mainDeviceId": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2"
+      },
+      {
+        "revision": 2,
+        "keyVersion": 1,
+        "mainDeviceId": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2"
+      },
+      {
+        "revision": 3,
+        "keyVersion": 1,
+        "mainDeviceId": "device-7faa5388ed6252ac94b8f9a2b570b1fb92b7ac5301d2725716ad2fd9123aa205"
+      },
+      {
+        "revision": 4,
+        "keyVersion": 2,
+        "mainDeviceId": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2"
+      },
+      {
+        "revision": 5,
+        "keyVersion": 2,
+        "mainDeviceId": "device-090ca6ff3caf9e6210dedd8774b11c7f39ac012e2cbbf039737cfff754eb22d2"
+      }
+    ],
+    "keyEnvelopeSignatureValid": true,
+    "cacheManifestSignatureAndAllChunkDigestsValid": true,
+    "cacheSequence": 3,
+    "cacheChunkCount": 22,
+    "forbiddenPlaintextAbsent": true
+  },
+  "localValidation": {
+    "ios": 1704,
+    "android": 1704,
+    "cloud": 56,
+    "featureContracts": 252,
+    "requiredCloudTests": 29
+  },
+  "allEighteenScreenshotsVisuallyInspected": true,
+  "productionRulesDeployed": false,
+  "applicationDataReset": false,
+  "existingNativeKeyCompatibility": {
+    "checksPerDevice": 4,
+    "iphoneSeconds": 7.929,
+    "androidSeconds": 5.043,
+    "allPublicProofsUnchanged": true,
+    "bothScreenshotsVisuallyInspected": true,
+    "images": [
+      {
+        "path": "/tmp/liflow-v2-20261027/phase4aq-iphone-old-store-attachments/9126879E-8156-4E00-91C4-323CAE605ADD.png",
+        "sha256": "761d7b9c280f24b5560c12a5ec8b00578bb23d2dbc326c29cbd18461775c4c33"
+      },
+      {
+        "path": "/tmp/liflow-v2-20261027/phase4aq-android-old-store.png",
+        "sha256": "c86c514f9d6498da676e923260f65b844a35ac8a6c45a2cde70751898de99587"
+      }
+    ]
+  }
+}

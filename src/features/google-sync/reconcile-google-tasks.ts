@@ -4,11 +4,14 @@ import { GOOGLE_TASKS_BATCH_MAX_REQUESTS, GOOGLE_TASKS_LIST_TITLE, GoogleTaskNot
 import type { GoogleTask, GoogleTaskPatch, GoogleTasksApi, GoogleTasksBatchItemResult } from '@/platform/google-tasks/google-tasks-api';
 import { addDays } from '@/domain/scheduling/local-date';
 import type { LocalDate } from '@/domain/shared/types';
+import { sharedGoogleListTitle, sharedGoogleOccurrenceNote } from './workspace-policy';
 
 /** Keep the Google list useful by synchronizing a rolling two-week planner window. */
 export const GOOGLE_TASK_SYNC_WINDOW_DAYS = 14;
 
 export interface GoogleSyncRepositoryPort {
+  /** Shared workspaces use a separate private list and exact stable occurrence markers. */
+  taskNamespace?: string;
   listEntriesForGoogleSync(today: string, householdId: string): Promise<GoogleSyncEntry[]>;
   listGoogleTaskLinks(householdId: string): Promise<GoogleTaskLink[]>;
   upsertGoogleTaskLink(link: GoogleTaskLink): Promise<void>;
@@ -38,12 +41,14 @@ export async function reconcileGoogleTasks(options: {
 }): Promise<GoogleReconciliationResult> {
   const { accessToken, repository, api, now, today } = options;
   const { state } = options;
+  const namespace = repository.taskNamespace;
+  const listTitle = namespace ? sharedGoogleListTitle(namespace) : GOOGLE_TASKS_LIST_TITLE;
   const syncThrough = addDays(today, GOOGLE_TASK_SYNC_WINDOW_DAYS);
   const isInSyncWindow = (item: GoogleSyncEntry) => item.entry.suggestedDate <= syncThrough;
   const taskLists = await api.listTaskLists(accessToken);
   const taskList = taskLists.find((candidate) => candidate.id === state.taskListId)
-    ?? taskLists.find((candidate) => candidate.title === GOOGLE_TASKS_LIST_TITLE)
-    ?? await api.createTaskList(accessToken, GOOGLE_TASKS_LIST_TITLE);
+    ?? taskLists.find((candidate) => candidate.title === listTitle)
+    ?? await api.createTaskList(accessToken, listTitle);
   if (!taskList.id) throw new Error('Google Tasks did not return a task list ID');
 
   let links = await repository.listGoogleTaskLinks(state.householdId);
@@ -59,13 +64,14 @@ export async function reconcileGoogleTasks(options: {
   const tasksByOccurrence = new Map<string, GoogleTask[]>();
   for (const task of remoteTasks) {
     const dueDate = googleDueLocalDate(task.due);
-    if (!dueDate || task.deleted || (task.status !== 'completed' && task.status !== 'needsAction')) continue;
-    const key = occurrenceKey(task.title, dueDate);
+    if ((!namespace && !dueDate) || task.deleted || (task.status !== 'completed' && task.status !== 'needsAction')) continue;
+    const key = namespace ? task.notes : occurrenceKey(task.title, dueDate!);
+    if (!key) continue;
     tasksByOccurrence.set(key, [...(tasksByOccurrence.get(key) ?? []), task]);
   }
   for (const item of beforeEntries.values()) {
-    if (!isInSyncWindow(item) || linkedScheduleEntryIds.has(item.entry.id)) continue;
-    const candidates = tasksByOccurrence.get(occurrenceKey(item.choreName, item.entry.suggestedDate)) ?? [];
+    if (item.synchronizationBlocked || !isInSyncWindow(item) || linkedScheduleEntryIds.has(item.entry.id)) continue;
+    const candidates = tasksByOccurrence.get(namespace ? sharedGoogleOccurrenceNote(namespace, item.entry.id) : occurrenceKey(item.choreName, item.entry.suggestedDate)) ?? [];
     const existingTask = candidates.find((task) => !usedTaskIds.has(task.id));
     if (!existingTask) continue;
     const adoptedLink = {
@@ -78,6 +84,7 @@ export async function reconcileGoogleTasks(options: {
       lastSyncedDueDate: item.entry.suggestedDate,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
+      ...(item.localRevision ? { observedLocalRevision: item.localRevision } : {}),
     };
     await repository.upsertGoogleTaskLink(adoptedLink);
     links = [...links, adoptedLink];
@@ -92,6 +99,7 @@ export async function reconcileGoogleTasks(options: {
     const task = tasksById.get(link.googleTaskId);
     if (!task || task.deleted || (task.status !== 'completed' && task.status !== 'needsAction')) continue;
     const local = beforeEntries.get(link.scheduleEntryId);
+    if (local?.synchronizationBlocked) continue;
     const localStatus = local?.completedAt ? 'completed' : 'needsAction';
     const locallyChanged = link.pendingStatus
       || (local && link.lastSyncedStatus && localStatus !== link.lastSyncedStatus)
@@ -130,7 +138,7 @@ export async function reconcileGoogleTasks(options: {
   type PendingPatch = { item: GoogleSyncEntry; task: GoogleTask; link: GoogleTaskLink; patch: GoogleTaskPatch };
   const pendingPatches: PendingPatch[] = [];
   const persistSyncedEntry = async (item: GoogleSyncEntry, originalLink: GoogleTaskLink, status: GoogleTaskStatus) => {
-    let link = originalLink;
+    let link = { ...originalLink, ...(item.localRevision ? { observedLocalRevision: item.localRevision } : {}) };
     if (link.lastSyncedTitle !== item.choreName || link.lastSyncedDueDate !== item.entry.suggestedDate) {
       link = { ...link, lastSyncedTitle: item.choreName, lastSyncedDueDate: item.entry.suggestedDate, updatedAt: now.toISOString() };
       await repository.upsertGoogleTaskLink(link);
@@ -167,6 +175,7 @@ export async function reconcileGoogleTasks(options: {
   };
 
   for (const item of entries) {
+    if (item.synchronizationBlocked) continue;
     const entry = item.entry;
     const inSyncWindow = isInSyncWindow(item);
     let link = linksById.get(entry.id);
@@ -202,6 +211,7 @@ export async function reconcileGoogleTasks(options: {
     // A completion may have committed just after the entry read. Its queued follow-up has the exact timestamp.
     if (desiredStatus === 'completed' && !item.completedAt) continue;
     const patch: GoogleTaskPatch = {};
+    if (namespace && task.notes !== sharedGoogleOccurrenceNote(namespace, entry.id)) patch.notes = sharedGoogleOccurrenceNote(namespace, entry.id);
     if (task.title !== item.choreName) patch.title = item.choreName;
     if (googleDueLocalDate(task.due) !== entry.suggestedDate) patch.due = googleDueDate(entry.suggestedDate);
     if (desiredStatus === 'completed' && task.status !== 'completed') {
@@ -223,6 +233,7 @@ export async function reconcileGoogleTasks(options: {
     const drafts = chunk.map((item) => ({
       title: item.choreName,
       due: googleDueDate(item.entry.suggestedDate),
+      ...(namespace ? { notes: sharedGoogleOccurrenceNote(namespace, item.entry.id) } : {}),
     }));
     const results = api.createTasksBatch
       ? await api.createTasksBatch(accessToken, taskList.id, drafts)
@@ -252,6 +263,7 @@ export async function reconcileGoogleTasks(options: {
         lastSyncedDueDate: item.entry.suggestedDate,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
+        ...(item.localRevision ? { observedLocalRevision: item.localRevision } : {}),
       };
       // Persist each successful response immediately so a later failed chunk resumes safely.
       await repository.upsertGoogleTaskLink(link);

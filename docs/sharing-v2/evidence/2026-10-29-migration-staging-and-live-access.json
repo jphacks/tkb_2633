@@ -1,0 +1,191 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "f698e64596039f1d788a6fe92503d0070bd0531f",
+  "phase6Complete": false,
+  "unitResults": {
+    "ios": {
+      "exitCode": 0,
+      "tests": 2132,
+      "pass": 2132,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "log": "phase6-creation-generation-verified-ios.log",
+      "sha256": "ca985f6172bba462bf49a5c8130f5d6526b2613eedf4588b175396a8a2cefa38"
+    },
+    "android": {
+      "exitCode": 0,
+      "tests": 2132,
+      "pass": 2132,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "log": "phase6-creation-generation-verified-android.log",
+      "sha256": "f2164bcf60548c56cac4f8e3cde8157530abbca1af0b1409529dea97cd8b2f91"
+    }
+  },
+  "cloud": {
+    "exitCode": 0,
+    "tests": 70,
+    "pass": 70,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "log": "phase6-creation-generation-cloud-direct.log",
+    "sha256": "608176c292db1d1adf3c28bb2030d5db0e3daa4e58b7072b9361d0a95078436d",
+    "host": "127.0.0.1:8185",
+    "project": "demo-liflow-sharing",
+    "production": false
+  },
+  "checks": {
+    "lint": {
+      "exitCode": 0,
+      "log": "phase6-creation-generation-final-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "log": "phase6-creation-generation-final-typecheck.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    }
+  },
+  "contracts": {
+    "previous": 311,
+    "current": 316,
+    "previousContentsUnchanged": true,
+    "requiredCloudRegressions": 40
+  },
+  "scheduler": {
+    "legacy": "liflow-shared-1",
+    "unreleasedV2": "liflow-shared-2-draft-36"
+  },
+  "native": {
+    "newPhysicalE2E": false,
+    "macScreenLocked": true,
+    "androidBatteryPercent": 15,
+    "androidUsbPowered": false,
+    "preservedExistingData": true
+  },
+  "productionWrites": 0,
+  "realPersonalDatabaseWrites": 0,
+  "realGoogleWrites": 0,
+  "pending": [
+    "D10 untimed personal-chore policy and actual relocation/history wiring",
+    "Mac unlock and iPhone Tasks/copy/completion-notice checks",
+    "cross-OS integrated v2 E2E",
+    "D11 legacy migration delivery scope"
+  ],
+  "counterexamples": [
+    {
+      "log": "phase6-legacy-generation-before.log",
+      "sha256": "512d574c720713faa2972ff1325a797d945096b951d5cc833ab8e96da417b64e",
+      "failingNewRegressions": 4,
+      "meaning": "cached left/removed/joining status and a queued old generation were accepted before the fix"
+    },
+    {
+      "log": "phase6-conversion-marker-fixed.log",
+      "sha256": "58d13c8009249eec23f99ac24181ad202630b1dc23a8e8e91c3b1869ec6b1640",
+      "meaning": "initialization concurrency and a test read-page limit mismatch"
+    },
+    {
+      "log": "phase6-creation-generation-lint.log",
+      "sha256": "c945b532229126fe79e1b9ed1e7dfd2c14548213ac7ea1bc55ee24455624d90d",
+      "meaning": "render-time ref write rejected by React lint"
+    },
+    {
+      "log": "phase6-creation-generation-cloud.log",
+      "sha256": "aeb5ef4a5886cd62f404bba049e2406bd9ca8ef48d6a6026b4a4ebb02b045246",
+      "meaning": "wrong loopback proxy endpoint refused connection; rerun directly on local emulator"
+    }
+  ],
+  "sources": [
+    {
+      "path": "src/app/sharing/index.tsx",
+      "sha256": "188d243d7097977e687c99c60223e4f669e56df247d24015fa2954fa81d2ad9d"
+    },
+    {
+      "path": "src/features/sharing/group-creation-form.tsx",
+      "sha256": "89e3c8e2bb16227fa6428be08791a153064d549717ade1087f8f3eafe2cf8cb3"
+    },
+    {
+      "path": "src/features/sharing/replica.ts",
+      "sha256": "1ca91a5ffa606d3a6437c86fc5e13fd6ed316b14b13f0bbf23a8b3d1981f2443"
+    },
+    {
+      "path": "src/features/sharing/rollout.ts",
+      "sha256": "0b652f7ae854a281186eb4cc34c9892b59c4eaf315124cda0cb0cbba855358c5"
+    },
+    {
+      "path": "src/features/sharing/snapshots.ts",
+      "sha256": "29c0c7d635e07e71613cade0aff3a47985bac4bceee1f89156d15197d9f2001d"
+    },
+    {
+      "path": "src/features/sharing/v2/legacy-migration-plan.ts",
+      "sha256": "239360dd81a4ee60407bfc5856d99853d5f30c919fee46c6f3af9f331a5dc5bb"
+    },
+    {
+      "path": "src/features/sharing/v2/legacy-migration-source.ts",
+      "sha256": "005519852ab5122e73a19031f61507d04906c3243ef2548ba4c57b265e576944"
+    },
+    {
+      "path": "src/features/sharing/v2/legacy-migration-witness.ts",
+      "sha256": "94124561b22bce0cdfa395f949a1bc939031330b3408a2e196a14050ab59834c"
+    },
+    {
+      "path": "src/features/sharing/v2/payload-schema.ts",
+      "sha256": "1f9d42300291496970da0d2c555ec8138915007c066d5d097c328129edbfc2f2"
+    },
+    {
+      "path": "src/features/sharing/v2/receiver-authority.ts",
+      "sha256": "f12cd67e6364f601521b7838e235ffd551f198701a1d3f9c5b7ee41fcab559a2"
+    },
+    {
+      "path": "src/features/sharing/v2/scheduler-contract.json",
+      "sha256": "23077463125812837aacbdac6b2750f0f80a09814b21acf71883144ac7f3e0af"
+    },
+    {
+      "path": "src/platform/sharing/workspaces.ts",
+      "sha256": "b2719819be13c82143ac3035fa02b4b1594f138da98347b906636bcb8563c31d"
+    },
+    {
+      "path": "src/platform/storage/shared-planner-repository.ts",
+      "sha256": "6098eff13f04dbe845bbf6f88ac49d91350bff16508da3430e3ed0321b47af70"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-events.ts",
+      "sha256": "ad798c601d119b72bf5b67f88cb46c64e5681be25799a5613de45058eb054811"
+    },
+    {
+      "path": "src/platform/storage/sharing-v2-legacy-migration.ts",
+      "sha256": "20bfeb1d6533358e20aae0b5a14fb7e1fd97c446c437160faa9531f43f5187b2"
+    },
+    {
+      "path": "tests/helpers/sharing-v2-legacy-fixture.mjs",
+      "sha256": "c1ed2efd16f0a1dc02b6cb140fff6a5e6555a8e2e9250a96220b98d1f0d7d4ca"
+    },
+    {
+      "path": "tests/sharing-group-creation.test.mjs",
+      "sha256": "c4b1799de61634ddaba191834e471fea67e495b09b6d67b900c635945710eb36"
+    },
+    {
+      "path": "tests/sharing-repository.test.mjs",
+      "sha256": "e25c6bc7b973ee29e8ff954755747208dbdaa7940bf205353c9b423a6c01c68e"
+    },
+    {
+      "path": "tests/sharing-v2-legacy-conversion.test.mjs",
+      "sha256": "da711f30a01cd036174dcec26453add9184adbdb0b7baa0e6008e07b3a343253"
+    },
+    {
+      "path": "tests/sharing-v2-legacy-migration.test.mjs",
+      "sha256": "49057df31698d69251b9c573422e8341f4b917bf63d74239dbce1a7e4988ff4a"
+    },
+    {
+      "path": "tests/sharing-v2-legacy-witness.test.mjs",
+      "sha256": "c71bebc981af58fb116e2ea9a2ebe0c6dc883d5508fb8982ec70c219dcb65a1d"
+    },
+    {
+      "path": "tests/sharing-workspace-recovery.test.mjs",
+      "sha256": "44d8d9f1fc59abcb60673ad24344d1a6127d0847cdd19e6cc2ee2f5e15fa3c12"
+    }
+  ]
+}

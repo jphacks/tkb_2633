@@ -26,6 +26,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-image",
       [
         "expo-splash-screen",
         {
@@ -84,7 +85,8 @@
         }
       ],
       "expo-background-task",
-      "./plugins/with-liflow-launcher-icons"
+      "./plugins/with-liflow-launcher-icons",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,42 +1,44 @@
+import { Chevron } from '../../components/chevron';
+import { FormTextInput as TextInput } from '../../components/form-text-input';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { GuideChapterActions } from '@/features/chores/guide-chapter-actions';
+import { ChoreBook } from '@/components/chore-book';
+import { ChoreMeta } from '@/components/chore-meta';
+import { ProcedureStep } from '@/components/procedure-step';
+import { groupChores } from '@/domain/chores/chore-groups';
+import { BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { ChoreSourceLinks } from '@/components/chore-source-links';
 import type { ChoreDefinition } from '@/domain/chores/types';
-import { localDateFromDate } from '@/domain/scheduling/local-date';
-import { selectDateTasks } from '@/domain/scheduling/date-tasks';
 import { PlannerLoadState } from '@/components/planner-load-state';
 import { usePlannerData } from '@/hooks/use-planner-data';
-import { recordIncompleteChore } from '@/platform/storage/repository';
 
 export default function ChoreGuideScreen() {
-  const params = useLocalSearchParams<{ choreId?: string; returnTo?: 'home' | 'calendar' }>();
+  const params = useLocalSearchParams<{ choreId?: string; returnTo?: 'home' | 'calendar'; source?: string }>();
+  const personalSource = params.source === 'personal';
   const requestedId = Array.isArray(params.choreId) ? params.choreId[0] : params.choreId;
   const requestedReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const returnTo = requestedReturnTo === 'home' || requestedReturnTo === 'calendar' ? requestedReturnTo : undefined;
   const navigation = useNavigation('/(tabs)') as {
     addListener(event: 'tabPress', callback: () => void): () => void;
-    setParams(params: { choreId?: string | undefined; returnTo?: 'home' | 'calendar' | undefined }): void;
+    setParams(params: { choreId?: string | undefined; returnTo?: 'home' | 'calendar' | undefined; source?: string | undefined }): void;
   };
-  const { snapshot, loading, error, refresh, database } = usePlannerData();
+  const { snapshot, loading, error, refresh, database } = usePlannerData({ personal: personalSource });
   const [searchText, setSearchText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isTriviaCollectionOpen, setIsTriviaCollectionOpen] = useState(false);
   const [selectedTriviaId, setSelectedTriviaId] = useState<string | null>(null);
-  const [recordingIncomplete, setRecordingIncomplete] = useState(false);
-  const incompleteInFlight = useRef(false);
-  const [message, setMessage] = useState<string | null>(null);
   useEffect(() => navigation.addListener('tabPress', () => {
-    navigation.setParams({ choreId: undefined, returnTo: undefined });
+    navigation.setParams({ choreId: undefined, returnTo: undefined, ...(personalSource ? { source: undefined } : {}) });
     setSelectedCategory(null);
     setIsTriviaCollectionOpen(false);
     setSelectedTriviaId(null);
     setSearchText('');
-  }), [navigation]);
+  }), [navigation, personalSource]);
   const returnFromDetail = () => {
-    navigation.setParams({ choreId: undefined, returnTo: undefined });
+    navigation.setParams({ choreId: undefined, returnTo: undefined, ...(personalSource ? { source: undefined } : {}) });
     if (returnTo === 'home') router.navigate('/');
     else if (returnTo === 'calendar') router.navigate('/(tabs)/explore');
   };
@@ -49,7 +51,7 @@ export default function ChoreGuideScreen() {
     }
   };
   const selectedChoreId = requestedId;
-  const chores = useMemo(() => snapshot?.chores.filter((chore) => !chore.archived) ?? [], [snapshot]);
+  const chores = useMemo(() => groupChores(snapshot?.chores ?? []).flatMap(([, rows]) => rows), [snapshot]);
   const categories = useMemo(() => [...new Set(chores.map((chore) => chore.category))], [chores]);
   const triviaItems = useMemo(() => chores.flatMap((chore) =>
     (chore.trivia ?? []).map((trivia, index) => ({ id: `${chore.id}:${trivia.id || index}`, chore, trivia })),
@@ -81,19 +83,10 @@ export default function ChoreGuideScreen() {
     return <PlannerLoadState title="家事の説明" message="家事を読み込んでいます。" error={error} retry={refresh} />;
   }
 
-  const selectedChore = selectedChoreId ? chores.find((chore) => chore.id === selectedChoreId) : undefined;
   const selectedTrivia = selectedTriviaId ? triviaItems.find((item) => item.id === selectedTriviaId) : undefined;
   const matchingTriviaItems = query
     ? triviaItems.filter((item) => normalizeChoreSearchText(item.trivia.title).includes(query))
     : triviaItems;
-  const today = localDateFromDate(new Date());
-  const todayTask = selectedChore
-    ? selectDateTasks(snapshot.scheduleEntries, snapshot.completions, today, 3).find((task) => task.choreId === selectedChore.id)
-    : undefined;
-  const currentEntry = todayTask ? todayTask.entry
-    : snapshot.scheduleEntries.find((entry) => entry.choreId === selectedChore?.id && entry.suggestedDate >= today);
-  const canRecordIncomplete = Boolean(currentEntry && currentEntry.windowStart <= localDateFromDate(new Date()));
-
   if (selectedTriviaId) {
     return (
       <Page>
@@ -138,23 +131,6 @@ export default function ChoreGuideScreen() {
       </Page>
     );
   }
-
-  const recordIncomplete = async () => {
-    if (!currentEntry || !canRecordIncomplete || incompleteInFlight.current) return;
-    incompleteInFlight.current = true;
-    setRecordingIncomplete(true);
-    setMessage(null);
-    try {
-      const recorded = await recordIncompleteChore(database, currentEntry);
-      setMessage(recorded ? '未完了を記録し、予定を再調整しました。' : 'この予定は現在記録できません。最新の予定を確認してください。');
-      await refresh();
-    } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : '未完了を記録できませんでした。');
-    } finally {
-      incompleteInFlight.current = false;
-      setRecordingIncomplete(false);
-    }
-  };
 
   if (!selectedChoreId) {
     return (
@@ -243,40 +219,13 @@ export default function ChoreGuideScreen() {
     );
   }
 
-  return (
-    <Page>
-      <BackButton accessibilityLabel="前の画面に戻る" onPress={returnFromDetail} />
-      {error ? <Card><Text style={styles.error}>{error}</Text></Card> : null}
-      {selectedChore ? <ChoreGuide chore={selectedChore} /> : (
-        <Card><Text style={styles.body}>選んだ家事が見つかりませんでした。</Text></Card>
-      )}
-      {selectedChore ? (
-        <AppButton
-          title="この家事の実施履歴を見る"
-          onPress={() => router.push({ pathname: '/history', params: { choreId: selectedChore.id } })}
-          variant="secondary"
-        />
-      ) : null}
-      {currentEntry ? (
-        <View style={styles.recordActions}>
-          <AppButton
-            title={recordingIncomplete ? '記録中…' : '未完了を記録'}
-            onPress={() => void recordIncomplete()}
-            disabled={!canRecordIncomplete || recordingIncomplete}
-            variant="quiet"
-          />
-          {!canRecordIncomplete ? <Text style={styles.body}>実施期間が始まると未完了を記録できます。</Text> : null}
-          {message ? <Text style={styles.body}>{message}</Text> : null}
-        </View>
-      ) : null}
+  return <ChoreBook chores={chores} selectedId={selectedChoreId} title="家事の説明" onBack={returnFromDetail} hasTabBar
+    header={error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : undefined}
+    renderChore={chore => <View style={{ gap: 12 }}>
+      <ChoreGuide chore={chore} mode={snapshot.settings.frequencyMode} />
+      <GuideChapterActions choreId={chore.id} snapshot={snapshot} database={database} refresh={refresh} personalSource={personalSource} />
+    </View>} />;
 
-      <OtherChoresPicker
-        key={selectedChoreId}
-        chores={chores}
-        selectedChoreId={selectedChoreId}
-      />
-    </Page>
-  );
 }
 
 function normalizeChoreSearchText(value: string): string {
@@ -285,15 +234,6 @@ function normalizeChoreSearchText(value: string): string {
     .toLocaleLowerCase()
     .replace(/[\u30a1-\u30f6]/g, (character) =>
       String.fromCharCode(character.charCodeAt(0) - 0x60));
-}
-
-function shuffleChores(chores: ChoreDefinition[]): ChoreDefinition[] {
-  const shuffled = [...chores];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  return shuffled;
 }
 
 function ChoreListRow({ chore, onPress }: { chore: ChoreDefinition; onPress: () => void }) {
@@ -307,7 +247,7 @@ function ChoreListRow({ chore, onPress }: { chore: ChoreDefinition; onPress: () 
         <Text style={styles.choreListName}>{chore.name}</Text>
         <Text style={styles.choreListCategory}>{chore.category}</Text>
       </View>
-      <Text style={styles.choreListChevron}>›</Text>
+      <Chevron />
     </Pressable>
   );
 }
@@ -333,7 +273,7 @@ function GuideCategoryRow({
         <Text style={styles.choreListName}>{category}</Text>
         <Text style={styles.choreListCategory}>{count}{countLabel}</Text>
       </View>
-      <Text style={styles.choreListChevron}>›</Text>
+      <Chevron />
     </Pressable>
   );
 }
@@ -352,44 +292,17 @@ function TriviaListRow({ item, onPress }: {
         <Text style={styles.choreListName}>{item.trivia.title}</Text>
         <Text style={styles.choreListCategory}>{item.chore.name}</Text>
       </View>
-      <Text style={styles.choreListChevron}>›</Text>
+      <Chevron />
     </Pressable>
   );
 }
 
-function OtherChoresPicker({
-  chores,
-  selectedChoreId,
-}: {
-  chores: ChoreDefinition[];
-  selectedChoreId: string;
-}) {
-  const [chorePickerOrder] = useState(() => shuffleChores(chores));
-  if (chores.length <= 1) return null;
-
-  return (
-    <View style={styles.otherChores}>
-      <SectionHeading title="ほかの家事" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chorePicker}>
-        {chorePickerOrder.map((chore) => (
-          <Pressable
-            key={chore.id}
-            accessibilityRole="button"
-            accessibilityState={{ selected: selectedChoreId === chore.id }}
-            onPress={() => router.setParams({ choreId: chore.id })}
-            style={[styles.choreOption, selectedChoreId === chore.id && styles.choreOptionSelected]}>
-            <Text style={[styles.choreOptionText, selectedChoreId === chore.id && styles.choreOptionTextSelected]}>{chore.name}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-function ChoreGuide({ chore }: { chore: ChoreDefinition }) {
+function ChoreGuide({ chore, mode }: { chore: ChoreDefinition; mode: import('@/domain/chores/types').FrequencyMode }) {
   return (
     <>
-      <ScreenHeading title={chore.name} description={chore.description} />
+      <ScreenHeading title={chore.name} />
+      <ChoreMeta chore={chore} mode={mode} />
+      {chore.description ? <Text style={styles.body}>{chore.description}</Text> : null}
       <Card>
         <SectionHeading title="家事の手順" />
         {chore.procedureSections?.length ? chore.procedureSections.map((section) => (
@@ -426,15 +339,6 @@ function ChoreGuide({ chore }: { chore: ChoreDefinition }) {
         </Card>
       ) : null}
     </>
-  );
-}
-
-function ProcedureStep({ step, index }: { step: string; index: number }) {
-  return (
-    <View style={styles.stepRow}>
-      <Text style={styles.stepNumber}>{String(index + 1).padStart(2, '0')}</Text>
-      <Text style={styles.stepText}>{step}</Text>
-    </View>
   );
 }
 

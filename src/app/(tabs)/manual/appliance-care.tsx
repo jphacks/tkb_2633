@@ -1,11 +1,13 @@
+import { FormTextInput as TextInput } from '../../../components/form-text-input';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
+import { ActionLabel, AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palette, typography } from '@/components/planner-ui';
 import { NumberInputField } from '@/components/number-input-field';
 import type { ApplianceCareAnalysisStage, ApplianceCareApiResponse, ProductAnalysisErrorResponse, ProductVerifiedResponse } from '@/features/appliance-care/api-contracts';
 import { analyzeApplianceCareRequest } from '@/features/appliance-care/api-client';
+import { useAbortApplianceRequestOnLeave } from '@/features/appliance-care/use-abort-on-leave';
 import type { ApplianceCareTaskDraft } from '@/features/appliance-care/contracts';
 import { automaticApplianceTasks, defaultApplianceCycles } from '@/features/appliance-care/auto-save-policy';
 import { applianceCategoryLabel, searchApplianceCategories } from '@/features/appliance-care/categories';
@@ -21,7 +23,7 @@ export default function ApplianceCareScreen() {
   const requestedProductName = Array.isArray(params.productName) ? params.productName[0] : params.productName;
   const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const returnTo = returnToParam === '/chores' ? '/chores' : returnToParam === '/manual' ? '/manual' : undefined;
-  const { database, refresh } = usePlannerData();
+  const { database, refresh, snapshot } = usePlannerData();
   const [manufacturer, setManufacturer] = useState('');
   const [productName, setProductName] = useState(requestedProductName ?? '');
   const [modelNumber, setModelNumber] = useState('');
@@ -38,7 +40,7 @@ export default function ApplianceCareScreen() {
   const [stage, setStage] = useState<ApplianceCareAnalysisStage>('product_verification');
   const [savedContext, setSavedContext] = useState<ApplianceCareReviewContext | null>(null);
   const loadingAppliance = Boolean(applianceId) && !savedContext && !message;
-  useEffect(() => () => { analysisRequest.current?.abort(); }, []);
+  const beginRequest = useAbortApplianceRequestOnLeave(analysisRequest);
 
   useEffect(() => {
     if (!applianceId) return;
@@ -75,22 +77,26 @@ export default function ApplianceCareScreen() {
       return;
     }
     savingRef.current = true;
-    const controller = new AbortController();
-    analysisRequest.current = controller;
+    const controller = beginRequest(() => { savingRef.current = false; setWorking(false); });
     setWorking(true);
     setMessage(null);
     setResult(null);
     setAnalysisSaved(false);
     setStage('product_verification');
+    let responseReceived = false;
     try {
       const nextResult = await analyzeApplianceCareRequest(request, undefined, undefined,
         (nextStage) => { if (!controller.signal.aborted) setStage(nextStage); }, controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || analysisRequest.current !== controller) return;
+      // Polling is finished. Leaving now must not release the separate, already-started local save.
+      responseReceived = true; analysisRequest.current = null;
       setResult(nextResult);
       if (nextResult.status === 'verified') {
         const values = defaultApplianceCycles(nextResult.analysis, savedContext?.chores);
         setCycleValues(values);
-        try {
+        if (snapshot?.sharing) {
+          setMessage('内容を確認してから、共有グループへ保存してください。');
+        } else try {
           await persistAnalysis(nextResult, values);
         } catch (cause) {
           setMessage(cause instanceof Error ? `解析結果を保存できませんでした：${cause.message}` : '解析結果を保存できませんでした。');
@@ -100,9 +106,10 @@ export default function ApplianceCareScreen() {
       if (controller.signal.aborted) return;
       setMessage(cause instanceof Error ? cause.message : '解析に失敗しました。');
     } finally {
-      if (analysisRequest.current === controller) analysisRequest.current = null;
-      savingRef.current = false;
-      if (!controller.signal.aborted) setWorking(false);
+      if (responseReceived || analysisRequest.current === controller) {
+        if (analysisRequest.current === controller) analysisRequest.current = null;
+        savingRef.current = false; setWorking(false);
+      }
     }
   };
 
@@ -142,8 +149,7 @@ export default function ApplianceCareScreen() {
   };
 
   return (
-    <Page>
-      <BackButton onPress={() => { analysisRequest.current?.abort(); if (returnTo) router.dismissTo(returnTo); else router.back(); }} />
+    <Page keyboardAware footerHasTabBar footer={<BackButton onPress={() => { analysisRequest.current?.abort(); if (returnTo) router.dismissTo(returnTo); else router.back(); }} />}>
       <ScreenHeading
         eyebrow="OFFICIAL MANUAL"
         title={applianceId ? '公式資料を再解析' : '家電を追加'}
@@ -214,7 +220,7 @@ export default function ApplianceCareScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="保存した家電のお手入れ詳細を開く" disabled={!analysisSaved}
             onPress={openSavedAppliance} style={styles.resultNavigation}>
             <Text style={styles.resultTitle}>{applianceDisplayName(verified.product)}</Text>
-            <Text style={styles.link}>{analysisSaved ? '保存したお手入れ内容を見る ›' : '解析結果は未保存です。下の保存ボタンから再試行できます。'}</Text>
+            {analysisSaved ? <ActionLabel label="保存したお手入れ内容を見る" style={styles.link} /> : <Text style={styles.link}>解析結果は未保存です。下の保存ボタンから再試行できます。</Text>}
           </Pressable>
           <Card style={styles.verifiedCard}>
             <Text style={styles.verifiedLabel}>メーカー公式情報で確認済み</Text>
@@ -235,7 +241,7 @@ export default function ApplianceCareScreen() {
               manufacturer={verified.product.manufacturer}
             />
           ))}
-          <AppButton title={working ? '保存中…' : analysisSaved ? '周期の変更を保存' : '解析結果の保存を再試行'} onPress={() => void saveChanges()} disabled={working} />
+          <AppButton title={working ? '保存中…' : analysisSaved ? '周期の変更を保存' : snapshot?.sharing ? '内容を確認して共有グループへ保存' : '解析結果の保存を再試行'} onPress={() => void saveChanges()} disabled={working} />
           <Text style={styles.note}>具体的なメーカー周期がない項目は周期なしのまま家電詳細に保存し、自動予定には追加しません。周期を入力した項目だけ予定に登録します。</Text>
         </>
       ) : null}

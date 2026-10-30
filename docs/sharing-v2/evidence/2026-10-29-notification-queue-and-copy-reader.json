@@ -1,0 +1,219 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "277381dcb61926555cbeff95208ea4a6c6b543a3",
+  "phase6Complete": false,
+  "scope": "Shared native notification serialization, capacity and pending cleanup; isolated development OS audit; narrow read-only personal-copy source",
+  "checks": {
+    "ios": 2084,
+    "android": 2084,
+    "cloud": 70,
+    "failures": 0,
+    "skipped": 0,
+    "featureContracts": 309,
+    "all305PreviousContractsUnchanged": true,
+    "lintExitCode": 0,
+    "typecheckExitCode": 0
+  },
+  "behavior": {
+    "singleNativeQueueForImmediateAndScheduledReminders": true,
+    "captureBeforeQueueWait": true,
+    "revalidateAccessAfterQueueWait": true,
+    "iosConservativeAppWideReservationCapacity": 60,
+    "otherReservationsEvicted": false,
+    "pendingAndPresentedObsoleteNoticesCleaned": true,
+    "qaNamespaceReleaseGuarded": true,
+    "normalInactiveWorkspaceCleanupNotRelaxed": true,
+    "personalCopyReadOnlyTransaction": true,
+    "personalCopyReadsDefinitionsAndFrequencyOnly": true,
+    "personalCopyDoesNotGenerateScheduleOrReadHistory": true,
+    "selectedIdsBoundedAndParameterized": true,
+    "groupAndUninitializedDatabasesRejected": true
+  },
+  "native": {
+    "android": {
+      "request": {
+        "step": "request",
+        "proof": "完了通知のOS要求 PASS：合成1件・他領域保持",
+        "scope": "OS delivery only; no shared transport receipt was synthesized",
+        "dataReset": false
+      },
+      "presented": {
+        "step": "presented",
+        "proof": "完了通知のOS表示 PASS：合成1件・内容一致",
+        "scope": "OS delivery only; no shared transport receipt was synthesized",
+        "dataReset": false
+      },
+      "cleaned": {
+        "step": "cleaned",
+        "proof": "完了通知の片付け PASS：合成0件・他領域保持",
+        "scope": "OS delivery only; no shared transport receipt was synthesized",
+        "dataReset": false
+      },
+      "usesSameQueueChannelAndNativePresentation": true,
+      "differenceFromNormalScope": "Development OS audit uses an isolated guarded identifier prefix; it does not fabricate actual membership or server receipt.",
+      "earlierAttempt": "OS request succeeded but presentation was not confirmed in the original attempt or read-only retries. Code audit identified that an unregistered QA workspace shared the normal inactive-workspace prefix. The earlier absence is retained as a failed observation, not as PASS or proof of exact cleanup timing.",
+      "personalPreservation": {
+        "beforeTableCount": 17,
+        "afterTableCount": 17,
+        "allRowsUnchanged": true,
+        "dataReset": false
+      },
+      "dataReset": false
+    },
+    "ios": {
+      "status": "NOT RUN",
+      "reason": "Mac screen remains locked; no repeated XCTest attempts"
+    }
+  },
+  "limits": [
+    "No actual personal settings were copied on a physical device in this follow-up; the new SQL reader is verified with actual SQLite and Emulator integration.",
+    "D10 original-time policy is pending; actual personal relocation remains unconnected.",
+    "iPhone Tasks/copy/completion-notice and integrated heterogeneous-OS E2E remain pending.",
+    "v1 migration preview/conversion is still absent; unverified transitions continue to be rejected.",
+    "No production Rules/schema deployment, real group migration, main merge, Draft release or post-Phase6 UI polish."
+  ],
+  "sources": [
+    {
+      "path": "src/features/notifications/reconcile-local-notifications.ts",
+      "sha256": "6e66a44b3557a082873793d6f1fe3eda67a4d9007e565dc70013c4c480329bb0",
+      "bytes": 3878
+    },
+    {
+      "path": "src/features/sharing/v2-ui/group-policy-editor.tsx",
+      "sha256": "69c9f5409d8d0396f800f0fd047e3e66a979124739ba1ca37edb4cfd690f011b",
+      "bytes": 7198
+    },
+    {
+      "path": "src/platform/sharing/v2-completion-notice-preview.ts",
+      "sha256": "d32e76f0f82fd345c72a18d1f891eedb4a47204be60dd1fa3047425eefbfeef9",
+      "bytes": 2987
+    },
+    {
+      "path": "src/platform/sharing/v2-completion-notices.ts",
+      "sha256": "c524a3a73902689d0e182bd5ea0138665681fc1c6018f35f5e35c1e3752c5033",
+      "bytes": 5058
+    },
+    {
+      "path": "src/platform/sharing/v2-personal-copy.ts",
+      "sha256": "0929845a765badd94e03b2a8e308a7260a53cb6df38f391e173bc27bb47b5922",
+      "bytes": 1435
+    },
+    {
+      "path": "src/platform/storage/repository.ts",
+      "sha256": "16fa494d27763704ae27bfbb1fb20049833e2415785d80cd0ba3e41476705fb6",
+      "bytes": 109272
+    },
+    {
+      "path": "tests/sharing-v2-cloud.integration.mjs",
+      "sha256": "e1705bbba9c10f74b4cb93beeed4c6b3b4bb6f915097c2436b6a3abf8aa2a626",
+      "bytes": 59480
+    },
+    {
+      "path": "tests/sharing-v2-completion-notices-native.test.mjs",
+      "sha256": "0b7db30b1008b2cc570f2cafd4b794499bc4649ad8712f3adc05f859a6c9cb9e",
+      "bytes": 13925
+    },
+    {
+      "path": "tests/sharing-v2-personal-copy-reader.test.mjs",
+      "sha256": "1faeb2104bd46b44851c28b27900d2f81ca47fa0b3f1a658a8a6f9fb8915c09d",
+      "bytes": 4066
+    },
+    {
+      "path": "tests/sharing-v2-personal-copy-runtime.test.mjs",
+      "sha256": "89ee6a9dd4d851cfafffa5e23a2c55d5c4d9bce2a0a6178c1aad9bca4372f855",
+      "bytes": 10524
+    }
+  ],
+  "files": [
+    {
+      "path": "phase6-verified-ios.log",
+      "sha256": "b7368f6534b93440805b23125117d5e552daa2e56d321aa635005942c524ef34",
+      "bytes": 250042
+    },
+    {
+      "path": "phase6-verified-android.log",
+      "sha256": "9305a7d30a5424b15b56fc9a332b5c0265f4f33c22f477e9c6b8db9f01ac9dde",
+      "bytes": 250045
+    },
+    {
+      "path": "phase6-final-cloud.log",
+      "sha256": "c7f540067108e3c9a26cce7a2f7f7d14b004b0d05d060af29ae3017dbd05fd65",
+      "bytes": 30175
+    },
+    {
+      "path": "phase6-final-namespace.log",
+      "sha256": "92b962624d177522dfd64e6c3197154f26bc2becc73aa60f3353765624b2802e",
+      "bytes": 8824
+    },
+    {
+      "path": "phase6-checkpoint-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f",
+      "bytes": 321
+    },
+    {
+      "path": "phase6-checkpoint-typecheck.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598",
+      "bytes": 53
+    },
+    {
+      "path": "phase6-checkpoint-checks.json",
+      "sha256": "4ee52e95a0dc0c388c36491396eec0227ddd5c5fc32a4975e71c36960494c775",
+      "bytes": 165
+    },
+    {
+      "path": "phase6-queue-android-request.json",
+      "sha256": "62b5e498c00f2d65fedb809b7c1df602c8d9eb82096e81308b915f79ca99654e",
+      "bytes": 196
+    },
+    {
+      "path": "phase6-queue-personal-preservation/comparison.json",
+      "sha256": "4bfabd5dc14084e8fde1a6f6d848aac7a2db27d4011eec0e35301eb82bc2ffae",
+      "bytes": 104
+    },
+    {
+      "path": "phase6-queue-fixed-android-request.json",
+      "sha256": "62b5e498c00f2d65fedb809b7c1df602c8d9eb82096e81308b915f79ca99654e",
+      "bytes": 196
+    },
+    {
+      "path": "phase6-queue-fixed-android-request.xml",
+      "sha256": "154d95bdadbebfa0e7a48bca2222d2ed362d25ca9f40115bef25681dbe882062",
+      "bytes": 12823
+    },
+    {
+      "path": "phase6-queue-fixed-android-request.png",
+      "sha256": "8614026e0a6731e32b41bfb6193cb12c8ef1e14d14fc7a93edcd93781c246451",
+      "bytes": 235476
+    },
+    {
+      "path": "phase6-queue-fixed-android-presented.json",
+      "sha256": "b28a34bbdf4247f40328383424423f1cc2319ae8a4e1c042ecd538096ac63109",
+      "bytes": 195
+    },
+    {
+      "path": "phase6-queue-fixed-android-presented.xml",
+      "sha256": "9eb6563918a19ab417ad26a0569e476dd002e58f3dba116464384b403b98708f",
+      "bytes": 12820
+    },
+    {
+      "path": "phase6-queue-fixed-android-presented.png",
+      "sha256": "9a7541872e21ef0c560f67577a39a2dc943f256bb9a287057530734eb8efec0e",
+      "bytes": 227691
+    },
+    {
+      "path": "phase6-queue-fixed-android-cleaned.json",
+      "sha256": "e2de5cd0fc6d3ad5b417255d5b54e43c2df081f8fc80ad64a2bbdf69a26c6b63",
+      "bytes": 197
+    },
+    {
+      "path": "phase6-queue-fixed-android-cleaned.xml",
+      "sha256": "05e99c9cff4859e049e0892ecbea7938ddf873731e2d4d014b0f4a90d5585881",
+      "bytes": 12824
+    },
+    {
+      "path": "phase6-queue-fixed-android-cleaned.png",
+      "sha256": "ee5db2504027d804b5d951d3b2a6b4b798fdcbc6080cbc90f7419a7799dcc298",
+      "bytes": 230401
+    }
+  ]
+}

@@ -10,6 +10,8 @@ export interface LocalNotificationRequest {
 }
 
 export interface LocalNotificationGateway {
+  /** Total app-wide pending capacity, including other planner workspaces. */
+  readonly maximumScheduledRequests?: number;
   requestPermission(): Promise<boolean>;
   hasPermission(): Promise<boolean>;
   getScheduledRequests(): Promise<readonly LocalNotificationRequest[]>;

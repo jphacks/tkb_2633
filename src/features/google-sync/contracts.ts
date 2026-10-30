@@ -5,7 +5,11 @@ import type { GoogleSyncStatus } from './sync-policy';
 export interface GoogleSyncState {
   householdId: EntityId;
   enabled: boolean;
+  /** A paused connection remains bound; a disconnected workspace requires an explicit reconnect. */
+  disconnected?: boolean;
   taskListId?: string;
+  /** Device-local Google subject; never a shared group field or Firebase user ID. */
+  accountSubject?: string;
   lastAttemptAt?: ISODateTime;
   lastSuccessfulSyncAt?: ISODateTime;
   status: GoogleSyncStatus;
@@ -29,6 +33,8 @@ export interface GoogleTaskLink {
   /** Durable local intent; it is cleared only after this revision reaches Google. */
   pendingStatus?: GoogleTaskStatus;
   pendingStatusRevision?: string;
+  /** Opaque device-local observation for adapters that must fence acknowledgement of concurrent edits. */
+  observedLocalRevision?: string;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -46,6 +52,10 @@ export interface GoogleSyncEntry {
   completedAt?: ISODateTime;
   /** A legacy/local incomplete record, needed when no status baseline has been acknowledged yet. */
   locallyIncomplete?: boolean;
+  /** An unresolved shared occurrence is retained, without importing or rewriting its remote counterpart. */
+  synchronizationBlocked?: boolean;
+  /** Optional opaque local observation; never included in Google task content. */
+  localRevision?: string;
 }
 
 export interface GoogleTaskCompletion {

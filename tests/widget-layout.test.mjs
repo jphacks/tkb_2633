@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { createRequire } from 'node:module';
 
-import { transformSync } from '@babel/core';
-import { widgetsPlugin } from 'babel-preset-expo/build/plugins/widgets-plugin.js';
+// Resolve the compiler from the installed SDK; npm may keep its dependency nested under expo.
+const requireExpo = createRequire(import.meta.resolve('expo/package.json'));
+const { transformSync } = requireExpo('@babel/core');
+const { widgetsPlugin } = requireExpo('babel-preset-expo/build/plugins/widgets-plugin.js');
 
 function loadWidgetLayout(platform) {
   const filename = new URL(`../src/platform/widgets/NextChoreWidget.${platform}.tsx`, import.meta.url);

@@ -71,14 +71,14 @@ test('late completion is checked on its execution day without rewriting its orig
   assert.deepEqual(selectDateTasks([], [done], '2026-10-24'), []);
 });
 
-test('grouping uses chore identity and ordering keeps recommended heavy, normal, light first', () => {
+test('grouping uses chore identity and orders pending tasks by load independently of their recommendation day', () => {
   const chores = ['light', 'normal', 'heavy'].flatMap((load) => [
     { id: `recommended-${load}`, load }, { id: `other-${load}`, load },
   ]);
   const rows = chores.map((chore) => ({ id: chore.id, choreId: chore.id,
     suggestedDate: chore.id.startsWith('recommended') ? today : '2026-10-26', completed: false }));
   assert.deepEqual(orderDateTasks(rows, today, chores).map((row) => row.id), [
-    'recommended-heavy', 'recommended-normal', 'recommended-light', 'other-heavy', 'other-normal', 'other-light',
+    'other-heavy', 'recommended-heavy', 'other-normal', 'recommended-normal', 'other-light', 'recommended-light',
   ]);
   assert.equal(selectDateTasks([entry(today), entry(today, { id: 'other', choreId: 'other' })], [], today).length, 2);
   assert.equal(recommendedChoreCounts([entry(today), entry(today, { id: 'second-cycle' }),

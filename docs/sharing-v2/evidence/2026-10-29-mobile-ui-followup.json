@@ -1,0 +1,447 @@
+{
+  "date": "2026-10-29",
+  "baseCommit": "f232eccdaabcd788502fba8ad3c9e6c1d8c4b6f9",
+  "branch": "codex/encrypted-group-sharing",
+  "phase6PreviouslyCompleted": true,
+  "scope": "Additional UI review after the Phase 6 development gate; no production activation or main merge.",
+  "unit": {
+    "ios": {
+      "passed": 2206,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "ui-followup-release-ios.log",
+      "sha256": "fd26dc5b07ff941598ff585e46a29bdca04c75f03691a20fa9b415e09d22bb6b",
+      "TZ": "UTC"
+    },
+    "android": {
+      "passed": 2206,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "file": "ui-followup-release-android.log",
+      "sha256": "c6833e5d7281ef3227b9cbd2980306708eb887803b33fd0c8ad8a47ee47a42ca",
+      "TZ": "UTC"
+    }
+  },
+  "cloud": {
+    "passed": 71,
+    "failed": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "file": "ui-followup-cloud.log",
+    "sha256": "083115338a2259ddc50de00bae28342b1e621c7ac7c5eda8b7f64fe115245ac5",
+    "transport": "local Firestore Rules Emulator project demo-liflow-sharing; no production Rules deployment"
+  },
+  "checks": {
+    "lint": {
+      "exitCode": 0,
+      "file": "ui-followup-lint.log",
+      "sha256": "a77a2503351f2fd89bf8e6803026eaf102cb9c13d519308b73aa11d1cf96fd9f"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "file": "ui-followup-types.log",
+      "sha256": "6cb6a659dafff15e79c4a37d4c2735755e7b002f61d2871bc0165257bb2b6598"
+    },
+    "featureContracts": {
+      "before": 330,
+      "current": 333,
+      "allPreviousEntriesDeepEqual": true,
+      "mandatoryCloudCases": 41
+    },
+    "schedulerContracts": [
+      {
+        "version": "liflow-shared-1",
+        "sourceSha256": "78eaf464696f403419280be29036fcfc6bc7ff01bd469788b0e241be41461c07",
+        "timeZoneVersion": "2026e"
+      },
+      {
+        "version": "liflow-shared-2-draft-36",
+        "sourceSha256": "88e863988924c8b6ba4aee14f4150bb9a3122b6ea5cc5f0bed67f4a286dd235b",
+        "timeZoneVersion": "2026e"
+      }
+    ]
+  },
+  "counterexamples": {
+    "firstSevenAddedTestsFailedBeforeChanges": {
+      "file": "ui-followup-before.log",
+      "sha256": "1fdcbacae6ae0eaf9f5116ec9e6c143aac91d8012ab5db52be049a01421ae442"
+    },
+    "concurrentCompletionRecordDisplayCounterexample": {
+      "file": "ui-followup-concurrent-before.log",
+      "sha256": "8a2529677894ae6622bb67ecf4758ecddbe49e1a5430925cb53f1751620b1a0f"
+    },
+    "finalAddedTests": 8,
+    "coverage": [
+      "all nine displayed priority tiers including expired entries on today",
+      "checked overdue card remains visible below pending cards",
+      "in-flight completion and undo update recommendation markers",
+      "per-chore deduplication and regenerated schedule rows",
+      "another persons completion remains checked after targeted undo",
+      "a different occurrence does not keep this one checked",
+      "saved-read failure cannot lose its only recovery action",
+      "a late failed concurrent write cannot hide a saved result",
+      "one hundred read recovery taps share one read",
+      "iOS and Android recovery button wiring and stale controls disabled"
+    ]
+  },
+  "physicalAndroid": {
+    "device": "Sony I4293 / Android 10",
+    "method": "ADB",
+    "pass": true,
+    "scope": "existing synthetic v1 LiFlow-QA workspace",
+    "dataReset": false,
+    "before": [
+      [
+        "トイレを掃除するを完了",
+        "true"
+      ],
+      [
+        "フローリングを掃除するを完了",
+        "true"
+      ],
+      [
+        "キッチンシンクの水アカ除去を完了",
+        "true"
+      ],
+      [
+        "キッチンシンクを日常掃除するを完了",
+        "true"
+      ],
+      [
+        "キッチンワークトップを拭くを完了",
+        "true"
+      ]
+    ],
+    "completed": [
+      [
+        "フローリングを掃除するを完了",
+        "true"
+      ],
+      [
+        "キッチンシンクの水アカ除去を完了",
+        "true"
+      ],
+      [
+        "キッチンシンクを日常掃除するを完了",
+        "true"
+      ],
+      [
+        "キッチンワークトップを拭くを完了",
+        "true"
+      ],
+      [
+        "トイレを掃除するを未完了に戻す",
+        "true"
+      ]
+    ],
+    "restored": [
+      [
+        "トイレを掃除するを完了",
+        "true"
+      ],
+      [
+        "フローリングを掃除するを完了",
+        "true"
+      ],
+      [
+        "キッチンシンクの水アカ除去を完了",
+        "true"
+      ],
+      [
+        "キッチンシンクを日常掃除するを完了",
+        "true"
+      ],
+      [
+        "キッチンワークトップを拭くを完了",
+        "true"
+      ]
+    ],
+    "freshMetroBundleAfterCacheRebuild": true,
+    "screenHierarchyAlwaysFresh": true,
+    "recording": "ui-followup-android-fresh-animation.mp4",
+    "nativeOrderCaptureBeforeConcurrentRecordFeedbackRefinement": true,
+    "lastRefinementScope": "The multiple-active-record prediction boundary was added afterward and verified by both platform suites; layout and the single-completion result remain unchanged.",
+    "files": [
+      {
+        "file": "ui-followup-android-fresh-before.xml",
+        "sha256": "80010815e40fa19c9e4e76c34adaccf3d09e47565fb44400e870a896ebbd8b7e"
+      },
+      {
+        "file": "ui-followup-android-fresh-checked.xml",
+        "sha256": "bf8bbe2deb9d21715a47ef873306dc07069f062b29237abe359252a58727ed10"
+      },
+      {
+        "file": "ui-followup-android-fresh-saved.xml",
+        "sha256": "e6c8ce068057bded5f90bcbde1a9947d84410666ef9a5960f7325e0cc981b710"
+      },
+      {
+        "file": "ui-followup-android-fresh-restored.xml",
+        "sha256": "80010815e40fa19c9e4e76c34adaccf3d09e47565fb44400e870a896ebbd8b7e"
+      },
+      {
+        "file": "ui-followup-android-final-home.xml",
+        "sha256": "69894def4f63cea198723976c7693670ebcd1b780d4da63dc966c693c1772f57"
+      },
+      {
+        "file": "ui-followup-android-fresh-animation.mp4",
+        "sha256": "af562eb592a3f291f21ef6d287e23ab843805b6ef4a8d94e1c4bce2143ed5a31"
+      }
+    ],
+    "displayTurnedOff": true,
+    "observedBatteryPercentAtEnd": 6
+  },
+  "physicalIos": {
+    "device": "iPhone 12 / iOS 26.7.2",
+    "method": "XCTest",
+    "cases": [
+      {
+        "method": "testPostPhase6CalendarApplianceNavigation",
+        "passed": true,
+        "seconds": 27.868,
+        "file": "ui-followup-ios-final.log",
+        "sha256": "d95cebd2e917f97921b112cf8dd2eba9faa26b9442ff9973ee399d8fbd9bbcac"
+      },
+      {
+        "method": "testPostPhase6ReadOnlyBooksAndNavigation",
+        "passed": true,
+        "seconds": 67.264,
+        "file": "ui-followup-ios-final.log",
+        "sha256": "d95cebd2e917f97921b112cf8dd2eba9faa26b9442ff9973ee399d8fbd9bbcac"
+      },
+      {
+        "method": "testPostPhase6PriorityCalendarFollowup",
+        "passed": true,
+        "seconds": 24.917,
+        "file": "ui-followup-ios-priority-release.log",
+        "sha256": "bc2314852b6dc41ca8184be83ca4efa9a8acbc701f878457d6cad4a911d30152"
+      }
+    ],
+    "finalPriorityBundleSucceeded": true,
+    "returnedHomeChores": 5,
+    "returnedHomeCompleted": 0,
+    "multipleRecordBoundary": "Automatic tests; not a new simultaneous-completion device claim.",
+    "finalHomeImage": {
+      "file": "ui-followup-ios-priority-release-files/0F06B829-7451-46A2-BA07-9D2E8708300A.png",
+      "sha256": "13405ba85fad66ab1f48a02abf649cbd59f8118cd6d210afdbc70e8afa8749f4"
+    }
+  },
+  "excludedAttempts": [
+    "An Android development update called a missing new export in the cached runtime. Metro was restarted with cache clearing, the fresh bundle definition/export were inspected, and the same completion/undo path passed afterward.",
+    "The initial Android cold-start harness read an old hierarchy after UIAutomator returned no root. The harness now removes its own old QA XML and requires a fresh hierarchy.",
+    "An iPhone explanation tap remained on Home while shared state changed from zero to one completion. The unsynchronized run is not claimed as a pass; subsequent device operations were serialized.",
+    "The initial iPhone priority test swiped over the tab bar instead of the ScrollView and could not reach undo. The audit scroll start was changed and the test passed with the original state restored.",
+    "One temporary audit edit attempt failed its guard and its attempted result path was excluded. Only explicitly passing test methods are counted; a mixed failed bundle is not treated as fully passing."
+  ],
+  "preservation": {
+    "appOrDatabaseReset": false,
+    "originalCheckoutTouched": false,
+    "untrackedArtifactsStaged": false,
+    "newAIRequestOrApplianceSave": false,
+    "nativeDependencyOrAppConfigChanged": false,
+    "assetChanged": false,
+    "mainMerged": false,
+    "draftReleased": false,
+    "productionRulesOrSchemaChanged": false,
+    "developerToolsRemoved": false,
+    "note": "Verification uses the existing synthetic shared QA workspace; its ordinary completion/undo history is retained. No claim of byte-identical databases after these authorized actions."
+  },
+  "routeInventory": [
+    {
+      "file": "src/app/(tabs)/explore.tsx",
+      "sha256": "fa7e3a27159a3e81b569da671eaa71f19ece305a2e1eca8d33669a65b2d303bd"
+    },
+    {
+      "file": "src/app/(tabs)/guide.tsx",
+      "sha256": "f3590c93b5bc93a74c77c1c5c0dac48bc36324a2ea4e30c4133312b6d7539c1a"
+    },
+    {
+      "file": "src/app/(tabs)/index.tsx",
+      "sha256": "552382f761fa6cab32ea7436ccafaa1f9d7b6985d187515e3e5ce5883bef13d7"
+    },
+    {
+      "file": "src/app/(tabs)/manual/appliance-care.tsx",
+      "sha256": "0bc82b80063960ac73404b425a1979eebc5a7f5680d881916d57a0887bdeb0ff"
+    },
+    {
+      "file": "src/app/(tabs)/manual/appliances/[id]/index.tsx",
+      "sha256": "9222574dabbf20a449e27ba09358711520c61d03e079d90fce3e9c958458172f"
+    },
+    {
+      "file": "src/app/(tabs)/manual/index.tsx",
+      "sha256": "43e53f6340261758f981698f8eb21f357b47b750742e49ffc1ae053b7c9be1b3"
+    },
+    {
+      "file": "src/app/chores/[id].tsx",
+      "sha256": "ad4f63836fad569bd3edf36c86ccf30f67cb39c75940582a93906266062a05fe"
+    },
+    {
+      "file": "src/app/chores/index.tsx",
+      "sha256": "1f40df94030312285b79ef937b6007adf0d740aa706e952a6854ca3a218fb1c5"
+    },
+    {
+      "file": "src/app/group-v2/add-chore.tsx",
+      "sha256": "94923c853b261f7fe9ba6d4951f624b8443d274b2695d9856bd6d4991b43f1d1"
+    },
+    {
+      "file": "src/app/group-v2/appliance-review.tsx",
+      "sha256": "4d022ba894e48da9dae720a9b9e082ab5142eeb8cb3fd6d21ce3e78ba695677b"
+    },
+    {
+      "file": "src/app/group-v2/appliance.tsx",
+      "sha256": "c38a7eb3692027162ee2ee2b49bdc932f19a1684674c65dd89deb0a4819f061c"
+    },
+    {
+      "file": "src/app/group-v2/appliances.tsx",
+      "sha256": "88c1f53b36fdd711541487f3cd463f9fc996b7ce546f3260872b0a0349953a8f"
+    },
+    {
+      "file": "src/app/group-v2/assignment-requests.tsx",
+      "sha256": "4cedfa61c4f004c27f4b7ab0db57d22e1897116cb3f2c9aa3f9d25925a71f077"
+    },
+    {
+      "file": "src/app/group-v2/assignment.tsx",
+      "sha256": "1449272284c30499760027427b11694520292079dc5fa3da33b0e479ad5c4a9f"
+    },
+    {
+      "file": "src/app/group-v2/calendar.tsx",
+      "sha256": "75f88dec63d9beccc9a61631167e8c867f41c249acd8bd601a8b11a246b29325"
+    },
+    {
+      "file": "src/app/group-v2/chores.tsx",
+      "sha256": "910857d8311526a5e84578508f9e87142f418d04393931bfda15a0593e9dc8ff"
+    },
+    {
+      "file": "src/app/group-v2/configuration.tsx",
+      "sha256": "f1e8c80217b0567360f5af4c7b9cdb53036b7bc0318eb039daab630dde449a64"
+    },
+    {
+      "file": "src/app/group-v2/date-rights.tsx",
+      "sha256": "23bd64d4e55d71cc40b4a68c8f7a4d74ed8ad7bc1639b43fd755883d4a76d599"
+    },
+    {
+      "file": "src/app/group-v2/date.tsx",
+      "sha256": "ef6c9e2f80a3c6488f85c6ced6b43a8cbafd232019ec69bdaf2eeaac8b7d93a9"
+    },
+    {
+      "file": "src/app/group-v2/details.tsx",
+      "sha256": "cddd8cac21253a296d99e36c3709f1c52aff6b2a872329f96a5320fa26832ea4"
+    },
+    {
+      "file": "src/app/group-v2/google-tasks.tsx",
+      "sha256": "682a3a0483cf00de32dcb28530b9cb0365c78e5b717bd7e342426e2059b70c84"
+    },
+    {
+      "file": "src/app/group-v2/group-rules.tsx",
+      "sha256": "64eae0c4fa3c25ba79edda09d18ed6602a94e8ba4a4cc22a1b7195c416687b01"
+    },
+    {
+      "file": "src/app/group-v2/history.tsx",
+      "sha256": "9414c4f4f288b67da94d1b283c93e3777dfc2124a36ddf5019a8728af4e11523"
+    },
+    {
+      "file": "src/app/group-v2/index.tsx",
+      "sha256": "5804a12f64287bef65f05bc7bb7d8e5a1d6f36ef71fa8f855d5d1498fe235d3b"
+    },
+    {
+      "file": "src/app/group-v2/notifications.tsx",
+      "sha256": "daedf9bafc0bdae990ae04225989d11eb9516fff36720fa2b3f4d11ed14a3a9f"
+    },
+    {
+      "file": "src/app/group-v2/personal-copy.tsx",
+      "sha256": "dc0867d1d4d5a93018725eebc1a9c996ec4ecb4e53f3cedc31391c0809851c36"
+    },
+    {
+      "file": "src/app/group-v2/requests.tsx",
+      "sha256": "f7141e780884b2dd5a17a9aea06bc2cd3d4c16806f00f848df383b50e86b67a0"
+    },
+    {
+      "file": "src/app/group-v2/round.tsx",
+      "sha256": "940469bf25a9ac9d832478336858b5b2f82fb16a0c67fc2bd7352d558b9a1eac"
+    },
+    {
+      "file": "src/app/group-v2/waste.tsx",
+      "sha256": "b4a3fbac173841b816a7a7f77f425de5e2e4dafc4192596a2ff4788788aac29b"
+    },
+    {
+      "file": "src/app/help.tsx",
+      "sha256": "5f9d2fe31badbf585b01cffbb5aaaadcb973f6cbcdd5018e4faa665f3dd8dd4e"
+    },
+    {
+      "file": "src/app/history.tsx",
+      "sha256": "ec045cc06e44c7110bc30397b462bda21d4a923972b438f11d49f1a4356c1d83"
+    },
+    {
+      "file": "src/app/settings/chore/[id].tsx",
+      "sha256": "b89104d0e70fd093593b90f1d219ad5108f95ba0bb515ba689a67799dda27592"
+    },
+    {
+      "file": "src/app/settings.tsx",
+      "sha256": "1b47dbaab9c3281b2401370a90902e72d155976ebf9138266f0e8c877ae78c26"
+    },
+    {
+      "file": "src/app/sharing/index.tsx",
+      "sha256": "4f43e88c8f9c55a521e11f314979c0532e709c09a59c2b877978f619822083f5"
+    },
+    {
+      "file": "src/app/sharing/join.tsx",
+      "sha256": "68c4786fcf92ce06bf3dd24fa2c31525256f3d464fc314007a5c2c0dadf7e66d"
+    },
+    {
+      "file": "src/app/sharing/personal-preferences.tsx",
+      "sha256": "b2333c98941950278b1f6381996a40707f9efd332feb2e918ff4db53c04a2b03"
+    },
+    {
+      "file": "src/app/sharing/private-calendar-source.tsx",
+      "sha256": "f821e258b2533b0fa4d99207b23e29aa6f73839b6991d439ccd2184aa144b83b"
+    },
+    {
+      "file": "src/app/sharing/private-calendar.tsx",
+      "sha256": "cb0fe3873a93bb30ebc0772ba4309b903423aae4734a9f857fbd508f0b18a9e3"
+    },
+    {
+      "file": "src/app/waste.tsx",
+      "sha256": "866b8ab4cae746b6d111f96ce6e82a0be4973fae4f03183e6b12f2a39c382668"
+    }
+  ],
+  "routeInventoryMeaning": "39 production TSX route screens inventoried plus shared controls; not every route at every data volume or font scale manually exercised on both devices.",
+  "changedSourceManifest": [
+    {
+      "file": "docs/feature-contracts.json",
+      "sha256": "86b272304c2ac4cd4970a45fa944004a0edbbbe23fb78e2bc1e58bb9705c46eb"
+    },
+    {
+      "file": "src/app/(tabs)/explore.tsx",
+      "sha256": "fa7e3a27159a3e81b569da671eaa71f19ece305a2e1eca8d33669a65b2d303bd"
+    },
+    {
+      "file": "src/app/(tabs)/index.tsx",
+      "sha256": "552382f761fa6cab32ea7436ccafaa1f9d7b6985d187515e3e5ce5883bef13d7"
+    },
+    {
+      "file": "src/app/(tabs)/manual/appliance-care.tsx",
+      "sha256": "0bc82b80063960ac73404b425a1979eebc5a7f5680d881916d57a0887bdeb0ff"
+    },
+    {
+      "file": "src/components/chevron.tsx",
+      "sha256": "603fc1114797f073abc78ccf2f030504b3749829615a9464e461cf0c846d73bc"
+    },
+    {
+      "file": "src/components/planner-ui.tsx",
+      "sha256": "97ed35ffdfe76f9eec7f55153b357ab37e1df5a6f9c6e434269bd8f011ebd5e3"
+    },
+    {
+      "file": "src/domain/calendar/day-entries.ts",
+      "sha256": "a7fd5c90adb0140774ecba7585df77703b98bdc7805e2176c53d46b8587a6de3"
+    },
+    {
+      "file": "src/features/planner/task-mutations.ts",
+      "sha256": "eba67de547f5f50f6a7c940f149db3cb0863795609129cd17294e6c212f685de"
+    },
+    {
+      "file": "tests/mobile-ui-recovery.test.mjs",
+      "sha256": "a5c136c49bfb005fce3d43eca717b9c6d7874d744b2ab32d7540e8262786656a"
+    }
+  ]
+}

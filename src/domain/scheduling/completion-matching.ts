@@ -2,18 +2,22 @@ import type { ChoreCompletion, ChoreScheduleEntry } from '@/domain/chores/types'
 import type { LocalDate } from '@/domain/shared/types';
 import { localDateFromISODateTime } from './local-date.ts';
 
-type CompletionTiming = Pick<ChoreCompletion, 'completedAt' | 'scheduledDate' | 'scheduledWindowStart'>;
+type CompletionTiming = Pick<ChoreCompletion, 'completedAt' | 'completedLocalDate' | 'scheduledDate' | 'scheduledWindowStart'>;
+
+export function completionRecordedDate(completion: Pick<ChoreCompletion, 'completedAt' | 'completedLocalDate'>): LocalDate {
+  return completion.completedLocalDate ?? localDateFromISODateTime(completion.completedAt);
+}
 
 export function completionWasRecordedBeforeWindow(completion: CompletionTiming): boolean {
   const windowStart = completion.scheduledWindowStart ?? completion.scheduledDate;
-  return Boolean(windowStart && localDateFromISODateTime(completion.completedAt) < windowStart);
+  return Boolean(windowStart && completionRecordedDate(completion) < windowStart);
 }
 
 /** Future occurrences advance their cycle on the scheduled day, while keeping the actual recording time. */
 export function completionCycleDate(completion: CompletionTiming): LocalDate {
   return completionWasRecordedBeforeWindow(completion)
     ? (completion.scheduledDate ?? completion.scheduledWindowStart)!
-    : localDateFromISODateTime(completion.completedAt);
+    : completionRecordedDate(completion);
 }
 
 export function completionMatchesEntry(
@@ -29,12 +33,12 @@ export function completionMatchesEntry(
       && (!completion.scheduledWindowEnd || completion.scheduledWindowEnd === entry.windowEnd);
   }
 
-  const completedDate = localDateFromISODateTime(completion.completedAt);
+  const completedDate = completionRecordedDate(completion);
   return completedDate >= entry.windowStart && completedDate <= entry.windowEnd;
 }
 
 export function completionPeriod(completion: ChoreCompletion): { start: LocalDate; end: LocalDate } {
-  const fallback = completion.scheduledDate ?? localDateFromISODateTime(completion.completedAt);
+  const fallback = completion.scheduledDate ?? completionRecordedDate(completion);
   return {
     start: completion.scheduledWindowStart ?? fallback,
     end: completion.scheduledWindowEnd ?? fallback,
@@ -45,5 +49,5 @@ export function completionIncludesDate(completion: ChoreCompletion, date: LocalD
   if (completion.outcome !== 'completed') return false;
   const period = completionPeriod(completion);
   return (date >= period.start && date <= period.end)
-    || (!completionWasRecordedBeforeWindow(completion) && localDateFromISODateTime(completion.completedAt) === date);
+    || (!completionWasRecordedBeforeWindow(completion) && completionRecordedDate(completion) === date);
 }

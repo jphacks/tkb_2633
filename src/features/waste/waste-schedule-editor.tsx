@@ -1,5 +1,7 @@
+import { Chevron } from '../../components/chevron';
+import { FormTextInput as TextInput } from '../../components/form-text-input';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { NumberInputField } from '@/components/number-input-field';
 
 import { AppButton, Card, ChoiceChip, SectionHeading, palette, typography } from '@/components/planner-ui';
@@ -11,19 +13,21 @@ import { searchWasteTypes } from './waste-types';
 import { wasteTypeColor } from './type-appearance';
 
 /** The same editor is used in first-run setup and settings so the supported modes cannot drift. */
-export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = false }: {
+export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = false, referenceDate }: {
   initial?: WasteScheduleInput;
   onSubmit: (schedule: WasteScheduleInput) => Promise<void>;
   onCancel?: () => void;
   disabled?: boolean;
+  referenceDate?: LocalDate;
 }) {
-  const today = localDateFromDate(new Date());
-  const [query, setQuery] = useState(initial?.label ?? '');
-  const [label, setLabel] = useState<string | null>(initial?.label ?? null);
-  const [recurrence, setRecurrence] = useState<WasteRecurrence>(initial?.recurrence ?? 'weekly');
-  const [weekdays, setWeekdays] = useState<Weekday[]>([...(initial?.collectionWeekdays ?? [])]);
-  const [anchorDate, setAnchorDate] = useState<LocalDate | undefined>(initial?.anchorDate);
-  const [monthlyDay, setMonthlyDay] = useState(String(initial?.monthlyDay ?? Number(today.slice(-2))));
+  const today = referenceDate ?? localDateFromDate(new Date());
+  const [form, setForm] = useState(() => ({ query: initial?.label ?? '', label: initial?.label ?? null as string | null,
+    recurrence: initial?.recurrence ?? 'weekly' as WasteRecurrence, weekdays: [...(initial?.collectionWeekdays ?? [])] as Weekday[],
+    anchorDate: initial?.anchorDate, monthlyDay: String(initial?.monthlyDay ?? Number(today.slice(-2))) }));
+  const draft = useRef(form);
+  // Event handlers can run before React paints the preceding input event.
+  const update = (patch: Partial<typeof form>) => { draft.current = { ...draft.current, ...patch }; setForm(draft.current); };
+  const { query, label, recurrence, weekdays, anchorDate, monthlyDay } = form;
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,31 +38,32 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
   const canSave = Boolean(label && (recurrence === 'monthly' ? validMonthlyDay : weekdays.length && (recurrence !== 'biweekly' || anchorDate)));
 
   const changeRecurrence = (value: WasteRecurrence) => {
-    if (value === recurrence) return;
-    setRecurrence(value);
+    const current = draft.current;
+    if (locked || value === current.recurrence) return;
     setError(null);
     if (value === 'biweekly') {
-      setWeekdays(weekdays.slice(0, 1));
-      setAnchorDate(nextDate);
-    } else setAnchorDate(value === 'monthly' ? today : undefined);
+      update({ recurrence: value, weekdays: current.weekdays.slice(0, 1), anchorDate: current.weekdays[0] ? nextWasteWeekday(today, current.weekdays[0]) : undefined });
+    } else update({ recurrence: value, anchorDate: value === 'monthly' ? today : undefined });
   };
   const toggleWeekday = (day: Weekday) => {
-    if (recurrence === 'biweekly') {
-      const remove = weekdays.includes(day);
-      setWeekdays(remove ? [] : [day]);
-      setAnchorDate(remove ? undefined : nextWasteWeekday(today, day));
-    } else setWeekdays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort());
+    if (locked) return;
+    const current = draft.current;
+    if (current.recurrence === 'biweekly') {
+      const remove = current.weekdays.includes(day);
+      update({ weekdays: remove ? [] : [day], anchorDate: remove ? undefined : nextWasteWeekday(today, day) });
+    } else update({ weekdays: current.weekdays.includes(day) ? current.weekdays.filter(item => item !== day) : [...current.weekdays, day].sort() });
   };
   const save = async () => {
-    if (locked || savingRef.current || !canSave || !label) return;
+    const current = draft.current;
+    if (locked || savingRef.current || !current.label) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
-      await onSubmit(normalizeWasteSchedule({ id: initial?.id, label, collectionWeekdays: weekdays, recurrence,
-        anchorDate, ...(recurrence === 'monthly' ? { monthlyDay: Number(monthlyDay) } : {}) }));
-      setQuery(''); setLabel(null); setWeekdays([]); setRecurrence('weekly'); setAnchorDate(undefined);
-      setMonthlyDay(String(Number(today.slice(-2))));
+      if (current.recurrence === 'monthly' && !/^\d{1,2}$/.test(current.monthlyDay)) throw new RangeError('毎月の収集日を1〜31日の整数で入力してください');
+      await onSubmit(normalizeWasteSchedule({ id: initial?.id, label: current.label, collectionWeekdays: current.weekdays, recurrence: current.recurrence,
+        anchorDate: current.anchorDate, ...(current.recurrence === 'monthly' ? { monthlyDay: Number(current.monthlyDay) } : {}) }));
+      update({ query: '', label: null, weekdays: [], recurrence: 'weekly', anchorDate: undefined, monthlyDay: String(Number(today.slice(-2))) });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '収集日を保存できませんでした。');
     } finally { savingRef.current = false; setSaving(false); }
@@ -68,19 +73,19 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
     <Card>
       <SectionHeading title={initial ? '収集日を編集' : '収集日を追加'} />
       <TextInput accessibilityLabel="ゴミの種類" value={query} editable={!locked}
-        onChangeText={(value) => { setQuery(value); setLabel(null); setError(null); }} maxLength={80}
+        onChangeText={(value) => { update({ query: value, label: null }); setError(null); }} maxLength={80}
         placeholder="ゴミの種類（例：可燃ゴミ）" placeholderTextColor={palette.muted} style={styles.input} returnKeyType="done" />
       {label ? (
-        <View style={[styles.selection, { borderColor: wasteTypeColor(label) }]}><Text style={[styles.selectionText, { color: wasteTypeColor(label) }]}>{label}</Text><AppButton title="選び直す" onPress={() => setLabel(null)} variant="quiet" compact disabled={locked} /></View>
+        <View style={[styles.selection, { borderColor: wasteTypeColor(label) }]}><Text style={[styles.selectionText, { color: wasteTypeColor(label) }]}>{label}</Text><AppButton title="選び直す" onPress={() => update({ label: null })} variant="quiet" compact disabled={locked} /></View>
       ) : query.trim() ? (
         <View style={styles.suggestions}>
           <Text style={styles.label}>候補を選択</Text>
           {candidates.map((candidate) => <Pressable key={candidate.label} accessibilityRole="button" accessibilityLabel={`${candidate.label}を選択`} disabled={locked}
-            onPress={() => { setQuery(candidate.label); setLabel(candidate.label); }} style={styles.candidate}>
-            <Text style={[styles.candidateText, { color: wasteTypeColor(candidate.label) }]}>{candidate.label}</Text><Text style={styles.arrow}>›</Text>
+            onPress={() => update({ query: candidate.label, label: candidate.label })} style={styles.candidate}>
+            <Text style={[styles.candidateText, { color: wasteTypeColor(candidate.label) }]}>{candidate.label}</Text><Chevron />
           </Pressable>)}
-          {!candidates.length ? <Pressable accessibilityRole="button" disabled={locked} onPress={() => { setQuery(query.trim()); setLabel(query.trim()); }} style={styles.candidate}>
-            <Text style={styles.candidateText}>「{query.trim()}」を使う</Text><Text style={styles.arrow}>›</Text>
+          {!candidates.length ? <Pressable accessibilityRole="button" disabled={locked} onPress={() => update({ query: query.trim(), label: query.trim() })} style={styles.candidate}>
+            <Text style={styles.candidateText}>「{query.trim()}」を使う</Text><Chevron />
           </Pressable> : null}
         </View>
       ) : null}
@@ -94,7 +99,7 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
       {recurrence === 'monthly' ? (
         <>
           <View style={styles.monthlyRow}><Text style={styles.label}>毎月の収集日</Text>
-            <NumberInputField accessibilityLabel="毎月の収集日" value={monthlyDay} editable={!locked} onChangeText={setMonthlyDay} maxLength={2} />
+            <NumberInputField accessibilityLabel="毎月の収集日" value={monthlyDay} editable={!locked} onChangeText={value => update({ monthlyDay: value })} maxLength={2} />
           </View>
           <Text style={styles.body}>指定した日がない月は、月末に表示します。</Text>
         </>
@@ -115,7 +120,7 @@ export function WasteScheduleEditor({ initial, onSubmit, onCancel, disabled = fa
           <Text style={styles.label}>次に収集する週</Text>
           <View style={styles.chips}>{[nextDate, addDays(nextDate, 7)].map((date) => <ChoiceChip key={date}
             label={formatJapaneseDate(date, { weekday: true })} selected={Boolean(anchorDate && daysBetween(anchorDate, date) % 14 === 0)}
-            onPress={() => { if (!locked) setAnchorDate(date); }} />)}</View>
+            onPress={() => { if (!locked) update({ anchorDate: date }); }} />)}</View>
           <Text style={styles.body}>選んだ日を基準に、2週間ごとに表示します。</Text>
         </>
       ) : null}

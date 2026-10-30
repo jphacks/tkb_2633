@@ -12,7 +12,11 @@
 | 5 Calendar・Tasks・本人端末 | 本人専用鍵・端末承認・手動取得／暗号化同期と本人推奨へ接続。実Google読取は両実機で確認 | 起動・前景／単一worker、本人設定とv2 Tasksを接続。両実機でTasksの双方向変更・期日・cold復元を確認。時刻なしは最新D10の負荷確認のみ。通常v2の両実機総合は[完了記録](13-phase6-native-group-completion.md)に範囲を記載 |
 | 6 総合回帰 | 完了（新規v2の開発検査、D10/D11反映） | 各OS2,180件・Emulator71件・326契約。通常Session／画面の両実機同一グループ、cold・同時操作・競合・失効を照合。[検査範囲と証拠](13-phase6-native-group-completion.md) |
 
-## 最新：Phase 6後のUI回帰
+## 最新：2026-10-30のRelease・自然実行検査
+
+通常利用をv2へ統一し、既存の検査用v1グループの設定・履歴もv2へ引き継いだ。正本は`main`。両OS各2,325件・Firestore結合87件・359機能契約・必須Cloud52参照、lint・型検査が通過した。Release両実機で起動・移行済みグループ・カレンダー・設定を確認し、OSの自然実行による共有家事のAndroid送信／iPhone受信を1件確認した。受付から受信確認までは約1時間48分。即時反映や全送受信方向の保証ではない。[v2への統一](21-v2-only-and-release-validation.md)と[実測結果・限界](22-background-followup-audit.md)を参照。以下のPhase表・各段階は当時の進捗を保持している。
+
+## Phase 6後のUI回帰（当時の記録）
 
 [最初のモバイルUI検査](14-mobile-ui-review.md)と[追加の再点検](15-mobile-ui-followup.md)。UTC環境でiOS条件2,206/2,206、Android条件2,206/2,206、Emulator71/71、lint・型検査。依存関係は前回のExpo Doctor20/20から変更なし。既存330契約をそのまま保持し333へ拡張。ホーム、9段階の順序と即時反応、分類／個別スイッチ、仮想化した連結設定・説明、固定Back、入力・手順・矢印、家電導線とアイコンを調整した。両実機の主要導線を確認し、Nativeパッチ更新時は起動前のSQLite関連201ファイルの一致を照合した。Phase 6の開発完了と公開前の別条件は変更しない。
 

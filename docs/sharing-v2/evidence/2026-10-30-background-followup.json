@@ -32,21 +32,51 @@
     "Persist an account-local last-attempt cursor so bounded sync resumes with later groups across process restarts."
   ],
   "naturalBackground": {
-    "status": "not passed; first one-hour window retained as incomplete",
+    "status": "observed: Android natural outbound to iPhone natural inbound",
     "forcedInvocationUsed": false,
+    "releaseSourceCommit": "ef2542801574ccebd6115d959b583c9144df9c4c",
+    "developmentServerStopped": true,
     "android": {
-      "osJobStarted": true,
-      "nativeReportedSuccess": true,
-      "actualSharedAckAdvanced": false,
-      "releaseCallbackRecordedAt": "2026-10-30T07:02:24Z"
+      "direction": "outbound",
+      "workerStartedAt": "2026-10-30T08:03:00.704Z",
+      "serverSequence": 32,
+      "serverAcknowledgedAt": "2026-10-30T08:03:33.781Z",
+      "workerFinishedAt": "2026-10-30T08:03:44.026Z",
+      "nativeReleaseAuditVerified": true,
+      "outboxAfterward": 0,
+      "wholeWorkerSeconds": 43.322
     },
     "ios": {
-      "releaseCallbackStartedAt": "2026-10-30T07:06:38.141Z",
-      "finishedByReadOnlyObservation": false,
-      "sharingPhase": "pending",
-      "pendingUndoRetained": true
+      "direction": "inbound",
+      "firstCorrectedPass": {
+        "workerStartedAt": "2026-10-30T08:49:39.599Z",
+        "workerFinishedAt": "2026-10-30T08:50:09.127Z",
+        "servicedOtherGroup": true,
+        "targetSequenceStill": 31
+      },
+      "workerStartedAt": "2026-10-30T09:50:54.931Z",
+      "localSequence": 32,
+      "localSuccessfulSyncAt": "2026-10-30T09:51:03.656Z",
+      "serverAcknowledgedAt": "2026-10-30T09:51:13.169Z",
+      "workerFinishedAt": "2026-10-30T09:51:25.240Z",
+      "nativeReleaseAuditVerified": true,
+      "wholeWorkerSeconds": 30.309,
+      "localIntegrity": "ok",
+      "acceptedOperations": 32,
+      "serverReceiptCount": 32,
+      "rejectedOperations": 0,
+      "pendingProjectionOperations": 0,
+      "outbox": 0,
+      "activeAndroidCompletionCount": 1,
+      "appNotForegroundedUntilReadOnlyProofCaptured": true
     },
-    "followup": "Rebuild and install the corrected Release code without resetting data, verify foreground behavior and repeat natural execution."
+    "androidReceiptToIosAckSeconds": 6459.388,
+    "limits": [
+      "One observed shared-completion transfer, Android outbound and iPhone inbound; not proof of all directions or future runs.",
+      "No deadline or frequency guarantee; a previous iPhone pass serviced another group and resumed the target in a later OS window.",
+      "Calendar-only runtime and Google Tasks/Calendar simultaneous natural synchronization are not established by this shared-completion case.",
+      "Not a Background Push test; APNs/FCM delivery is not implemented."
+    ]
   },
   "scope": [
     "No Firestore Rules or cryptographic protocol changes.",
@@ -69,6 +99,34 @@
     "savedWifiReconnectedAndValidated": true,
     "baselineObservedAt": "2026-10-30T08:00:30.540Z",
     "baselineSequence": 31,
-    "naturalExecutionResult": "pending; do not infer OS-origin synchronization from radio reconnection alone"
+    "naturalExecutionResult": "observed: Android outbound and iPhone inbound, matching server acknowledgment and native Release audit"
+  },
+  "initialObservation": {
+    "status": "not passed; first one-hour window retained as incomplete",
+    "forcedInvocationUsed": false,
+    "android": {
+      "osJobStarted": true,
+      "nativeReportedSuccess": true,
+      "actualSharedAckAdvanced": false,
+      "releaseCallbackRecordedAt": "2026-10-30T07:02:24Z"
+    },
+    "ios": {
+      "releaseCallbackStartedAt": "2026-10-30T07:06:38.141Z",
+      "finishedByReadOnlyObservation": false,
+      "sharingPhase": "pending",
+      "pendingUndoRetained": true
+    },
+    "followup": "Rebuild and install the corrected Release code without resetting data, verify foreground behavior and repeat natural execution."
+  },
+  "cleanup": {
+    "ownerUndoPerformedThroughNormalForegroundUI": true,
+    "serverSequenceAfterUndo": 33,
+    "iosAcknowledgedAt": "2026-10-30T09:57:43.224Z",
+    "androidForegroundAcknowledgedAt": "2026-10-30T10:04:49.105Z",
+    "bothDevicesShowTestChoreIncompleteAndOutboxZero": true,
+    "naturalProofCapturedBeforeCleanup": true,
+    "personalBusinessTablesUnchanged": 10,
+    "personalCompletionCountUnchanged": 13,
+    "personalIntegrity": "ok"
   }
 }

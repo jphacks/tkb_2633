@@ -30,7 +30,7 @@ Androidでは、バックグラウンドで待機処理が止まるSDKの互換�
 
 [グループv2仕様](docs/sharing-v2/01-specification.md)に基づく拡張は別段階で開発しています。共通枠・担当・日時権限、schema2の保存、受信業務権限、申請・承認による正式予定、署名付きSnapshotと通常画面を接続しました。本人専用Calendarと休日・実施可能時間帯には、グループとは別の暗号化・承認端末・同期経路を設けています。独立した合成データで、iPhone・Android 10間の転送、競合確認、通信障害後の再送を検査しました。端末別の共有通知とv2 Tasksを通常画面・既存workerへ接続し、通知予約は両実機、Tasksの双方向完了・取消、同じIDの期日変更、再起動後の保持は両実機の合成3件で確認しました。個人設定のコピーは、明示確認・過去履歴の非公開・元DBの保持と、両実機で確認中／追加後の再起動・二重追加防止を検査しました。初期OFFの受信時完了通知を接続し、両実機で合成1件のOS表示・内容照合・検査分だけの削除を確認しました。時刻未設定の個人家事は時間帯の競合・移動から外し、日単位の負荷確認と上限以上の案内・端末通知へ変更しました。通常v2のSession・画面・暗号化送受信を使い、ローカルRules Emulatorへ接続した両実機で、同一グループの参加・同時完了・対象取消・再起動・競合解決・除名と鍵更新を確認しました。Phase 6の開発検査を完了しました。続く[モバイルUI調整](docs/sharing-v2/14-mobile-ui-review.md)では、9段階の並び順と即時完了、分類・家事スイッチ、連結した説明・設定と固定Backを実装し、両実機の主要導線を再確認しました。[追加のUI再点検](docs/sharing-v2/15-mobile-ui-followup.md)では、通常カレンダーの今日の期限超過家事も9段階の一覧へまとめ、保存後の読込失敗からの復旧と点・棒の即時更新を修正しました。所有者の確認付きの隔離・復旧を追加し、既存のFirestoreへv2・復旧用Rulesを配備しました。共有はv2のみとし、復旧用の追加通信を停止する設定は残しています。[通常接続への切替と確認範囲](docs/sharing-v2/20-v2-default-and-live-rollout.md)を記録しています。最新の回帰は各OS2,325件、Firestore結合87件、359機能契約・必須Cloud52参照です。既存の検査用v1グループの設定・履歴もv2へ移行し、両実機のRelease版で確認しました。[v2への統一とRelease検査](docs/sharing-v2/21-v2-only-and-release-validation.md)に、保持データと背景同期の検証範囲を記録しています。[追加の動作検査](docs/sharing-v2/22-background-followup-audit.md)では、同期失敗の成功扱いと、後ろのグループが処理されなくなる経路を修正しました。[進捗と検査範囲](docs/sharing-v2/05-progress.md)を参照してください。
 
-OSによる自然なBackgroundTask実行、独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
+Release両実機で、OSによる自然実行中の共有家事のAndroid送信・iPhone受信を1件確認しました。即時反映や毎回の実行を保証する結果ではありません。[実測時刻と検証範囲](docs/sharing-v2/22-background-followup-audit.md)を記録しています。独立した外部セキュリティ監査は未完了です。Apple認証の実サービス設定はDeveloper Program契約待ちです。完成済み機能としての一般公開はまだ行いません。[設計・検証状況と残る作業](docs/shared-groups-design.md)を参照してください。
 
 ---
 
@@ -664,7 +664,7 @@ expo prebuild --platform android
 
 [保存・通知・家電APIなどの追加調査](docs/reliability-audit-2026-10-26.md)では、保存の終了経路、再入による同時書き込み、通知の部分失敗、iOSウィジェットの操作確認、古い履歴、APIの入力・受信上限、天気キャッシュを検査しました。100テストを追加し、既存の36保護項目を保持した上で43項目へ増やしています。Androidの初期設定・ゴミ・通知配信・家電AI登録と、iOSのXCTestによる8シナリオも確認しています。
 
-iPhone 12の署名付きRelease版で、開発サーバー停止中の起動、初期設定、無効家事の有効化、周期の自動保存、完了・取り消しを確認しました。[LiFlowの名前・アイコンと実機検査](docs/liflow-branding-2026-10-26.md)に記録しています。Sony I4293（Android 10）でもRelease版の初期設定・保存・完了/取消・ゴミと、実Googleへの接続・Calendar取得を確認しました。[Android実機の検証範囲と修正](docs/android-physical-10-audit-2026-10-26.md)に記録しています。最新v2のRelease版で通常操作と既存検査グループの移行を検査し、OSに任せる背景同期の長時間検査を進めています。[対象と現在の結果](docs/sharing-v2/21-v2-only-and-release-validation.md)を参照してください。
+iPhone 12の署名付きRelease版で、開発サーバー停止中の起動、初期設定、無効家事の有効化、周期の自動保存、完了・取り消しを確認しました。[LiFlowの名前・アイコンと実機検査](docs/liflow-branding-2026-10-26.md)に記録しています。Sony I4293（Android 10）でもRelease版の初期設定・保存・完了/取消・ゴミと、実Googleへの接続・Calendar取得を確認しました。[Android実機の検証範囲と修正](docs/android-physical-10-audit-2026-10-26.md)に記録しています。最新v2のRelease版で通常操作と既存検査グループの移行を検査し、OSに任せる共有家事のAndroid送信・iPhone受信を1件確認しました。[対象と現在の結果](docs/sharing-v2/21-v2-only-and-release-validation.md)を参照してください。
 
 ---
 
@@ -1013,7 +1013,7 @@ Android実機の家電AIは、開発ビルドからUSB経由の実APIで解析�
 
 ### BackgroundTask
 
-OSに任せるBackgroundTaskの長時間実機検査は実施中です。最小60分の指定が定時実行を保証するわけではありません。[検査記録](docs/sharing-v2/21-v2-only-and-release-validation.md)で、自然実行と開発用強制実行を区別しています。
+Release両実機で、OSの自然実行による共有家事のAndroid送信・iPhone受信を1件確認しました。この検査では送信受付から受信確認まで約1時間48分かかりました。最小60分の指定が定時実行や即時反映を保証するわけではありません。[実測記録](docs/sharing-v2/22-background-followup-audit.md)で、自然実行、前景での同期、開発用強制実行を区別しています。
 
 アプリ起動・foreground復帰・手動同期でも状態を再確認します。
 

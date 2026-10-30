@@ -31,7 +31,7 @@
 - AndroidのSQLiteは通常の絶対パス、FileSystemはfile URIを要求するため、境界で変換する。Android 10の `/data/user/0` と `/data/data`、iOSの `/var` と `/private/var` の同一コンテナ表記を区別して照合する。他アプリや別ユーザーの領域は認めない。
 - Firestore用のRules、暗号文の送受信、招待・承認・退出、鍵の更新、Snapshotを実装し、ローカルFirestoreで権限と通信を検査した。Rulesとindex除外は実際のFirebaseプロジェクトへ配備済み。共有UI・repository・workerにも接続した。実サービスでの画面検査とローカルFirestore検査は区別する。
 - 所有者の退出は、所有権の引き継ぎと後任による鍵更新を分ける。退出する端末自身が退出後の鍵を作る構造は採用しない。
-- 接続とロックの解消後、XCTestとADBで実Googleアカウント・本番Firestoreの共有UIを検査した。アプリ内診断、ローカルFirestore検査、実サービスの画面検査を区別して記録する。自然なOSバックグラウンド実行と独立した外部監査は未完了。
+- 接続とロックの解消後、XCTestとADBで実Googleアカウント・本番Firestoreの共有UIを検査した。アプリ内診断、ローカルFirestore検査、実サービスの画面検査を区別して記録する。自然なOS実行による共有家事のAndroid送信・iPhone受信をRelease両実機で1件確認した。[実測範囲](sharing-v2/22-background-followup-audit.md)を参照。独立した外部監査は未完了。
 
 ### ネイティブ認証の追加監査
 
@@ -101,7 +101,7 @@ Google Tasksへの出力はユーザー・グループごとの別リストと�
 - SQLiteの既存データ保持、設定の競合、完了/取り消し、重複・逆順、100件ページング、送信途中の失敗、再起動、Snapshot復旧、鍵更新、所有権の引き継ぎ、同一アカウントの別端末承認、除名・再参加を自動検査する。
 - ローカルFirestoreの**実際のSecurity Rules**を使う20件の結合テストを通過した。これはFirebase本番の実アカウントE2Eの代わりではない。
 - 両物理端末の暗号・安全な保存・SQLite・タイムゾーン計算を検査した。ローカルFirestoreでは同時完了、取り消し、競合と解決、Snapshot復旧、再起動で状態一致を確認。続けて実Googleアカウント・本番Firestoreでも、グループ作成、確認番号を照合する承認、有効化・周期変更、完了・取消、オフライン保存と再送、共有グループの起動時復元、所有者引き継ぎ、両OSのQR読取り、除名と再参加を画面操作で確認した。詳細は[実機相互運用の記録](shared-native-interoperability-2026-10-27.md)。
-- 物理端末でOSに長時間任せるBackgroundTask、Apple実アカウント認証、有料Apple Developer Programの設定、外部による独立した暗号監査は未実施。
+- OSに任せる共有家事のAndroid送信・iPhone受信をRelease両実機で1件確認した。実行時刻・頻度・全方向の保証ではない。Apple実アカウント認証、有料Apple Developer Programの設定、外部による独立した暗号監査は未実施。
 - Android実機の強制worker起動では、SDKのheadless taskが早期終了してJSの待機が停止する問題を修正し、アプリを裏へ回したまま変更の受信とnative task終了を確認した。iPhone実機でも開発用強制起動APIから共通workerの完了を確認した。自然なOS起動の検証とは区別する。
 - 不正な暗号文・署名は拒否して同期を停止する。承認済みの悪意あるメンバーが不正なイベントを送って同期を妨げる場合の、所有者による隔離・修復フローは未実装。検出できることと、その状態から復旧できることを分ける。
 - [依存関係対策](dependency-security-2026-10-27.md)でZod 4.6.7・node-forge 1.4.1の公式修正版へ更新し、npm auditの既知警告は0件となった。共有暗号にnode-forgeは使用しない。

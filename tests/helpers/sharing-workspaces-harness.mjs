@@ -1,3 +1,4 @@
+import * as liveMigration from '../../src/features/sharing/v2/live-legacy-migration.ts';
 import { createDatabase } from './sqlite.mjs';
 import { loadNativeModule } from './native-module.mjs';
 import { sharingTestCrypto as crypto } from './sharing-crypto.mjs';
@@ -54,6 +55,7 @@ export async function workspaceHarness({ pending = false, version = 2, cloud: ov
       openSharingV2Database: async (...scope) => { calls.push(['v2-open', ...scope]); return create().database; } },
     './firestore-cloud.ts': { createSharingCloud: (_store, _uid, _guard, options) => { cloudOptions.push(options); cloud.ownerRecoveryEnabled = options.ownerRecoveryEnabled; return cloud; } }, '../../features/sharing/roster.ts': rosters,
     '../../features/sharing/rollout.ts': rollout,
+    '../../features/sharing/v2/live-legacy-migration.ts': liveMigration,
     '../../features/sharing/operations.ts': operations, '../../features/sharing/crypto.ts': keys,
     '../../features/sharing/workspace-protocol.ts': protocols, '../../features/sharing/v2/workspace-session.ts': sessionFactory,
     '../../features/sharing/v2/view-point.ts': point, '../../features/sharing/synchronizer.ts': synchronizer,

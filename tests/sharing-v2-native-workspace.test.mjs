@@ -7,6 +7,7 @@ import { withSharingLedgerTransaction } from '../src/platform/storage/sharing-le
 import { readSharingWorkspace, updateSharingWorkspace } from '../src/platform/storage/sharing-registry.ts';
 import { approveSharedDevice, upgradeSharedRoster } from '../src/features/sharing/roster.ts';
 import { rosterCloudFields } from '../src/features/sharing/cloud-contract.ts';
+import { encodeSharedInvitation } from '../src/features/sharing/invitations.ts';
 import { signSharedDocument } from '../src/features/sharing/crypto.ts';
 
 for (const [flag, expected, name] of [[undefined, true, 'normal v2 workspace enables owner recovery by default without changing its stored events'],
@@ -246,4 +247,18 @@ test('a local commit during a bounded v2 sync cannot escape the worker through i
     assert.equal(reads, 1); assert.equal(h.reminderCalls.includes('factory'), false);
     assert.equal((await workspace.readOverview()).chores.find(row => row.id === choreId).name, 'worker中の保存', 'the local edit stays durable for the next sync');
   } finally { Date.now = previousNow; await h.close(); }
+});
+
+test('a removed native workspace preserves its history and requests a fresh generation without serializing an undefined migration pin', async () => {
+  const h = await workspaceHarness({ pending: true, deferWorkspaceTimers: true });
+  try {
+    await updateSharingWorkspace(h.index.database, h.record.userId, h.record.groupId, record => ({ ...record, status: 'removed',
+      v2Migration: { databaseGeneration: 'prior-conversion', sourceSnapshotDigest: 'a'.repeat(64), witnessDigest: 'b'.repeat(64) } }));
+    const workspace = await h.api.requestSharingWorkspace(encodeSharedInvitation(h.link));
+    assert.equal(workspace.protocol, null);
+    const stored = await readSharingWorkspace(h.index.database, h.record.userId, h.record.groupId);
+    assert.equal(stored.status, 'joining'); assert.ok(stored.localGeneration); assert.deepEqual(stored.archivedLocalGenerations, ['initial']);
+    assert.equal('v2Migration' in stored, false); assert.deepEqual(stored.anchor, h.record.anchor);
+    assert.equal(h.calls.includes('legacy-open'), false); assert.equal(h.calls.some(call => Array.isArray(call) && call[0] === 'v2-open'), false);
+  } finally { await h.close(); }
 });

@@ -58,10 +58,10 @@ function GroupChoreSettings({ selection }: { selection: SharingSelection }) {
   if (!value) return <View style={styles.body}>{data.loading ? <ActivityIndicator color={palette.accent} /> : <>
     <Text accessibilityRole="alert" style={styles.error}>{data.error}</Text>
     <AppButton title="グループの家事設定を再読込" compact variant="quiet" onPress={() => void data.source.refresh()} /></>}</View>;
-  const readOnly = value.protocol === 2 && value.model.viewerUserId !== value.model.adminUserId;
+  const readOnly = value.model.viewerUserId !== value.model.adminUserId;
   return <View style={styles.body}><Text style={styles.hint}>{readOnly ? '名前・手順は編集できます。有効・無効と周期は管理者が変更します。' : 'このグループのメンバーに共有されます。'}</Text>
-    <ChoreToggleList chores={value.protocol === 1 ? value.snapshot.chores : value.model.plan.chores}
-      expanded={expanded} setExpanded={setExpanded} readOnly={readOnly} bulk={value.protocol === 1}
+    <ChoreToggleList chores={value.model.plan.chores}
+      expanded={expanded} setExpanded={setExpanded} readOnly={readOnly} bulk={false}
       save={data.source.saveEnabled} retryRead={async () => { await data.source.refresh(); return !data.source.getSnapshot().error; }}
       onOpen={id => router.push({ pathname: '/sharing/chore-settings/[id]', params: { id, groupId: selection.groupId } })} />
   </View>;

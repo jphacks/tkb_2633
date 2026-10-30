@@ -7,8 +7,6 @@ import type { VerifiedSharedRoster } from '../../features/sharing/roster';
 import type { SharingSelection } from '../../features/sharing/workspace-selection';
 import type { SharingWorkspaceRecord } from '../storage/sharing-registry';
 import type { readSharingCheckpoint } from '../storage/sharing-ledger';
-import type { createSharedPlannerRepository } from '../storage/shared-planner-repository';
-import type { SharedEntityType } from '../../features/sharing/operations';
 import type { V2WorkspaceSession } from '../../features/sharing/v2/workspace-session';
 import type { V2ReminderRuntime } from '../../features/sharing/v2/reminder-runtime';
 import type { V2GoogleTaskRuntime } from '../../features/sharing/v2/google-tasks-runtime';
@@ -26,10 +24,9 @@ interface SharedWorkspaceBase extends SharingSelection {
   cancelJoinRequest: () => Promise<void>; maintainHistory: () => Promise<void>;
   readOverview: () => Promise<SharedWorkspaceOverview>; drain: () => Promise<void>;
 }
-export interface LegacySharedWorkspace extends SharedWorkspaceBase {
-  protocol: 1; database: SQLiteDatabase; adapter: ReturnType<typeof createSharedPlannerRepository>;
-  manager: ReturnType<typeof createSharedGroupManager>;
-  resolveConflict: (entityType: SharedEntityType, entityId: string, field: string, candidateId: string) => Promise<void>;
+export interface LegacyMigrationWorkspace extends SharedWorkspaceBase {
+  protocol: 'migration'; database: SQLiteDatabase; manager: null;
+  migration: ReturnType<typeof import('../../features/sharing/v2/live-legacy-migration').createLiveLegacyMigration>;
 }
 export interface V2SharedWorkspace extends SharedWorkspaceBase {
   protocol: 2; database: SQLiteDatabase; session: V2WorkspaceSession;
@@ -40,4 +37,4 @@ export interface V2SharedWorkspace extends SharedWorkspaceBase {
 export interface PendingSharedWorkspace extends SharedWorkspaceBase {
   protocol: null; database: null; manager: null;
 }
-export type SharedWorkspace = LegacySharedWorkspace | V2SharedWorkspace | PendingSharedWorkspace;
+export type SharedWorkspace = LegacyMigrationWorkspace | V2SharedWorkspace | PendingSharedWorkspace;

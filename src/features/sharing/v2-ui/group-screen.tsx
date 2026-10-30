@@ -210,6 +210,24 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
         : <><BackButton onPress={onBack} /><Text style={styles.body}>設定する家事を選んでください。</Text></>}
     </V2FormScrollView>
   </V2ScreenFrame>;
+  if (view === 'history') {
+    const historyRows = [
+      ...model.plan.history.filter(record => (!choreId || record.choreId === choreId) && v2CanShowCompletion(model, record)).map(record => ({ kind: 'current' as const, record })),
+      ...(model.legacyHistory ?? []).filter(record => (!choreId || record.choreId === choreId) && (model.viewerUserId === model.adminUserId || model.plan.policy?.showCompletionStatus
+        || record.performerUserId === model.viewerUserId || record.recorderUserId === model.viewerUserId)).map(record => ({ kind: 'legacy' as const, record })),
+    ].sort((a, b) => b.record.performedAt.localeCompare(a.record.performedAt) || a.record.operationId.localeCompare(b.record.operationId));
+    return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
+      <FlatList data={historyRows} keyExtractor={item => item.record.operationId} contentContainerStyle={styles.page} initialNumToRender={8}
+        ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="実施履歴" /></>}
+        ListEmptyComponent={<Card><Text style={styles.body}>表示する実施記録はありません。</Text></Card>}
+        renderItem={({ item }) => item.kind === 'current' ? <V2CompletionHistoryCard model={model} record={item.record} actions={controller.actions} busy={busy} run={run} />
+          : <Card><SectionHeading title={item.record.choreName} /><Text style={styles.caption}>移行前の記録</Text>
+            <Text style={styles.body}>{!item.record.active ? '取消済み' : item.record.outcome === 'completed' ? '実施済み' : '未実施の記録'}</Text>
+            <Text style={styles.body}>{new Date(item.record.performedAt).toLocaleString('ja-JP', { timeZone: model.plan.timeZone })}</Text>
+            <Text style={styles.caption}>実施者：{item.record.performerUserId ? model.plan.members.find(member => member.userId === item.record.performerUserId)?.displayName ?? '以前のメンバー' : '記録なし'}</Text>
+          </Card>} />
+    </V2ScreenFrame>;
+  }
   if (!personal) return <V2ScreenFrame purpose={purpose} style={styles.safe}>{notice}<Text style={styles.body}>本人の推奨日を読み込めませんでした。</Text>
     <AppButton title="読み込みを再試行" variant="quiet" onPress={() => void refresh()} /></V2ScreenFrame>;
   if (view === 'calendar') {
@@ -262,12 +280,6 @@ export function V2GroupScreen({ purpose, workspaceName, workspaceError, onManage
   const card = (round: V2PlannedOccurrence, subject: V2SubjectPlan) => <V2RoundCard model={model} round={round} subject={subject} actions={controller.actions} busy={busy} run={run} feedback={feedback} home={view === 'home'}
     recommendation={recommendations.get(subject.id)}
     onOpen={() => onRound ? onRound(round.id, subject.id) : onConfiguration(round.choreId)} />;
-  if (view === 'history') return <V2ScreenFrame purpose={purpose} style={styles.safe} edges={['top']}>
-    <FlatList data={model.plan.history.filter(record => v2CanShowCompletion(model, record)).reverse()} keyExtractor={(record) => record.operationId} contentContainerStyle={styles.page} initialNumToRender={8}
-      ListHeaderComponent={<>{notice}<BackButton onPress={onBack} disabled={busy} /><ScreenHeading title="実施履歴" /></>}
-      ListEmptyComponent={<Card><Text style={styles.body}>表示する実施記録はありません。</Text></Card>}
-      renderItem={({ item }) => <V2CompletionHistoryCard model={model} record={item} actions={controller.actions} busy={busy} run={run} />} />
-  </V2ScreenFrame>;
   const entries = model.plan.occurrences.flatMap((round) => round.subjects.filter((subject) => subject.required && (subject.subjectUserId === null || subject.subjectUserId === model.viewerUserId)).map((subject) => ({ round, subject })));
   const today = entries.filter(({ round, subject }) => round.activeInPeriod && (recommendations.get(subject.id)?.date ?? subject.suggestedDate) === model.plan.range.asOfDate);
   const visibility = createV2RoundVisibility(model);

@@ -986,11 +986,11 @@
     "tests": [
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "one unavailable shared database does not prevent later groups or the selected group reminders from syncing"
+        "name": "one unavailable migration database does not prevent later migration groups from catching up"
       },
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "a private Google-state read failure is isolated to its group while the original error remains observable"
+        "name": "migration workers never read retired group Google state or run legacy Google synchronization"
       },
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
@@ -1171,11 +1171,11 @@
     "tests": [
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "conflict resolution waiting for the workspace writer cannot proceed after the sharing account changes"
+        "name": "legacy migration scope never exposes a planner editor or conflict writer when status becomes active"
       },
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "conflict resolution rechecks sharing access after its projection before the transaction may commit"
+        "name": "legacy migration scope never exposes a planner editor or conflict writer when status becomes left"
       }
     ]
   },
@@ -2782,7 +2782,7 @@
     "feature": "v2-workspace-navigation-preserves-personal-and-v1-scopes",
     "tests": [
       { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "workspace navigation permits legacy screens only for personal or v1 scopes and redirects v2 to its dedicated stack" },
-      { "file": "tests/sharing-workspace-provider.test.mjs", "name": "active workspace scope injects the legacy provider only for v1 and keeps v2 and personal database contexts separate" },
+      { "file": "tests/sharing-workspace-provider.test.mjs", "name": "active workspace scope never injects a legacy provider and preserves the personal database context" },
       { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "unselected or mismatched v2 workspace routes never load shared controllers or expose edit controls" },
       { "file": "tests/sharing-v2-workspace-routes.test.mjs", "name": "foreground shared changes refresh only the selected user and group and unsubscribe when leaving" }
     ]
@@ -4715,7 +4715,7 @@
       },
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "v2 native notification cleanup failure remains observable after unrelated legacy sync and reminders run"
+        "name": "v2 notification cleanup failure remains observable after migration catch-up without legacy reminders"
       },
       {
         "file": "tests/sharing-v2-native-workspace.test.mjs",
@@ -5168,7 +5168,7 @@
     "tests": [
       {
         "file": "tests/sharing-group-creation.test.mjs",
-        "name": "new shared groups default to v2 and only an explicit false selects legacy creation"
+        "name": "new shared groups always use v2 even when a retired rollout flag is false"
       },
       {
         "file": "tests/sharing-group-creation.test.mjs",
@@ -5205,11 +5205,11 @@
     "tests": [
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "a cached legacy workspace cannot resolve a conflict after its registry becomes removed"
+        "name": "legacy migration scope never exposes a planner editor or conflict writer when status becomes removed"
       },
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
-        "name": "a queued legacy conflict cannot write to an archived generation after rejoining while it waits for the writer"
+        "name": "legacy migration scope never exposes a planner editor or conflict writer when status becomes active"
       },
       {
         "file": "tests/sharing-workspace-recovery.test.mjs",
@@ -5861,6 +5861,50 @@
       {
         "file": "tests/sharing-v2-owner-recovery.integration.mjs",
         "name": "the default-disabled recovery capability preserves ordinary v2 sync membership and compaction against the preceding deployed Rules"
+      }
+    ]
+  },
+  {
+    "feature": "v2-only-sharing-with-preserved-live-migration",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-live-migration.test.mjs",
+        "name": "live v1 to v2 migration retains every signed setting completion undo and private source row before activating the reviewed target"
+      },
+      {
+        "file": "tests/sharing-v2-live-migration.test.mjs",
+        "name": "migration resumes a lost atomic cloud response and cold SQLite staging without rotating twice or duplicating drafts"
+      },
+      {
+        "file": "tests/sharing-v2-live-migration.test.mjs",
+        "name": "a cold migrated v2 session reauthenticates its preserved witness and signed source before allowing business edits"
+      },
+      {
+        "file": "tests/sharing-v2-live-migration.test.mjs",
+        "name": "cold converted workspaces keep a previously pinned database even when its member has a rejoin identity generation"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "a removed native workspace preserves its history and requests a fresh generation without serializing an undefined migration pin"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-flow.integration.mjs",
+        "name": "live protocol migration preserves approved users original settings and undo history then converges through real v2 receipts"
+      }
+    ]
+  },
+  {
+    "feature": "background-sync-native-execution-evidence",
+    "tests": [
+      {
+        "file": "tests/background-sync-audit.test.mjs",
+        "name": "background evidence distinguishes interrupted and failed runs and retains only bounded metadata"
+      },
+      {
+        "file": "tests/background-sync-audit.test.mjs",
+        "name": "only the OS worker callback creates release evidence and one domain failure does not skip later domains"
       }
     ]
   }

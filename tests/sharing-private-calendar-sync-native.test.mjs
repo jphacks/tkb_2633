@@ -1,3 +1,4 @@
+import { createBackgroundAudit } from '../src/features/google-sync/background-audit.ts';
 import './helpers/typescript-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -40,7 +41,8 @@ for (const broken of ['personal', 'private', 'sharing']) {
   test(`single OS worker isolates ${broken} failure and still runs all three independent domains with one definition`, async () => {
     const calls = []; let callback; let definitions = 0; let registered = false; let registrations = 0;
     const module = loadNativeModule('src/features/google-sync/background-task.ts', {
-      'expo-background-task': { BackgroundTaskResult: { Success: 'success', Failed: 'failed' }, BackgroundTaskStatus: { Available: 'available' }, getStatusAsync: async () => 'available',
+      './background-audit': { createBackgroundAudit },
+    'expo-background-task': { BackgroundTaskResult: { Success: 'success', Failed: 'failed' }, BackgroundTaskStatus: { Available: 'available' }, getStatusAsync: async () => 'available',
         registerTaskAsync: async (name, options) => { assert.equal(name, 'housework-planner-google-tasks-sync'); assert.equal(options.minimumInterval, 60); registrations++; registered = true; } },
       'expo-task-manager': { defineTask: (_name, work) => { definitions++; callback = work; }, isAvailableAsync: async () => true,
         getRegisteredTasksAsync: async () => registered ? [{ taskName: 'housework-planner-google-tasks-sync' }] : [] },
@@ -51,6 +53,6 @@ for (const broken of ['personal', 'private', 'sharing']) {
       '@/platform/sharing/workspaces': { syncKnownSharingWorkspaces: async budget => { assert.equal(budget, 30000); calls.push('sharing'); if (broken === 'sharing') throw new Error('synthetic sharing failure'); } },
     });
     assert.equal(definitions, 1); assert.deepEqual(calls, []); await module.registerGoogleSyncBackgroundTask(); await module.registerGoogleSyncBackgroundTask(); assert.equal(registrations, 1);
-    assert.equal(await callback({}), 'failed'); assert.deepEqual(calls, ['personal', 'close', 'private', 'sharing']); assert.equal(definitions, 1);
+    assert.equal(await callback({}), 'failed'); assert.deepEqual(calls, ['personal', 'close', 'private', 'sharing', 'close']); assert.equal(definitions, 1);
   });
 }

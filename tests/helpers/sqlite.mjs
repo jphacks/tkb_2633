@@ -10,7 +10,8 @@ export function createDatabase(path = ':memory:') {
       async execAsync(sql) { connection.exec(sql); },
       async runAsync(sql, ...params) {
         writes.push({ sql, params });
-        return connection.prepare(sql).run(...params);
+        const result = connection.prepare(sql).run(...params);
+        return { ...result, lastInsertRowId: Number(result.lastInsertRowid) };
       },
       async getFirstAsync(sql, ...params) { return connection.prepare(sql).get(...params) ?? null; },
       async getAllAsync(sql, ...params) { return connection.prepare(sql).all(...params); },

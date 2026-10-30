@@ -7,7 +7,7 @@ import { AppButton, BackButton, Card, Page, ScreenHeading, SectionHeading, palet
 import { AccordionSection } from '@/components/accordion-section';
 import { ChoreSettingsSources } from '@/features/settings/chore-settings-sources';
 import { useWorkspace } from '@/hooks/use-workspace';
-import { enableSharingSession, createSharingWorkspace, createV2SharingWorkspace, openSharedWorkspace, requestSharingWorkspace, sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
+import { enableSharingSession, createV2SharingWorkspace, openSharedWorkspace, requestSharingWorkspace, sharingFailureMessage, subscribeSharingChanges } from '@/platform/sharing/workspaces';
 import { GroupCreationForm } from '@/features/sharing/group-creation-form';
 import { sharingCreationProtocol } from '@/features/sharing/rollout';
 import type { SharedWorkspace } from '@/platform/sharing/workspaces';
@@ -17,8 +17,7 @@ import { isSharingAppleSignInAvailable, signInSharingWithApple, signInSharingWit
 import { sharingInvitationQr } from '@/features/sharing/invitation-qr';
 import { sharedJoinVerificationCode } from '@/features/sharing/invitations';
 import type { SharedJoinRequest, SignedSharedInvitation } from '@/features/sharing/invitations';
-import { loadSharedReplica } from '@/platform/storage/sharing-ledger';
-import type { SharedEntity } from '@/features/sharing/replica';
+import { LegacyMigrationPanel } from '@/features/sharing/v2/legacy-migration-panel';
 import { V2RecoveryPanel } from '@/features/sharing/v2/recovery-panel';
 
 export default function SharingScreen() {
@@ -81,7 +80,7 @@ export default function SharingScreen() {
       <AccordionSection title="グループを作る" expanded={expanded === 'create'} onToggle={() => setExpanded(expanded === 'create' ? null : 'create')}>
         <GroupCreationForm key={context.userId} protocol={creationProtocol} busy={busy} onCreate={(name, kind) => run(async () => {
           const owner = context.userId;
-          const workspace = creationProtocol === 2 ? await createV2SharingWorkspace(name, kind!) : await createSharingWorkspace(name);
+          const workspace = await createV2SharingWorkspace(name, kind!);
           if (alive.current && currentUserId.current === owner) { setSelectedId(workspace.groupId); setExpanded(null); }
         })} />
       </AccordionSection>
@@ -110,7 +109,7 @@ export default function SharingScreen() {
 function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run: (work: () => Promise<void>) => Promise<boolean>; busy: boolean }) {
   const context = useWorkspace();
   const [detail, setDetail] = useState<{ record: Awaited<ReturnType<SharedWorkspace['record']>>; pending: number;
-    snapshot: SharedWorkspaceOverview | null; conflicts: SharedEntity[]; openError: string | null } | null>(null);
+    snapshot: SharedWorkspaceOverview | null; openError: string | null } | null>(null);
   const [requests, setRequests] = useState<{ invitation: SignedSharedInvitation; request: SharedJoinRequest }[]>([]);
   const manager = workspace.manager;
   const [invite, setInvite] = useState<Awaited<ReturnType<NonNullable<SharedWorkspace['manager']>['createInvitation']>> | null>(null);
@@ -122,9 +121,7 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
     let snapshot: SharedWorkspaceOverview | null = null; let openError: string | null = null;
     try { if (['active', 'creating'].includes(record.status)) snapshot = await workspace.readOverview(); }
     catch (cause) { openError = userMessage(cause); }
-    const conflicts = workspace.protocol === 1 && snapshot?.hasConflicts
-      ? (await loadSharedReplica(workspace.database, workspace.groupId)).entities.filter((entity) => Object.keys(entity.conflicts).length) : [];
-    return { record, snapshot, pending: checkpoint.pendingCount, conflicts, openError };
+    return { record, snapshot, pending: checkpoint.pendingCount, openError };
   }, [workspace]);
   const refresh = useCallback(async () => { setDetail(await load()); }, [load]);
   useEffect(() => {
@@ -148,6 +145,7 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
     }
     setRequests(next);
   };
+  if (workspace.protocol === 'migration') return <LegacyMigrationPanel workspace={workspace} run={run} busy={busy} />;
   if (!detail) return <Card><ActivityIndicator color={palette.accent} /></Card>;
   const { record, snapshot } = detail;
   return <>
@@ -205,19 +203,6 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
         <AppButton title="申請を拒否" variant="quiet" disabled={busy} onPress={() => void run(async () => { await workspace.cloud.withdrawOrRejectJoinRequest(invitation.body.inviteId, request.body.userId); await loadRequests(); })} />
       </Card>)}
     </Card> : null}
-    {detail.conflicts.map((entity) => <Card key={`${entity.entityType}:${entity.entityId}`}>
-      <SectionHeading title="同時編集の確認" />
-      <Text style={styles.body}>{snapshot?.chores.find((chore) => chore.id === entity.entityId)?.name ?? '共有設定'}を複数の端末で編集しました。採用する内容を選んでください。</Text>
-      {entity.entityType === 'waste' && ['recurrence', 'collectionWeekdays', 'anchorDate', 'monthlyDay'].some((field) => field in entity.conflicts)
-        ? <Text style={styles.body}>周期・曜日・基準日は、選んだ内容の組み合わせでまとめて採用します。</Text> : null}
-      {Object.entries(entity.conflicts).map(([field, candidates]) => <View key={field} style={styles.member}>
-        <Text style={styles.label}>{fieldLabel(field)}</Text>
-        {candidates.map((candidate, index) => <View key={candidate.operationId} style={styles.candidate}>
-          <Text selectable style={styles.body}>{field === '$alive' ? candidate.value ? '残す' : '削除する' : typeof candidate.value === 'string' ? candidate.value.slice(0, 500) : JSON.stringify(candidate.value).slice(0, 500)}</Text>
-          {workspace.protocol === 1 ? <AppButton title={`内容${index + 1}を採用`} compact variant="secondary" disabled={busy} onPress={() => void run(async () => { await workspace.resolveConflict(entity.entityType, entity.entityId, field, candidate.operationId); await refresh(); })} /> : null}
-        </View>)}
-      </View>)}
-    </Card>)}
     <AccordionSection title="退出・データの保存" expanded={expanded} onToggle={() => setExpanded(!expanded)}>
       <Text style={styles.body}>退出しても個人データは変わりません。未送信の変更と取得済みの内容はこの端末に保持されます。</Text>
       {record.status === 'joining' && record.join ? <AppButton title="参加申請を取り消す" variant="danger" disabled={busy} onPress={() => void run(async () => {
@@ -228,10 +213,7 @@ function GroupDetail({ workspace, run, busy }: { workspace: SharedWorkspace; run
     </AccordionSection>
   </>;
 }
-function fieldLabel(field: string): string {
-  return ({ enabled: '有効・無効', recommendedCycleDays: '周期', userIntervalDays: '個別の周期', load: '負荷', name: '名前', timeZone: 'タイムゾーン',
-    restDays: '休日', frequencyMode: '頻度モード', windowRadiusDays: '実施可能期間', memberIds: '担当者', $alive: '削除と編集', analysis: '家電のお手入れ内容' } as Record<string, string>)[field] ?? '変更された設定';
-}
+
 function userMessage(error: unknown): string {
   return error instanceof Error && /[ぁ-んァ-ヶ一-龯]/u.test(error.message) ? error.message : sharingFailureMessage(error);
 }

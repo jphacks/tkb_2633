@@ -1,0 +1,32 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
+export type BackgroundDomain = 'personal' | 'privateCalendar' | 'sharing';
+export type BackgroundOutcome = 'running' | 'success' | 'failed' | 'interrupted';
+export interface BackgroundRun {
+  id: number; started_at: number; finished_at: number | null; release: number; outcome: BackgroundOutcome;
+  personal: string; private_calendar: string; sharing: string;
+}
+/** Metadata only. No account, operation, group, key, token or business content is stored here. */
+export function createBackgroundAudit(database: SQLiteDatabase) {
+  return {
+    async begin(startedAt: number, release: boolean) {
+      await database.execAsync(`CREATE TABLE IF NOT EXISTS background_sync_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, started_at INTEGER NOT NULL, finished_at INTEGER,
+        release INTEGER NOT NULL, outcome TEXT NOT NULL,
+        personal TEXT NOT NULL DEFAULT 'pending', private_calendar TEXT NOT NULL DEFAULT 'pending', sharing TEXT NOT NULL DEFAULT 'pending');`);
+      // A process that disappeared cannot later be reported as a successful run.
+      await database.runAsync("UPDATE background_sync_runs SET outcome='interrupted' WHERE outcome='running'");
+      const row = await database.runAsync("INSERT INTO background_sync_runs (started_at,release,outcome) VALUES (?,?,'running')", startedAt, release ? 1 : 0);
+      await database.runAsync('DELETE FROM background_sync_runs WHERE id NOT IN (SELECT id FROM background_sync_runs ORDER BY id DESC LIMIT 32)');
+      return row.lastInsertRowId;
+    },
+    async domain(id: number, domain: BackgroundDomain, outcome: 'success' | 'failed') {
+      const column = { personal: 'personal', privateCalendar: 'private_calendar', sharing: 'sharing' }[domain];
+      if (!column) throw new Error('Invalid background domain');
+      await database.runAsync(`UPDATE background_sync_runs SET ${column}=? WHERE id=? AND outcome='running'`, outcome, id);
+    },
+    async finish(id: number, endedAt: number, failed: boolean) {
+      await database.runAsync('UPDATE background_sync_runs SET finished_at=?,outcome=? WHERE id=? AND outcome=?', endedAt, failed ? 'failed' : 'success', id, 'running');
+    },
+  };
+}

@@ -1,0 +1,117 @@
+{
+  "date": "2026-10-30",
+  "sharedProtocol": "v2 only for normal usage",
+  "schedulerVersion": "liflow-shared-2-draft-38",
+  "checks": {
+    "iosUnit": {
+      "passed": 2313,
+      "failed": 0
+    },
+    "androidUnit": {
+      "passed": 2313,
+      "failed": 0
+    },
+    "firestoreIntegration": {
+      "passed": 87,
+      "failed": 0
+    },
+    "featureContracts": 357,
+    "mandatoryCloudRegressions": 52,
+    "lint": "passed",
+    "typecheck": "passed"
+  },
+  "physicalRelease": {
+    "ios": "iPhone 12",
+    "android": "Sony I4293, Android 10",
+    "metroStopped": true,
+    "installedOverExistingData": true,
+    "developmentSignerRetained": true,
+    "coldConvertedWorkspaceVerified": true
+  },
+  "iosPreservation": {
+    "personal": {
+      "households": {
+        "rows": 1,
+        "unchanged": true,
+        "sha256": "6295a52940ea1bc92b74d09f36755b88fe034e1e6f8622ee4ed753702c50a3c4"
+      },
+      "household_settings": {
+        "rows": 1,
+        "unchanged": true,
+        "sha256": "ee686d9fc3a11df4d2decea199f5796818e3b852611f47a18f9b20d8a656f1ae"
+      },
+      "household_members": {
+        "rows": 1,
+        "unchanged": true,
+        "sha256": "49f289920f92019c12500600243c926a1808942b10e1c3dc533c8ea7f2c9ef34"
+      },
+      "chore_definitions": {
+        "rows": 20,
+        "unchanged": true,
+        "sha256": "46466ab7c0345482320b7ed1fe4499c6cdd1ea9a4efed1e6e7328fc0d6be890b"
+      },
+      "chore_dependencies": {
+        "rows": 0,
+        "unchanged": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "chore_completions": {
+        "rows": 13,
+        "unchanged": true,
+        "sha256": "c2e8ee1e2a03c63570d46dfeb5c2e89aac4294247fc1af8cc55d8dc6ea92e95a"
+      },
+      "chore_assignments": {
+        "rows": 20,
+        "unchanged": true,
+        "sha256": "fce46958628e32bed2a3c38278625040a5430b6e0aff75a16f03b182dfc7540c"
+      },
+      "weekly_waste_schedules": {
+        "rows": 0,
+        "unchanged": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "hidden_waste_occurrences": {
+        "rows": 0,
+        "unchanged": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "appliances": {
+        "rows": 0,
+        "unchanged": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "migration": {
+      "schemaVersion": 2,
+      "originalSignedFacts": 192,
+      "preservedInOriginalDatabase": true,
+      "originalOperationDigestsPreservedInV2": 198,
+      "signedOriginalsRetainedInV2": 137,
+      "compactedMetadataByType": {
+        "chore:patch": 42,
+        "baseline:patch": 13
+      },
+      "allCompletionAndUndoFactsPreserved": true,
+      "legacyBusinessTablesUnchanged": true,
+      "v2Outbox": 0,
+      "v2Rejected": 0,
+      "v2Facts": 165
+    }
+  },
+  "background": {
+    "status": "in progress; natural execution not yet confirmed",
+    "forcedTaskLaunchUsed": false,
+    "firstIosWindow": "interrupted by user foreground; not counted as natural success",
+    "pendingIosUndoSavedAt": "2026-10-30T06:37:04.804Z"
+  },
+  "storage": {
+    "regenerableDebugProductsRemovedBytes": 2463600640,
+    "historicalQaOriginalBytesMoved": 1536575802,
+    "historicalQaFilesVerified": 12137,
+    "archiveVerifiedWithSha256": true
+  },
+  "limits": [
+    "Old metadata patches may be compacted by existing snapshot rules; all original signed facts remain in the source database, all original operation digests and all completion/undo facts remain in v2.",
+    "Native background evidence and final rejoin-only patch installation remain to be completed after the natural scheduling window."
+  ]
+}

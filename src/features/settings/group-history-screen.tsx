@@ -2,8 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useContext } from 'react';
 import { WorkspaceContext } from '@/contexts/workspace-context';
 import { PlannerLoadState } from '@/components/planner-load-state';
-import { PlannerHistoryContent } from '../planner/history-content';
-import { useGroupChoreSettings } from './use-group-chore-settings';
+import { SelectedGroupChoreSettings } from './group-chore-settings-screen';
 
 export function GroupHistoryScreen() {
   const context = useContext(WorkspaceContext); const params = useLocalSearchParams<{ groupId: string; choreId?: string }>();
@@ -14,7 +13,5 @@ export function GroupHistoryScreen() {
     choreId={typeof params.choreId === 'string' ? params.choreId : undefined} />;
 }
 function GroupHistory({ userId, groupId, choreId }: { userId: string; groupId: string; choreId?: string }) {
-  const data = useGroupChoreSettings({ userId, groupId }); const value = data.snapshot;
-  if (value?.protocol === 1) return <PlannerHistoryContent requestedChoreId={choreId} data={{ snapshot: value.snapshot, loading: false, error: data.error, refresh: data.source.refresh }} />;
-  return <PlannerLoadState title="実施履歴" message="履歴を読み込んでいます。" error={value ? 'このグループの履歴を一覧から開き直してください。' : data.error} retry={data.source.refresh} />;
+  return <SelectedGroupChoreSettings userId={userId} groupId={groupId} choreId={choreId ?? ''} initialView="history" />;
 }

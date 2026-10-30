@@ -17,12 +17,12 @@ async function choose(screen, label) {
 }
 function input(screen) { return screen.nodes().find(item => item.type === 'TextInput' && item.props.accessibilityLabel === 'グループ名'); }
 
-test('new shared groups default to v2 and only an explicit false selects legacy creation', t => {
+test('new shared groups always use v2 even when a retired rollout flag is false', t => {
   const previous = process.env.EXPO_PUBLIC_SHARING_V2_ENABLED;
   t.after(() => { if (previous === undefined) delete process.env.EXPO_PUBLIC_SHARING_V2_ENABLED; else process.env.EXPO_PUBLIC_SHARING_V2_ENABLED = previous; });
   delete process.env.EXPO_PUBLIC_SHARING_V2_ENABLED; assert.equal(sharingCreationProtocol(), 2);
   for (const value of ['', 'true', 'TRUE', ' true', 'true ', '1', 'yes']) assert.equal(sharingCreationProtocol(value), 2);
-  assert.equal(sharingCreationProtocol('false'), 1);
+  assert.equal(sharingCreationProtocol('false'), 2);
 });
 
 test('owner recovery is enabled for the standard deployment and can be explicitly disabled without reading group data', t => {
@@ -95,11 +95,12 @@ for (const [platform, name] of [
   assert.equal(context.active, null);
 });
 
-test('legacy creation keeps its existing untyped API and never requests v2 choices', async () => {
+test('retired legacy creation input cannot bypass the explicit v2 group kind', async () => {
   const calls = []; const ui = form({ protocol: 1, onCreate: async (...args) => { calls.push(args); return true; } });
-  assert.equal(ui.nodes().filter(node => node.props.accessibilityRole === 'radio').length, 0);
-  await ui.change('グループ名', '従来のグループ'); await ui.press('グループを作成');
-  assert.deepEqual(calls, [['従来のグループ', undefined]]);
+  await ui.change('グループ名', '旧設定からの作成');
+  assert.equal(ui.button('グループを作成').props.disabled, true);
+  await choose(ui, '家族'); await ui.press('グループを作成');
+  assert.deepEqual(calls, [['旧設定からの作成', 'family']]);
 });
 
 test('a saved group creation remains successful when refreshing the group list fails afterward', async () => {

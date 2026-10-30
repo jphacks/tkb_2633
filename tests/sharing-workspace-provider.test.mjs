@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenHarness } from './helpers/screen-harness.mjs';
 
-test('active workspace scope injects the legacy provider only for v1 and keeps v2 and personal database contexts separate', () => {
+test('active workspace scope never injects a legacy provider and preserves the personal database context', () => {
   for (const platform of ['ios', 'android']) for (const active of [null, { protocol: 1, userId: 'owner', groupId: 'legacy', database: { legacy: true } },
     { protocol: 2, userId: 'owner', groupId: 'v2', database: { v2: true } }]) {
     const mounted = [];
@@ -13,7 +13,7 @@ test('active workspace scope injects the legacy provider only for v1 and keeps v
       '@/platform/sharing/private-calendar-sync': {},
       '@/platform/sharing/auth': {}, '@/platform/storage/repository': {},
     } });
-    assert.deepEqual(mounted, active?.protocol === 1 ? [active.database] : []);
+    assert.deepEqual(mounted, []);
     assert.ok(screen.text().includes('workspace-child'));
   }
 });

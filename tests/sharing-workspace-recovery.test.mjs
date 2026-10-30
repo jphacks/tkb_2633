@@ -1,3 +1,4 @@
+import * as liveMigration from '../src/features/sharing/v2/live-legacy-migration.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadNativeModule } from './helpers/native-module.mjs';
@@ -7,7 +8,7 @@ function fixture(options = {}) {
   const events = []; const handles = []; const synchronizers = []; const syncBudgets = [];
   const session = { userId: 'member' };
   const records = (options.groups ?? ['broken', 'healthy']).map((groupId) => ({ userId: 'member', groupId,
-    status: 'active', displayName: groupId, rosterArchive: [], anchor: { body: { groupId, ownerDeviceId: 'another-device',
+    status: 'active', displayName: groupId, rosterArchive: [], anchor: { body: { schemaVersion: 1, groupId, ownerDeviceId: 'another-device',
       members: [{ userId: 'member', devices: [{ identity: { deviceId: 'this-device' } }] }] } } }));
   const registry = { closeAsync: async () => { events.push('registry-close'); } };
   const api = loadNativeModule('src/platform/sharing/workspaces.ts', {
@@ -26,10 +27,11 @@ function fixture(options = {}) {
         const database = { groupId, closeAsync: async () => { events.push(`close:${groupId}`); } };
         handles.push(database); return database;
       } },
-    './firestore-cloud.ts': { createSharingCloud: () => ({}) },
+    './firestore-cloud.ts': { createSharingCloud: () => ({ readGroup: async groupId => ({ roster: records.find(record => record.groupId === groupId).anchor }) }) },
     '../../features/sharing/roster.ts': { sharedRosterDigest: () => 'test-digest', verifyPinnedSharedRoster: (roster) => roster },
     '../../features/sharing/operations.ts': { canonicalJson: JSON.stringify },
     '../../features/sharing/rollout.ts': rollout,
+    '../../features/sharing/v2/live-legacy-migration.ts': { ...liveMigration, createLiveLegacyMigration: () => ({}) },
     '../../features/sharing/workspace-protocol.ts': { verifyWorkspaceArchive: (record) => [record.anchor], sharedWorkspaceProtocol: () => 1 },
     '../../features/sharing/v2/workspace-session.ts': {}, '../../features/sharing/v2/view-point.ts': {},
     '../../features/sharing/v2/controller-access.ts': {},
@@ -88,62 +90,38 @@ function fixture(options = {}) {
   return { api, events, handles, records, synchronizers, syncBudgets, session };
 }
 
-test('conflict resolution waiting for the workspace writer cannot proceed after the sharing account changes', async () => {
-  const options = { groups: ['healthy'] }; const h = fixture(options);
-  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
-  options.beforeQueuedWork = () => { h.session.userId = 'another-account'; };
-  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /現在編集できません/);
-  assert.equal(h.events.includes('resolve-plan'), false);
-  assert.equal(h.events.includes('resolve-project'), false);
-});
-
-test('conflict resolution rechecks sharing access after its projection before the transaction may commit', async () => {
-  const options = { groups: ['healthy'] }; const h = fixture(options);
-  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
-  options.afterProjection = () => { h.session.userId = 'another-account'; };
-  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /現在編集できません/);
-  assert.ok(h.events.includes('resolve-plan'));
-  assert.ok(h.events.includes('resolve-project'));
-});
-
 for (const [status, name] of [
-  ['left', 'a cached legacy workspace cannot resolve a conflict after its registry becomes left'],
-  ['removed', 'a cached legacy workspace cannot resolve a conflict after its registry becomes removed'],
-  ['joining', 'a cached legacy workspace cannot resolve a conflict after its registry becomes joining'],
+  ['active', 'legacy migration scope never exposes a planner editor or conflict writer when status becomes active'],
+  ['left', 'legacy migration scope never exposes a planner editor or conflict writer when status becomes left'],
+  ['removed', 'legacy migration scope never exposes a planner editor or conflict writer when status becomes removed'],
+  ['joining', 'legacy migration scope never exposes a planner editor or conflict writer when status becomes joining'],
 ]) test(name, async () => {
   const h = fixture({ groups: ['healthy'] });
   const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
   h.records[0] = { ...h.records[0], status };
-  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /現在編集できません/u);
-  assert.equal(h.events.includes('resolve-plan'), false);
-  assert.equal(h.events.includes('resolve-project'), false);
+  assert.equal(workspace.protocol, 'migration'); assert.equal(workspace.adapter, undefined);
+  assert.equal(workspace.manager, null); assert.equal(workspace.resolveConflict, undefined);
+  await assert.rejects(workspace.readOverview(), /移行/u);
+  assert.equal(h.events.includes('resolve-plan'), false); assert.equal(h.events.includes('resolve-project'), false);
 });
 
-test('a queued legacy conflict cannot write to an archived generation after rejoining while it waits for the writer', async () => {
-  const options = { groups: ['healthy'] }; const h = fixture(options);
-  const workspace = await h.api.openSharedWorkspace({ userId: 'member', groupId: 'healthy' });
-  options.beforeQueuedWork = () => { h.records[0] = { ...h.records[0], status: 'active', localGeneration: 'approved-new-generation' }; };
-  await assert.rejects(workspace.resolveConflict('waste', 'waste', 'label', 'candidate'), /再参加前/u);
-  assert.equal(h.events.includes('resolve-plan'), false);
-  assert.equal(h.events.includes('resolve-project'), false);
-});
-
-test('one unavailable shared database does not prevent later groups or the selected group reminders from syncing', async () => {
+test('one unavailable migration database does not prevent later migration groups from catching up', async () => {
   const h = fixture({ failOpen: 'broken', selection: { userId: 'member', groupId: 'healthy' } });
   await assert.rejects(h.api.syncKnownSharingWorkspaces(), /open failed:broken/);
   assert.ok(h.events.includes('sync:healthy'), 'a healthy group must not depend on an unrelated database opening');
-  assert.ok(h.events.includes('notify:healthy'));
+  assert.equal(h.events.includes('notify:healthy'), false);
 });
 
-test('v2 native notification cleanup failure remains observable after unrelated legacy sync and reminders run', async () => {
+test('v2 notification cleanup failure remains observable after migration catch-up without legacy reminders', async () => {
   const h = fixture({ groups: ['healthy'], failReminderCleanup: true, selection: { userId: 'member', groupId: 'healthy' } });
   await assert.rejects(h.api.syncKnownSharingWorkspaces(), /v2 reminder cleanup failed/u);
-  assert.ok(h.events.includes('sync:healthy')); assert.ok(h.events.includes('notify:healthy'));
+  assert.ok(h.events.includes('sync:healthy')); assert.equal(h.events.includes('notify:healthy'), false);
 });
 
-test('a private Google-state read failure is isolated to its group while the original error remains observable', async () => {
+test('migration workers never read retired group Google state or run legacy Google synchronization', async () => {
   const h = fixture({ failGoogleState: 'broken' });
-  await assert.rejects(h.api.syncKnownSharingWorkspaces(), /google state failed:broken/);
+  await h.api.syncKnownSharingWorkspaces();
+  assert.equal(h.events.some(event => event.startsWith('google-state:') || event.startsWith('google-sync:')), false);
   assert.ok(h.events.includes('sync:healthy'));
 });
 

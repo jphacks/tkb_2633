@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import type { ReactNode } from 'react';
 import { ActivityIndicator, AppState, Text } from 'react-native';
 import { Card, Page, palette, typography } from '@/components/planner-ui';
-import { PlannerDataProvider, usePlannerData } from './use-planner-data';
+import { usePlannerData } from './use-planner-data';
 import { hasSharingSessionEnabled, knownSharingWorkspaces, openSharedWorkspace, readSharingSelection,
   saveSharingSelection, sharingSessionUser, subscribeSharingChanges, syncKnownSharingWorkspaces } from '@/platform/sharing/workspaces';
 import type { SharedWorkspace, SharingSelection } from '@/platform/sharing/workspaces';
@@ -124,7 +124,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 export function ActiveWorkspaceScope({ children }: { children: ReactNode }) {
   const context = useWorkspace();
   if (!context.ready) return <Page><Card><ActivityIndicator color={palette.accent} /><Text style={typography.body}>データを読み込んでいます。</Text></Card></Page>;
-  return context.active?.protocol === 1 ? <PlannerDataProvider key={`${context.active.userId}:${context.active.groupId}`} databaseOverride={context.active.database}>{children}</PlannerDataProvider> : children;
+  return children;
 }
 export function useWorkspace(): WorkspaceContextValue {
   const context = useContext(WorkspaceContext); if (!context) throw new Error('WorkspaceProvider is required'); return context;

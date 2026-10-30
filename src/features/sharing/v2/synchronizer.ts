@@ -26,8 +26,9 @@ const unrelatedToRecoveryLock = new Set(['unavailable', 'deadline-exceeded', 'ca
 /** Reuse the existing encrypted coordinator; only protocol and receipt-aware projection are specialized. */
 export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 'v2' | 'project'> & {
   repository: ReturnType<typeof createV2EventRepository>; assertCurrentAccount: () => void;
+  acceptMigrationSnapshot?: (snapshot: VerifiedSharedSnapshot, archive: readonly VerifiedSharedRoster[]) => Promise<void>;
 }) {
-  const { repository, assertCurrentAccount, ...deps } = dependencies;
+  const { repository, assertCurrentAccount, acceptMigrationSnapshot, ...deps } = dependencies;
   if (repository.scope.groupId !== deps.groupId || repository.scope.userId !== deps.userId
     || repository.scope.deviceId !== deps.identity.deviceId) throw new Error('V2 synchronization must use the same account, device and repository');
   const now = deps.now ?? Date.now;
@@ -45,6 +46,7 @@ export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 
   }
   async function snapshotEvidence(snapshot: VerifiedSharedSnapshot, archive: readonly VerifiedSharedRoster[], deadline: number) {
     assertCurrentAccount();
+    await acceptMigrationSnapshot?.(snapshot, archive); assertCurrentAccount();
     const facts = new Map(snapshot.facts.filter((fact) => fact.operation.schemaVersion === 2).map((fact) => [fact.operation.operationId, fact]));
     const preservedReceipts = new Map<string, V2ServerReceipt>();
     const recoveries = verifyV2RecoveryWitnesses(snapshot.base.recoveryWitnesses ?? [], archive, deps.groupId);

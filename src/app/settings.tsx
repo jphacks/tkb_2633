@@ -1,3 +1,4 @@
+import { BackgroundSyncDiagnostics } from '@/features/google-sync/background-diagnostics';
 import { FormTextInput as TextInput } from '../components/form-text-input';
 import { router } from 'expo-router';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -670,6 +671,9 @@ function SettingsContent({ snapshot, loadError, refresh, database }: {
 
       {typeof __DEV__ !== 'undefined' && __DEV__ ? <AppButton title="開発検査" onPress={() => router.push('/development')} variant="quiet" /> : null}
       <DataCredits />
+      <AccordionSection title="バックグラウンド同期の実行記録" expanded={expandedSections.has('backgroundDiagnostics')} onToggle={() => toggleSection('backgroundDiagnostics')}>
+        {expandedSections.has('backgroundDiagnostics') ? <BackgroundSyncDiagnostics /> : null}
+      </AccordionSection>
       <Text style={styles.footer}>{snapshot.sharing ? '共有グループの家事と履歴は端末に保存し、暗号化して共有先へ同期します。' : '家事データ、曜日、予定、履歴はローカルSQLiteに保存されます。'}</Text>
     </Page>
   );

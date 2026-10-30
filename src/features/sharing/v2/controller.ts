@@ -78,4 +78,6 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
   };
 }
 export type V2GroupController = ReturnType<typeof createV2GroupController>;
-export type V2GroupScreenModel = Awaited<ReturnType<V2GroupController['readModel']>>;
+export type V2GroupScreenModel = Awaited<ReturnType<V2GroupController['readModel']>> & {
+  legacyHistory?: import('./legacy-history').LegacyCompletionRecord[];
+};

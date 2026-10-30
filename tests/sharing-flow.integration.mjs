@@ -162,3 +162,50 @@ test('a perpetually offline device cannot make the cloud log grow forever when n
     assert.equal((await b.replica()).pendingOperationIds.length, 0);
   } finally { a.close(); b.close(); }
 });
+
+test('live protocol migration preserves approved users original settings and undo history then converges through real v2 receipts', async () => {
+  const { createLiveLegacyMigration, verifyKnownLegacyHistory } = await import('../src/features/sharing/v2/live-legacy-migration.ts');
+  const { createV2WorkspaceSession } = await import('../src/features/sharing/v2/workspace-session.ts');
+  const { createDatabase } = await import('./helpers/sqlite.mjs');
+  const { canonicalJson } = await import('../src/features/sharing/operations.ts');
+  const f = await fixture(); const targets = [createDatabase(), createDatabase()]; const vault = new Map(); let serial = 0;
+  try {
+    await f.a.manager.approve(f.invitation.invitation, f.request); await f.b.sync();
+    const choreId = 'group-flow.builtin-chore-08';
+    await f.a.repository.setChoreEnabled(f.a.database, choreId, true);
+    await f.a.repository.updateChoreSettings(f.a.database, choreId, { cycleDays: 17, load: 'heavy' });
+    await f.a.sync(); await f.b.sync();
+    await f.b.repository.completeChore(f.b.database, (await f.b.snapshot()).scheduleEntries[0]); await f.b.sync(); await f.a.sync();
+    await f.a.repository.undoCompletedChore(f.a.database, (await f.a.snapshot()).completions[0].id); await f.a.sync(); await f.b.sync();
+    const before = canonicalJson(await f.a.replica()); const oldMembers = f.a.roster().body.members;
+    const migration = createLiveLegacyMigration({ ...f.a.deps, catchUp: f.a.sync, archive: () => f.a.record().rosterArchive,
+      makeId: () => `cloud-migration-${++serial}`, assertAccess() {}, openTarget: async () => ({ ...targets[0].database, closeAsync: async () => {} }),
+      readPreparedKey: async id => vault.get(id)?.slice() ?? null, savePreparedKey: async (id, bytes) => { vault.set(id, bytes.slice()); },
+      activate: async (archive, pin) => { await f.a.deps.saveArchive(archive); f.a.record().v2Migration = pin; } });
+    const review = await migration.prepare('family'); assert.equal(review.chores.find(chore => chore.id === choreId).intervalDays, 17);
+    await migration.commit(review.id);
+    assert.deepEqual(f.a.roster().body.members, oldMembers);
+    assert.equal(canonicalJson(await f.a.replica()), before, 'source SQLite retained');
+    const open = async (client, database) => {
+      const metadata = await client.deps.cloud.readGroup('group-flow');
+      const { readCloudWorkspaceArchive } = await import('../src/features/sharing/workspace-protocol.ts');
+      const archive = await readCloudWorkspaceArchive(client.record(), metadata.roster, client.deps.cloud.readRoster);
+      await client.deps.saveArchive(archive); client.record().status = 'active';
+      return createV2WorkspaceSession({ ...client.deps, database, householdId: 'shared-v2', archive: () => client.record().rosterArchive,
+        assertCurrentAccount() {}, assertWritable() {}, makeId: () => `post-upgrade-${++serial}`, markLeft: async () => {},
+        pinMigration: async pin => { client.record().v2Migration = { databaseGeneration: 'test-upgrade', ...pin }; },
+        verifyMigrationHistory: snapshot => verifyKnownLegacyHistory(client.database, 'group-flow', snapshot) });
+    };
+    const a = await open(f.a, targets[0].database); await a.synchronizer.sync({ force: true, budgetMs: 120000 });
+    const b = await open(f.b, targets[1].database); await b.synchronizer.sync({ force: true, budgetMs: 120000 });
+    const range = { from: '2026-10-30', through: '2026-11-30', asOfDate: '2026-10-30' };
+    const first = await a.controller.readModel(range), second = await b.controller.readModel(range);
+    assert.deepEqual(first.plan.chores, second.plan.chores); assert.deepEqual(first.legacyHistory, second.legacyHistory);
+    assert.equal(first.legacyHistory.length, 1); assert.equal(first.legacyHistory[0].active, false);
+    assert.equal(first.plan.chores.find(chore => chore.id === choreId).load, 'heavy');
+    assert.equal(first.configurations.find(row => row.choreId === choreId).configuration.intervalDays, 17);
+    const states = await Promise.all([a.repository.readState(), b.repository.readState()]);
+    assert.deepEqual(states[0].replica.operationIndex, states[1].replica.operationIndex);
+    assert.equal(states[0].assessment.rejected.length, 0); assert.equal(states[1].assessment.rejected.length, 0);
+  } finally { f.a.close(); f.b.close(); for (const target of targets) target.connection.close(); }
+});

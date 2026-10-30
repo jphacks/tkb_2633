@@ -17,26 +17,28 @@ const repository = await import('../src/platform/storage/repository.ts');
 const { createGroupChoreSettingsSource } = await import('../src/features/settings/group-chore-settings-source.ts');
 const today = new Date().toISOString().slice(0, 10);
 async function legacyFixture() {
-  const shared = createDatabase(), personal = createDatabase(); const identity = await createDeviceIdentity(crypto); let sequence = 0;
-  const scope = { userId: 'owner', groupId: 'settings-family', householdId: repository.LOCAL_HOUSEHOLD_ID };
-  const roster = createSharedRoster(scope.groupId, scope.userId, identity);
+  // The public settings source now supports v2 only; original personal SQLite remains separate.
+  const native = await workspaceHarness({ deferWorkspaceTimers: true }); const personal = createDatabase();
   await repository.initializeLocalDatabase(personal.database);
-  await initializeSharedProjection(shared.database, scope); await initializeSharingLedger(shared.database);
-  const adapter = createSharedPlannerRepository(shared.database, { ...scope, identity, roster: () => roster, now: () => new Date(), makeId: () => `settings-${++sequence}` });
-  await createLocalSharedOperations(shared.database, { ...scope, deviceId: identity.deviceId, keyVersion: 1 }, sharedGroupBootstrap({ ...scope, ownerUserId: scope.userId,
-    ownerDisplayName: '自分', name: '家族', timeZone: 'Asia/Tokyo', anchorDate: today }), adapter.project, operation => signSharedOperation(operation, identity).authorSignature);
-  const stop = registerSharedRepositoryAdapter(shared.database, adapter);
-  const record = { ...scope, status: 'active', displayName: '家族', localGeneration: 'first' }; let account = scope.userId;
-  const workspace = { ...scope, protocol: 1, database: shared.database, roster: () => roster,
-    record: async () => { if (account !== scope.userId) throw new Error('account changed'); return { ...record }; } };
+  const opened = await native.api.openSharedWorkspace(native.record);
+  const record = { ...native.record, status: 'active', displayName: '家族', localGeneration: undefined };
+  const scope = { userId: record.userId, groupId: record.groupId, householdId: 'shared-v2' };
+  const workspace = { ...opened, record: async () => { if (native.auth.uid !== scope.userId) throw new Error('account changed'); return { ...record }; } };
+  const model = await opened.session.controller.readModel({ from: today, through: today, asOfDate: today });
+  for (const chore of model.plan.chores) await opened.session.controller.actions.configureChore(chore.id, { policy: chorePolicyFromPreset('common'),
+    anchorDate: today, effectiveFrom: today, intervalDays: 7, windowBeforeDays: 2, windowAfterDays: 2, active: false });
+  await opened.session.repository.commit([{ operationId: 'settings-name', entityType: 'settings', entityId: 'settings', operationType: 'patch', payload: { name: '家族' } }]);
   const source = createGroupChoreSettingsSource(scope, async () => workspace); await source.refresh();
   let snapshot = await repository.loadPlannerSnapshot(personal.database, today);
   const personalData = { database: personal.database, loading: false, error: null, snapshot, readError: () => null,
     refresh: async () => { snapshot = await repository.loadPlannerSnapshot(personal.database, today); personalData.snapshot = snapshot; } };
-  return { shared, personal, scope, record, workspace, source, personalData, account: value => { account = value; },
-    close: () => { stop(); personal.connection.close(); shared.connection.close(); } };
+  const shared = native.handles.find(handle => handle.database === opened.database);
+  return { shared, personal, scope, record, workspace, source, personalData, account: value => { native.auth.uid = value; },
+    close: async () => { personal.connection.close(); await native.close(); } };
 }
-const definitions = h => h.connection.prepare('SELECT id,enabled,definition_json FROM chore_definitions ORDER BY id').all();
+const definitions = h => h.connection.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sharing_v2_binding'").get()
+  ? h.connection.prepare('SELECT operation_id,operation_json FROM sharing_operations ORDER BY operation_id').all()
+  : h.connection.prepare('SELECT id,enabled,definition_json FROM chore_definitions ORDER BY id').all();
 const allNodes = tree => tree.flatMap(node => typeof node === 'string' ? [] : [node, ...allNodes(node.children ?? [])]);
 
 for (const platform of ['ios', 'android']) {
@@ -52,7 +54,7 @@ for (const platform of ['ios', 'android']) {
           } });
         const personalPosition = screen.text().indexOf('個人用'), groupPosition = screen.text().indexOf('グループ用 · 家族');
         assert.equal(personalPosition < groupPosition, first === 'personal'); assert.equal(screen.text().includes('left-group'), false);
-        const chores = first === 'personal' ? f.personalData.snapshot.chores : f.source.getSnapshot().snapshot.snapshot.chores;
+        const chores = first === 'personal' ? f.personalData.snapshot.chores : f.source.getSnapshot().snapshot.model.plan.chores;
         const chore = chores.find(row => !row.archived);
         await screen.press(`${chore.category}の見出しを展開`);
         const toggle = screen.nodes().find(node => node.type === 'Switch' && node.props.accessibilityLabel === `${chore.name}を有効にする`);
@@ -70,7 +72,7 @@ for (const platform of ['ios', 'android']) {
           ? { pathname: '/settings/chore/[id]', params: { id: chore.id, source: 'personal' } }
           : { pathname: '/sharing/chore-settings/[id]', params: { id: chore.id, groupId: f.scope.groupId } }]);
       }
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   test(`${platform} connected editors show one fixed audience and personal edits keep the current group untouched`, async () => {
@@ -78,18 +80,17 @@ for (const platform of ['ios', 'android']) {
     try {
       const chore = f.personalData.snapshot.chores[0], before = definitions(f.shared);
       const screen = screenHarness('src/app/settings/chore/[id].tsx', { platform, params: { id: chore.id, source: 'personal' },
-        database: f.shared.database, snapshot: () => f.source.getSnapshot().snapshot.snapshot, personalData: () => f.personalData });
+        database: f.shared.database, snapshot: () => f.source.getSnapshot().snapshot.model.plan, personalData: () => f.personalData });
       assert.equal(screen.text().split('個人用').length - 1, 1); assert.equal(screen.text().includes('グループ用'), false);
       await screen.change('家事周期の日数', '17'); await screen.endEditing('家事周期の日数'); for (let i = 0; i < 4; i++) await screen.flush();
       assert.equal(f.personalData.snapshot.chores.find(row => row.id === chore.id).recommendedCycleDays, 17);
       assert.deepEqual(definitions(f.shared), before);
       const value = f.source.getSnapshot().snapshot;
-      const group = screenHarness('src/features/settings/chore-settings-screen.tsx', { exportName: 'ChoreSettingsBook', platform, props: {
-        choreId: value.snapshot.chores[0].id, data: { snapshot: value.snapshot, loading: false, error: null, refresh: f.source.refresh, database: f.shared.database } } });
-      assert.equal(group.text().split('グループ用 · 家族').length - 1, 1);
-      const document = group.nodes().find(node => node.type === 'ChoreBook'); assert.ok(document.props.titleAccessory);
-      assert.equal(document.props.renderChore(value.snapshot.chores[0]).props.children?.includes?.('グループ用 · 家族') ?? false, false);
-    } finally { f.close(); }
+      assert.equal(value.protocol, 2); assert.equal(value.record.displayName, '家族');
+      assert.equal(value.workspace.adapter, undefined);
+      assert.equal(value.model.plan.chores.length, 20);
+
+    } finally { await f.close(); }
   });
 
   test(`${platform} settings switches have a centered native frame without a second iOS background and matching control columns`, async () => {
@@ -131,7 +132,7 @@ for (const platform of ['ios', 'android']) {
 test('named group settings reject account and membership changes or a different returned group without touching private data', async () => {
   const f = await legacyFixture();
   try {
-    const before = definitions(f.personal); const chore = f.source.getSnapshot().snapshot.snapshot.chores[0];
+    const before = definitions(f.personal); const chore = f.source.getSnapshot().snapshot.model.plan.chores[0];
     f.account('another'); await assert.rejects(f.source.saveEnabled([chore.id], false), /account changed/u);
     await f.source.refresh(); assert.equal(f.source.getSnapshot().snapshot, null);
     f.account(f.scope.userId); f.record.status = 'left'; await assert.rejects(f.source.saveEnabled([chore.id], false), /参加状態/u);
@@ -139,48 +140,47 @@ test('named group settings reject account and membership changes or a different 
     const foreign = createGroupChoreSettingsSource({ ...f.scope, groupId: 'different' }, async () => f.workspace);
     await foreign.refresh(); assert.equal(foreign.getSnapshot().snapshot, null); assert.match(foreign.getSnapshot().error, /共有グループ/u);
     assert.deepEqual(definitions(f.personal), before);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 test('detached group editor targets its named workspace without switching away from another group', async () => {
-  const f = await legacyFixture(); const effects = []; let selected = 0;
+  const f = await legacyFixture(); const effects = []; let selected = 0, props;
   try {
-    const chore = f.source.getSnapshot().snapshot.snapshot.chores[0], before = definitions(f.personal);
+    const chore = f.source.getSnapshot().snapshot.model.plan.chores[0], before = definitions(f.personal);
     const context = { userId: f.scope.userId, active: { groupId: 'another-group' }, groups: [f.record], switchTo: () => { selected++; } };
     const screen = screenHarness('src/app/sharing/chore-settings/[id].tsx', { params: { id: chore.id, groupId: f.scope.groupId }, effect: callback => effects.push(callback), mocks: {
       '@/contexts/workspace-context': { WorkspaceContext: { _currentValue: context } },
       '@/platform/sharing/workspaces': { openSharedWorkspace: async selection => { assert.equal(selection.groupId, f.scope.groupId); return f.workspace; } },
-      './use-group-chore-settings': { useGroupChoreSettings: selection => { assert.equal(selection.groupId, f.scope.groupId); return { ...f.source.getSnapshot(), source: f.source }; } },
+      '../sharing/v2-ui/group-screen': { V2GroupScreen: value => { props = value; return 'named-v2-editor'; } },
     } });
     effects.splice(0).forEach(callback => callback()); for (let i = 0; i < 4; i++) await screen.flush();
-    assert.ok(screen.text().includes('グループ用 · 家族'), screen.text());
-    await screen.change('家事周期の日数', '19'); await screen.endEditing('家事周期の日数'); for (let i = 0; i < 4; i++) await screen.flush();
-    assert.equal((await repository.loadPlannerSnapshot(f.shared.database)).chores.find(row => row.id === chore.id).recommendedCycleDays, 19);
+    assert.equal(props.choreId, chore.id); assert.equal(props.view, 'details');
+    const session = await props.loadSession(); const model = await session.readModel();
+    assert.equal(model.plan.groupId, f.scope.groupId); assert.equal(model.personal, undefined);
+    const configuration = model.configurations.find(row => row.choreId === chore.id).configuration;
+    await session.controller.actions.patchChoreConfiguration(chore.id, configuration.ruleVersion, { intervalDays: 19 }, today);
+    const changed = await session.readModel(); assert.equal(changed.configurations.find(row => row.choreId === chore.id).configuration.intervalDays, 19);
     assert.deepEqual(definitions(f.personal), before); assert.equal(selected, 0);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 test('settings history links preserve the explicit personal or named group source even while another group is selected', async () => {
-  const f = await legacyFixture(); const navigation = [];
+  const f = await legacyFixture(); const navigation = []; let historyProps;
   try {
-    const personal = f.personalData.snapshot.chores[0], value = f.source.getSnapshot().snapshot, shared = value.snapshot.chores[0];
+    const personal = f.personalData.snapshot.chores[0], shared = f.source.getSnapshot().snapshot.model.plan.chores[0];
     const own = screenHarness('src/app/settings/chore/[id].tsx', { params: { id: personal.id, source: 'personal' },
       personalData: () => f.personalData, navigate: (...args) => navigation.push(args) });
     await own.press('この家事の履歴を見る');
     assert.deepEqual(navigation.at(-1), ['push', { pathname: '/history', params: { choreId: personal.id, source: 'personal' } }]);
-    const group = screenHarness('src/features/settings/chore-settings-screen.tsx', { exportName: 'ChoreSettingsBook', navigate: (...args) => navigation.push(args), props: {
-      choreId: shared.id, data: { snapshot: value.snapshot, loading: false, error: null, refresh: f.source.refresh, database: f.shared.database } } });
-    await group.press('この家事の履歴を見る');
-    assert.deepEqual(navigation.at(-1), ['push', { pathname: '/sharing/history', params: { choreId: shared.id, groupId: f.scope.groupId } }]);
     f.personalData.snapshot = { ...f.personalData.snapshot, chores: [{ ...personal, id: shared.id, name: '別領域にある同じIDの個人家事' }] };
     const history = screenHarness('src/app/sharing/history.tsx', { params: { groupId: f.scope.groupId, choreId: shared.id }, personalData: () => f.personalData,
       snapshot: () => f.personalData.snapshot, mocks: {
         '@/contexts/workspace-context': { WorkspaceContext: { _currentValue: { userId: f.scope.userId, active: { groupId: 'another' }, groups: [f.record] } } },
-        './use-group-chore-settings': { useGroupChoreSettings: () => ({ ...f.source.getSnapshot(), source: f.source }) },
+        './group-chore-settings-screen': { SelectedGroupChoreSettings: props => { historyProps = props; return 'named-v2-history'; } },
       } });
-    assert.ok(history.text().includes(`${shared.name}の履歴`)); assert.ok(history.text().includes('グループ用 · 家族'));
+    assert.equal(historyProps.groupId, f.scope.groupId); assert.equal(historyProps.choreId, shared.id); assert.equal(historyProps.initialView, 'history');
     assert.equal(history.text().includes('別領域にある同じIDの個人家事'), false);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 test('removed memberships never mount a group editor and v2 members cannot use administrator activation controls', async () => {
@@ -227,7 +227,7 @@ test('v2 Settings keeps both chore audiences and routes waste management to its 
       } });
     await screen.press('家事ごとの設定を開く'); assert.ok(screen.text().indexOf('個人用') < screen.text().indexOf('グループ用 · 家族'));
     await screen.press('ゴミ収集日を管理'); assert.deepEqual(navigation.at(-1), ['push', '/group-v2/waste']);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 test('v2 detached settings use management-only reads and existing single-chore authority without private services or category partial writes', async () => {
@@ -250,7 +250,7 @@ test('v2 detached settings use management-only reads and existing single-chore a
     assert.deepEqual(await listSharingOutbox(value.workspace.database, f.record.groupId), outbox);
     assert.deepEqual(f.taskCalls, tasksAfterEdit); assert.deepEqual(f.reminderCalls, remindersAfterEdit, 'reading settings does not start another lifecycle worker');
     f.auth.uid = 'another'; await assert.rejects(source.saveEnabled([chore.id], chore.enabled));
-  } finally { await f.close(); }
+  } finally { await await f.close(); }
 });
 
 test('early chore labels have their own blue badge and stronger background while completed chores lose the early label', () => {

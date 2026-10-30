@@ -19,6 +19,8 @@ export interface SharingWorkspaceRecord {
   /** A new approval uses a fresh database/key pair; earlier offline edits remain archived locally. */
   localGeneration?: string;
   archivedLocalGenerations?: string[];
+  /** Separate database generation; upgrading the protocol never changes an approved device identity. */
+  v2Migration?: { databaseGeneration: string; sourceSnapshotDigest: string; witnessDigest: string };
   creation?: { timeZone: string; anchorDate: string; ownerDisplayName: string; wrappedKey: WrappedGroupKey; kind?: 'family' | 'roommates' };
   join?: { invitation: SignedSharedInvitation; request: SharedJoinRequest };
 }
@@ -31,6 +33,10 @@ function serial<T>(database: SQLiteDatabase, operation: () => Promise<T>): Promi
 function validate(record: SharingWorkspaceRecord): SharingWorkspaceRecord {
   assertSharedIdentifier(record.userId); assertSharedIdentifier(record.groupId);
   if (record.localGeneration) assertSharedIdentifier(record.localGeneration);
+  if (record.v2Migration) {
+    assertSharedIdentifier(record.v2Migration.databaseGeneration);
+    if (!/^[a-f0-9]{64}$/u.test(record.v2Migration.sourceSnapshotDigest) || !/^[a-f0-9]{64}$/u.test(record.v2Migration.witnessDigest)) throw new Error('Invalid migration pin');
+  }
   if (record.archivedLocalGenerations) {
     if (!Array.isArray(record.archivedLocalGenerations) || record.archivedLocalGenerations.length > 512) throw new Error('Too many archived workspace generations');
     for (const generation of record.archivedLocalGenerations) assertSharedIdentifier(generation);
@@ -100,8 +106,10 @@ export function updateSharingWorkspace(database: SQLiteDatabase, userId: string,
       const row = await database.getFirstAsync<{ record_json: string }>('SELECT record_json FROM sharing_workspaces WHERE user_id = ? AND group_id = ?', userId, groupId);
       if (!row) throw new Error('共有グループが見つかりません。');
       const old = validate(JSON.parse(row.record_json)); const previousPin = anchorDigest(old.anchor); const previousStatus = old.status; const previousGeneration = old.localGeneration;
+      const previousMigration = canonicalJson(old.v2Migration ?? null);
       const next = validate(change(old));
       if (next.userId !== userId || next.groupId !== groupId || anchorDigest(next.anchor) !== previousPin) throw new Error('Workspace identity or pin cannot change');
+      if (previousMigration !== 'null' && next.localGeneration === previousGeneration && canonicalJson(next.v2Migration ?? null) !== previousMigration) throw new Error('Verified migration pin cannot change');
       if (['left', 'removed'].includes(previousStatus) && next.status === 'active') throw new Error('Explicitly request group approval before rejoining');
       if (next.localGeneration !== previousGeneration && (!['left', 'removed'].includes(previousStatus) || next.status !== 'joining'
         || !next.localGeneration || !next.archivedLocalGenerations?.includes(previousGeneration ?? 'initial'))) throw new Error('Rejoining must preserve the previous local workspace');

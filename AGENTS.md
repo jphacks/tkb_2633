@@ -1,5 +1,11 @@
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 
+## Canonical development source
+
+- `main` is the canonical integrated development source. Reuse the current checkout and branch for the authorized task. Create another branch or worktree only when isolation is actually needed.
+- After the authorized change passes its checks, integrate it into `main` and retire the completed branch. Do not leave completed work only on a feature branch while `main` falls behind.
+- Preserve uncommitted work and unadopted experiments in a verified, recoverable archive before retiring their refs. A historical checkout is not the current app source. See `docs/development-workflow.md`.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

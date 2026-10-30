@@ -29,7 +29,12 @@ TaskManager.defineTask(GOOGLE_SYNC_BACKGROUND_TASK, async ({ error }) => {
     database = await SQLite.openDatabaseAsync('housework.db', { useNewConnection: true });
     await initializeLocalDatabase(database);
     const state = await loadGoogleSyncState(database, LOCAL_HOUSEHOLD_ID);
-    if (state?.enabled) await syncGoogleTasks(database);
+    if (state?.enabled) {
+      const result = await syncGoogleTasks(database);
+      // The coordinator persists transport/auth failures and resolves with their classification.
+      // A resolved promise is therefore not proof of a successful synchronization.
+      if (result.kind !== 'success') { failed = true; domainFailed = true; }
+    }
   } catch {
     failed = true; domainFailed = true;
   } finally {

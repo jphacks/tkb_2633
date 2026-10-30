@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-30",
+  "baseCommit": "825ba630f2ec7f757588b3f452f19459f8fb3fc3",
+  "checks": {
+    "ios": {
+      "passed": 2325,
+      "failed": 0
+    },
+    "android": {
+      "passed": 2325,
+      "failed": 0
+    },
+    "firestore": {
+      "passed": 87,
+      "failed": 0
+    },
+    "targeted": {
+      "passed": 64,
+      "failed": 0
+    },
+    "featureContracts": 359,
+    "requiredCloudReferences": 52,
+    "lint": "passed",
+    "typecheck": "passed"
+  },
+  "beforeFix": {
+    "falseSuccessConditionsReproduced": 9,
+    "fixedOrderStarvationReproduced": true
+  },
+  "changes": [
+    "Propagate classified Google failures and thrown shared/integration failures after attempting independent work.",
+    "Persist an account-local last-attempt cursor so bounded sync resumes with later groups across process restarts."
+  ],
+  "naturalBackground": {
+    "status": "not passed; first one-hour window retained as incomplete",
+    "forcedInvocationUsed": false,
+    "android": {
+      "osJobStarted": true,
+      "nativeReportedSuccess": true,
+      "actualSharedAckAdvanced": false
+    },
+    "ios": {
+      "releaseCallbackStartedAt": "2026-10-30T07:06:38.141Z",
+      "finishedByReadOnlyObservation": false,
+      "sharingPhase": "pending",
+      "pendingUndoRetained": true
+    },
+    "followup": "Rebuild and install the corrected Release code without resetting data, verify foreground behavior and repeat natural execution."
+  },
+  "scope": [
+    "No Firestore Rules or cryptographic protocol changes.",
+    "No independent third-party audit claim.",
+    "Calendar expansion deferred until background validation; user calendar ideas remain a draft."
+  ]
+}

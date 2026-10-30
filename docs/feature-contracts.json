@@ -5907,5 +5907,31 @@
         "name": "only the OS worker callback creates release evidence and one domain failure does not skip later domains"
       }
     ]
+  },
+  {
+    "feature": "native-background-resolved-failure-propagation",
+    "tests": [
+      {
+        "file": "tests/background-sync-audit.test.mjs",
+        "name": "a resolved personal Google result ${kind} is reported accurately without skipping independent background domains"
+      },
+      {
+        "file": "tests/sharing-v2-native-workspace.test.mjs",
+        "name": "the native v2 worker preserves the ${failure} result and still attempts independent integration phases"
+      },
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a durably reported shared sync failure reaches the worker after other groups have been attempted"
+      }
+    ]
+  },
+  {
+    "feature": "bounded-shared-worker-fairness-across-restarts",
+    "tests": [
+      {
+        "file": "tests/sharing-workspace-recovery.test.mjs",
+        "name": "a slow first workspace cannot starve later workspaces across bounded worker runs or process restarts"
+      }
+    ]
   }
 ]

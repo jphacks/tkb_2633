@@ -40,3 +40,27 @@ test('only the OS worker callback creates release evidence and one domain failur
     assert.equal(row.private_calendar, 'success'); assert.equal(row.sharing, 'success'); assert.ok(row.finished_at >= row.started_at);
   } finally { if (previous === undefined) delete globalThis.__DEV__; else globalThis.__DEV__ = previous; h.connection.close(); }
 });
+
+for (const kind of ['retry', 'authRequired', 'error', 'success']) {
+  test(`a resolved personal Google result ${kind} is reported accurately without skipping independent background domains`, async () => {
+    const h = createDatabase(); let callback; const calls = []; const previous = globalThis.__DEV__; globalThis.__DEV__ = false;
+    try {
+      loadNativeModule('src/features/google-sync/background-task.ts', {
+        './background-audit': { createBackgroundAudit },
+        'expo-background-task': { BackgroundTaskResult: { Success: 'success', Failed: 'failed' } },
+        'expo-task-manager': { defineTask: (_name, run) => { callback = run; } },
+        'expo-sqlite': { openDatabaseAsync: async name => name === 'background-sync-audit.db' ? { ...h.database, closeAsync: async () => {} } : { closeAsync: async () => {} } },
+        './coordinator': { syncGoogleTasks: async () => { calls.push('personal'); return { kind, code: 'synthetic', skipped: kind === 'success' }; } },
+        '@/platform/storage/repository': { LOCAL_HOUSEHOLD_ID: 'local', initializeLocalDatabase: async () => {}, loadGoogleSyncState: async () => ({ enabled: true }) },
+        '@/platform/sharing/private-calendar-sync': { syncKnownPrivateCalendar: async () => { calls.push('private'); } },
+        '@/platform/sharing/workspaces': { syncKnownSharingWorkspaces: async () => { calls.push('sharing'); } },
+      });
+      const expected = kind === 'success' ? 'success' : 'failed';
+      assert.equal(await callback({}), expected);
+      assert.deepEqual(calls, ['personal', 'private', 'sharing']);
+      const row = h.connection.prepare('SELECT * FROM background_sync_runs').get();
+      assert.equal(row.outcome, expected); assert.equal(row.personal, expected);
+      assert.equal(row.private_calendar, 'success'); assert.equal(row.sharing, 'success');
+    } finally { if (previous === undefined) delete globalThis.__DEV__; else globalThis.__DEV__ = previous; h.connection.close(); }
+  });
+}

@@ -7,6 +7,7 @@ import * as rollout from '../src/features/sharing/rollout.ts';
 function fixture(options = {}) {
   const events = []; const handles = []; const synchronizers = []; const syncBudgets = [];
   const session = { userId: 'member' };
+  const vault = options.vault ?? new Map();
   const records = (options.groups ?? ['broken', 'healthy']).map((groupId) => ({ userId: 'member', groupId,
     status: 'active', displayName: groupId, rosterArchive: [], anchor: { body: { schemaVersion: 1, groupId, ownerDeviceId: 'another-device',
       members: [{ userId: 'member', devices: [{ identity: { deviceId: 'this-device' } }] }] } } }));
@@ -18,7 +19,8 @@ function fixture(options = {}) {
       getSharingServices: () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: session.userId } }, firestore: {} }) },
     './native-crypto.ts': { nativeSharingCrypto: {} },
     './secure-store.ts': { loadOrCreateSharingDeviceIdentity: async () => ({ deviceId: 'this-device' }),
-      sharingSecureVault: { getItem: async (key) => key === 'sharing-enabled' ? 'true' : options.selection ? JSON.stringify(options.selection) : null } },
+      sharingSecureVault: { getItem: async key => vault.get(key) ?? (key === 'sharing-enabled' ? 'true' : key === 'active-workspace' && options.selection ? JSON.stringify(options.selection) : null),
+        setItem: async (key, value) => { vault.set(key, value); } } },
     './database-location.ts': { sharingDatabaseDirectory: async () => '/protected-test-directory',
       openSharingDatabase: async (_userId, groupId) => {
         events.push(`open:${groupId}`);
@@ -87,7 +89,7 @@ function fixture(options = {}) {
     } },
     '../../features/google-sync/workspace-policy': { sharedGoogleNamespace: () => 'a'.repeat(64) },
   });
-  return { api, events, handles, records, synchronizers, syncBudgets, session };
+  return { api, events, handles, records, synchronizers, syncBudgets, session, vault };
 }
 
 for (const [status, name] of [
@@ -125,9 +127,9 @@ test('migration workers never read retired group Google state or run legacy Goog
   assert.ok(h.events.includes('sync:healthy'));
 });
 
-test('a durably reported shared sync failure still leaves other groups available', async () => {
+test('a durably reported shared sync failure reaches the worker after other groups have been attempted', async () => {
   const h = fixture({ failSync: 'broken' });
-  await h.api.syncKnownSharingWorkspaces();
+  await assert.rejects(h.api.syncKnownSharingWorkspaces(), /sync failed:broken/u);
   assert.ok(h.events.includes('sync:healthy'));
 });
 
@@ -162,6 +164,22 @@ test('a database that finishes opening after the worker deadline does not start 
     assert.deepEqual(h.syncBudgets, []);
     assert.equal(h.events.some((event) => event.startsWith('google-state:')), false);
   } finally { Date.now = originalNow; }
+});
+
+test('a slow first workspace cannot starve later workspaces across bounded worker runs or process restarts', async () => {
+  const previous = Date.now; let now = 1000; Date.now = () => now;
+  try {
+    const vault = new Map();
+    const first = fixture({ vault, afterSync: () => { now += 30_000; } });
+    await first.api.syncKnownSharingWorkspaces(20_000);
+    assert.deepEqual(first.events.filter(event => event.startsWith('sync:')), ['sync:broken']);
+    const restarted = fixture({ vault, afterSync: () => { now += 30_000; } });
+    await restarted.api.syncKnownSharingWorkspaces(20_000);
+    assert.deepEqual(restarted.events.filter(event => event.startsWith('sync:')), ['sync:healthy']);
+    const third = fixture({ vault, afterSync: () => { now += 30_000; } });
+    await third.api.syncKnownSharingWorkspaces(20_000);
+    assert.deepEqual(third.events.filter(event => event.startsWith('sync:')), ['sync:broken']);
+  } finally { Date.now = previous; }
 });
 
 test('failed shared database initialization closes only its new handle and a retry can open a fresh connection', async () => {

@@ -526,6 +526,14 @@ export async function syncKnownSharingWorkspaces(budgetMs = 20_000): Promise<voi
   if (!await hasSharingSessionEnabled()) return;
   const start = Date.now(); const owner = (await sharingSessionUser())?.uid; const records = await knownSharingWorkspaces();
   if ((await sharingSessionUser())?.uid !== owner) throw new SharingAccessError('同期する共有アカウントが変わりました。');
+  if (!owner) return;
+  const eligible = records.filter(item => item.userId === owner && !['left', 'removed'].includes(item.status));
+  // Persist the last attempted group before network work: an exhausted OS window or
+  // process restart must not repeatedly give the first group the entire budget.
+  const cursorKey = `sharing-worker-cursor:${owner}`;
+  const previous = await sharingSecureVault.getItem(cursorKey).catch(() => null);
+  const offset = eligible.findIndex(item => item.groupId === previous) + 1;
+  const ordered = [...eligible.slice(offset), ...eligible.slice(0, offset)];
   const failures: unknown[] = [];
   if (Date.now() - start < budgetMs - 1000) try {
     const { clearInactiveV2Reminders } = await import('./v2-reminders');
@@ -533,22 +541,28 @@ export async function syncKnownSharingWorkspaces(budgetMs = 20_000): Promise<voi
       if ((await sharingSessionUser())?.uid !== owner || Date.now() - start >= budgetMs) throw new Error('通知の更新状態が変わりました。');
     });
   } catch (error) { failures.push(error); }
-  for (const record of records.filter((item) => !['left', 'removed'].includes(item.status))) {
+  for (const record of ordered) {
     const remaining = budgetMs - (Date.now() - start); if (remaining < 1000) break;
     try {
+      if ((await sharingSessionUser())?.uid !== owner) throw new SharingAccessError('同期する共有アカウントが変わりました。');
+      await sharingSecureVault.setItem(cursorKey, record.groupId).catch(() => undefined);
+      if (budgetMs - (Date.now() - start) < 1000) break;
       const workspace = await openSharedWorkspace(record);
       const syncBudget = budgetMs - (Date.now() - start); if (syncBudget < 1000) break;
-      await workspace.sync({ budgetMs: syncBudget }).catch(() => undefined);
+      await workspace.sync({ budgetMs: syncBudget }).catch(error => { failures.push(error); });
       if (Date.now() - start < budgetMs - 5000) await workspace.maintainHistory().catch(() => undefined);
       if (budgetMs - (Date.now() - start) < 1000) continue;
       if (workspace.protocol === 2) {
         if (budgetMs - (Date.now() - start) >= 1000) await workspace.reminders().then(runtime => {
           const remaining = budgetMs - (Date.now() - start); if (remaining >= 1000) return runtime.synchronize(Math.min(15_000, remaining));
-        }).catch(() => undefined);
+        }).catch(error => { failures.push(error); });
         const taskBudget = budgetMs - (Date.now() - start);
         if (taskBudget >= 1000) await workspace.googleTasks().then(runtime => {
-          const remaining = budgetMs - (Date.now() - start); if (remaining >= 1000) return runtime.synchronize({ budgetMs: Math.min(15_000, remaining) });
-        }).catch(() => undefined);
+          const remaining = budgetMs - (Date.now() - start);
+          if (remaining >= 1000) return runtime.synchronize({ budgetMs: Math.min(15_000, remaining) }).then(result => {
+            if (result.kind !== 'success') throw new Error('Google Tasksへの同期を完了できませんでした。接続状態を確認してください。');
+          });
+        }).catch(error => { failures.push(error); });
         continue;
       }
 

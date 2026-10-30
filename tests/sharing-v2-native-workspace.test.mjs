@@ -233,6 +233,27 @@ test('loading the v2 Tasks runtime consumes the original worker budget before an
   } finally { Date.now = previous; await h.close(); }
 });
 
+for (const failure of ['shared', 'reminders', 'google-throw', 'retry', 'authRequired', 'error', 'success']) {
+  test(`the native v2 worker preserves the ${failure} result and still attempts independent integration phases`, async () => {
+    const h = await workspaceHarness({ deferWorkspaceTimers: true });
+    try {
+      const workspace = await h.api.openSharedWorkspace(h.record);
+      await updateSharingWorkspace(h.index.database, 'owner', h.record.groupId, value => ({ ...value, status: 'active' })); await workspace.record();
+      h.vault.set('sharing-enabled', 'true'); const calls = [];
+      workspace.sync = async () => { calls.push('shared'); if (failure === 'shared') throw new Error('synthetic shared failure'); return {}; };
+      workspace.maintainHistory = async () => { calls.push('history'); };
+      workspace.reminders = async () => ({ synchronize: async () => { calls.push('reminders'); if (failure === 'reminders') throw new Error('synthetic reminder failure'); } });
+      workspace.googleTasks = async () => ({ synchronize: async () => {
+        calls.push('google'); if (failure === 'google-throw') throw new Error('synthetic Google failure');
+        return { kind: ['retry', 'authRequired', 'error'].includes(failure) ? failure : 'success', code: 'synthetic', skipped: failure === 'success' };
+      } });
+      if (failure === 'success') await h.api.syncKnownSharingWorkspaces();
+      else await assert.rejects(h.api.syncKnownSharingWorkspaces());
+      assert.deepEqual(calls, ['shared', 'history', 'reminders', 'google']);
+    } finally { await h.close(); }
+  });
+}
+
 test('a local commit during a bounded v2 sync cannot escape the worker through its debounce callback', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] }); const previousNow = Date.now; let now = previousNow();
   Date.now = () => now; let workspace; let choreId; let reads = 0;

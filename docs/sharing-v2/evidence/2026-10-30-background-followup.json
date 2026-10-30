@@ -37,7 +37,8 @@
     "android": {
       "osJobStarted": true,
       "nativeReportedSuccess": true,
-      "actualSharedAckAdvanced": false
+      "actualSharedAckAdvanced": false,
+      "releaseCallbackRecordedAt": "2026-10-30T07:02:24Z"
     },
     "ios": {
       "releaseCallbackStartedAt": "2026-10-30T07:06:38.141Z",
@@ -51,5 +52,23 @@
     "No Firestore Rules or cryptographic protocol changes.",
     "No independent third-party audit claim.",
     "Calendar expansion deferred until background validation; user calendar ideas remain a draft."
-  ]
+  ],
+  "physicalFollowup": {
+    "sourceCommit": "ef2542801574ccebd6115d959b583c9144df9c4c",
+    "ciRun": 41021426950,
+    "ciAllJobs": "success",
+    "releaseRebuiltForBothPlatforms": true,
+    "installedWithoutReset": true,
+    "iosReadOnlySmoke": "passed: cold start, shared calendar month changes, history, settings audit, return home",
+    "androidReadOnlySmoke": "passed: shared home, calendar month changes, settings audit",
+    "iosBackgroundState": 3,
+    "androidOfflineOutboxCount": 1,
+    "androidOfflineCompletionVerifiedAt": "2026-10-30T07:56:33.248438Z",
+    "androidBackgroundedAt": "2026-10-30T07:56:35.274929Z",
+    "radioSettingsRestored": true,
+    "savedWifiReconnectedAndValidated": true,
+    "baselineObservedAt": "2026-10-30T08:00:30.540Z",
+    "baselineSequence": 31,
+    "naturalExecutionResult": "pending; do not infer OS-origin synchronization from radio reconnection alone"
+  }
 }

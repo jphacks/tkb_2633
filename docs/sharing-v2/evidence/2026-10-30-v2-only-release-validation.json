@@ -113,5 +113,7 @@
   "limits": [
     "Old metadata patches may be compacted by existing snapshot rules; all original signed facts remain in the source database, all original operation digests and all completion/undo facts remain in v2.",
     "Native background evidence and final rejoin-only patch installation remain to be completed after the natural scheduling window."
-  ]
+  ],
+  "sourceCommit": "825ba630f2ec7f757588b3f452f19459f8fb3fc3",
+  "followupEvidence": "2026-10-30-background-followup.json"
 }

@@ -23,6 +23,7 @@ import { fixedConflictAtOperation } from './fixed-conflict.ts';
 import { bindV2ServerReceipt } from './server-receipts.ts';
 import type { V2ServerReceipt } from './server-receipts.ts';
 import type { AuthenticatedSharedOperation } from '../crypto.ts';
+import { sharedDocumentDigest } from '../crypto.ts';
 import { deriveV2DateRequest } from './request-state.ts';
 import type { V2DateRequestState } from './request-state.ts';
 import { approvedRequestRule } from './formal-rules.ts';
@@ -38,6 +39,7 @@ import { v2ConfirmedReceiptContext, v2ObservedReceipts } from './receipt-context
 import { v2AssignmentLineage } from './assignment-lineage.ts';
 import { assertVerifiedLegacyMigration, verifiedLegacyMigrationKind } from './legacy-migration-source.ts';
 import type { VerifiedLegacyMigration } from './legacy-migration-source.ts';
+import { verifyV2RecoveryWitnesses } from './recovery-witness.ts';
 export type { VerifiedLegacyMigration } from './legacy-migration-source.ts';
 type DependencyEvidence = { receipts: ReadonlyMap<string, V2ServerReceipt>; epochs: ReadonlyMap<string, VerifiedSharedRoster> };
 
@@ -71,6 +73,20 @@ export interface V2ReceiptEvidence {
 export function assessV2BusinessHistory(replica: SharedReplica, archive: readonly VerifiedSharedRoster[], migration?: VerifiedLegacyMigration,
   evidence?: V2ReceiptEvidence) {
   if (migration !== undefined) assertVerifiedLegacyMigration(migration, replica, archive);
+  const recoveries = verifyV2RecoveryWitnesses(replica.recoveryWitnesses ?? [], archive, replica.groupId);
+  const indexed = new Map(replica.operationIndex.map(item => [item.operationId, item]));
+  for (const recovery of recoveries) {
+    for (const entry of recovery.body.entries) {
+      const current = indexed.get(entry.operationId);
+      if (entry.classification === 'restoredOriginal' ? !current : Boolean(current)) throw new Error('Recovery evidence conflicts with the active operation history');
+    }
+    for (const value of recovery.preservedFacts) {
+      const current = indexed.get(value.fact.operation.operationId);
+      if (current && current.digest !== sharedDocumentDigest(value.fact.operation)) throw new Error('Recovered original differs from the active fact');
+      const actual = evidence?.receipts.get(value.fact.operation.operationId);
+      if (!actual || canonicalJson(actual) !== canonicalJson(value.receipt)) throw new V2AwaitingReceiptError('Fetch the independently committed receipt for the preserved recovery fact');
+    }
+  }
   const pending = new Set(replica.pendingOperationIds); const rejected: V2RejectedOperation[] = [];
   const provisionalOperationIds: string[] = [];
   const receiptEpochs = new Map<string, VerifiedSharedRoster>();

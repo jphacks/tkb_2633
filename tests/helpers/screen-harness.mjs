@@ -51,6 +51,7 @@ export function screenHarness(filename, options = {}) {
       PanResponder: { create: callbacks => ({ panHandlers: callbacks }) },
       AppState: { addEventListener: (_event, listener) => { options.appStateListener?.(listener); return { remove() {} }; } },
       Linking: { openURL: async () => {} },
+      Alert: { alert: (...args) => options.alert?.(...args) },
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) },
     'react-native-reanimated': {

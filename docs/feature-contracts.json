@@ -5746,5 +5746,114 @@
       { "file": "tests/security-cloud-attacks.integration.mjs", "name": "a legitimate member cannot rewrite roles, device ownership, keys or another users acknowledgement" },
       { "file": "tests/security-cloud-attacks.integration.mjs", "name": "revocation immediately rejects every protected read, queued write and stale access attempt" }
     ]
+  },
+  {
+    "feature": "owner-confirmed-quarantine-never-skips-or-loses-original-evidence",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-recovery-analysis.test.mjs",
+        "name": "recovery analysis keeps causally blocked signed originals and server receipts without inventing a missing causal dot"
+      },
+      {
+        "file": "tests/sharing-v2-recovery-analysis.test.mjs",
+        "name": "a failed native crypto provider cannot classify valid data as corrupt or propose device removal"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "owner-confirmed recovery preserves independent edits original evidence held facts and offline outbox across restart and compaction"
+      }
+    ]
+  },
+  {
+    "feature": "owner-recovery-encrypts-private-history-proof-and-verifies-authority",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-recovery-encryption.test.mjs",
+        "name": "recovery headers keep private history digests and reviewed event numbers encrypted across owner handoff"
+      },
+      {
+        "file": "tests/sharing-v2-recovery-witness.test.mjs",
+        "name": "recovery witness rejects member signatures owner substitutions foreign groups and unpinned epochs"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "recovery Rules deny non-owner controls proof replacement cross-group reads and unpaired membership or deletion while locked"
+      }
+    ]
+  },
+  {
+    "feature": "owner-recovery-explicit-mobile-consent-and-scoped-ui",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-recovery-ui.test.mjs",
+        "name": "ios owner recovery previews impact and cannot confirm before acknowledgement and the final explicit alert"
+      },
+      {
+        "file": "tests/sharing-v2-recovery-ui.test.mjs",
+        "name": "android owner recovery previews impact and cannot confirm before acknowledgement and the final explicit alert"
+      },
+      {
+        "file": "tests/sharing-v2-recovery-ui.test.mjs",
+        "name": "owner recovery is wired to the explicitly selected v2 group while retained-history notices remain readable to members"
+      }
+    ]
+  },
+  {
+    "feature": "owner-recovery-cancellation-and-uncertain-response-idempotence",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-recovery-store.test.mjs",
+        "name": "recovery store captures a private review atomically survives restart and deduplicates original ciphertext without touching the outbox"
+      },
+      {
+        "file": "tests/sharing-synchronizer.test.mjs",
+        "name": "failed owner recovery maintenance releases queued sync and never leaves a persistent syncing lock"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "recovery cancellation persists before a late start and releases a current lock without erasing the review originals or edits"
+      },
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "a lost final recovery response uses the actual committed next key once and retry does not create another epoch"
+      },
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "a process interruption after quarantine preparation resumes the confirmed intent with fresh encryption while reusing immutable original protection"
+      }
+    ]
+  },
+  {
+    "feature": "owner-recovery-bounds-and-deployment-compatibility",
+    "tests": [
+      {
+        "file": "tests/sharing-v2-recovery-lock.test.mjs",
+        "name": "recovery queries reject unsafe limits and cross-path identifiers before any account or network access"
+      },
+      {
+        "file": "tests/sharing-v2-synchronizer.test.mjs",
+        "name": "v2 recovery diagnostics do not issue another network request after transport authorization or resumable evidence failures"
+      },
+      {
+        "file": "tests/sharing-v2-native-pair.test.mjs",
+        "name": "native QA can prove a removed device retains delayed outbox changes without network access or exposing their contents"
+      }
+    ],
+    "cloudTests": [
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "maximum 256-event recovery obeys Rules access limits and protected originals do not starve ordinary history compaction"
+      },
+      {
+        "file": "tests/sharing-v2-owner-recovery.integration.mjs",
+        "name": "the default-disabled recovery capability preserves ordinary v2 sync membership and compaction against the preceding deployed Rules"
+      }
+    ]
   }
 ]

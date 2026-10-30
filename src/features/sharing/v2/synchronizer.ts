@@ -10,8 +10,18 @@ import { bindV2ServerReceipt } from './server-receipts.ts';
 import type { V2ServerReceipt } from './server-receipts.ts';
 import { V2AwaitingReceiptError } from './receiver-authority.ts';
 import { V2_SCHEDULER_VERSION } from './payload-schema.ts';
+import { verifyV2RecoveryWitnesses } from './recovery-witness.ts';
+import { canonicalJson } from '../operations.ts';
+import { sharedDocumentDigest } from '../crypto.ts';
+import { sharedRosterDigest } from '../roster.ts';
+import { readV2RecoveryEvidence } from './recovery-evidence.ts';
+import { preserveV2RecoveryOriginalsInside } from '../../../platform/storage/sharing-v2-recovery.ts';
+import { V2RecoveryInProgressError, verifyV2RecoveryLock } from './recovery-lock.ts';
 
 export class V2ReceiptRecoveryPendingError extends Error { readonly code = 'sharing/receipt-recovery-pending'; }
+const unrelatedToRecoveryLock = new Set(['unavailable', 'deadline-exceeded', 'cancelled', 'aborted', 'resource-exhausted',
+  'permission-denied', 'unauthenticated', 'sharing/access-denied', 'sharing/scheduler-version-mismatch',
+  'sharing/receipt-recovery-pending', 'sharing/v2-awaiting-receipt']);
 
 /** Reuse the existing encrypted coordinator; only protocol and receipt-aware projection are specialized. */
 export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 'v2' | 'project'> & {
@@ -36,10 +46,31 @@ export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 
   async function snapshotEvidence(snapshot: VerifiedSharedSnapshot, archive: readonly VerifiedSharedRoster[], deadline: number) {
     assertCurrentAccount();
     const facts = new Map(snapshot.facts.filter((fact) => fact.operation.schemaVersion === 2).map((fact) => [fact.operation.operationId, fact]));
+    const preservedReceipts = new Map<string, V2ServerReceipt>();
+    const recoveries = verifyV2RecoveryWitnesses(snapshot.base.recoveryWitnesses ?? [], archive, deps.groupId);
+    const recoveryOriginals = recoveries.length ? await readV2RecoveryEvidence(deps.cloud, deps.groupId, recoveries, assertCurrentAccount, deadline) : [];
+    const index = new Map(snapshot.base.operationIndex.map(item => [item.operationId, item]));
+    for (const recovery of recoveries) {
+      if (recovery.body.throughSequence === snapshot.throughSequence && sharedRosterDigest(archive.at(-1)!) === recovery.body.nextRosterDigest
+        && recovery.body.retainedIndexDigest !== sharedDocumentDigest(snapshot.base.operationIndex)) throw new Error('Recovery snapshot changed its reviewed retained history');
+      for (const entry of recovery.body.entries) {
+        if (entry.classification === 'restoredOriginal' ? !index.has(entry.operationId) : index.has(entry.operationId)) throw new Error('Quarantine and active history overlap');
+      }
+      for (const value of recovery.preservedFacts) {
+        const id = value.fact.operation.operationId; const active = facts.get(id);
+        if (active && canonicalJson(active) !== canonicalJson(value.fact)) throw new Error('Recovery rewrote a preserved original');
+        facts.set(id, value.fact); preservedReceipts.set(id, value.receipt);
+      }
+    }
+    const validateReceipt = (receipt: V2ServerReceipt, fact: AuthenticatedSharedOperation) => {
+      bindV2ServerReceipt(receipt, fact, archive);
+      const preserved = preservedReceipts.get(receipt.operationId);
+      if (preserved && canonicalJson(preserved) !== canonicalJson(receipt)) throw new Error('Recovery changed an immutable server receipt');
+    };
     const known = await deps.serialized(() => withIsolatedSqliteTransaction(deps.database, async (transaction) => {
       assertCurrentAccount(); return repository.readReceiptCache(transaction);
     }));
-    for (const [id, fact] of facts) { const receipt = known.get(id); if (receipt) bindV2ServerReceipt(receipt, fact, archive); }
+    for (const [id, fact] of facts) { const receipt = known.get(id); if (receipt) validateReceipt(receipt, fact); }
     const missing = [...facts.keys()].filter((id) => !known.has(id));
     for (let offset = 0; offset < missing.length; offset += 1000) {
       if (now() >= deadline) throw new V2ReceiptRecoveryPendingError('受付記録の復旧を保存しました。次の同期で続けます。');
@@ -49,7 +80,7 @@ export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 
       for (const receipt of page) {
         const fact = facts.get(receipt.operationId);
         if (!fact || !requested.has(receipt.operationId)) throw new Error('Recovered receipt belongs to an unrequested fact');
-        bindV2ServerReceipt(receipt, fact, archive);
+        validateReceipt(receipt, fact);
       }
       // Persist verified progress separately; the snapshot cursor/outbox stay unchanged until all evidence is available.
       await deps.serialized(() => withIsolatedSqliteTransaction(deps.database, async (transaction) => {
@@ -60,13 +91,42 @@ export function createV2Synchronizer(dependencies: Omit<SharedSyncDependencies, 
         throw new V2AwaitingReceiptError('Snapshotの操作に対応する受付記録を確認できません。');
       }
     }
-    return repository.evidenceForServerReceipts([]);
+    const evidence = repository.evidenceForServerReceipts([]);
+    return { ...evidence, record: async (transaction: Parameters<typeof evidence.record>[0]) => {
+      assertCurrentAccount(); const changed = await evidence.record(transaction);
+      if (recoveryOriginals.length) await preserveV2RecoveryOriginalsInside(transaction, deps.groupId, recoveryOriginals);
+      assertCurrentAccount(); return changed;
+    } };
   }
   const configured: SharedSyncDependencies = { ...deps,
     readRecord: async () => { assertCurrentAccount(); const value = await deps.readRecord(); assertCurrentAccount(); return value; },
     saveArchive: async (archive) => { assertCurrentAccount(); await deps.saveArchive(archive); assertCurrentAccount(); },
     project: async (transaction, replica) => { assertCurrentAccount(); await repository.project(transaction, replica); assertCurrentAccount(); },
     v2: { schedulerVersion: V2_SCHEDULER_VERSION, eventEvidence, snapshotEvidence } };
-  return { ...createSharedSynchronizer(configured),
+  const synchronizer = createSharedSynchronizer(configured);
+  return { ...synchronizer,
+    sync: async (options: Parameters<typeof synchronizer.sync>[0] = {}) => {
+      try { return await synchronizer.sync(options); }
+      catch (error) {
+        assertCurrentAccount();
+        const code = error && typeof error === 'object' && 'code' in error ? String(error.code).replace(/^firestore\//u, '') : '';
+        // A second request cannot explain transport/auth failures or replace a resumable evidence result.
+        if (deps.cloud.ownerRecoveryEnabled && !(error instanceof V2RecoveryInProgressError) && !unrelatedToRecoveryLock.has(code)) {
+          try {
+            const lock = await deps.cloud.readRecoveryLock(deps.groupId); assertCurrentAccount();
+            if (lock) {
+              const metadata = await deps.cloud.readGroup(deps.groupId); assertCurrentAccount();
+              const history = await verifyCloudMembership(configured, metadata.roster); assertCurrentAccount();
+              if (lock.body.keyVersion === history.at(-1)!.body.keyVersion) {
+                verifyV2RecoveryLock(lock, history.at(-1)!); throw new V2RecoveryInProgressError();
+              }
+            }
+          } catch (recoveryError) {
+            assertCurrentAccount(); if (recoveryError instanceof V2RecoveryInProgressError) throw recoveryError;
+          }
+        }
+        throw error;
+      }
+    },
     verifyMembership: (current: SignedSharedRoster) => { assertCurrentAccount(); return verifyCloudMembership(configured, current); } };
 }

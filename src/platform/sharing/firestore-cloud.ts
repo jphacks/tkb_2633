@@ -7,14 +7,18 @@ import { assertSharedCloudAccess, parseSharedCloudEvent, parseSharedCloudGroup, 
 import type { EncryptedSharedOperation, WrappedGroupKey } from '../../features/sharing/crypto.ts';
 import type { VerifiedSharedRoster } from '../../features/sharing/roster.ts';
 import { createSharingManagement } from './firestore-management.ts';
+import { createSharingRecovery, parseFirestoreRecoveryLock } from './firestore-recovery.ts';
+import { V2RecoveryInProgressError, verifyV2RecoveryLock } from '../../features/sharing/v2/recovery-lock.ts';
 import { sharingCloudWithDeadline } from './network-deadline.ts';
 import { parseV2FirestoreReceipt } from './v2-receipts.ts';
 import type { V2ServerReceipt } from '../../features/sharing/v2/server-receipts.ts';
 import type { SharedCloudEvent } from '../../features/sharing/cloud-contract.ts';
 
 /** All reads use the server; Firestore's memory cache cannot acknowledge delivery. */
-export function createSharingCloud(firestore: Firestore, userId: string, currentUserId: () => string | null) {
+export function createSharingCloud(firestore: Firestore, userId: string, currentUserId: () => string | null,
+  options: { ownerRecoveryEnabled?: boolean } = {}) {
   assertSharedIdentifier(userId);
+  const recoveryEnabled = options.ownerRecoveryEnabled === true;
   const checkAccount = () => { if (currentUserId() !== userId) throw new SharingAccessError('共有アカウントが切り替わりました。'); };
   const reference = (groupId: string) => { assertSharedIdentifier(groupId); return doc(firestore, 'sharingGroups', groupId); };
   const readGroup = async (groupId: string) => {
@@ -23,7 +27,9 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
     return parsed;
   };
   return sharingCloudWithDeadline({
-    ...createSharingManagement({ firestore, userId, checkAccount, reference, readGroup }),
+    ...createSharingManagement({ firestore, userId, checkAccount, reference, readGroup, recoveryEnabled }),
+    ...createSharingRecovery({ firestore, userId, checkAccount, reference, readGroup, recoveryEnabled }),
+    ownerRecoveryEnabled: recoveryEnabled,
     readGroup,
     async listMemberships(): Promise<string[]> {
       const memberships: string[] = []; let cursor: QueryDocumentSnapshot | undefined;
@@ -107,7 +113,7 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
       const result = await runTransaction(firestore, async (transaction) => {
         checkAccount();
         const root = await transaction.get(ref);
-        const { group } = parseSharedCloudGroup(root.data(), envelope.groupId);
+        const { group, roster } = parseSharedCloudGroup(root.data(), envelope.groupId);
         assertSharedCloudAccess(group, userId, envelope.authorDeviceId);
         if (envelope.schemaVersion !== group.schemaVersion) throw new SharingSchedulerVersionError();
         // A successful response may have been lost. Never create a second event or nonce.
@@ -120,6 +126,13 @@ export function createSharingCloud(firestore: Firestore, userId: string, current
           return accepted;
         }
         if (envelope.schemaVersion === 2) {
+          if (recoveryEnabled) {
+            const held = await transaction.get(doc(ref, 'recoveryLocks', 'current')); checkAccount();
+            if (held.exists() && held.data().keyVersion === group.keyVersion) {
+              verifyV2RecoveryLock(parseFirestoreRecoveryLock(held.data()), roster as VerifiedSharedRoster);
+              throw new V2RecoveryInProgressError();
+            }
+          }
           const previousReceipt = await transaction.get(receiptRef);
           if (previousReceipt.exists()) {
             const receipt = parseV2FirestoreReceipt(previousReceipt.data(), envelope.groupId, envelope.operationId);

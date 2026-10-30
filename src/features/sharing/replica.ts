@@ -4,6 +4,8 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { validateLegacyMigrationWitness } from './v2/legacy-migration-witness.ts';
 import type { SignedLegacyMigrationWitness } from './v2/legacy-migration-witness.ts';
+import { MAX_V2_RECOVERY_WITNESSES, validateV2RecoveryWitness } from './v2/recovery-witness.ts';
+import type { SignedV2RecoveryWitness } from './v2/recovery-witness.ts';
 
 export interface SharedOperationReceipt { operationId: string; deviceId: string; sequence: number; digest: string }
 export interface SharedSnapshotBase {
@@ -15,6 +17,8 @@ export interface SharedSnapshotBase {
   operations: SharedOperation[];
   /** Original owner statement carried only by a schema2 encrypted snapshot. */
   legacyMigrationWitness?: SignedLegacyMigrationWitness;
+  /** Owner-approved quarantine proof; never a fabricated operation or causal dot. */
+  recoveryWitnesses?: SignedV2RecoveryWitness[];
 }
 
 export interface FieldCandidate { operationId: string; value: JsonValue }
@@ -43,6 +47,7 @@ export interface SharedReplica {
   pendingOperationIds: string[];
   operationIndex: SharedOperationReceipt[];
   legacyMigrationWitness?: SignedLegacyMigrationWitness;
+  recoveryWitnesses?: SignedV2RecoveryWitness[];
 }
 
 export function sharedOperationDigest(operation: SharedOperation): string {
@@ -56,6 +61,15 @@ function receipt(operation: SharedOperation): SharedOperationReceipt {
 
 export function validateSharedSnapshotBase(groupId: string, base: SharedSnapshotBase): SharedSnapshotBase {
   if (base.legacyMigrationWitness !== undefined && validateLegacyMigrationWitness(base.legacyMigrationWitness).body.groupId !== groupId) throw new Error('Foreign migration witness');
+  if (base.recoveryWitnesses !== undefined) {
+    if (!Array.isArray(base.recoveryWitnesses) || base.recoveryWitnesses.length > MAX_V2_RECOVERY_WITNESSES) throw new Error('Invalid recovery history');
+    const ids = new Set<string>();
+    for (const raw of base.recoveryWitnesses) {
+      const witness = validateV2RecoveryWitness(raw);
+      if (witness.body.groupId !== groupId || ids.has(witness.body.snapshotId)) throw new Error('Foreign or duplicate recovery witness');
+      ids.add(witness.body.snapshotId);
+    }
+  }
   if (base.groupId !== groupId || !Number.isSafeInteger(base.logicalClock) || base.logicalClock < 0
     || !Array.isArray(base.operationIndex) || !Array.isArray(base.operations)) throw new Error('Invalid shared snapshot base');
   const ids = new Set<string>(); const dots = new Set<string>();
@@ -209,6 +223,7 @@ export function buildSharedReplica(groupId: string, input: readonly SharedOperat
   effective.sort((a, b) => compareOperationIds(a.occurrenceId, b.occurrenceId));
   return { groupId, operations, entities, completions: effective, frontier,
     ...(base?.legacyMigrationWitness ? { legacyMigrationWitness: JSON.parse(canonicalJson(base.legacyMigrationWitness)) as SignedLegacyMigrationWitness } : {}),
+    ...(base?.recoveryWitnesses?.length ? { recoveryWitnesses: JSON.parse(canonicalJson(base.recoveryWitnesses)) as SignedV2RecoveryWitness[] } : {}),
     logicalClock: operations.reduce((max, op) => Math.max(max, op.logicalClock), base?.logicalClock ?? 0),
     pendingOperationIds: operations.filter((op) => !readyIds.has(op.operationId)).map((op) => op.operationId),
     operationIndex: [...index.values()].sort((a, b) => compareOperationIds(a.operationId, b.operationId)) };
@@ -230,5 +245,6 @@ export function compactSharedReplica(replica: SharedReplica): SharedSnapshotBase
   return validateSharedSnapshotBase(replica.groupId, { groupId: replica.groupId, frontier: { ...replica.frontier },
     logicalClock: replica.logicalClock, operationIndex: replica.operationIndex.map((item) => ({ ...item })),
     operations: replica.operations.filter((op) => retained.has(op.operationId)),
-    ...(replica.legacyMigrationWitness ? { legacyMigrationWitness: JSON.parse(canonicalJson(replica.legacyMigrationWitness)) as SignedLegacyMigrationWitness } : {}) });
+    ...(replica.legacyMigrationWitness ? { legacyMigrationWitness: JSON.parse(canonicalJson(replica.legacyMigrationWitness)) as SignedLegacyMigrationWitness } : {}),
+    ...(replica.recoveryWitnesses?.length ? { recoveryWitnesses: JSON.parse(canonicalJson(replica.recoveryWitnesses)) as SignedV2RecoveryWitness[] } : {}) });
 }

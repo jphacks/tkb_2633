@@ -1,5 +1,5 @@
 {
-  "version": "liflow-shared-2-draft-37",
+  "version": "liflow-shared-2-draft-38",
   "timeZoneVersion": "2026e",
   "sourceFiles": [
     "src/features/sharing/v2/model.ts",
@@ -75,7 +75,17 @@
     "src/features/sharing/private-planner/relocation.ts",
     "src/features/sharing/v2/legacy-migration-witness.ts",
     "src/features/sharing/v2/legacy-migration-plan.ts",
-    "src/features/sharing/snapshots.ts"
+    "src/features/sharing/snapshots.ts",
+    "src/features/sharing/roster.ts",
+    "src/features/sharing/crypto.ts",
+    "src/features/sharing/v2/recovery-analysis.ts",
+    "src/features/sharing/v2/recovery-contract.ts",
+    "src/features/sharing/v2/recovery-cloud-contract.ts",
+    "src/features/sharing/v2/recovery-encryption.ts",
+    "src/features/sharing/v2/recovery-evidence.ts",
+    "src/features/sharing/v2/recovery-lock.ts",
+    "src/features/sharing/v2/recovery-witness.ts",
+    "src/features/sharing/v2/owner-recovery.ts"
   ],
-  "sourceSha256": "78d891bffe7690d652795727af8b250b2d2ef763102e5d7cbe1b602c75b66a57"
+  "sourceSha256": "8a9ce1808cff4b5f72fcb9a866d08405cf7c168e445510bd290c4b5cb61894b9"
 }

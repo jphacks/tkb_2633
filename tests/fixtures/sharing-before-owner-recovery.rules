@@ -1,0 +1,369 @@
+// Frozen compatibility fixture: security baseline 0fbe8e5. Never used by deployment.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function groupPath(groupId) { return /databases/$(database)/documents/sharingGroups/$(groupId); }
+    function group(groupId) { return get(groupPath(groupId)).data; }
+    function afterGroup(groupId) { return getAfter(groupPath(groupId)).data; }
+    function memberOf(g) {
+      return signedIn() && request.auth.uid in g.memberIds && !(request.auth.uid in g.revokedUserIds) && !g.closed;
+    }
+    function ownerOf(g) { return memberOf(g) && request.auth.uid == g.ownerUserId; }
+    function safeId(id) { return id is string && id.matches('^[A-Za-z0-9_.:@-]{1,200}$'); }
+    function validRoot(g) {
+      return g.keys().hasOnly(['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds', 'deviceOwners',
+        'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
+        'headSequence', 'lastOperationId', 'snapshotId', 'snapshotThroughSequence', 'createdAt', 'updatedAt'])
+        && g.schemaVersion in [1, 2] && safeId(g.ownerUserId) && safeId(g.ownerDeviceId)
+        && g.memberIds is list && g.memberIds.size() <= 16 && g.memberIds.toSet().size() == g.memberIds.size()
+        && g.deviceOwners is map && g.deviceOwners.size() <= 64
+        && g.deviceOwners.values().toSet().hasOnly(g.memberIds)
+        && g.keyVersion is int && g.keyVersion > 0 && g.rosterRevision == g.keyVersion
+        && g.rosterJson is string && g.rosterJson.size() <= 60000
+        && g.revokedUserIds is list && g.revokedUserIds.toSet().hasOnly(g.memberIds)
+        && g.revokedUserIds.toSet().size() == g.revokedUserIds.size()
+        && g.rotationRequired is bool && (g.revokedUserIds.size() == 0 || g.rotationRequired)
+        && g.closed is bool
+        && (g.closed ? g.memberIds.size() == 0 && g.deviceOwners.size() == 0
+          : g.ownerUserId in g.memberIds && g.deviceOwners[g.ownerDeviceId] == g.ownerUserId)
+        && g.headSequence is int && g.headSequence >= 0
+        && (g.lastOperationId == null || safeId(g.lastOperationId))
+        && (g.snapshotId == null || safeId(g.snapshotId))
+        && g.snapshotThroughSequence is int && g.snapshotThroughSequence >= 0 && g.snapshotThroughSequence <= g.headSequence
+        && g.createdAt is timestamp && g.updatedAt == request.time;
+    }
+    function rosterWritten(groupId, g) {
+      return getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/rosters/$(string(g.rosterRevision))).data.rosterJson == g.rosterJson;
+    }
+    function ownerForWrite(groupId) {
+      return exists(groupPath(groupId)) ? ownerOf(group(groupId)) : ownerOf(afterGroup(groupId));
+    }
+    function validProofDigest(value) { return value is string && value.matches('^[a-f0-9]{64}$'); }
+    function receiptMatchesEvent(groupId, operationId, event) {
+      let receipt = getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/receipts/$(operationId)).data;
+      return receipt.schemaVersion == 2 && receipt.authorUserId == event.authorUserId
+        && receipt.authorDeviceId == event.authorDeviceId && receipt.keyVersion == event.keyVersion
+        && receipt.uploadSequence == event.uploadSequence && receipt.authorProofDigest == event.authorProofDigest
+        && receipt.createdAt == event.createdAt;
+    }
+
+    match /sharingGroups/{groupId} {
+      allow get: if memberOf(resource.data);
+      allow list: if false;
+      allow create: if signedIn() && safeId(groupId) && validRoot(request.resource.data)
+        && request.resource.data.ownerUserId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.deviceOwners.size() == 1
+        && request.resource.data.keyVersion == 1 && request.resource.data.headSequence == 0
+        && request.resource.data.lastOperationId == null && request.resource.data.snapshotId == null
+        && request.resource.data.snapshotThroughSequence == 0 && request.resource.data.revokedUserIds == []
+        && !request.resource.data.rotationRequired && !request.resource.data.closed
+        && request.resource.data.createdAt == request.time && rosterWritten(groupId, request.resource.data);
+      allow update: if validRoot(request.resource.data) && (
+        // Each event and its consecutive delivery position commit together. No cursor holes.
+        (memberOf(resource.data) && !resource.data.rotationRequired
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['headSequence', 'lastOperationId', 'updatedAt'])
+          && request.resource.data.headSequence == resource.data.headSequence + 1
+          && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.uploadSequence == request.resource.data.headSequence
+          && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.authorUserId == request.auth.uid)
+        || (ownerOf(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds',
+            'deviceOwners', 'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
+            'snapshotId', 'snapshotThroughSequence', 'updatedAt'])
+          && request.resource.data.keyVersion == resource.data.keyVersion + 1
+          && request.resource.data.revokedUserIds == [] && !request.resource.data.rotationRequired
+          && rosterWritten(groupId, request.resource.data)
+          && (request.resource.data.schemaVersion == resource.data.schemaVersion
+            || (resource.data.schemaVersion == 1 && request.resource.data.schemaVersion == 2
+              && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.ownerDeviceId == resource.data.ownerDeviceId
+              && request.resource.data.memberIds == resource.data.memberIds && request.resource.data.deviceOwners == resource.data.deviceOwners
+              && request.resource.data.snapshotId != resource.data.snapshotId
+              && request.resource.data.snapshotThroughSequence == resource.data.headSequence
+              && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion))
+          && ((request.resource.data.snapshotId == resource.data.snapshotId && request.resource.data.snapshotThroughSequence == resource.data.snapshotThroughSequence)
+            || (request.resource.data.snapshotThroughSequence == resource.data.headSequence
+              && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion
+              && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.throughSequence == request.resource.data.snapshotThroughSequence))
+          && (request.resource.data.deviceOwners.keys().toSet().difference(resource.data.deviceOwners.keys().toSet()).size() == 0
+            || getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.keyVersion == request.resource.data.keyVersion))
+        // A non-owner can immediately revoke their own cloud access. Sending freezes until rekeyed.
+        || (memberOf(resource.data) && request.auth.uid != resource.data.ownerUserId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedUserIds', 'rotationRequired', 'updatedAt'])
+          && request.resource.data.revokedUserIds.toSet() == resource.data.revokedUserIds.toSet().union([request.auth.uid].toSet())
+          && request.resource.data.rotationRequired)
+        || (ownerOf(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snapshotId', 'snapshotThroughSequence', 'updatedAt'])
+          && request.resource.data.snapshotThroughSequence >= resource.data.snapshotThroughSequence
+          && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.throughSequence == request.resource.data.snapshotThroughSequence)
+      );
+      allow delete: if false;
+
+      match /rosters/{revision} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerForWrite(groupId)
+          && request.resource.data.keys().hasOnly(['rosterJson', 'createdAt'])
+          && request.resource.data.rosterJson == afterGroup(groupId).rosterJson
+          && revision == string(afterGroup(groupId).rosterRevision) && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+      match /events/{operationId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if memberOf(group(groupId)) && !group(groupId).rotationRequired
+          && safeId(operationId)
+          && request.resource.data.schemaVersion == group(groupId).schemaVersion && request.resource.data.authorUserId == request.auth.uid
+          && (request.resource.data.schemaVersion == 1
+            ? request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'envelopeJson', 'createdAt'])
+            : request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'envelopeJson', 'authorProofDigest', 'createdAt'])
+              && validProofDigest(request.resource.data.authorProofDigest)
+              && !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/receipts/$(operationId))
+              && receiptMatchesEvent(groupId, operationId, request.resource.data))
+          && group(groupId).deviceOwners[request.resource.data.authorDeviceId] == request.auth.uid
+          && request.resource.data.keyVersion == group(groupId).keyVersion
+          && request.resource.data.envelopeJson is string && request.resource.data.envelopeJson.size() <= 800000
+          && request.resource.data.uploadSequence == group(groupId).headSequence + 1
+          && afterGroup(groupId).headSequence == request.resource.data.uploadSequence && afterGroup(groupId).lastOperationId == operationId
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && resource.data.uploadSequence <= group(groupId).snapshotThroughSequence;
+      }
+      match /receipts/{operationId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if memberOf(group(groupId)) && group(groupId).schemaVersion == 2 && !group(groupId).rotationRequired
+          && safeId(operationId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'authorProofDigest', 'createdAt'])
+          && request.resource.data.schemaVersion == 2 && request.resource.data.authorUserId == request.auth.uid
+          && group(groupId).deviceOwners[request.resource.data.authorDeviceId] == request.auth.uid
+          && request.resource.data.keyVersion == group(groupId).keyVersion
+          && validProofDigest(request.resource.data.authorProofDigest) && request.resource.data.createdAt == request.time
+          && request.resource.data.uploadSequence == group(groupId).headSequence + 1
+          && !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(operationId))
+          && afterGroup(groupId).headSequence == request.resource.data.uploadSequence && afterGroup(groupId).lastOperationId == operationId
+          && receiptMatchesEvent(groupId, operationId,
+            getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(operationId)).data);
+        allow update, delete: if false;
+      }
+      match /keyEnvelopes/{keyId} {
+        allow read: if memberOf(group(groupId)) && resource.data.userId == request.auth.uid;
+        allow create: if ownerForWrite(groupId)
+          && request.resource.data.keys().hasOnly(['userId', 'deviceId', 'keyVersion', 'wrappedKeyJson', 'createdAt'])
+          && request.resource.data.keyVersion == afterGroup(groupId).keyVersion
+          && afterGroup(groupId).deviceOwners[request.resource.data.deviceId] == request.resource.data.userId
+          && keyId == string(request.resource.data.keyVersion) + '_' + request.resource.data.deviceId
+          && request.resource.data.wrappedKeyJson is string && request.resource.data.wrappedKeyJson.size() <= 10000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId))
+          && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/keyEnvelopes/$(keyId))
+            || (resource.data.keyVersion < group(groupId).keyVersion
+              && get(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(group(groupId).snapshotId)).data.keyVersion == group(groupId).keyVersion));
+      }
+      match /maintenance/{maintenanceId} {
+        allow read: if ownerOf(group(groupId));
+        allow create, update: if ownerOf(group(groupId)) && maintenanceId == 'keyCleanup'
+          && request.resource.data.keys().hasOnly(['throughKeyVersion']) && request.resource.data.throughKeyVersion is int
+          && request.resource.data.throughKeyVersion >= 0 && request.resource.data.throughKeyVersion < group(groupId).keyVersion
+          && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/maintenance/$(maintenanceId)) || request.resource.data.throughKeyVersion >= resource.data.throughKeyVersion);
+        allow delete: if false;
+      }
+      match /acknowledgements/{deviceId} {
+        allow read: if memberOf(group(groupId));
+        allow create, update: if memberOf(group(groupId))
+          && group(groupId).deviceOwners[deviceId] == request.auth.uid
+          && request.resource.data.keys().hasOnly(['userId', 'sequence', 'updatedAt'])
+          && request.resource.data.userId == request.auth.uid && request.resource.data.sequence is int
+          && request.resource.data.sequence >= 0 && request.resource.data.sequence <= group(groupId).headSequence
+          && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/acknowledgements/$(deviceId)) || request.resource.data.sequence >= resource.data.sequence)
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if ownerOf(group(groupId));
+      }
+      match /snapshots/{snapshotId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && safeId(snapshotId)
+          && request.resource.data.keys().hasOnly(['keyVersion', 'throughSequence', 'manifestJson', 'createdAt'])
+          && request.resource.data.keyVersion == afterGroup(groupId).keyVersion
+          && (!group(groupId).rotationRequired || request.resource.data.keyVersion > group(groupId).keyVersion)
+          && request.resource.data.throughSequence is int && request.resource.data.throughSequence >= 0
+          && request.resource.data.throughSequence <= group(groupId).headSequence
+          && request.resource.data.manifestJson is string && request.resource.data.manifestJson.size() <= 100000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && snapshotId != group(groupId).snapshotId;
+      }
+      match /snapshotChunks/{chunkId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && safeId(chunkId)
+          && request.resource.data.keys().hasOnly(['snapshotId', 'keyVersion', 'envelopeJson', 'createdAt'])
+          && safeId(request.resource.data.snapshotId) && request.resource.data.keyVersion >= group(groupId).keyVersion
+          && request.resource.data.keyVersion <= group(groupId).keyVersion + 1
+          && (!group(groupId).rotationRequired || request.resource.data.keyVersion > group(groupId).keyVersion)
+          && request.resource.data.envelopeJson is string && request.resource.data.envelopeJson.size() <= 800000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if ownerOf(group(groupId)) && resource.data.snapshotId != group(groupId).snapshotId;
+      }
+    }
+    match /sharingUsers/{userId}/memberships/{groupId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && (ownerForWrite(groupId) || request.auth.uid == userId && memberOf(afterGroup(groupId)))
+        && userId in afterGroup(groupId).memberIds
+        && request.resource.data.keys().hasOnly(['groupId', 'createdAt']) && request.resource.data.groupId == groupId
+        && request.resource.data.createdAt == request.time;
+      allow delete: if signedIn() && (request.auth.uid == userId || ownerOf(group(groupId)));
+    }
+    match /sharingInvites/{inviteId} {
+      allow get: if signedIn();
+      allow list: if signedIn() && ownerOf(group(resource.data.groupId));
+      allow create: if signedIn() && safeId(inviteId) && ownerOf(group(request.resource.data.groupId))
+        && !group(request.resource.data.groupId).rotationRequired
+        && request.resource.data.keys().hasOnly(['groupId', 'ownerUserId', 'invitationPublicKey', 'pinJson', 'expiresAt', 'status', 'usedBy', 'createdAt'])
+        && request.resource.data.ownerUserId == request.auth.uid
+        && request.resource.data.invitationPublicKey is string && request.resource.data.invitationPublicKey.matches('^[a-f0-9]{64}$')
+        && request.resource.data.pinJson is string && request.resource.data.pinJson.size() <= 60000
+        && request.resource.data.status == 'open' && request.resource.data.usedBy == null
+        && request.resource.data.createdAt == request.time && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(24, 'h');
+      allow update: if ownerOf(group(resource.data.groupId)) && resource.data.status == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'usedBy'])
+        && (request.resource.data.status == 'revoked' && request.resource.data.usedBy == null
+          || request.resource.data.status == 'used' && resource.data.expiresAt > request.time
+            && request.resource.data.usedBy in afterGroup(resource.data.groupId).memberIds);
+      allow delete: if ownerOf(group(resource.data.groupId));
+      match /requests/{userId} {
+        function invitation() { return get(/databases/$(database)/documents/sharingInvites/$(inviteId)).data; }
+        allow read: if signedIn() && (request.auth.uid == userId || ownerOf(group(invitation().groupId)));
+        allow create: if signedIn() && request.auth.uid == userId && invitation().status == 'open'
+          && invitation().expiresAt > request.time && !group(invitation().groupId).rotationRequired
+          && request.resource.data.keys().hasOnly(['userId', 'deviceId', 'requestJson', 'createdAt'])
+          && request.resource.data.userId == userId && safeId(request.resource.data.deviceId)
+          && request.resource.data.requestJson is string && request.resource.data.requestJson.size() <= 15000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if signedIn() && (request.auth.uid == userId || ownerOf(group(invitation().groupId)));
+      }
+    }
+    // Private Calendar is UID-scoped. Group ownership or membership never grants access here.
+    function privateCalendarPath(userId) { return /databases/$(database)/documents/privateCalendars/$(userId); }
+    function privateCalendarOwner(userId) { return signedIn() && request.auth.uid == userId; }
+    function privateCalendar(userId) { return get(privateCalendarPath(userId)).data; }
+    function privateCalendarAfter(userId) { return getAfter(privateCalendarPath(userId)).data; }
+    function validPrivateCalendarCacheHead(c) {
+      return c == null || c is map && c.keys().hasOnly(['cacheId', 'manifestDigest', 'authorityDigest', 'sequence', 'chunkCount'])
+        && validProofDigest(c.cacheId) && validProofDigest(c.manifestDigest) && validProofDigest(c.authorityDigest)
+        && c.sequence is int && c.sequence > 0 && c.sequence <= 9007199254740991 && c.chunkCount is int && c.chunkCount > 0 && c.chunkCount <= 32;
+    }
+    function validPrivateCalendarHead(g, userId) {
+      return g.keys().hasOnly(['schemaVersion', 'ownerUserId', 'accountGeneration', 'rootDigest', 'authorityRevision', 'authorityDigest',
+        'authorityJson', 'keyVersion', 'mainDeviceId', 'deviceIds', 'cacheHead', 'createdAt', 'updatedAt'])
+        && g.schemaVersion == 1 && g.ownerUserId == userId && safeId(userId) && validProofDigest(g.accountGeneration)
+        && validProofDigest(g.rootDigest) && validProofDigest(g.authorityDigest) && g.authorityRevision is int && g.authorityRevision > 0 && g.authorityRevision <= 9007199254740991
+        && g.keyVersion is int && g.keyVersion > 0 && g.keyVersion <= g.authorityRevision && safeId(g.mainDeviceId)
+        && g.deviceIds is list && g.deviceIds.size() > 0 && g.deviceIds.size() <= 16 && g.deviceIds.toSet().size() == g.deviceIds.size()
+        && g.mainDeviceId in g.deviceIds && g.authorityJson is string && g.authorityJson.size() <= 16000
+        && validPrivateCalendarCacheHead(g.cacheHead) && g.createdAt is timestamp && g.updatedAt == request.time;
+    }
+    function privateCalendarAuthorityWritten(userId, g) {
+      let authority = getAfter(/databases/$(database)/documents/privateCalendars/$(userId)/authorities/$(string(g.authorityRevision))).data;
+      return authority.authorityDigest == g.authorityDigest && authority.authorityJson == g.authorityJson;
+    }
+    function privateCalendarCacheWritten(userId, c) {
+      let manifest = getAfter(/databases/$(database)/documents/privateCalendars/$(userId)/caches/$(c.cacheId)).data;
+      return manifest.manifestDigest == c.manifestDigest && manifest.authorityDigest == c.authorityDigest
+        && manifest.sequence == c.sequence && manifest.chunkCount == c.chunkCount;
+    }
+    function privateCalendarCacheReplaced(userId, cacheId) {
+      return privateCalendar(userId).cacheHead != null && privateCalendar(userId).cacheHead.cacheId == cacheId
+        && privateCalendarAfter(userId).cacheHead != null && privateCalendarAfter(userId).cacheHead.cacheId != cacheId;
+    }
+    match /privateCalendars/{userId} {
+      allow get: if privateCalendarOwner(userId);
+      allow list, delete: if false;
+      allow create: if privateCalendarOwner(userId) && validPrivateCalendarHead(request.resource.data, userId)
+        && request.resource.data.authorityRevision == 1 && request.resource.data.keyVersion == 1
+        && request.resource.data.rootDigest == request.resource.data.authorityDigest
+        && request.resource.data.deviceIds.size() == 1 && request.resource.data.cacheHead == null
+        && request.resource.data.createdAt == request.time && privateCalendarAuthorityWritten(userId, request.resource.data);
+      allow update: if privateCalendarOwner(userId) && validPrivateCalendarHead(request.resource.data, userId)
+        && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.accountGeneration == resource.data.accountGeneration && request.resource.data.rootDigest == resource.data.rootDigest
+        && ((request.resource.data.authorityRevision == resource.data.authorityRevision + 1
+        && request.resource.data.keyVersion in [resource.data.keyVersion, resource.data.keyVersion + 1]
+        && (request.resource.data.deviceIds.toSet().hasAll(resource.data.deviceIds) || request.resource.data.keyVersion == resource.data.keyVersion + 1)
+        && request.resource.data.cacheHead == resource.data.cacheHead && privateCalendarAuthorityWritten(userId, request.resource.data))
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cacheHead', 'updatedAt'])
+          && request.resource.data.cacheHead != null && request.resource.data.cacheHead.authorityDigest == resource.data.authorityDigest
+          && (resource.data.cacheHead == null || request.resource.data.cacheHead.cacheId != resource.data.cacheHead.cacheId)
+          && (resource.data.cacheHead == null || resource.data.cacheHead.authorityDigest != resource.data.authorityDigest
+            || request.resource.data.cacheHead.sequence > resource.data.cacheHead.sequence)
+          && privateCalendarCacheWritten(userId, request.resource.data.cacheHead)));
+      match /authorities/{revision} {
+        allow read: if privateCalendarOwner(userId);
+        allow create: if privateCalendarOwner(userId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'revision', 'authorityDigest', 'authorityJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.revision is int && revision == string(request.resource.data.revision)
+          && request.resource.data.revision == privateCalendarAfter(userId).authorityRevision
+          && request.resource.data.authorityDigest == privateCalendarAfter(userId).authorityDigest
+          && request.resource.data.authorityJson == privateCalendarAfter(userId).authorityJson && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+      match /keyEnvelopes/{keyId} {
+        allow get: if privateCalendarOwner(userId) && (resource == null || resource.data.authorityDigest == privateCalendar(userId).authorityDigest);
+        allow list: if false;
+        allow create: if privateCalendarOwner(userId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorityDigest', 'recipientDeviceId', 'wrappedKeyJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.authorityDigest == privateCalendarAfter(userId).authorityDigest
+          && request.resource.data.recipientDeviceId in privateCalendarAfter(userId).deviceIds
+          && keyId == request.resource.data.authorityDigest + '_' + request.resource.data.recipientDeviceId
+          && request.resource.data.wrappedKeyJson is string && request.resource.data.wrappedKeyJson.size() <= 8000
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if privateCalendarOwner(userId) && resource.data.authorityDigest != privateCalendarAfter(userId).authorityDigest;
+      }
+      match /plannerPreferences/{documentId} {
+        function validPreferences(p) {
+          let a = privateCalendarAfter(userId);
+          return documentId == 'current' && p.keys().hasOnly(['schemaVersion', 'ownerUserId', 'accountGeneration', 'rootDigest',
+            'authorityDigest', 'keyVersion', 'authorDeviceId', 'revision', 'parentDigest', 'digest', 'encryptedJson', 'createdAt', 'updatedAt'])
+            && p.schemaVersion == 1 && p.ownerUserId == userId && p.accountGeneration == a.accountGeneration && p.rootDigest == a.rootDigest
+            && p.authorityDigest == a.authorityDigest && p.keyVersion == a.keyVersion && p.authorDeviceId in a.deviceIds
+            && p.revision is int && p.revision > 0 && p.revision <= 9007199254740991 && validProofDigest(p.digest)
+            && p.encryptedJson is string && p.encryptedJson.size() > 0 && p.encryptedJson.size() <= 24000
+            && p.createdAt is timestamp && p.updatedAt == request.time;
+        }
+        allow get: if privateCalendarOwner(userId) && documentId == 'current';
+        allow list, delete: if false;
+        allow create: if privateCalendarOwner(userId) && validPreferences(request.resource.data)
+          && request.resource.data.revision == 1 && request.resource.data.parentDigest == null && request.resource.data.createdAt == request.time;
+        allow update: if privateCalendarOwner(userId) && validPreferences(request.resource.data)
+          && request.resource.data.accountGeneration == resource.data.accountGeneration && request.resource.data.rootDigest == resource.data.rootDigest
+          && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.revision == resource.data.revision + 1
+          && request.resource.data.parentDigest == resource.data.digest && request.resource.data.digest != resource.data.digest;
+      }
+      match /caches/{cacheId} {
+        allow read: if privateCalendarOwner(userId);
+        allow create: if privateCalendarOwner(userId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'authorityDigest', 'sequence', 'chunkCount', 'manifestDigest', 'manifestJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && cacheId == privateCalendarAfter(userId).cacheHead.cacheId
+          && request.resource.data.authorityDigest == privateCalendarAfter(userId).authorityDigest
+          && request.resource.data.manifestDigest == privateCalendarAfter(userId).cacheHead.manifestDigest
+          && request.resource.data.sequence == privateCalendarAfter(userId).cacheHead.sequence
+          && request.resource.data.chunkCount == privateCalendarAfter(userId).cacheHead.chunkCount
+          && request.resource.data.manifestJson is string && request.resource.data.manifestJson.size() <= 16000 && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if privateCalendarOwner(userId) && privateCalendarCacheReplaced(userId, cacheId);
+        match /parts/{index} {
+          allow read: if privateCalendarOwner(userId);
+          allow create: if privateCalendarOwner(userId)
+            && request.resource.data.keys().hasOnly(['schemaVersion', 'index', 'partJson', 'createdAt'])
+            && request.resource.data.schemaVersion == 1 && request.resource.data.index is int && index == string(request.resource.data.index)
+            && request.resource.data.index >= 0 && request.resource.data.index < privateCalendarAfter(userId).cacheHead.chunkCount
+            && cacheId == privateCalendarAfter(userId).cacheHead.cacheId
+            && request.resource.data.partJson is string && request.resource.data.partJson.size() <= 140000 && request.resource.data.createdAt == request.time;
+          allow update: if false;
+          allow delete: if privateCalendarOwner(userId) && privateCalendarCacheReplaced(userId, cacheId);
+        }
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,6 +1,6 @@
 import { collection, deleteDoc, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp,
   setDoc, startAfter, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
-import type { DocumentReference, Firestore } from 'firebase/firestore';
+import type { DocumentReference } from 'firebase/firestore';
 import { assertSharedIdentifier, canonicalJson } from '../../features/sharing/operations.ts';
 import { boundedSharingCloudBatches, parseSharedCloudGroup, rosterCloudFields, SharingCloudChangedError } from '../../features/sharing/cloud-contract.ts';
 import { sharedRosterDigest, validateSharedRoster, verifySharedRosterTransition } from '../../features/sharing/roster.ts';
@@ -12,11 +12,12 @@ import type { EncryptedSharedSnapshotChunk, WrappedGroupKey } from '../../featur
 import { verifySharedSnapshotManifest } from '../../features/sharing/snapshots.ts';
 import type { EncryptedSharedSnapshot, SignedSharedSnapshotManifest } from '../../features/sharing/snapshots.ts';
 
-interface ManagementContext {
-  firestore: Firestore; userId: string; checkAccount: () => void;
-  reference: (groupId: string) => DocumentReference;
-  readGroup: (groupId: string) => Promise<ReturnType<typeof parseSharedCloudGroup>>;
-}
+import type { SharingCloudContext } from './firestore-context';
+import { parseFirestoreRecoveryLock, parseFirestoreRecoveryRecord } from './firestore-recovery.ts';
+import { V2RecoveryInProgressError, verifyV2RecoveryLock } from '../../features/sharing/v2/recovery-lock.ts';
+import type { SignedV2RecoveryLock } from '../../features/sharing/v2/recovery-lock.ts';
+import { recoveryRecordMatchesLock } from '../../features/sharing/v2/recovery-cloud-contract.ts';
+import type { V2RecoveryCloudRecord } from '../../features/sharing/v2/recovery-cloud-contract.ts';
 function invitationData(raw: Record<string, unknown> | undefined) {
   if (!raw || typeof raw.pinJson !== 'string' || raw.pinJson.length > 60_000 || !(raw.expiresAt instanceof Timestamp)
     || !['open', 'used', 'revoked'].includes(String(raw.status))) throw new Error('招待情報が見つかりません。');
@@ -30,8 +31,9 @@ function snapshotFields(manifest: SignedSharedSnapshotManifest) {
     manifestJson: canonicalJson(manifest), createdAt: serverTimestamp() };
 }
 
-export function createSharingManagement({ firestore, userId, checkAccount, reference, readGroup }: ManagementContext) {
+export function createSharingManagement({ firestore, userId, checkAccount, reference, readGroup, recoveryEnabled = false }: SharingCloudContext) {
   const cleanupPositions = new Map<string, { createdAt: Timestamp; id: string }>();
+  const eventCleanupPositions = new Map<string, number>();
   const inviteRef = (id: string) => { assertSharedIdentifier(id); return doc(firestore, 'sharingInvites', id); };
   const readInvitation = async (inviteId: string) => {
     checkAccount(); const result = await getDocFromServer(inviteRef(inviteId)); checkAccount();
@@ -137,8 +139,15 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
     },
     async commitMembership(previous: VerifiedSharedRoster, next: VerifiedSharedRoster, keys: readonly WrappedGroupKey[],
       expectedHead: number, manifest?: SignedSharedSnapshotManifest,
-      approval?: { invitation: SignedSharedInvitation; request: SharedJoinRequest }): Promise<void> {
+      approval?: { invitation: SignedSharedInvitation; request: SharedJoinRequest },
+      recovery?: { lock: SignedV2RecoveryLock; record: V2RecoveryCloudRecord }): Promise<void> {
       verifySharedRosterTransition(previous, next); checkAccount(); const groupId = previous.body.groupId;
+      if (recovery) {
+        if (!recoveryEnabled) throw new Error('Owner recovery is not enabled for this deployment');
+        verifyV2RecoveryLock(recovery.lock, previous); recoveryRecordMatchesLock(recovery.record, recovery.lock);
+        if (previous.body.schemaVersion !== 2 || approval || manifest?.body.snapshotId !== recovery.record.snapshotId
+          || manifest.body.keyVersion !== recovery.record.keyVersion || expectedHead !== recovery.record.throughSequence) throw new Error('Recovery membership commit context differs');
+      }
       const fields = rosterCloudFields(next);
       const expectedDevices = Object.keys(fields.deviceOwners).sort();
       if (canonicalJson(keys.map((key) => key.recipientDeviceId).sort()) !== canonicalJson(expectedDevices)
@@ -154,6 +163,18 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
         if (current.group.rosterJson !== canonicalJson(previous) || current.group.headSequence !== expectedHead
           || current.group.ownerUserId !== userId) throw new SharingCloudChangedError('メンバー情報を更新してから再試行してください。');
         if (current.group.revokedUserIds.some((uid) => fields.memberIds.includes(uid))) throw new Error('A departed member cannot retain the next group key');
+        const lockRef = doc(ref, 'recoveryLocks', 'current');
+        if (previous.body.schemaVersion === 2 && recoveryEnabled) {
+          const locked = await transaction.get(lockRef); checkAccount();
+          if (recovery) {
+            const prepared = await transaction.get(doc(ref, 'recoveries', recovery.record.snapshotId));
+            const cancelled = await transaction.get(doc(ref, 'recoveryCancellations', recovery.lock.body.id)); checkAccount();
+            if (!locked.exists() || cancelled.exists() || canonicalJson(parseFirestoreRecoveryLock(locked.data())) !== canonicalJson(recovery.lock)
+              || !prepared.exists() || canonicalJson(parseFirestoreRecoveryRecord(prepared.data(), groupId)) !== canonicalJson(recovery.record)) {
+              throw new SharingCloudChangedError('復旧確認が中断または変更されています。');
+            }
+          } else if (locked.exists() && locked.data().keyVersion === previous.body.keyVersion) throw new V2RecoveryInProgressError();
+        }
         if (approval) {
           const invitation = invitationData((await transaction.get(inviteRef(approval.invitation.body.inviteId))).data());
           const request = (await transaction.get(doc(inviteRef(approval.invitation.body.inviteId), 'requests', approval.request.body.userId))).data();
@@ -170,6 +191,7 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
         for (const uid of current.group.memberIds.filter((uid) => !fields.memberIds.includes(uid))) transaction.delete(doc(firestore, 'sharingUsers', uid, 'memberships', groupId));
         if (manifest) transaction.set(doc(ref, 'snapshots', manifest.body.snapshotId), snapshotFields(manifest));
         transaction.update(ref, { ...fields, ...(manifest ? { snapshotId: manifest.body.snapshotId, snapshotThroughSequence: manifest.body.throughSequence } : {}), updatedAt: serverTimestamp() });
+        if (recovery) transaction.delete(lockRef);
         if (approval) {
           transaction.update(inviteRef(approval.invitation.body.inviteId), { status: 'used', usedBy: approval.request.body.userId });
           transaction.delete(doc(inviteRef(approval.invitation.body.inviteId), 'requests', approval.request.body.userId));
@@ -231,8 +253,19 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
       const keepKeyVersions = new Set([group.keyVersion, ...(fallback ? [fallback.data().keyVersion] : [])]);
       const removals: DocumentReference[] = [];
       const maintenanceRef = doc(ref, 'maintenance', 'keyCleanup'); let nextKeyProgress: number | undefined;
-      const covered = await getDocsFromServer(query(collection(ref, 'events'), where('uploadSequence', '<=', group.snapshotThroughSequence), orderBy('uploadSequence'), limit(100)));
-      checkAccount(); removals.push(...covered.docs.filter((item) => acknowledged || oldEnough(item.data())).map((item) => item.ref));
+      const eventPosition = eventCleanupPositions.get(groupId) ?? 0;
+      const covered = await getDocsFromServer(query(collection(ref, 'events'), where('uploadSequence', '<=', group.snapshotThroughSequence),
+        ...(eventPosition ? [where('uploadSequence', '>', eventPosition)] : []), orderBy('uploadSequence'), limit(100))); checkAccount();
+      const lastEvent = covered.docs.at(-1);
+      if (covered.size === 100 && lastEvent) eventCleanupPositions.set(groupId, lastEvent.data().uploadSequence); else eventCleanupPositions.delete(groupId);
+      for (const item of covered.docs) {
+        if (!(acknowledged || oldEnough(item.data()))) continue;
+        if (group.schemaVersion === 2 && recoveryEnabled) {
+          const protectedEvent = await getDocFromServer(doc(ref, 'quarantines', item.id)); checkAccount();
+          if (protectedEvent.exists()) continue;
+        }
+        removals.push(item.ref);
+      }
       if (removals.length < 100 && group.keyVersion > 1) {
         const progress = (await getDocFromServer(maintenanceRef)).data()?.throughKeyVersion ?? 0; checkAccount();
         if (!Number.isSafeInteger(progress) || progress < 0 || progress >= group.keyVersion) throw new Error('Invalid key cleanup position');
@@ -261,9 +294,12 @@ export function createSharingManagement({ firestore, userId, checkAccount, refer
       if (removals.length) {
         const actual = await readGroup(groupId);
         if (actual.group.snapshotId !== group.snapshotId || actual.group.keyVersion !== group.keyVersion) return { deleted: 0, waitingForDevices: false };
-        const batch = writeBatch(firestore); for (const item of removals) batch.delete(item);
-        if (nextKeyProgress !== undefined) batch.set(maintenanceRef, { throughKeyVersion: nextKeyProgress });
-        checkAccount(); await batch.commit(); checkAccount();
+        const pageSize = group.schemaVersion === 2 ? 10 : 100;
+        for (let offset = 0; offset < removals.length; offset += pageSize) {
+          const batch = writeBatch(firestore); for (const item of removals.slice(offset, offset + pageSize)) batch.delete(item);
+          if (nextKeyProgress !== undefined && offset + pageSize >= removals.length) batch.set(maintenanceRef, { throughKeyVersion: nextKeyProgress });
+          checkAccount(); await batch.commit(); checkAccount();
+        }
       }
       return { deleted: removals.length, waitingForDevices: !acknowledged };
     },

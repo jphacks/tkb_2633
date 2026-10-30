@@ -39,6 +39,23 @@ service cloud.firestore {
       return exists(groupPath(groupId)) ? ownerOf(group(groupId)) : ownerOf(afterGroup(groupId));
     }
     function validProofDigest(value) { return value is string && value.matches('^[a-f0-9]{64}$'); }
+    function recoveryLockPath(groupId) { return /databases/$(database)/documents/sharingGroups/$(groupId)/recoveryLocks/current; }
+    function recoveryActive(groupId, g) {
+      return g.schemaVersion == 2 && exists(recoveryLockPath(groupId)) && get(recoveryLockPath(groupId)).data.keyVersion == g.keyVersion;
+    }
+    function validRecoveryCommit(groupId, g, next) {
+      let lock = get(recoveryLockPath(groupId)).data;
+      let proof = get(/databases/$(database)/documents/sharingGroups/$(groupId)/recoveries/$(next.snapshotId)).data;
+      return next.schemaVersion == 2 && next.keyVersion == g.keyVersion + 1
+        && next.ownerUserId == g.ownerUserId && next.ownerDeviceId == g.ownerDeviceId
+        && next.snapshotId != g.snapshotId && next.snapshotThroughSequence == g.headSequence
+        && proof.previousKeyVersion == g.keyVersion && proof.keyVersion == next.keyVersion
+        && proof.throughSequence == g.headSequence && proof.snapshotId == next.snapshotId
+        && proof.lockId == lock.lockId && proof.reviewDigest == lock.reviewDigest
+        && lock.throughSequence == g.headSequence
+        && !existsAfter(recoveryLockPath(groupId))
+        && !existsAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/recoveryCancellations/$(lock.lockId));
+    }
     function receiptMatchesEvent(groupId, operationId, event) {
       let receipt = getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/receipts/$(operationId)).data;
       return receipt.schemaVersion == 2 && receipt.authorUserId == event.authorUserId
@@ -61,12 +78,12 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time && rosterWritten(groupId, request.resource.data);
       allow update: if validRoot(request.resource.data) && (
         // Each event and its consecutive delivery position commit together. No cursor holes.
-        (memberOf(resource.data) && !resource.data.rotationRequired
+        (memberOf(resource.data) && !resource.data.rotationRequired && !recoveryActive(groupId, resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['headSequence', 'lastOperationId', 'updatedAt'])
           && request.resource.data.headSequence == resource.data.headSequence + 1
           && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.uploadSequence == request.resource.data.headSequence
           && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(request.resource.data.lastOperationId)).data.authorUserId == request.auth.uid)
-        || (ownerOf(resource.data)
+        || (ownerOf(resource.data) && (!recoveryActive(groupId, resource.data) || validRecoveryCommit(groupId, resource.data, request.resource.data))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['schemaVersion', 'ownerUserId', 'ownerDeviceId', 'memberIds',
             'deviceOwners', 'keyVersion', 'rosterRevision', 'rosterJson', 'revokedUserIds', 'rotationRequired', 'closed',
             'snapshotId', 'snapshotThroughSequence', 'updatedAt'])
@@ -91,7 +108,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedUserIds', 'rotationRequired', 'updatedAt'])
           && request.resource.data.revokedUserIds.toSet() == resource.data.revokedUserIds.toSet().union([request.auth.uid].toSet())
           && request.resource.data.rotationRequired)
-        || (ownerOf(resource.data)
+        || (ownerOf(resource.data) && !recoveryActive(groupId, resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snapshotId', 'snapshotThroughSequence', 'updatedAt'])
           && request.resource.data.snapshotThroughSequence >= resource.data.snapshotThroughSequence
           && getAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/snapshots/$(request.resource.data.snapshotId)).data.throughSequence == request.resource.data.snapshotThroughSequence)
@@ -108,7 +125,7 @@ service cloud.firestore {
       }
       match /events/{operationId} {
         allow read: if memberOf(group(groupId));
-        allow create: if memberOf(group(groupId)) && !group(groupId).rotationRequired
+        allow create: if memberOf(group(groupId)) && !group(groupId).rotationRequired && !recoveryActive(groupId, group(groupId))
           && safeId(operationId)
           && request.resource.data.schemaVersion == group(groupId).schemaVersion && request.resource.data.authorUserId == request.auth.uid
           && (request.resource.data.schemaVersion == 1
@@ -124,11 +141,12 @@ service cloud.firestore {
           && afterGroup(groupId).headSequence == request.resource.data.uploadSequence && afterGroup(groupId).lastOperationId == operationId
           && request.resource.data.createdAt == request.time;
         allow update: if false;
-        allow delete: if ownerOf(group(groupId)) && resource.data.uploadSequence <= group(groupId).snapshotThroughSequence;
+        allow delete: if ownerOf(group(groupId)) && resource.data.uploadSequence <= group(groupId).snapshotThroughSequence
+          && (group(groupId).schemaVersion == 1 || !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/quarantines/$(operationId)));
       }
       match /receipts/{operationId} {
         allow read: if memberOf(group(groupId));
-        allow create: if memberOf(group(groupId)) && group(groupId).schemaVersion == 2 && !group(groupId).rotationRequired
+        allow create: if memberOf(group(groupId)) && group(groupId).schemaVersion == 2 && !group(groupId).rotationRequired && !recoveryActive(groupId, group(groupId))
           && safeId(operationId)
           && request.resource.data.keys().hasOnly(['schemaVersion', 'authorUserId', 'authorDeviceId', 'keyVersion', 'uploadSequence', 'authorProofDigest', 'createdAt'])
           && request.resource.data.schemaVersion == 2 && request.resource.data.authorUserId == request.auth.uid
@@ -164,6 +182,55 @@ service cloud.firestore {
           && request.resource.data.throughKeyVersion >= 0 && request.resource.data.throughKeyVersion < group(groupId).keyVersion
           && (!exists(/databases/$(database)/documents/sharingGroups/$(groupId)/maintenance/$(maintenanceId)) || request.resource.data.throughKeyVersion >= resource.data.throughKeyVersion);
         allow delete: if false;
+      }
+      match /recoveryLocks/{lockId} {
+        allow read: if memberOf(group(groupId));
+        allow create, update: if ownerOf(group(groupId)) && group(groupId).schemaVersion == 2 && lockId == 'current'
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'lockId', 'ownerUserId', 'ownerDeviceId', 'keyVersion', 'throughSequence', 'rosterDigest', 'reviewDigest', 'lockJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && safeId(request.resource.data.lockId)
+          && request.resource.data.ownerUserId == request.auth.uid && request.resource.data.ownerDeviceId == group(groupId).ownerDeviceId
+          && request.resource.data.keyVersion == group(groupId).keyVersion && request.resource.data.throughSequence == group(groupId).headSequence
+          && validProofDigest(request.resource.data.rosterDigest) && validProofDigest(request.resource.data.reviewDigest)
+          && request.resource.data.lockJson is string && request.resource.data.lockJson.size() <= 12000 && request.resource.data.createdAt == request.time
+          && !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/recoveryCancellations/$(request.resource.data.lockId))
+          && (!exists(recoveryLockPath(groupId)) || resource.data.keyVersion < group(groupId).keyVersion);
+        allow delete: if ownerOf(group(groupId)) && lockId == 'current'
+          && (existsAfter(/databases/$(database)/documents/sharingGroups/$(groupId)/recoveryCancellations/$(resource.data.lockId))
+            || validRecoveryCommit(groupId, group(groupId), afterGroup(groupId)));
+      }
+      match /recoveryCancellations/{lockId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && group(groupId).schemaVersion == 2 && safeId(lockId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'lockId', 'keyVersion', 'reviewDigest', 'ownerDeviceId', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.lockId == lockId
+          && request.resource.data.keyVersion == group(groupId).keyVersion && request.resource.data.ownerDeviceId == group(groupId).ownerDeviceId
+          && validProofDigest(request.resource.data.reviewDigest) && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+      match /recoveries/{snapshotId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && recoveryActive(groupId, group(groupId)) && safeId(snapshotId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'snapshotId', 'previousKeyVersion', 'keyVersion', 'throughSequence', 'lockId', 'reviewDigest', 'encryptedHeaderJson', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && request.resource.data.snapshotId == snapshotId
+          && request.resource.data.previousKeyVersion == group(groupId).keyVersion && request.resource.data.keyVersion == group(groupId).keyVersion + 1
+          && request.resource.data.throughSequence == group(groupId).headSequence
+          && request.resource.data.lockId == get(recoveryLockPath(groupId)).data.lockId
+          && request.resource.data.reviewDigest == get(recoveryLockPath(groupId)).data.reviewDigest
+          && request.resource.data.encryptedHeaderJson is string && request.resource.data.encryptedHeaderJson.size() <= 800000 && request.resource.data.createdAt == request.time
+          && !exists(/databases/$(database)/documents/sharingGroups/$(groupId)/recoveryCancellations/$(request.resource.data.lockId));
+        allow update, delete: if false;
+      }
+      match /quarantines/{operationId} {
+        allow read: if memberOf(group(groupId));
+        allow create: if ownerOf(group(groupId)) && recoveryActive(groupId, group(groupId)) && safeId(operationId)
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'recoveryId', 'uploadSequence', 'keyVersion', 'rawDigest', 'createdAt'])
+          && request.resource.data.schemaVersion == 1 && safeId(request.resource.data.recoveryId) && validProofDigest(request.resource.data.rawDigest)
+          && request.resource.data.keyVersion == group(groupId).keyVersion
+          && request.resource.data.uploadSequence == get(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(operationId)).data.uploadSequence
+          && request.resource.data.keyVersion == get(/databases/$(database)/documents/sharingGroups/$(groupId)/events/$(operationId)).data.keyVersion
+          && get(/databases/$(database)/documents/sharingGroups/$(groupId)/recoveries/$(request.resource.data.recoveryId)).data.lockId == get(recoveryLockPath(groupId)).data.lockId
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
       }
       match /acknowledgements/{deviceId} {
         allow read: if memberOf(group(groupId));

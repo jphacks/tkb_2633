@@ -9,6 +9,7 @@ import { createEncryptedSharedSnapshot } from '../src/features/sharing/snapshots
 import { rosterCloudFields, SharingSnapshotRequiredError } from '../src/features/sharing/cloud-contract.ts';
 import { createV2Synchronizer } from '../src/features/sharing/v2/synchronizer.ts';
 import { v2AuthorProofDigest } from '../src/features/sharing/v2/server-receipts.ts';
+import { signV2RecoveryLock } from '../src/features/sharing/v2/recovery-lock.ts';
 import { createGroupPolicy, chorePolicyFromPreset } from '../src/features/sharing/v2/model.ts';
 import { initializeV2EventStore, createV2EventRepository } from '../src/platform/storage/sharing-v2-events.ts';
 import { loadSharedFacts, loadSharedReplica, listSharingOutbox, readSharingCheckpoint } from '../src/platform/storage/sharing-ledger.ts';
@@ -109,6 +110,36 @@ test('v2 coordinator rejects a repository bound to another account or device bef
     assert.throws(() => createV2Synchronizer({ groupId, userId: 'member', identity: f.member, repository: owner.repository }), /same account/);
     assert.equal((await readSharingCheckpoint(owner.database, groupId)).cursor, null);
   } finally { owner.connection.close(); }
+});
+test('v2 recovery diagnostics do not issue another network request after transport authorization or resumable evidence failures', async () => {
+  for (const code of ['unavailable', 'firestore/unavailable', 'deadline-exceeded', 'cancelled', 'aborted', 'resource-exhausted', 'permission-denied', 'unauthenticated',
+    'sharing/access-denied', 'sharing/scheduler-version-mismatch', 'sharing/receipt-recovery-pending', 'sharing/v2-awaiting-receipt']) {
+    const f = await fixture(); const owner = await f.device(); let probes = 0;
+    const failure = Object.assign(new Error('original failure'), { code });
+    f.cloud.ownerRecoveryEnabled = true;
+    f.cloud.readGroup = async () => { throw failure; };
+    f.cloud.readRecoveryLock = async () => { probes++; throw new Error('another stalled network request'); };
+    try {
+      await owner.repository.commit(seeds());
+      await assert.rejects(owner.sync.sync({ force: true }), error => error === failure);
+      assert.equal(probes, 0, code);
+      assert.equal((await listSharingOutbox(owner.database, groupId, Number.MAX_SAFE_INTEGER)).length, 4);
+      assert.equal((await readSharingCheckpoint(owner.database, groupId)).cursor, null);
+    } finally { owner.connection.close(); }
+  }
+});
+test('v2 an authenticated owner recovery lock still explains a corrupt transport failure without advancing the cursor', async () => {
+  const f = await fixture(); const member = await f.device('member', f.member); let reads = 0; let probes = 0;
+  const normalRead = f.cloud.readGroup;
+  f.cloud.ownerRecoveryEnabled = true;
+  f.cloud.readGroup = async () => { if (++reads === 1) throw new Error('corrupt transport'); return normalRead(); };
+  f.cloud.readRecoveryLock = async () => { probes++; return signV2RecoveryLock(f.roster, f.owner,
+    { id: 'owner-review', throughSequence: 0, reviewDigest: 'a'.repeat(64) }); };
+  try {
+    await assert.rejects(member.sync.sync({ force: true }), { code: 'sharing/recovery-in-progress' });
+    assert.equal(probes, 1);
+    assert.equal((await readSharingCheckpoint(member.database, groupId)).cursor, null);
+  } finally { member.connection.close(); }
 });
 test('v2 backlog confirmations coalesce projection and observer updates while preserving all 205 original receipts and 100-event pages', async () => {
   const f = await fixture(); const owner = await f.device(); const member = await f.device('member', f.member);

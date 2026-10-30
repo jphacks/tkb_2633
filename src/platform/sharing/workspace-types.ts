@@ -15,6 +15,7 @@ import type { V2GoogleTaskRuntime } from '../../features/sharing/v2/google-tasks
 
 export interface SharedWorkspaceOverview {
   timeZone: string; members: { id: string; displayName: string }[]; chores: { id: string; name: string }[]; hasConflicts: boolean;
+  recoverySummary?: { heldChanges: number; recoveries: number };
 }
 interface SharedWorkspaceBase extends SharingSelection {
   cloud: ReturnType<typeof createSharingCloud>; identity: DeviceSecretIdentity;

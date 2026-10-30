@@ -65,7 +65,8 @@ async function fixture() {
       { groupId: 'group-test', userId: uid, deviceId: identity.deviceId, keyVersion: state.roster.body.keyVersion },
       values.map((value) => ({ operationId: `${uid}-edit-${++count}`, entityType: 'chore', entityId: 'floor', operationType: 'patch', payload: { name: value } })),
       dependencies.project, (operation) => signSharedOperation(operation, identity).authorSignature);
-    return { ...h, dependencies, sync: createSharedSynchronizer(dependencies).sync, edit, localKeys, roster: () => latest,
+    const coordinator = createSharedSynchronizer(dependencies);
+    return { ...h, dependencies, sync: coordinator.sync, withMaintenance: coordinator.withMaintenance, edit, localKeys, roster: () => latest,
       setStatus: (status) => { record.status = status; }, failProjection: (value) => { projectFails = value; }, projections: () => projections,
       replica: () => ledger.loadSharedReplica(h.database, 'group-test'), checkpoint: () => ledger.readSharingCheckpoint(h.database, 'group-test') };
   }
@@ -159,6 +160,43 @@ test('security attack: correctly signed corrupt transport stalls safely without 
       assert.equal(f.state.events.length, 1); assert.equal(f.state.acknowledgements.length, 0);
     }
   } finally { target.connection.close(); }
+});
+
+test('owner recovery maintenance waits for active sync and coalesces queued delivery while independent offline edits remain writable', async () => {
+  const f = await fixture(); const a = await f.device(); let releaseUpload; let releaseMaintenance; let entered;
+  const uploadGate = new Promise(resolve => { releaseUpload = resolve; });
+  const maintenanceGate = new Promise(resolve => { releaseMaintenance = resolve; });
+  const maintenanceEntered = new Promise(resolve => { entered = resolve; }); let reads = 0;
+  a.dependencies.cloud = { ...f.cloud, async readGroup(...args) { reads++; return f.cloud.readGroup(...args); },
+    async upload(...args) { await uploadGate; return f.cloud.upload(...args); } };
+  try {
+    await a.edit(['先に送信する変更']); const first = a.sync({ force: true });
+    const maintenance = a.withMaintenance(async () => { entered(); await maintenanceGate; return 'reviewed'; });
+    let started = false; void maintenanceEntered.then(() => { started = true; });
+    await new Promise(setImmediate); assert.equal(started, false);
+    releaseUpload(); await first; await maintenanceEntered;
+    await a.edit(['復旧の確認中に保存した変更']);
+    assert.equal((await ledger.listSharingOutbox(a.database, 'group-test', Number.MAX_SAFE_INTEGER)).length, 1);
+    const before = reads; const queued = Array.from({ length: 100 }, () => a.sync({ force: true }));
+    await new Promise(setImmediate); assert.equal(reads, before); assert.equal(f.state.events.length, 1);
+    await assert.rejects(a.withMaintenance(async () => {}), /実行中/u);
+    releaseMaintenance(); assert.equal(await maintenance, 'reviewed'); await Promise.all(queued);
+    assert.equal(f.state.events.length, 2); assert.ok(reads - before <= 3, `Unexpected repeated network delivery: ${reads - before}`);
+    assert.equal((await a.checkpoint()).pendingCount, 0);
+  } finally { releaseUpload(); releaseMaintenance(); a.connection.close(); }
+});
+
+test('failed owner recovery maintenance releases queued sync and never leaves a persistent syncing lock', async () => {
+  const f = await fixture(); const a = await f.device(); let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  try {
+    await a.edit();
+    const maintenance = a.withMaintenance(async () => { await gate; throw new Error('review stale'); });
+    const delivery = a.sync({ force: true });
+    release(); await assert.rejects(maintenance, /review stale/); await delivery;
+    assert.equal(f.state.events.length, 1); assert.equal((await a.checkpoint()).pendingCount, 0);
+    assert.equal(await a.withMaintenance(async () => 'next review'), 'next review');
+  } finally { release(); a.connection.close(); }
 });
 
 test('an old encrypted outbox item rekeys after transactional absence while its original author operation stays unchanged', async () => {

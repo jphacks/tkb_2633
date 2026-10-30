@@ -65,7 +65,10 @@ export function createV2GroupController(repository: ReturnType<typeof createV2Ev
         fields: Object.fromEntries(permissionMembers.map(member => [member.userId, readV2DateRights(state.assessment.view, at, permissionChore.id, member.userId, member.start)])) } : undefined;
       const waste = readOptions.waste ? buildV2WastePlan(state.assessment.view, at, range) : undefined;
       const appliances = readOptions.appliances ? buildV2ApplianceModel(state.assessment.view, at, readOptions.applianceId) : undefined;
+      const recoveryHistory = state.replica.recoveryWitnesses ?? [];
       return { plan, configurations, choreDetails, ...(groupPolicy ? { groupPolicy } : {}), ...(groupSettings ? { groupSettings } : {}), ...(dateRights ? { dateRights } : {}), ...(waste ? { waste } : {}), ...(appliances ? { appliances } : {}), viewerUserId: repository.scope.userId, adminUserId: state.archive.at(-1)!.body.ownerUserId,
+        ...(recoveryHistory.length ? { recoverySummary: { heldChanges: recoveryHistory.reduce((sum, witness) => sum
+          + witness.body.entries.filter(entry => entry.classification === 'blockedCausality').length, 0), recoveries: recoveryHistory.length } } : {}),
         requests: state.assessment.requestStates, requestReviews: reviews.date, assignmentReviews: reviews.assignment,
         dateRules: observedDateRules(state.assessment.view, at, state.assessment.approvedRules),
         dateRuleSources: observedDateRules(state.assessment.view, at, state.assessment.approvedRules, true),

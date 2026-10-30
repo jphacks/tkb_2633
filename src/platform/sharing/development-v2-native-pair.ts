@@ -13,7 +13,7 @@ import { nativeSharingCrypto } from './native-crypto';
 import { createSharingCloud } from './firestore-cloud';
 import { drainPlannerDatabaseOperations, withPlannerDatabaseOperation } from '../storage/repository';
 
-export type DevelopmentV2NativePair = V2NativePair & { network(enabled: boolean): Promise<void>; assertOutsiderDenied(): Promise<void>; dispose(): Promise<void> };
+export type DevelopmentV2NativePair = V2NativePair & { network(enabled: boolean): Promise<void>; assertOutsiderDenied(): Promise<void>; assertOwnReadDenied(): Promise<void>; dispose(): Promise<void> };
 const contexts = new Map<string, Promise<DevelopmentV2NativePair>>();
 
 /** Named demo Firebase apps, mock UIDs, independent registry/ledger and device-only keys. No production auth is read. */
@@ -40,17 +40,19 @@ export function developmentV2NativePair(host: unknown, port: unknown, run: unkno
       const registryName = `qa-v2-pair-registry-${bytesToHex(sha256(new TextEncoder().encode(scope.userId)))}.db`;
       registry = await openDatabaseAsync(registryName, { useNewConnection: true }, await sharingDatabaseDirectory());
       pair = await createV2NativePair({ development: __DEV__, projectId: V2_PAIR_PROJECT, run: scope.run, role: scope.role as V2PairRole,
-        database, registry, identity, crypto: nativeSharingCrypto, cloud: createSharingCloud(store, scope.userId, () => disposed ? null : scope.userId),
+        database, registry, identity, crypto: nativeSharingCrypto, cloud: createSharingCloud(store, scope.userId, () => disposed ? null : scope.userId, { ownerRecoveryEnabled: true }),
         readKey: version => loadSharingGroupKey(scope.userId, scope.groupId, version), saveKey: (version, key) => saveSharingGroupKey(scope.userId, scope.groupId, version, key),
         serialized: work => withPlannerDatabaseOperation(database!, work), makeId: randomUUID, now: () => new Date(),
         invitationSeed: sha256(new TextEncoder().encode(`liflow-public-development-pair-invitation:${scope.run}`)) });
+      const assertReadDenied = async (client: typeof store) => {
+          if (disposed) throw new Error('検査接続は閉じています。');
+          try { await getDocFromServer(doc(client, 'sharingGroups', scope.groupId)); }
+          catch (error) { if (error && typeof error === 'object' && 'code' in error && error.code === 'permission-denied') return; throw error; }
+          throw new Error('検査対象の読取をRulesが拒否していません。');
+      };
       return { ...pair, dispose,
         async network(enabled: boolean) { if (disposed) throw new Error('検査接続は閉じています。'); await (enabled ? enableNetwork(store) : disableNetwork(store)); },
-        async assertOutsiderDenied() {
-          try { await getDocFromServer(doc(outsider, 'sharingGroups', scope.groupId)); }
-          catch (error) { if (error && typeof error === 'object' && 'code' in error && error.code === 'permission-denied') return; throw error; }
-          throw new Error('別UIDの読取をRulesが拒否していません。');
-        } };
+        assertOutsiderDenied: () => assertReadDenied(outsider), assertOwnReadDenied: () => assertReadDenied(store) };
     } catch (error) { await dispose(); throw error; }
   })();
   contexts.set(cacheKey, pending); void pending.catch(() => { if (contexts.get(cacheKey) === pending) contexts.delete(cacheKey); }); return pending;

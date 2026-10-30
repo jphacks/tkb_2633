@@ -8,6 +8,7 @@ import { createV2GroupController } from './controller.ts';
 import { createV2Synchronizer } from './synchronizer.ts';
 import { v2GroupBootstrap } from './bootstrap.ts';
 import type { GroupKind } from './model.ts';
+import { createV2OwnerRecovery } from './owner-recovery.ts';
 
 export class V2WorkspaceMigrationRequiredError extends Error {
   readonly code = 'sharing/v2-migration-required';
@@ -47,12 +48,14 @@ export async function createV2WorkspaceSession(deps: Omit<SharedSyncDependencies
   const manager = createSharedGroupManager({ ...transport, project: repository.project, sync: synchronizer.sync,
     verifyMembership: synchronizer.verifyMembership, makeId, markLeft: async () => { assertCurrentAccount(); await markLeft(); assertCurrentAccount(); } });
   const controller = createV2GroupController(repository, { makeId, now: () => new Date((deps.now ?? Date.now)()), sync: () => synchronizer.sync({ force: true }) });
+  const recovery = createV2OwnerRecovery({ ...transport, repository, verifyMembership: synchronizer.verifyMembership,
+    withMaintenance: synchronizer.withMaintenance, sync: synchronizer.sync, assertCurrentAccount, makeId });
   if (record.status === 'creating') {
     const creation = record.creation!;
     // Deterministic bootstrap operation IDs recover a crash without duplicating catalog entries.
     await repository.commit(v2GroupBootstrap({ groupId: deps.groupId, ownerUserId: deps.userId, ownerDisplayName: creation.ownerDisplayName,
       name: record.displayName, timeZone: creation.timeZone, anchorDate: creation.anchorDate as Parameters<typeof v2GroupBootstrap>[0]['anchorDate'], kind: creationKind! }));
   }
-  return { repository, synchronizer, manager, controller, assertCurrentAccess };
+  return { repository, synchronizer, manager, controller, recovery, assertCurrentAccess };
 }
 export type V2WorkspaceSession = Awaited<ReturnType<typeof createV2WorkspaceSession>>;

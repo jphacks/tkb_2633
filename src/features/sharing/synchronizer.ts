@@ -70,6 +70,7 @@ export async function verifyCloudMembership(deps: SharedSyncDependencies, curren
 /** One coordinator per workspace. Process exits leave events, never a persisted "syncing" lock. */
 export function createSharedSynchronizer(deps: SharedSyncDependencies) {
   const now = deps.now ?? Date.now; let running: Promise<SharingSyncResult> | null = null; let requested = false; let forceRequested = false;
+  let maintenance: Promise<unknown> | null = null;
   async function keyFor(roster: VerifiedSharedRoster): Promise<Uint8Array> {
     const version = roster.body.keyVersion; const saved = await deps.readKey(version); if (saved) return saved.slice();
     const wrapped = await deps.cloud.readGroupKey(deps.groupId, version, deps.identity.deviceId);
@@ -211,7 +212,8 @@ export function createSharedSynchronizer(deps: SharedSyncDependencies) {
       finally { for (const bytes of keys.values()) bytes.fill(0); }
     }
   }
-  return { sync(options: { force?: boolean; budgetMs?: number } = {}): Promise<SharingSyncResult> {
+  function sync(options: { force?: boolean; budgetMs?: number } = {}): Promise<SharingSyncResult> {
+    if (maintenance) return maintenance.then(() => sync(options), () => sync(options));
     if (running) { requested = true; forceRequested ||= Boolean(options.force); return running; }
     const pending = (async () => {
       let result = await perform(options);
@@ -220,5 +222,17 @@ export function createSharedSynchronizer(deps: SharedSyncDependencies) {
       return result;
     })(); running = pending;
     void pending.finally(() => { if (running === pending) running = null; requested = false; forceRequested = false; }).catch(() => undefined); return pending;
-  } };
+  }
+  return { sync,
+    /** Network maintenance waits for the current delivery, while local SQLite edits remain available.
+     * The callback must not recursively call sync; trigger adoption after this promise settles. */
+    withMaintenance<T>(work: () => Promise<T>): Promise<T> {
+      if (maintenance) return Promise.reject(new Error('共有の復旧処理を実行中です。'));
+      const prior = running;
+      const pending = Promise.resolve().then(async () => { if (prior) await prior.catch(() => undefined); return work(); });
+      maintenance = pending;
+      void pending.finally(() => { if (maintenance === pending) maintenance = null; }).catch(() => undefined);
+      return pending;
+    },
+  };
 }

@@ -189,6 +189,20 @@ export function removeSharedMembers(previous: VerifiedSharedRoster, owner: Devic
   });
 }
 
+/** Recovery removes reviewed devices in one forward epoch, preserving their owner's healthy devices. */
+export function recoverSharedRoster(previous: VerifiedSharedRoster, owner: DeviceSecretIdentity,
+  removeDeviceIds: readonly string[], removeUserIds: readonly string[] = []): VerifiedSharedRoster {
+  const devices = new Set(removeDeviceIds); const users = new Set(removeUserIds);
+  if (devices.size !== removeDeviceIds.length || users.size !== removeUserIds.length
+    || devices.has(previous.body.ownerDeviceId) || users.has(previous.body.ownerUserId)) throw new Error('Recovery must retain its current owner device');
+  const known = new Set(previous.body.members.flatMap(member => member.devices.map(device => device.identity.deviceId)));
+  if ([...devices].some(id => !known.has(id)) || [...users].some(id => !previous.body.members.some(member => member.userId === id))) throw new Error('Unknown recovery removal');
+  return updateRoster(previous, owner, body => {
+    body.members = body.members.filter(member => !users.has(member.userId)).map(member => ({ ...member,
+      devices: member.devices.filter(device => !devices.has(device.identity.deviceId)) })).filter(member => member.devices.length);
+  });
+}
+
 export function transferSharedOwnership(previous: VerifiedSharedRoster, owner: DeviceSecretIdentity,
   successor: { userId: string; deviceId: string }): VerifiedSharedRoster {
   return updateRoster(previous, owner, (body) => {

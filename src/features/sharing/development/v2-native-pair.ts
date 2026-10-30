@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { DeviceSecretIdentity, SharingCryptoGateway } from '../crypto';
-import { sharedDocumentDigest, wrapGroupKey } from '../crypto.ts';
+import { encryptSharedOperation, sharedDocumentDigest, signSharedDocument, wrapGroupKey } from '../crypto.ts';
 import { createSharedRoster } from '../roster.ts';
 import { createSharedInvitation, createSharedJoinRequest } from '../invitations.ts';
 import { sharedLocalDate } from '../group-clock.ts';
@@ -13,7 +13,8 @@ import { sharedAccessDisposition } from '../access-state.ts';
 import { chorePolicyFromPreset } from '../v2/model.ts';
 import { createV2ScreenSession } from '../v2-ui/screen-session.ts';
 import { initializeSharingRegistry, readSharingWorkspace, saveSharingWorkspace, updateSharingWorkspace } from '../../../platform/storage/sharing-registry.ts';
-import { listSharingOutbox } from '../../../platform/storage/sharing-ledger.ts';
+import { listSharingOutbox, loadSharedFacts } from '../../../platform/storage/sharing-ledger.ts';
+import { v2AuthorProofDigest } from '../v2/server-receipts.ts';
 
 export const V2_PAIR_PROJECT = 'demo-liflow-v2-native';
 export type V2PairRole = 'owner' | 'member';
@@ -163,9 +164,43 @@ export async function createV2NativePair(input: {
         members: model.plan.members.filter(row => row.active).length, pending: model.pendingChanges, receiptPending: model.receiptPending,
         outbox: (await listSharingOutbox(input.database, scope.groupId)).length, rejected: state.assessment.rejected.length,
         receipts: state.receipts.size, keyVersion: state.archive.at(-1)!.body.keyVersion,
+        recoveryProofs: state.replica.recoveryWitnesses?.length ?? 0,
+        recoveryHeld: state.replica.recoveryWitnesses?.reduce((count, witness) => count + witness.body.entries.filter(entry => entry.classification === 'blockedCausality').length, 0) ?? 0,
+        recoveryRestored: state.replica.recoveryWitnesses?.reduce((count, witness) => count + witness.body.entries.filter(entry => entry.classification === 'restoredOriginal').length, 0) ?? 0,
         historyHash: sharedDocumentDigest(model.plan.history), history: model.plan.history.length,
         completed: model.plan.occurrences.flatMap(round => round.subjects.filter(subject => subject.completed).map(subject => subject.id)).sort(),
         chores: model.plan.chores.map(row => ({ id: row.id, name: row.name, enabled: row.enabled })) };
+    },
+    /** Metadata only, even after removal. Never opens a business controller or relaxes its access guard. */
+    async retainedProof() {
+      check(); const record = await readRecord();
+      const outbox = await listSharingOutbox(input.database, scope.groupId, Number.MAX_SAFE_INTEGER); check();
+      return { groupId: scope.groupId, role: scope.role, status: record.status, outbox: outbox.length };
+    },
+    async recoveryPanel() {
+      check(); const value = await open(); const state = await value.repository.readState();
+      return { groupId: scope.groupId, recovery: value.recovery,
+        isOwner: state.archive.at(-1)!.body.ownerDeviceId === input.identity.deviceId,
+        devices: state.archive.at(-1)!.body.members.flatMap(member => member.devices.map(device => ({ deviceId: device.identity.deviceId,
+          displayName: member.userId === scope.ownerId ? '検査用所有者' : '検査用メンバー' }))) };
+    },
+    /** Explicit synthetic attack button; the guarded demo project and separate UIDs never target a real group. */
+    async damageTransportForRecovery() {
+      check(); await synchronize(); const value = await open();
+      const id = `${scope.groupId}.damaged-${scope.role}`;
+      await value.repository.commit([{ operationId: id, entityType: 'chore', entityId: `${scope.groupId}.builtin-chore-08`, operationType: 'patch',
+        payload: { name: '復旧検査用・床の家事' } }]);
+      const fact = (await loadSharedFacts(input.database, scope.groupId)).find(item => item.operation.operationId === id);
+      if (!fact) throw new Error('検査用の元の署名を確認できません。');
+      const group = (await input.cloud.readGroup(scope.groupId)).group; const key = await input.readKey(group.keyVersion);
+      if (!key) throw new Error('先に共有を同期してください。');
+      try {
+        const sealed = await encryptSharedOperation(input.crypto, fact.operation, key, input.identity, group.keyVersion);
+        const { signature: _old, ...body } = sealed;
+        body.encryptedPayload = `${body.encryptedPayload.startsWith('00') ? 'ff' : '00'}${body.encryptedPayload.slice(2)}`;
+        await input.cloud.upload({ ...body, signature: signSharedDocument(body, input.identity) }, { authorProofDigest: v2AuthorProofDigest(fact) });
+      } finally { key.fill(0); }
+      check(); changed();
     },
     async removeMember() { check(); if (scope.role !== 'owner') throw new Error('検査用所有者の操作です。'); await (await open()).manager.removeMembers([scope.memberId]); changed(); },
     close() { closed = true; listeners.clear(); },

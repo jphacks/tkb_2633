@@ -93,6 +93,7 @@ export function sharingFailureMessage(error: unknown): string {
   if (code === 'resource-exhausted') return '共有先の利用上限に達しました。時間をおいて再送します。';
   if (code === 'unauthenticated' || code.startsWith('auth/')) return '共有アカウントでログインし直してください。';
   if (code === 'sharing/key-version-changed') return '共有鍵の更新を待っています。所有者の端末で同期してください。';
+  if (code === 'sharing/recovery-in-progress') return '所有者が共有の復旧を進めています。変更はこの端末に保存され、復旧後に送信されます。';
   if (code === 'sharing/scheduler-version-mismatch') return 'この共有グループの計算ルールに対応するLiFlowへ更新してください。';
   return '同期を完了できませんでした。端末内の変更は保持し、再送します。';
 }
@@ -118,7 +119,8 @@ async function buildWorkspace(selection: SharingSelection): Promise<SharedWorksp
   if (protocol === 2 && archive?.some((roster) => roster.body.schemaVersion !== 2)) throw new V2WorkspaceMigrationRequiredError();
   const identity = await loadOrCreateSharingDeviceIdentity(userId, record.localGeneration);
   if ((await requireUser()).uid !== userId) throw new SharingAccessError('共有アカウントが切り替わりました。');
-  const cloud = createSharingCloud(getSharingServices().firestore, userId, () => getSharingServices().auth.currentUser?.uid ?? null);
+  const cloud = createSharingCloud(getSharingServices().firestore, userId, () => getSharingServices().auth.currentUser?.uid ?? null,
+    { ownerRecoveryEnabled: process.env.EXPO_PUBLIC_SHARING_OWNER_RECOVERY === 'true' });
   const context = { selection, user, registry, record, identity, archive, cloud };
   const approved = archive?.at(-1)?.body.members.some((member) => member.userId === userId && member.devices.some((device) => device.identity.deviceId === identity.deviceId));
   if (!protocol || record.status === 'joining' && !approved) return buildPendingWorkspace(context);
@@ -467,7 +469,8 @@ async function buildV2Workspace(context: WorkspaceOpenContext): Promise<V2Shared
         const model = await session.controller.readModel(({ timeZone }) => { const today = sharedLocalDate(new Date(), timeZone); return { from: today, through: today, asOfDate: today }; });
         if (!model.plan.initialized) throw new Error('初回同期を完了してから共有グループを開いてください。');
         return { timeZone: model.plan.timeZone, members: model.plan.members.filter((member) => member.active).map((member) => ({ id: member.userId, displayName: member.displayName })),
-          chores: model.plan.chores, hasConflicts: model.configurations.some((entry) => entry.candidates.length > 1) };
+          chores: model.plan.chores, hasConflicts: model.configurations.some((entry) => entry.candidates.length > 1),
+          ...(model.recoverySummary ? { recoverySummary: model.recoverySummary } : {}) };
       },
       async maintainHistory() {
         if (access.archive()?.at(-1)?.body.ownerDeviceId !== identity.deviceId || access.record().status !== 'active') return;

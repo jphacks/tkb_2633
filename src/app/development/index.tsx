@@ -5,7 +5,7 @@ import { AppButton, BackButton, Card, Page, ScreenHeading, typography } from '@/
 
 /** A stable Native entry for device tests. Release builds never show controls or open a QA context. */
 export default function DevelopmentChecks() {
-  const [host, setHost] = useState(''); const [run, setRun] = useState('phase6-v37-a1'); const [role, setRole] = useState<'owner' | 'member'>('owner');
+  const [host, setHost] = useState(''); const [run, setRun] = useState('phase6-v38-a1'); const [role, setRole] = useState<'owner' | 'member'>('owner');
   if (!__DEV__) return <Text>この画面は開発ビルド専用です。</Text>;
   return <Page><BackButton onPress={() => router.back()} /><ScreenHeading title="開発検査" />
     <Card><Text style={typography.caption}>検査用データだけを使う開発ビルドの入口です。</Text>
